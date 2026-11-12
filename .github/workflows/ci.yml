@@ -311,7 +311,7 @@ jobs:
             fi
             docker image rm "$IMAGE:$v" "$IMAGE@$DIGEST" >/dev/null 2>&1 || true
           done
-          cp docker-compose.yml env.example release/
+          cp docker-compose.yml docker-compose.agent.yml env.example release/
           (cd release && sha256sum -- * > SHA256SUMS)
       # Provenance before the tags: if signing fails, nothing has been published yet
       - name: Build provenance (image digest)

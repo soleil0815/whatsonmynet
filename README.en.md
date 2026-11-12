@@ -138,6 +138,15 @@ Under *Settings → Active Directory* users sign in with their Windows account:
 
 Editors and viewers can be limited to one or more locations under *Settings → Users* – e.g. for the IT of a branch office. A limited account only sees and changes devices, scan results and monitors of these locations, scans only their subnets and counts only them on the overview. Devices without a location, free subnets, the nightly scan, maintenance windows and Docker hosts stay with unlimited accounts. Administrators are never limited; this also applies to accounts from Active Directory.
 
+## Scan agent for branch offices (from version 0.3)
+
+ARP – and so the MAC address – is only visible inside the own network. For a branch office a second container runs there as **scan agent**:
+
+1. Central server: add the location of the branch office with its subnets, then *Settings → Scan agents → Add agent*. Key and certificate fingerprint are shown as a ready `.env`.
+2. Branch office: put `docker-compose.agent.yml` from the release and the `.env` there, `docker compose -f docker-compose.agent.yml up -d`.
+
+The agent has no web interface and opens no port. It asks the central server for jobs every minute (HTTPS; with a self-signed certificate the fingerprint is checked before the key is sent), scans there just as gently and follows the time of the nightly light scan. It may only report addresses from the subnets of its location. "Start scan" for that location is handed to the agent automatically; the results show up under *Earlier scans* as usual.
+
 ## HTTPS and certificate
 
 - On first start WhatsOnMyNet creates a self-signed certificate for the host name, `localhost`, all IPv4 addresses of the host and the address in `WOMN_BASE_URL`. It is renewed automatically 30 days before it expires.
@@ -186,7 +195,7 @@ docker compose exec whatsonmynet womn-admin create <user>   # new administrator
 | --- | --- |
 | 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), ~~nightly light scan with notice of unknown devices~~, ~~printer data via SNMP~~, ~~Docker and database monitoring~~ (from 0.3) |
 | 3 | ~~Active Directory (LDAPS)~~, ~~rights per location~~ (from 0.3) |
-| later | Scan agent for branch offices, ~~topology via LLDP~~, ~~MAC addresses of remote subnets via SNMP from the router~~ (from 0.3) |
+| later | ~~Scan agent for branch offices~~, ~~topology via LLDP~~, ~~MAC addresses of remote subnets via SNMP from the router~~ (from 0.3) |
 
 ## License
 

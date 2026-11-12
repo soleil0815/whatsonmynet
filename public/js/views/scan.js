@@ -96,7 +96,8 @@ export async function renderScan(main, scanId) {
     button.disabled = true;
     try {
       const r = await post('/scans', { locationIds, cidrs: list });
-      navigate(`/scan/${r.id}`);
+      if (r.agentJobs?.length) toast(t('agent.jobSent', { names: r.agentJobs.join(', ') }));
+      if (r.id) navigate(`/scan/${r.id}`); else button.disabled = false;
     } catch (e) { fail(e); button.disabled = false; }
   }
 

@@ -39,7 +39,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
 COPY public ./public
-COPY docker-compose.yml env.example ./deploy/
+COPY docker-compose.yml docker-compose.agent.yml env.example ./deploy/
 COPY docker/entrypoint.sh /usr/local/bin/womn-entrypoint
 COPY docker/healthcheck.mjs /app/docker/healthcheck.mjs
 # Emergency access: docker compose exec whatsonmynet womn-admin …
