@@ -3,13 +3,13 @@
 # The agent scans the subnets of its location in the branch office and sends the results to the central
 # WhatsOnMyNet over HTTPS. It has no web interface and opens no port.
 #
-#   1. Central server: Settings → Scan agents → "Add agent" (choose the location), copy token and fingerprint
+#   1. Central server: Settings → Scan agents → "Add agent" (choose the location), copy the ready .env
 #   2. Here: put them into .env (see below), then  docker compose -f docker-compose.agent.yml up -d
 #
 # .env next to this file:
 #   WOMN_AGENT_SERVER=https://womn.firma.local:8743
 #   WOMN_AGENT_TOKEN=<token from the central server>
-#   WOMN_AGENT_FINGERPRINT=<SHA-256 fingerprint, needed for the self-signed certificate>
+#   WOMN_AGENT_CA=<certificate of the central server, needed for its self-signed certificate>
 #   TZ=Europe/Berlin
 #   PUID=1000
 #   PGID=1000

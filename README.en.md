@@ -142,10 +142,10 @@ Editors and viewers can be limited to one or more locations under *Settings → 
 
 ARP – and so the MAC address – is only visible inside the own network. For a branch office a second container runs there as **scan agent**:
 
-1. Central server: add the location of the branch office with its subnets, then *Settings → Scan agents → Add agent*. Key and certificate fingerprint are shown as a ready `.env`.
+1. Central server: add the location of the branch office with its subnets, then *Settings → Scan agents → Add agent*. Key and – with the self-signed certificate – the certificate of the central server are shown as a ready `.env`.
 2. Branch office: put `docker-compose.agent.yml` from the release and the `.env` there, `docker compose -f docker-compose.agent.yml up -d`.
 
-The agent has no web interface and opens no port. It asks the central server for jobs every minute (HTTPS; with a self-signed certificate the fingerprint is checked before the key is sent), scans there just as gently and follows the time of the nightly light scan. It may only report addresses from the subnets of its location. "Start scan" for that location is handed to the agent automatically; the results show up under *Earlier scans* as usual.
+The agent has no web interface and opens no port. It asks the central server for jobs every minute (HTTPS; with the self-signed certificate it trusts exactly this one certificate – checked before the key is sent. When the certificate is renewed, the agent needs the new value), scans there just as gently and follows the time of the nightly light scan. It may only report addresses from the subnets of its location. "Start scan" for that location is handed to the agent automatically; the results show up under *Earlier scans* as usual.
 
 ## HTTPS and certificate
 

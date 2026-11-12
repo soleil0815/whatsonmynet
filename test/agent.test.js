@@ -10,8 +10,8 @@ import { agentConfig, createClient } from '../src/agent.js';
 test('agent configuration is checked', () => {
   assert.throws(() => agentConfig({ WOMN_AGENT_SERVER: 'http://x', WOMN_AGENT_TOKEN: 'a'.repeat(30) }), /https/);
   assert.throws(() => agentConfig({ WOMN_AGENT_SERVER: 'https://x:8743', WOMN_AGENT_TOKEN: 'short' }), /TOKEN/);
-  assert.throws(() => agentConfig({ WOMN_AGENT_SERVER: 'https://x', WOMN_AGENT_TOKEN: 'a'.repeat(30), WOMN_AGENT_FINGERPRINT: 'AB:CD' }), /FINGERPRINT/);
-  assert.equal(agentConfig({ WOMN_AGENT_SERVER: 'https://x/', WOMN_AGENT_TOKEN: 'a'.repeat(30), WOMN_AGENT_FINGERPRINT: 'ab:'.repeat(31) + 'ab' }).fingerprint.length, 64);
+  assert.throws(() => agentConfig({ WOMN_AGENT_SERVER: 'https://x', WOMN_AGENT_TOKEN: 'a'.repeat(30), WOMN_AGENT_CA: 'bm9wZQ==' }), /WOMN_AGENT_CA/);
+  assert.equal(agentConfig({ WOMN_AGENT_SERVER: 'https://x/', WOMN_AGENT_TOKEN: 'a'.repeat(30) }).server, 'https://x');
 });
 
 test('central side: token, own subnets only, jobs, nightly skip', async () => {
@@ -62,25 +62,27 @@ test('central side: token, own subnets only, jobs, nightly skip', async () => {
   } finally { await app.close(); }
 });
 
-test('agent client pins the certificate of the central server', async () => {
+test('agent client trusts exactly the pinned certificate of the central server', async () => {
   const dir = fs.mkdtempSync(path.join(tmp, 'pin-'));
-  execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-days', '1', '-subj', '/CN=central',
-    '-keyout', path.join(dir, 'k.pem'), '-out', path.join(dir, 'c.pem')], { stdio: 'ignore' });
+  const mk = (name) => execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-days', '1', '-subj', '/CN=central',
+    '-addext', 'subjectAltName=DNS:central.firma.local', '-addext', 'basicConstraints=critical,CA:FALSE',
+    '-keyout', path.join(dir, `${name}-k.pem`), '-out', path.join(dir, `${name}-c.pem`)], { stdio: 'ignore' });
+  mk('a'); mk('b');
   let sawToken = 0;
-  const srv = https.createServer({ key: fs.readFileSync(path.join(dir, 'k.pem')), cert: fs.readFileSync(path.join(dir, 'c.pem')) }, (req, res) => {
+  const srv = https.createServer({ key: fs.readFileSync(path.join(dir, 'a-k.pem')), cert: fs.readFileSync(path.join(dir, 'a-c.pem')) }, (req, res) => {
     if (req.headers.authorization) sawToken++;
     res.setHeader('Content-Type', 'application/json'); res.end('{"jobs":[],"subnets":[]}');
   });
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
-  const fp = execFileSync('openssl', ['x509', '-in', path.join(dir, 'c.pem'), '-noout', '-fingerprint', '-sha256']).toString().split('=')[1].trim();
-  const server = `https://127.0.0.1:${srv.address().port}`;
+  const b64 = (f) => fs.readFileSync(path.join(dir, f)).toString('base64');
+  const server = `https://127.0.0.1:${srv.address().port}`; // IP, not the name in the certificate: still accepted when pinned
   const token = 't'.repeat(40);
   try {
-    const ok = createClient(agentConfig({ WOMN_AGENT_SERVER: server, WOMN_AGENT_TOKEN: token, WOMN_AGENT_FINGERPRINT: fp }));
+    const ok = createClient(agentConfig({ WOMN_AGENT_SERVER: server, WOMN_AGENT_TOKEN: token, WOMN_AGENT_CA: b64('a-c.pem') }));
     assert.deepEqual((await ok.poll()).jobs, []);
     assert.equal(sawToken, 1);
-    const wrong = createClient(agentConfig({ WOMN_AGENT_SERVER: server, WOMN_AGENT_TOKEN: token, WOMN_AGENT_FINGERPRINT: 'AB'.repeat(32) }));
-    await assert.rejects(wrong.poll(), /fingerprint/);
+    const other = createClient(agentConfig({ WOMN_AGENT_SERVER: server, WOMN_AGENT_TOKEN: token, WOMN_AGENT_CA: b64('b-c.pem') }));
+    await assert.rejects(other.poll(), /certificate|self.signed/i);
     const noPin = createClient(agentConfig({ WOMN_AGENT_SERVER: server, WOMN_AGENT_TOKEN: token }));
     await assert.rejects(noPin.poll(), /self.signed|certificate/i);
     assert.equal(sawToken, 1, 'the token never reached an unverified server');

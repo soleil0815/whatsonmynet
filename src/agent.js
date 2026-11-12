@@ -4,11 +4,12 @@
 // Environment:
 //   WOMN_AGENT_SERVER       https://womn.firma.local:8743  (address of the central server)
 //   WOMN_AGENT_TOKEN        token from Settings → Scan agents
-//   WOMN_AGENT_FINGERPRINT  SHA-256 fingerprint of the central certificate (needed for a self-signed one)
+//   WOMN_AGENT_CA           certificate of the central server (base64 of its PEM, shown in the central settings) –
+//                           needed for the self-signed certificate; empty = normal check against public CAs
 //   WOMN_AGENT_INTERVAL     seconds between two questions to the server (default 60)
 import fs from 'node:fs';
 import https from 'node:https';
-import tls from 'node:tls';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { config } from './config.js';
 import { log } from './lib/log.js';
@@ -20,40 +21,42 @@ import { createScanner } from './scan/engine.js';
 import { isDue, localDay } from './scan/nightly.js';
 
 const ALIVE = '/tmp/womn-agent.ok';
-const normFp = (s) => String(s || '').replace(/[^0-9a-f]/gi, '').toUpperCase();
 
 export function agentConfig(env = process.env) {
   const server = String(env.WOMN_AGENT_SERVER || '').trim().replace(/\/+$/, '');
   const token = String(env.WOMN_AGENT_TOKEN || '').trim();
   if (!/^https:\/\/[^\s/]+(:\d+)?$/i.test(server)) throw new Error('WOMN_AGENT_SERVER must be https://<central server>[:port]');
   if (!/^[A-Za-z0-9_-]{20,200}$/.test(token)) throw new Error('WOMN_AGENT_TOKEN is missing or invalid – create one under Settings → Scan agents');
-  const fingerprint = normFp(env.WOMN_AGENT_FINGERPRINT);
-  if (fingerprint && fingerprint.length !== 64) throw new Error('WOMN_AGENT_FINGERPRINT must be a SHA-256 fingerprint (64 hex digits)');
-  return { server, token, fingerprint, interval: Math.max(15, Math.min(3600, Number(env.WOMN_AGENT_INTERVAL) || 60)) };
+  let ca = '';
+  let fingerprint = '';
+  const raw = String(env.WOMN_AGENT_CA || '').trim();
+  if (raw) {
+    try {
+      ca = raw.startsWith('-----BEGIN') ? raw : Buffer.from(raw, 'base64').toString('utf8');
+      fingerprint = new crypto.X509Certificate(ca).fingerprint256;
+    } catch { throw new Error('WOMN_AGENT_CA is not a certificate – copy it again from the central server (Settings → Scan agents)'); }
+  }
+  return { server, token, ca, fingerprint, interval: Math.max(15, Math.min(3600, Number(env.WOMN_AGENT_INTERVAL) || 60)) };
 }
 
 /**
- * HTTPS agent: with a fingerprint the certificate of the server must match it exactly (self-signed certificates);
- * without, the normal certificate check applies. Nothing – not even the token – is sent before the check.
+ * HTTPS agent. With WOMN_AGENT_CA the central certificate is the only trusted one (pinned): the chain is checked
+ * against it and the server must present exactly this certificate – then the name in it does not matter (the agent
+ * may use an IP address). Without, the normal check against public CAs applies. The TLS check always happens
+ * before anything – the token included – is sent.
  */
-export function makeHttpsAgent(fingerprint) {
-  const agent = new https.Agent({ keepAlive: false });
-  if (!fingerprint) return agent;
-  agent.createConnection = (opts, cb) => {
-    const sock = tls.connect({ ...opts, rejectUnauthorized: false });
-    let done = false;
-    sock.once('secureConnect', () => {
-      const fp = normFp(sock.getPeerCertificate()?.fingerprint256);
-      if (fp !== fingerprint) { done = true; sock.destroy(); cb(new Error('certificate fingerprint does not match WOMN_AGENT_FINGERPRINT')); return; }
-      done = true; cb(null, sock);
-    });
-    sock.once('error', (e) => { if (!done) { done = true; cb(e); } });
-  };
-  return agent;
+export function makeHttpsAgent(cfg) {
+  if (!cfg.ca) return new https.Agent({ keepAlive: false });
+  return new https.Agent({
+    keepAlive: false,
+    ca: [cfg.ca],
+    checkServerIdentity: (_host, cert) => (cert?.fingerprint256 === cfg.fingerprint ? undefined
+      : new Error('the server presents another certificate than WOMN_AGENT_CA')),
+  });
 }
 
 export function createClient(cfg) {
-  const agent = makeHttpsAgent(cfg.fingerprint);
+  const agent = makeHttpsAgent(cfg);
   function request(method, p, body) {
     return new Promise((resolve, reject) => {
       const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
@@ -111,7 +114,7 @@ async function main() {
   let state = {};
   try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { /* first start */ }
   const save = () => { try { fs.mkdirSync(config.dataDir, { recursive: true }); fs.writeFileSync(stateFile, JSON.stringify(state), { mode: 0o600 }); } catch (e) { log.warn(`State file: ${e.message}`); } };
-  log.info(`WhatsOnMyNet scan agent ${config.version} – server ${cfg.server}${cfg.fingerprint ? ' (certificate pinned)' : ''}`);
+  log.info(`WhatsOnMyNet scan agent ${config.version} – server ${cfg.server}${cfg.ca ? ' (certificate pinned)' : ''}`);
 
   let busy = false;
   const run = async (kind, info, jobId = null) => {

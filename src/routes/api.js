@@ -347,7 +347,11 @@ export function createApi(ctx) {
     audit(req, 'scan.agent', a.name);
     res.status(202).json({ ok: true });
   });
-  r.get('/tls/fingerprint', admin, (_req, res) => res.json({ fingerprint: tls?.describe()?.fingerprint || '' }));
+  // Certificate of this server for the scan agents (public anyway: every browser gets it)
+  r.get('/tls/agent-ca', admin, (_req, res) => {
+    const pem = String(tls?.current()?.cert || '').match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/)?.[0] || '';
+    res.json({ ca: pem ? Buffer.from(`${pem}\n`).toString('base64') : '', source: tls?.describe()?.source || '' });
+  });
 
   // --- Administration ---------------------------------------------------------------------------------------
   r.get('/settings', admin, (_req, res) => {
