@@ -10,7 +10,7 @@ export class DatabaseTooNewError extends Error {}
 export class WrongKeyError extends Error {}
 
 // Each entry raises user_version by one. Never change an entry once released – only append.
-const MIGRATIONS = [
+export const MIGRATIONS = [
   // 1: first version
   `
   CREATE TABLE users (
@@ -243,6 +243,58 @@ const MIGRATIONS = [
     PRIMARY KEY (device_id, day)
   );
   `,
+  // 4: Docker hosts; monitors get the types docker/mysql/postgres/redis (table rebuilt – SQLite cannot change a CHECK)
+  { foreignKeysOff: true, sql: `
+  CREATE TABLE docker_hosts (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE monitors_new (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('ping','tcp','http','docker','mysql','postgres','redis')),
+    target TEXT NOT NULL,
+    port INTEGER,
+    device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+    interval_s INTEGER NOT NULL DEFAULT 60,
+    timeout_s INTEGER NOT NULL DEFAULT 10,
+    fail_threshold INTEGER NOT NULL DEFAULT 3,
+    resend_min INTEGER NOT NULL DEFAULT 0,
+    http_status TEXT NOT NULL DEFAULT '200-399',
+    http_keyword TEXT NOT NULL DEFAULT '',
+    tls_verify INTEGER NOT NULL DEFAULT 0,
+    cert_check INTEGER NOT NULL DEFAULT 1,
+    cert_days TEXT NOT NULL DEFAULT '30,14,7',
+    channels TEXT NOT NULL DEFAULT '[]',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    status_since TEXT,
+    last_check TEXT,
+    last_ms INTEGER,
+    last_message TEXT NOT NULL DEFAULT '',
+    fail_count INTEGER NOT NULL DEFAULT 0,
+    notified_down INTEGER NOT NULL DEFAULT 0,
+    last_alert_at TEXT,
+    cert_valid_to TEXT,
+    cert_alert_days INTEGER,
+    docker_host_id INTEGER REFERENCES docker_hosts(id) ON DELETE RESTRICT,
+    options TEXT NOT NULL DEFAULT '{}',
+    secret TEXT NOT NULL DEFAULT ''
+  );
+  INSERT INTO monitors_new(id,name,type,target,port,device_id,interval_s,timeout_s,fail_threshold,resend_min,http_status,http_keyword,
+    tls_verify,cert_check,cert_days,channels,enabled,created_at,updated_at,status,status_since,last_check,last_ms,last_message,fail_count,
+    notified_down,last_alert_at,cert_valid_to,cert_alert_days)
+  SELECT id,name,type,target,port,device_id,interval_s,timeout_s,fail_threshold,resend_min,http_status,http_keyword,
+    tls_verify,cert_check,cert_days,channels,enabled,created_at,updated_at,status,status_since,last_check,last_ms,last_message,fail_count,
+    notified_down,last_alert_at,cert_valid_to,cert_alert_days FROM monitors;
+  DROP TABLE monitors;
+  ALTER TABLE monitors_new RENAME TO monitors;
+  CREATE INDEX monitors_device ON monitors(device_id);
+  ` },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
@@ -277,10 +329,22 @@ export function migrate(db) {
     throw new DatabaseTooNewError(`The database belongs to a newer version of WhatsOnMyNet (schema ${version}, this version knows ${MIGRATIONS.length}). Please install the newer version again or restore a backup.`);
   }
   for (let v = version; v < MIGRATIONS.length; v++) {
-    db.transaction(() => {
-      db.exec(MIGRATIONS[v]);
-      db.pragma(`user_version = ${v + 1}`);
-    })();
+    const m = MIGRATIONS[v];
+    const sql = typeof m === 'string' ? m : m.sql;
+    // Rebuilding a table: foreign keys off (otherwise DROP TABLE would delete dependent rows), checked afterwards
+    if (m.foreignKeysOff) db.pragma('foreign_keys = OFF');
+    try {
+      db.transaction(() => {
+        db.exec(sql);
+        if (m.foreignKeysOff) {
+          const bad = db.pragma('foreign_key_check');
+          if (bad.length) throw new Error(`Schema update ${v + 1}: ${bad.length} broken reference(s)`);
+        }
+        db.pragma(`user_version = ${v + 1}`);
+      })();
+    } finally {
+      if (m.foreignKeysOff) db.pragma('foreign_keys = ON');
+    }
     log.info(`Database schema updated to version ${v + 1}`);
   }
 }

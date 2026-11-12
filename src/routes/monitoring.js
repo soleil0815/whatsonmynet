@@ -4,7 +4,7 @@ import { HttpError, int, str } from '../lib/http.js';
 import { requireRole } from '../auth/session.js';
 
 export function createMonitoringApi(ctx) {
-  const { db, monitoring, channels, maintenance } = ctx;
+  const { db, monitoring, channels, maintenance, dockerHosts } = ctx;
   const r = express.Router();
   const editor = requireRole('editor');
   const admin = requireRole('admin');
@@ -42,6 +42,30 @@ export function createMonitoringApi(ctx) {
     monitoring.remove(id);
     audit(req, 'monitor.delete', m?.name);
     res.json({ ok: true });
+  });
+
+  // Docker hosts: names for editors (monitor form), addresses and changes for admins
+  r.get('/docker/hosts', editor, (req, res) => {
+    const list = dockerHosts.list();
+    res.json(req.user.role === 'admin' ? list : list.map((h) => ({ id: h.id, name: h.name })));
+  });
+  r.post('/docker/hosts', admin, (req, res) => { const h = dockerHosts.create(req.body); audit(req, 'docker.create', `${h.name} (${h.url})`); res.status(201).json(h); });
+  r.put('/docker/hosts/:id', admin, (req, res) => { const h = dockerHosts.update(idParam(req), req.body); audit(req, 'docker.update', h.name); res.json(h); });
+  r.delete('/docker/hosts/:id', admin, (req, res) => { dockerHosts.remove(idParam(req)); audit(req, 'docker.delete', req.params.id); res.json({ ok: true }); });
+  r.get('/docker/hosts/:id/containers', editor, async (req, res) => res.json(await dockerHosts.info(idParam(req))));
+  // One monitor for every container that has none yet
+  r.post('/docker/hosts/:id/monitor-all', editor, async (req, res) => {
+    const id = idParam(req);
+    const info = await dockerHosts.info(id);
+    const have = new Set(db.prepare("SELECT target FROM monitors WHERE type='docker' AND docker_host_id=?").all(id).map((m) => m.target));
+    const host = dockerHosts.get(id);
+    const created = [];
+    for (const c of info.containers) {
+      if (have.has(c.name) || (req.body.runningOnly !== false && c.state !== 'running')) continue;
+      created.push((await monitoring.create({ name: `${c.name} (${host.name})`, type: 'docker', target: c.name, docker_host_id: id, interval_s: 60 })).id);
+    }
+    if (created.length) audit(req, 'docker.monitorAll', `${created.length} monitor(s) on ${host.name}`);
+    res.json({ created: created.length });
   });
 
   // Maintenance windows (editors)

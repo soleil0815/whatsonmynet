@@ -18,6 +18,7 @@ import { createMaintenance } from './monitor/maintenance.js';
 import { createMonitoring } from './monitor/index.js';
 import { createNightly } from './scan/nightly.js';
 import { createPrinters } from './printers.js';
+import { createDockerHosts } from './monitor/docker.js';
 import { HttpError } from './lib/http.js';
 import { randomToken } from './lib/crypto.js';
 import { t, langFromHeader, normalizeLang, hasKey } from './i18n.js';
@@ -64,6 +65,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   const monitoring = createMonitoring({ db, channels, maintenance });
   const nightly = createNightly({ db, settings, scanner, channels });
   const printers = createPrinters({ db, settings, channels });
+  const dockerHosts = createDockerHosts(db);
 
   // Initial setup: one-time code from the log, only as long as there is no user
   const setup = { token: null };
@@ -74,7 +76,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     console.log(`\n${bar}\n  WhatsOnMyNet – Ersteinrichtung / initial setup\n  Einrichtungscode / setup code:  ${setup.token}\n  ${where}/setup\n${bar}\n`);
   }
 
-  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers,
+  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 

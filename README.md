@@ -42,6 +42,12 @@ WhatsOnMyNet überwacht Geräte, Dienste und Webseiten und ersetzt damit Uptime 
 
 Prüfergebnisse bleiben 7 Tage im Detail und stundenweise über ein Jahr gespeichert.
 
+### Docker-Container und Datenbanken (ab Version 0.3)
+
+- **Docker**: Unter *Einstellungen → Docker* trägst du deine Docker-Hosts ein. Ein Monitor vom Typ *Docker-Container* meldet, wenn ein Container nicht läuft, ständig neu startet oder sein Healthcheck „unhealthy“ meldet. „Alle laufenden überwachen“ legt mit einem Klick für jeden Container einen Monitor an.
+  Empfohlen ist ein **Socket-Proxy** auf dem Docker-Host, der nur lesende Container-Abfragen erlaubt (z. B. `tecnativa/docker-socket-proxy` mit `CONTAINERS=1`, `POST=0`; Adresse dann `http://<host>:2375`). Die Vorlage steht in den Einstellungen. Den Docker-Socket direkt durchzureichen geht auch (`unix:///var/run/docker.sock`, in der `docker-compose.yml` als `:ro` einbinden und mit `group_add` die Gruppen-ID von `docker` ergänzen) – das gibt aber mehr Rechte als nötig.
+- **Datenbanken**: MariaDB/MySQL, PostgreSQL und Redis/Valkey. Geprüft wird: anmelden und eine harmlose Abfrage (Version bzw. `PING`), auf Wunsch über TLS. Lege dafür am besten einen eigenen Benutzer nur mit Login-Recht an. Das Passwort wird verschlüsselt gespeichert und nie an den Browser zurückgegeben.
+
 ## Installation
 
 Voraussetzung: ein **Linux-Host mit Docker** (Server, VM, Proxmox-LXC mit Docker, Synology Container Manager). WhatsOnMyNet läuft im **Host-Netzwerk** – nur so sieht es die MAC-Adressen deiner Geräte. Docker Desktop unter Windows oder macOS sieht das echte Netz nicht und eignet sich deshalb nicht.
@@ -147,7 +153,7 @@ docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administ
 
 | Version | Inhalt |
 | --- | --- |
-| 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), ~~nächtlicher leichter Scan mit Meldung unbekannter Geräte~~, ~~Druckerdaten per SNMP~~ (ab 0.3), Docker- und Datenbanküberwachung |
+| 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), ~~nächtlicher leichter Scan mit Meldung unbekannter Geräte~~, ~~Druckerdaten per SNMP~~, ~~Docker- und Datenbanküberwachung~~ (ab 0.3) |
 | 3 | Active Directory (LDAPS), Rollen pro Standort/Subnetz |
 | später | Scan-Agent für Außenstellen, Topologie über LLDP/CDP, MAC-Adressen entfernter Subnetze per SNMP vom Router |
 

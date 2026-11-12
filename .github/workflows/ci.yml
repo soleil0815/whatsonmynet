@@ -41,6 +41,32 @@ jobs:
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    # Real database servers for the monitoring checks (test/services.test.js)
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-pw
+          MARIADB_USER: womn
+          MARIADB_PASSWORD: ci-womn-pw
+          MARIADB_DATABASE: womn
+        ports: ["3306:3306"]
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-retries=20
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: womn
+          POSTGRES_PASSWORD: ci-womn-pw
+        ports: ["5432:5432"]
+        options: --health-cmd="pg_isready -U womn" --health-interval=5s --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd="redis-cli ping" --health-interval=5s --health-retries=20
+    env:
+      WOMN_TEST_MYSQL: 127.0.0.1:3306:womn:ci-womn-pw
+      WOMN_TEST_POSTGRES: 127.0.0.1:5432:womn:ci-womn-pw
+      WOMN_TEST_REDIS: "127.0.0.1:6379::"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

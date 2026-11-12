@@ -42,6 +42,12 @@ WhatsOnMyNet monitors devices, services and websites and replaces Uptime Kuma fo
 
 Check results are kept in detail for 7 days and hourly for a year.
 
+### Docker containers and databases (from version 0.3)
+
+- **Docker**: add your Docker hosts under *Settings → Docker*. A monitor of type *Docker container* reports when a container is not running, keeps restarting or its health check says "unhealthy". "Watch all running" creates a monitor for every container with one click.
+  Recommended is a **socket proxy** on the Docker host that only allows read-only container queries (e.g. `tecnativa/docker-socket-proxy` with `CONTAINERS=1`, `POST=0`; address `http://<host>:2375`). The template is shown in the settings. Passing the Docker socket directly also works (`unix:///var/run/docker.sock`, mounted `:ro` in `docker-compose.yml` plus `group_add` with the group ID of `docker`) – but that grants more rights than needed.
+- **Databases**: MariaDB/MySQL, PostgreSQL and Redis/Valkey. The check logs in and runs one harmless query (version or `PING`), optionally over TLS. Best create a user of its own with login rights only. The password is stored encrypted and never sent back to the browser.
+
 ## Installation
 
 Requirement: a **Linux host with Docker** (server, VM, Proxmox LXC with Docker, Synology Container Manager). WhatsOnMyNet runs in the **host network** – only this way it sees the MAC addresses of your devices. Docker Desktop on Windows or macOS does not see the real network and is therefore not suitable.
@@ -147,7 +153,7 @@ docker compose exec whatsonmynet womn-admin create <user>   # new administrator
 
 | Version | Content |
 | --- | --- |
-| 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), ~~nightly light scan with notice of unknown devices~~, ~~printer data via SNMP~~ (from 0.3), Docker and database monitoring |
+| 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), ~~nightly light scan with notice of unknown devices~~, ~~printer data via SNMP~~, ~~Docker and database monitoring~~ (from 0.3) |
 | 3 | Active Directory (LDAPS), roles per location/subnet |
 | later | Scan agent for branch offices, topology via LLDP/CDP, MAC addresses of remote subnets via SNMP from the router |
 

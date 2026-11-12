@@ -18,8 +18,9 @@ export function monitorDot(status) {
   return h('span', { class: `dot mon-${status}`, title: t(`mon.status.${status}`), role: 'img', 'aria-label': t(`mon.status.${status}`) });
 }
 
-function targetText(m) {
-  return m.type === 'tcp' ? `${m.target}:${m.port}` : m.target;
+export function targetText(m) {
+  if (m.type === 'docker') return m.docker_host ? `${m.target} @ ${m.docker_host.name}` : m.target;
+  return ['tcp', 'mysql', 'postgres', 'redis'].includes(m.type) ? `${m.target}:${m.port}` : m.target;
 }
 
 function beatsBar(beats, slots = 40) {
@@ -193,10 +194,44 @@ export async function openMonitorForm(m, done, preset = null) {
   try { chans = await get('/channels'); } catch { /* list stays empty */ }
   const v = m || { type: 'http', interval_s: 60, timeout_s: 10, fail_threshold: 3, resend_min: 0, http_status: '200-399', http_keyword: '',
     tls_verify: false, cert_check: true, cert_days: '30,14,7', channels: [], ...(preset || {}) };
-  const typeSel = select('type', [['http', t('mon.type.http')], ['tcp', t('mon.type.tcp')], ['ping', t('mon.type.ping')]], v.type);
-  const target = input('target', v.target || '', { required: true, class: 'mono', placeholder: 'https://intranet.firma.local/' });
+  let dockerHosts = [];
+  try { dockerHosts = await get('/docker/hosts'); } catch { /* none or no right */ }
+  const TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis'];
+  const DBT = ['mysql', 'postgres', 'redis'];
+  const DEF_PORT = { mysql: 3306, postgres: 5432, redis: 6379 };
+  const typeSel = select('type', TYPES.map((x) => [x, t(`mon.type.${x}`)]), v.type);
+  const target = input('target', v.target || '', { required: true, class: 'mono', placeholder: 'https://intranet.firma.local/', list: 'dl-containers' });
+  const targetLabel = h('span', {}, t('mon.f.target'));
   const port = input('port', v.port || '', { type: 'number', min: 1, max: 65535, class: 'mono' });
   const portBox = h('div', {}, field(t('mon.f.port'), port));
+  // Docker: host + container (names offered from the host)
+  const containers = h('datalist', { id: 'dl-containers' });
+  const hostSel = select('docker_host_id', [['', t('mon.f.chooseHost')], ...dockerHosts.map((x) => [String(x.id), x.name])], v.docker_host_id ? String(v.docker_host_id) : (dockerHosts.length === 1 ? String(dockerHosts[0].id) : ''));
+  const containerHint = h('span', { class: 'hint' });
+  async function loadContainers() {
+    mount(containers);
+    containerHint.textContent = '';
+    if (!hostSel.value || typeSel.value !== 'docker') return;
+    try {
+      const r = await get(`/docker/hosts/${hostSel.value}/containers`);
+      mount(containers, r.containers.map((c) => h('option', { value: c.name }, `${c.state} · ${c.image}`)));
+      containerHint.textContent = t('mon.f.containersFound', { n: r.containers.length, version: r.version });
+    } catch (e) { containerHint.textContent = e.message; }
+  }
+  hostSel.addEventListener('change', loadContainers);
+  const dockerBox = h('div', { class: 'form-grid full' },
+    dockerHosts.length ? field(t('mon.f.dockerHost'), hostSel, containerHint)
+      : h('p', { class: 'full muted small' }, state.user.isAdmin ? t('mon.f.noDockerAdmin') : t('mon.f.noDocker')));
+  // Databases: login (password is never shown again)
+  const o = v.options || {};
+  const pw = input('password', '', { type: 'password', autocomplete: 'new-password', placeholder: v.has_password ? '••••••' : '' });
+  const dbName = field(t('mon.f.database'), input('database', o.database || '', { maxlength: 120, class: 'mono' }), t('mon.f.databaseHint'));
+  const dbBox = h('div', { class: 'form-grid full' },
+    field(t('mon.f.dbUser'), input('db_user', o.user || '', { maxlength: 120, autocomplete: 'off', class: 'mono' }), t('mon.f.dbUserHint')),
+    field(t('mon.f.dbPassword'), pw, v.has_password ? t('mon.f.dbPasswordSet') : null),
+    dbName,
+    field(t('mon.f.dbTls'), h('input', { type: 'checkbox', name: 'db_tls', checked: !!o.tls })),
+    h('p', { class: 'full muted small', style: { margin: 0 } }, t('mon.f.dbHint')));
   const httpBox = h('div', { class: 'form-grid full' },
     field(t('mon.f.status'), input('http_status', v.http_status, { class: 'mono' }), t('mon.f.statusHint')),
     field(t('mon.f.keyword'), input('http_keyword', v.http_keyword, { maxlength: 200 }), t('mon.f.keywordHint')),
@@ -205,10 +240,18 @@ export async function openMonitorForm(m, done, preset = null) {
     field(t('mon.f.certDays'), input('cert_days', v.cert_days, { class: 'mono' }), t('mon.f.certDaysHint')));
   const sync = () => {
     const ty = typeSel.value;
-    portBox.hidden = ty !== 'tcp';
+    const isDb = DBT.includes(ty);
+    portBox.hidden = ty !== 'tcp' && !isDb;
     httpBox.hidden = ty !== 'http';
+    dockerBox.hidden = ty !== 'docker';
+    dbBox.hidden = !isDb;
+    dbName.hidden = ty === 'redis';
     port.required = ty === 'tcp';
-    target.placeholder = ty === 'http' ? 'https://intranet.firma.local/' : '192.168.1.10';
+    port.placeholder = isDb ? String(DEF_PORT[ty]) : '';
+    hostSel.required = ty === 'docker';
+    targetLabel.textContent = ty === 'docker' ? t('mon.f.container') : t('mon.f.target');
+    target.placeholder = ty === 'http' ? 'https://intranet.firma.local/' : ty === 'docker' ? 'nextcloud' : '192.168.1.10';
+    if (ty === 'docker' && !containers.children.length) loadContainers();
   };
   typeSel.addEventListener('change', sync);
   const selected = new Set(v.channels || []);
@@ -220,8 +263,10 @@ export async function openMonitorForm(m, done, preset = null) {
   const form = h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); save(); } },
     h('div', { class: 'full' }, field(t('mon.f.name'), input('name', v.name || '', { required: true, maxlength: 120 }))),
     field(t('mon.f.type'), typeSel),
-    h('div', {}, field(t('mon.f.target'), target)),
+    h('div', {}, h('label', { class: 'field' }, targetLabel, target), containers),
     portBox,
+    dockerBox,
+    dbBox,
     field(t('mon.f.interval'), input('interval_s', v.interval_s, { type: 'number', min: 20, max: 86400 }), t('mon.f.intervalHint')),
     field(t('mon.f.retries'), input('fail_threshold', v.fail_threshold, { type: 'number', min: 1, max: 10 }), t('mon.f.retriesHint')),
     field(t('mon.f.timeout'), input('timeout_s', v.timeout_s, { type: 'number', min: 1, max: 60 })),
@@ -240,6 +285,11 @@ export async function openMonitorForm(m, done, preset = null) {
       fail_threshold: d.fail_threshold, resend_min: d.resend_min, http_status: d.http_status, http_keyword: d.http_keyword,
       tls_verify: d.tls_verify, cert_check: d.cert_check, cert_days: d.cert_days,
       channels: chans.filter((c) => d[`ch_${c.id}`]).map((c) => c.id) };
+    if (d.type === 'docker') body.docker_host_id = d.docker_host_id;
+    if (DBT.includes(d.type)) {
+      body.options = { user: d.db_user, database: d.database, tls: d.db_tls };
+      if (d.password) body.password = d.password;
+    }
     if (!m && preset?.device_id) body.device_id = preset.device_id;
     try {
       const r = m ? await put(`/monitors/${m.id}`, body) : await post('/monitors', body);
