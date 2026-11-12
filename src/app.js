@@ -24,6 +24,7 @@ import { createDirectory } from './auth/directory.js';
 import { createAgents } from './agents.js';
 import { createReports } from './reports.js';
 import { createProxmox } from './proxmox.js';
+import { createBackups } from './backup.js';
 import { HttpError } from './lib/http.js';
 import { randomToken } from './lib/crypto.js';
 import { t, langFromHeader, normalizeLang, hasKey } from './i18n.js';
@@ -76,6 +77,8 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   const agents = createAgents({ db, settings, inventory, scanner });
   const reports = createReports({ db, settings, mailer });
   const proxmox = createProxmox({ db, settings });
+  // Restart after a restore: the normal shutdown (Docker starts the container again)
+  const backups = createBackups({ db, settings, dbFile: paths.db, backupsDir: paths.backups, restart: () => setTimeout(() => process.kill(process.pid, 'SIGTERM'), 800).unref() });
 
   // Initial setup: one-time code from the log, only as long as there is no user
   const setup = { token: null };
@@ -86,7 +89,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     console.log(`\n${bar}\n  WhatsOnMyNet – Ersteinrichtung / initial setup\n  Einrichtungscode / setup code:  ${setup.token}\n  ${where}/setup\n${bar}\n`);
   }
 
-  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, directory, agents, reports, proxmox,
+  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, directory, agents, reports, proxmox, backups,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 

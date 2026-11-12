@@ -213,6 +213,8 @@ docker compose exec whatsonmynet womn-admin create <user>   # new administrator
 - In the week before patch day a ZAP scan attacks the program in a throwaway container without login. The monthly code audit evaluates the result.
 - WhatsOnMyNet writes a daily database backup to `data/backups/` (number under *Settings → General*). Back up the whole `data/` folder, including `secret.key` and `tls/`.
 
+Under *Settings → Backup* (from 0.4) you download a current backup at any time, create one or restore one – uploaded or from the list on the server. The file is checked first (WhatsOnMyNet database, matching version, same key), the current state is kept as `whatsonmynet-before-restore-…`, then the program restarts. **Keep `data/secret.key` (or your `WOMN_SECRET`) as well** – without it stored passwords in a backup are unreadable.
+
 ## What comes next
 
 | Version | Content |
