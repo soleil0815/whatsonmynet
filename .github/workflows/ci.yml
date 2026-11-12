@@ -1,0 +1,333 @@
+# Tests, image checks and (from main only) publishing – the same flow as Helfi.Space.
+# - Pull requests: tests, then image build, smoke test (host network, hardened) and vulnerability scan.
+#   A newer push to the same pull request cancels the older run.
+# - main after a merge: only the image build (keeps the build cache warm).
+# - Release by button: Actions → CI → Run workflow (branch main) → Release: patch/minor/major.
+#   The version increments itself (highest tag + 1); the CI creates the tag and the GitHub release.
+#   This is the ONLY way to a release – a manually pushed tag triggers nothing.
+# - Flow: build natively for amd64/arm64 (no QEMU), test per architecture, merge into a candidate, scan EXACTLY
+#   this digest for vulnerabilities, only then publish as 1.2.3 (+ latest if highest version), GitHub release with
+#   offline images and checksums. Build provenance is signed before anything is published.
+# Actions are pinned to commit SHAs (Dependabot keeps them current).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Publish a new version? (main only; nein = no)'
+        type: choice
+        options: [nein, patch, minor, major]
+        default: nein
+
+permissions:
+  contents: read
+
+# Never run releases concurrently (a second button press waits); other runs per branch/PR
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && 'release' || format('ci-{0}', github.ref) }}
+  # outdated runs of a pull request are cancelled; releases and main never
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  test:
+    # main after a merge: already tested in the pull request
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Tools for shell tests
+        run: sudo apt-get update -q && sudo apt-get install -y -q shellcheck dash >/dev/null
+      - name: Tests
+        run: npm test
+      - name: Check dependencies for known vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+      - name: Lint shell scripts
+        run: |
+          shellcheck -s sh docker/entrypoint.sh docker/womn-admin.sh docker/prune-modules.sh .github/scripts/*.sh
+          dash -n docker/entrypoint.sh && dash -n docker/womn-admin.sh && dash -n docker/prune-modules.sh
+
+  # Build and check the image (no write permissions, no publishing)
+  image:
+    needs: [test]
+    # main after a merge: the test job is skipped (tested in the pull request) – build anyway
+    if: >-
+      !cancelled() && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build image (amd64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: womn-test:ci
+          build-args: VERSION=0.0.0-ci
+          cache-from: type=gha
+          # Write the cache from main only (PRs cannot poison it)
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max' || '' }}
+      - name: Smoke test (hardened as in docker-compose.yml)
+        run: sh .github/scripts/smoke-test.sh womn-test:ci
+      - name: Install Trivy (fixed version, SHA-256 checked, no GitHub Action)
+        run: sh .github/scripts/install-trivy.sh "$RUNNER_TEMP/trivy"
+      - name: Vulnerability scan
+        run: sh .github/scripts/trivy-scan.sh "womn-test:ci" trivy.json
+      - name: Evaluate vulnerabilities
+        run: sh .github/scripts/trivy-check.sh trivy.json
+
+  # Publishing: only by button, only from the current state of main, only after successful checks.
+  release-check:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.release != 'nein' && github.ref == 'refs/heads/main'
+    needs: [image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      latest: ${{ steps.v.outputs.latest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check origin and determine version
+        id: v
+        env:
+          MODE: ${{ inputs.release }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || { echo "::error::Release only by button ($GITHUB_EVENT_NAME)"; exit 1; }
+          # only from branch main and only its current state
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::Release by button only from branch main ($GITHUB_REF)"; exit 1; }
+          [ "$GITHUB_SHA" = "$(git rev-parse origin/main)" ] || { echo "::error::$GITHUB_SHA is not the current state of main"; exit 1; }
+          case "$MODE" in patch|minor|major) ;; *) echo "::error::Unknown release type ($MODE)"; exit 1 ;; esac
+          # Re-run of this release ("Re-run all jobs"): the version it reserved as git tag on exactly this
+          # commit is used again – otherwise the re-run would publish the next number and leave a gap
+          # Only a tag WITHOUT a published release is an unfinished reservation: an earlier, completed release
+          # of the same commit is never taken over (404 = no release; any other API error stops)
+          if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
+            mine="$(git tag -l 'v*.*.*' --points-at "$GITHUB_SHA" | sort -V | tail -n 1)"
+            if [ -n "$mine" ]; then
+              if rel="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$mine" --jq .id 2>&1)"; then
+                echo "Version $mine is already released (release $rel) – not reused"
+              else
+                case "$rel" in
+                  *"Not Found"*|*"HTTP 404"*) MODE="tag:$mine"; echo "Re-run: version $mine reserved by this release" ;;
+                  *) echo "::error::Cannot check the release of $mine: $rel"; exit 1 ;;
+                esac
+              fi
+            fi
+          fi
+          out="$(sh .github/scripts/next-version.sh "$MODE")" || { echo "::error::Cannot determine version ($MODE)"; exit 1; }
+          echo "$out"
+          echo "$out" >> "$GITHUB_OUTPUT"
+
+  # Build each architecture natively and test it on its own hardware.
+  # No QEMU: Node aborts under emulation with "Illegal instruction" (exit 132).
+  release-build:
+    needs: [release-check]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set version for the image
+        env:
+          V: ${{ needs.release-check.outputs.version }}
+        run: |
+          sed -i "s/^  \"version\": \"[^\"]*\"/  \"version\": \"$V\"/" package.json
+          grep -q "^  \"version\": \"$V\"," package.json || { echo "::error::Version not set"; exit 1; }
+      - name: Build and push candidate (${{ matrix.arch }}, no cache)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          no-cache: true
+          provenance: false
+          build-args: VERSION=${{ needs.release-check.outputs.version }}
+          tags: ${{ env.IMAGE }}:${{ needs.release-check.outputs.version }}-kandidat-${{ github.run_id }}-${{ matrix.arch }}
+      - name: Test candidate (${{ matrix.arch }})
+        run: |
+          img="$IMAGE:${{ needs.release-check.outputs.version }}-kandidat-${{ github.run_id }}-${{ matrix.arch }}"
+          docker pull "$img"
+          sh .github/scripts/smoke-test.sh "$img"
+
+  publish:
+    needs: [release-check, release-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Environment "release": only allowed from branch main (repository setting)
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+      id-token: write      # sign the build provenance (public repository)
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set version outputs
+        id: v
+        run: |
+          echo "version=${{ needs.release-check.outputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "latest=${{ needs.release-check.outputs.latest }}" >> "$GITHUB_OUTPUT"
+      - name: Tag must not exist yet
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          # Only "404 Not Found" means free – any other API error stops the release (never guess "free")
+          if out="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$V" --jq .object.sha 2>&1)"; then
+            # Re-run of failed jobs of this release: the tag this run reserved points to exactly this commit
+            # and has no published release yet (a completed release is never taken over)
+            if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ] && [ "$out" = "$GITHUB_SHA" ]; then
+              rel="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$V" --jq .id 2>&1)" && { echo "::error::v$V is already released (release $rel)"; exit 1; }
+              case "$rel" in *"Not Found"*|*"HTTP 404"*) ;; *) echo "::error::Cannot check the release of v$V: $rel"; exit 1 ;; esac
+              echo "Tag v$V reserved by this release (re-run)"; exit 0
+            fi
+            echo "::error::Tag v$V already exists (two releases at once?)"; exit 1
+          fi
+          case "$out" in *"Not Found"*|*"HTTP 404"*) ;; *) echo "::error::Cannot check tag v$V: $out"; exit 1 ;; esac
+      - name: Merge candidate from both architectures (record digest)
+        id: cand
+        run: |
+          k="$IMAGE:${{ steps.v.outputs.version }}-kandidat-$GITHUB_RUN_ID"
+          docker buildx imagetools create -t "$k" "$k-amd64" "$k-arm64"
+          digest="$(docker buildx imagetools inspect "$k" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          case "$digest" in sha256:*) ;; *) echo "::error::Cannot read the candidate digest ($digest)"; exit 1 ;; esac
+          docker buildx imagetools inspect "$IMAGE@$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Install Trivy (fixed version, SHA-256 checked, no GitHub Action)
+        run: sh .github/scripts/install-trivy.sh "$RUNNER_TEMP/trivy"
+      - name: Scan candidate for vulnerabilities (amd64)
+        env:
+          DIGEST: ${{ steps.cand.outputs.digest }}
+        run: sh .github/scripts/trivy-scan.sh "$IMAGE@$DIGEST" trivy-amd64.json
+      - run: sh .github/scripts/trivy-check.sh trivy-amd64.json
+      - name: Scan candidate for vulnerabilities (arm64)
+        env:
+          DIGEST: ${{ steps.cand.outputs.digest }}
+        run: sh .github/scripts/trivy-scan.sh "$IMAGE@$DIGEST" trivy-arm64.json linux/arm64
+      - run: sh .github/scripts/trivy-check.sh trivy-arm64.json
+      - name: Release files (offline images + checksums)
+        env:
+          DIGEST: ${{ steps.cand.outputs.digest }}
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          mkdir -p release
+          for arch in amd64 arm64; do
+            docker pull --platform "linux/$arch" "$IMAGE@$DIGEST"
+            docker tag "$IMAGE@$DIGEST" "$IMAGE:$v"
+            # Make sure the requested architecture is really saved
+            got="$(docker image inspect --format '{{.Architecture}}' "$IMAGE:$v")"
+            [ "$got" = "$arch" ] || { echo "::error::Offline image $arch has architecture $got"; exit 1; }
+            if docker save --help 2>/dev/null | grep -q -- '--platform'; then
+              docker save --platform "linux/$arch" "$IMAGE:$v" | gzip > "release/whatsonmynet-$v-$arch.tar.gz"
+            else
+              docker save "$IMAGE:$v" | gzip > "release/whatsonmynet-$v-$arch.tar.gz"
+            fi
+            docker image rm "$IMAGE:$v" "$IMAGE@$DIGEST" >/dev/null 2>&1 || true
+          done
+          cp docker-compose.yml env.example release/
+          (cd release && sha256sum -- * > SHA256SUMS)
+      # Provenance before the tags: if signing fails, nothing has been published yet
+      - name: Build provenance (image digest)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.cand.outputs.digest }}
+          push-to-registry: true
+      - name: Build provenance (offline images)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/whatsonmynet-*.tar.gz
+      # Reserve the version as git tag before any image tag: if a later step fails, a new release
+      # computes the next number (highest tag + 1) and can never overwrite a published image tag.
+      # A pushed tag triggers nothing (no tag-push trigger); the release step at the end uses this tag.
+      - name: Reserve the version (git tag)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          if have="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$V" --jq .object.sha 2>/dev/null)"; then
+            if [ "$GITHUB_RUN_ATTEMPT" -le 1 ] || [ "$have" != "$GITHUB_SHA" ]; then echo "::error::Tag v$V exists already ($have)"; exit 1; fi
+            # A completed release is never re-published by a re-run
+            rel="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$V" --jq .id 2>&1)" && { echo "::error::v$V is already released (release $rel)"; exit 1; }
+            case "$rel" in *"Not Found"*|*"HTTP 404"*) ;; *) echo "::error::Cannot check the release of v$V: $rel"; exit 1 ;; esac
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$V" -f sha="$GITHUB_SHA" >/dev/null
+          fi
+      # Publish only at the very end: if anything fails before, no half release is left in the registry
+      - name: Publish the checked image (same digest)
+        env:
+          DIGEST: ${{ steps.cand.outputs.digest }}
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          # Never overwrite a published version: an existing tag may only be this very digest (re-run)
+          if old="$(docker buildx imagetools inspect "$IMAGE:$v" --format '{{json .Manifest.Digest}}' 2>inspect.err)"; then
+            old="$(printf '%s' "$old" | tr -d '"')"
+            [ "$old" = "$DIGEST" ] || { echo "::error::$IMAGE:$v exists already with another digest ($old) – not overwritten"; exit 1; }
+          else
+            old="$(cat inspect.err)"
+            case "$old" in *"not found"*|*"manifest unknown"*|*"MANIFEST_UNKNOWN"*|*"404"*) ;; *) echo "::error::Cannot check $IMAGE:$v: $old"; exit 1 ;; esac
+          fi
+          tags="-t $IMAGE:$v"
+          [ "${{ steps.v.outputs.latest }}" = true ] && tags="$tags -t $IMAGE:latest"
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $tags "$IMAGE@$DIGEST"
+          now="$(docker buildx imagetools inspect "$IMAGE:$v" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          [ "$now" = "$DIGEST" ] || { echo "::error::Published image ($now) is not the checked candidate ($DIGEST)"; exit 1; }
+      - name: GitHub release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: v${{ steps.v.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          make_latest: ${{ steps.v.outputs.latest }}
+          files: release/*
+          generate_release_notes: true
