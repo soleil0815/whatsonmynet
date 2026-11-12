@@ -138,6 +138,15 @@ Unter *Einstellungen → Active Directory* meldest du dich mit dem Windows-Konto
 
 Bearbeiter und Leser lassen sich unter *Einstellungen → Benutzer* auf einen oder mehrere Standorte beschränken – etwa für die IT einer Außenstelle. Ein beschränktes Konto sieht und ändert nur Geräte, Scan-Ergebnisse und Monitore dieser Standorte, scannt nur deren Subnetze und zählt auf der Übersicht nur sie. Geräte ohne Standort, freie Subnetze, der nächtliche Scan, Wartungsfenster und Docker-Hosts bleiben unbeschränkten Konten vorbehalten. Administratoren sind nie beschränkt; das gilt auch für Konten aus dem Active Directory.
 
+## Scan-Agent für Außenstellen (ab Version 0.3)
+
+ARP – und damit die MAC-Adresse – sieht man nur im eigenen Netz. Für eine Außenstelle läuft dort ein zweiter Container als **Scan-Agent**:
+
+1. Zentrale: Standort der Außenstelle mit ihren Subnetzen anlegen, dann *Einstellungen → Scan-Agenten → Agent hinzufügen*. Angezeigt werden Schlüssel und Zertifikats-Fingerabdruck als fertige `.env`.
+2. Außenstelle: `docker-compose.agent.yml` aus dem Release und die `.env` ablegen, `docker compose -f docker-compose.agent.yml up -d`.
+
+Der Agent hat keine Weboberfläche und öffnet keinen Port. Er fragt die Zentrale jede Minute nach Aufträgen (HTTPS; bei selbstsigniertem Zertifikat wird der Fingerabdruck geprüft, bevor der Schlüssel gesendet wird), scannt dort genauso schonend und folgt der Uhrzeit des nächtlichen Leicht-Scans. Er darf nur Adressen aus den Subnetzen seines Standorts melden. „Scan starten“ für diesen Standort geht in der Zentrale automatisch als Auftrag an den Agenten; die Ergebnisse erscheinen wie gewohnt unter *Frühere Scans*.
+
 ## HTTPS und Zertifikat
 
 - Beim ersten Start erzeugt WhatsOnMyNet ein selbstsigniertes Zertifikat für den Hostnamen, `localhost`, alle IPv4-Adressen des Hosts und die Adresse aus `WOMN_BASE_URL`. Es wird 30 Tage vor Ablauf automatisch erneuert.
@@ -186,7 +195,7 @@ docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administ
 | --- | --- |
 | 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), ~~nächtlicher leichter Scan mit Meldung unbekannter Geräte~~, ~~Druckerdaten per SNMP~~, ~~Docker- und Datenbanküberwachung~~ (ab 0.3) |
 | 3 | ~~Active Directory (LDAPS)~~, ~~Rechte pro Standort~~ (ab 0.3) |
-| später | Scan-Agent für Außenstellen, ~~Topologie über LLDP~~, ~~MAC-Adressen entfernter Subnetze per SNMP vom Router~~ (ab 0.3) |
+| später | ~~Scan-Agent für Außenstellen~~, ~~Topologie über LLDP~~, ~~MAC-Adressen entfernter Subnetze per SNMP vom Router~~ (ab 0.3) |
 
 ## Lizenz
 

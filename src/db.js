@@ -330,6 +330,31 @@ export const MIGRATIONS = [
     PRIMARY KEY (user_id, location_id)
   );
   `,
+  // 8: scan agents for branch offices (scan locally, report to this server)
+  `
+  CREATE TABLE agents (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    last_seen TEXT,
+    last_ip TEXT,
+    version TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE agent_jobs (
+    id INTEGER PRIMARY KEY,
+    agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('network','light')),
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT '',
+    taken_at TEXT,
+    done_at TEXT,
+    scan_id INTEGER REFERENCES scans(id) ON DELETE SET NULL
+  );
+  CREATE INDEX agent_jobs_agent ON agent_jobs(agent_id, done_at);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
@@ -351,14 +376,14 @@ export function openDatabase(file = paths.db) {
     fs.chmodSync(target, 0o600);
     log.info(`Backup before the schema update: ${target}`);
   }
-  migrate(db);
+  migrate(db, { quiet: file === ':memory:' });
   if (file !== ':memory:') {
     for (const f of [file, `${file}-wal`, `${file}-shm`]) { try { fs.chmodSync(f, 0o600); } catch { /* not there */ } }
   }
   return db;
 }
 
-export function migrate(db) {
+export function migrate(db, { quiet = false } = {}) {
   const version = db.pragma('user_version', { simple: true });
   if (version > MIGRATIONS.length) {
     throw new DatabaseTooNewError(`The database belongs to a newer version of WhatsOnMyNet (schema ${version}, this version knows ${MIGRATIONS.length}). Please install the newer version again or restore a backup.`);
@@ -380,7 +405,7 @@ export function migrate(db) {
     } finally {
       if (m.foreignKeysOff) db.pragma('foreign_keys = ON');
     }
-    log.info(`Database schema updated to version ${v + 1}`);
+    if (!quiet) log.info(`Database schema updated to version ${v + 1}`);
   }
 }
 
