@@ -91,7 +91,8 @@ test('validation of manual input', () => {
   assert.throws(() => inv.create({ name: 'x', location_id: 99 }), /err.location/);
   inv.create({ name: 'a', mac: 'aa:aa:aa:00:00:01' });
   assert.throws(() => inv.create({ name: 'b', mac: 'AA-AA-AA-00-00-01' }), /err.macExists/);
-  const d = inv.create({ name: 'c', type: 'nonsense', tags: 'a, b,,c', warranty_until: '2027-02-30x' });
+  assert.throws(() => inv.create({ name: 'c', warranty_until: '2027-02-30' }), /err.date/);
+  const d = inv.create({ name: 'c', type: 'nonsense', tags: 'a, b,,c', warranty_until: '' });
   assert.equal(d.type, 'unknown');
   assert.equal(d.tags, 'a, b, c');
   assert.equal(d.warranty_until, null);
@@ -102,4 +103,40 @@ test('CSV export is safe for spreadsheets', () => {
   assert.ok(csv.startsWith('﻿'));
   assert.ok(csv.includes("'=HYPERLINK"));
   assert.ok(csv.includes('"a;b"'));
+});
+
+test('suggestions come from the inventory, most used first; a known model knows its manufacturer and type', () => {
+  const db = memoryDb();
+  const inv = createInventory(db);
+  inv.create({ name: 'a', vendor: 'Brother', model: 'HL-L2350DW', type: 'printer', tags: 'EG, Büro' });
+  inv.create({ name: 'b', vendor: 'Brother', model: 'HL-L2350DW', type: 'printer', tags: 'büro' });
+  inv.create({ name: 'c', vendor: 'Synology', model: 'DS920+', type: 'nas', supplier: 'Systemhaus Nord', owner: 'IT' });
+  const s = inv.suggestions();
+  assert.deepEqual(s.vendor, ['Brother', 'Synology']);
+  assert.deepEqual(s.tags, ['Büro', 'EG']);
+  assert.deepEqual(s.models['hl-l2350dw'], { vendor: 'Brother', type: 'printer' });
+  assert.deepEqual(s.supplier, ['Systemhaus Nord']);
+});
+
+test('bulk edit: only chosen fields change, tags are added/removed, history per device', () => {
+  const db = memoryDb();
+  const inv = createInventory(db);
+  const a = inv.create({ name: 'a', vendor: 'HP', tags: 'Keller, alt' });
+  const b = inv.create({ name: 'b', vendor: 'Dell', owner: 'Anna' });
+  const loc = db.prepare("INSERT INTO locations(name,created_at) VALUES('Hauptgebäude',?)").run(new Date().toISOString()).lastInsertRowid;
+  const n = inv.bulkUpdate([a.id, b.id, 9999], { set: { location_id: loc, warranty_until: '2028-01-31', name: 'ignored' }, tagsAdd: ['Server'], tagsRemove: ['ALT'] }, 'michael');
+  assert.equal(n, 2);
+  const a2 = inv.get(a.id); const b2 = inv.get(b.id);
+  assert.equal(a2.location_id, loc);
+  assert.equal(a2.vendor, 'HP');
+  assert.equal(a2.name, 'a');
+  assert.equal(a2.tags, 'Keller, Server');
+  assert.equal(b2.owner, 'Anna');
+  assert.equal(b2.tags, 'Server');
+  assert.equal(b2.warranty_until, '2028-01-31');
+  assert.equal(inv.historyOf(b.id)[0].kind, 'edit');
+  assert.throws(() => inv.bulkUpdate([a.id], { set: { warranty_until: '2028-02-30' } }), /err.date/);
+  assert.equal(inv.get(a.id).warranty_until, '2028-01-31');
+  assert.equal(inv.bulkRemove([a.id, b.id]), 2);
+  assert.equal(inv.list().length, 0);
 });

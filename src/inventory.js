@@ -120,7 +120,11 @@ export function createInventory(db) {
           if (id !== null && !db.prepare('SELECT 1 FROM locations WHERE id=?').get(id)) throw new HttpError(400, 'err.location');
           out.location_id = id; break;
         }
-        case 'purchase_date': case 'warranty_until': case 'maintenance_until': out[k] = isoDate(v); break;
+        case 'purchase_date': case 'warranty_until': case 'maintenance_until': {
+          const d = isoDate(v);
+          if (!d && v !== null && v !== undefined && String(v).trim() !== '') throw new HttpError(400, 'err.date');
+          out[k] = d; break;
+        }
         case 'notes': out.notes = str(v, 5000); break;
         case 'web_url': {
           const u = line(v, 500);
@@ -261,7 +265,65 @@ export function createInventory(db) {
     };
   }
 
-  return { applyResult, finishScan, create, update, remove, get, list, historyOf, adopt, ignore, stats, history };
+  /** Values already used in the inventory – for suggestions while typing (most used first) */
+  function suggestions() {
+    const top = (col) => db.prepare(`SELECT ${col} v, COUNT(*) n FROM devices WHERE ${col} <> '' GROUP BY ${col} COLLATE NOCASE ORDER BY n DESC, v LIMIT 300`).all().map((r) => r.v);
+    const tags = new Map();
+    for (const r of db.prepare("SELECT tags FROM devices WHERE tags <> ''").all()) {
+      for (const tg of r.tags.split(',').map((x) => x.trim()).filter(Boolean)) {
+        const k = tg.toLowerCase();
+        const e = tags.get(k) || { v: tg, n: 0 };
+        e.n++;
+        tags.set(k, e);
+      }
+    }
+    // Model → most common manufacturer and type (to fill them in when a known model is chosen)
+    const models = db.prepare(`SELECT model, vendor, type, COUNT(*) n FROM devices WHERE model <> '' GROUP BY model COLLATE NOCASE, vendor, type ORDER BY n DESC`).all();
+    const byModel = {};
+    for (const m of models) if (!byModel[m.model.toLowerCase()]) byModel[m.model.toLowerCase()] = { vendor: m.vendor, type: m.type };
+    return {
+      vendor: top('vendor'), model: top('model'), supplier: top('supplier'), owner: top('owner'), os: top('os'),
+      tags: [...tags.values()].sort((a, b) => b.n - a.n || a.v.localeCompare(b.v)).slice(0, 300).map((e) => e.v),
+      models: byModel,
+    };
+  }
+
+  const BULK_FIELDS = ['type', 'location_id', 'vendor', 'model', 'os', 'owner', 'supplier', 'purchase_date', 'warranty_until', 'maintenance_until'];
+
+  /**
+   * Changes several devices at once. Only the fields in `set` change (others stay); tags can be added or removed.
+   * Each device gets its own history entry.
+   */
+  function bulkUpdate(deviceIds, { set = {}, tagsAdd = [], tagsRemove = [] } = {}, user = '') {
+    const fields = Object.fromEntries(Object.entries(set || {}).filter(([k]) => BULK_FIELDS.includes(k)));
+    const add = (Array.isArray(tagsAdd) ? tagsAdd : []).map((x) => line(x, 60)).filter(Boolean).slice(0, 20);
+    const rem = new Set((Array.isArray(tagsRemove) ? tagsRemove : []).map((x) => line(x, 60).toLowerCase()).filter(Boolean));
+    let n = 0;
+    db.transaction(() => {
+      for (const id of deviceIds) {
+        const cur = getDevice.get(id);
+        if (!cur) continue;
+        const change = { ...fields };
+        if (add.length || rem.size) {
+          const list = cur.tags.split(',').map((x) => x.trim()).filter(Boolean).filter((x) => !rem.has(x.toLowerCase()));
+          for (const a of add) if (!list.some((x) => x.toLowerCase() === a.toLowerCase())) list.push(a);
+          change.tags = list.join(', ');
+        }
+        if (!Object.keys(change).length) continue;
+        update(id, change, user);
+        n++;
+      }
+    })();
+    return n;
+  }
+
+  function bulkRemove(deviceIds) {
+    let n = 0;
+    db.transaction(() => { for (const id of deviceIds) n += db.prepare('DELETE FROM devices WHERE id=?').run(id).changes; })();
+    return n;
+  }
+
+  return { applyResult, finishScan, create, update, remove, get, list, historyOf, adopt, ignore, stats, history, suggestions, bulkUpdate, bulkRemove };
 }
 
 /** CSV export (semicolon, UTF-8 with BOM – opens correctly in Excel) */
