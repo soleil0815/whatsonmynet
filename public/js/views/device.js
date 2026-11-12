@@ -4,6 +4,7 @@ import { get, patch, del, post } from '../api.js';
 import { t, getLang, reasonText } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
+import { monitorDot, statusPill, openMonitorForm } from './monitoring.js';
 import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI } from './common.js';
 
 const FIELD_LABEL = (f) => t(`f.${f}`) !== `f.${f}` ? t(`f.${f}`) : f;
@@ -116,6 +117,16 @@ export async function renderDevice(main, id) {
       f.deep?.at ? [h('dt', {}, t('dev.deep')), h('dd', {}, fmtDate(f.deep.at, getLang()))] : null,
     ) : null);
 
+  const monPanel = h('section', { class: 'panel panel-pad' },
+    h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('mon.device')),
+      edit && d.ip ? btn(t('mon.watch'), { class: 'btn btn-sm', onclick: async () => {
+        try { const preset = await get(`/monitors/suggest/${d.id}`); openMonitorForm(null, () => renderDevice(main, id), preset); } catch (e) { fail(e); }
+      } }, 'pulse') : null),
+    d.monitors?.length ? h('div', { class: 'history-list' }, d.monitors.map((m) => h('button', { type: 'button', onclick: () => navigate(`/monitoring/${m.id}`) },
+      h('span', {}, monitorDot(m.status), ' ', h('strong', {}, m.name), h('span', { class: 'muted small mono', style: { display: 'block' } }, `${t(`mon.type.${m.type}`)} · ${m.type === 'tcp' ? `${m.target}:${m.port}` : m.target}`)),
+      statusPill(m.status))))
+      : h('p', { class: 'muted', style: { margin: 0 } }, t('mon.deviceNone')));
+
   const meta = h('section', { class: 'panel panel-pad' },
     h('dl', { class: 'kv' },
       h('dt', {}, t('dev.firstSeen')), h('dd', {}, fmtDate(d.first_seen, getLang())),
@@ -143,5 +154,5 @@ export async function renderDevice(main, id) {
     ti ? h('div', { class: 'note ti' }, t('dev.deepTi')) : null,
     h('div', { class: 'device-grid' },
       h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('dev.details')), form),
-      h('div', { class: 'stack' }, detection, meta, hist))));
+      h('div', { class: 'stack' }, monPanel, detection, meta, hist))));
 }
