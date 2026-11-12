@@ -6,10 +6,11 @@ export class ApiError extends Error {
 let onUnauthorized = () => {};
 export function setUnauthorizedHandler(fn) { onUnauthorized = fn; }
 
-export async function api(path, { method = 'GET', body } = {}) {
-  const opts = { method, headers: { Accept: 'application/json' }, credentials: 'same-origin' };
+export async function api(path, { method = 'GET', body, raw, headers = {} } = {}) {
+  const opts = { method, headers: { Accept: 'application/json', ...headers }, credentials: 'same-origin' };
   if (method !== 'GET') opts.headers['X-WOMN-Request'] = '1';
-  if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  if (raw !== undefined) { opts.headers['Content-Type'] = 'application/octet-stream'; opts.body = raw; }
+  else if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
   let res;
   try { res = await fetch(`/api${path}`, opts); } catch {
     throw new ApiError(0, 'network', null);

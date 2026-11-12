@@ -1,6 +1,6 @@
 // Administration: general, scan, email, HTTPS certificate, users, ignored devices, log, about.
 import { h, mount, toast, modal, confirmDialog, fmtDate } from '../dom.js';
-import { get, put, post, patch, del } from '../api.js';
+import { get, put, post, patch, del, api } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
@@ -8,8 +8,8 @@ import { pageHead, field, input, select, formData, btn, channelPicker } from './
 import { openMonitorForm } from './monitoring.js';
 
 const SECTIONS = [
-  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['proxmox', 'hypervisor'], ['reports', 'download'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'], ['ad', 'user'], ['agents', 'location'],
-  ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
+  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['proxmox', 'hypervisor'], ['reports', 'inventory'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'], ['ad', 'user'], ['agents', 'location'],
+  ['backup', 'download'], ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
 ];
 
 export async function renderSettings(main, section = 'general') {
@@ -23,7 +23,7 @@ export async function renderSettings(main, section = 'general') {
         class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, ad, agents, reports, proxmox, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, ad, agents, reports, proxmox, backup, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
@@ -447,6 +447,52 @@ async function proxmox(body, _s, reload) {
           try { await del(`/proxmox/${x.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
         } }))),
     proxmoxDetail(x))));
+}
+
+/** After a restore the server restarts: wait until it answers again, then load the page anew */
+function waitForRestart() {
+  modal(t('bk.restarting'), h('p', {}, t('bk.restartingText')), { actions: [] });
+  let tries = 0;
+  const poll = async () => {
+    tries++;
+    try { const r = await fetch('/healthz', { cache: 'no-store' }); if (r.ok && tries > 2) { location.reload(); return; } } catch { /* still down */ }
+    if (tries < 120) setTimeout(poll, 2000);
+  };
+  setTimeout(poll, 2500);
+}
+
+async function backup(body, _s, reload) {
+  const { list, keep } = await get('/backups');
+  const size = (n) => `${(n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+  const confirmRestore = (what) => confirmDialog(t('bk.restore'), t('bk.restoreConfirm', { what }), t('bk.restore'), t('cancel'), { danger: true });
+  const file = h('input', { type: 'file', accept: '.sqlite,.db,application/octet-stream' });
+  const upload = btn(t('bk.restoreUpload'), { class: 'btn btn-danger', onclick: async (e) => {
+    const f = file.files[0];
+    if (!f) { toast(t('bk.chooseFile'), 'error'); return; }
+    if (!await confirmRestore(f.name)) return;
+    const b = e.currentTarget; b.disabled = true;
+    try { await api('/backups/restore', { method: 'POST', raw: f, headers: { 'X-WOMN-Confirm': 'restore' } }); waitForRestart(); } catch (ex) { fail(ex); b.disabled = false; }
+  } }, 'history');
+  mount(body,
+    panel(t('bk.title'),
+      h('p', { class: 'muted', style: { marginTop: 0 } }, t('bk.lead', { keep })),
+      h('div', { class: 'actions' },
+        h('a', { class: 'btn btn-primary', href: '/api/backups/download', download: '' }, h('span', { html: icon('download') }), t('bk.download')),
+        btn(t('bk.createNow'), { onclick: async (e) => { e.currentTarget.disabled = true; try { await post('/backups'); toast(t('saved')); reload(); } catch (ex) { fail(ex); } } }, 'plus')),
+      h('p', { class: 'note warn', style: { marginBottom: 0 } }, t('bk.keyHint'))),
+    panel(t('bk.stored'), list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('bk.file')), h('th', {}, t('bk.when')), h('th', { class: 'hide-sm' }, t('bk.size')), h('th', {}))),
+      h('tbody', {}, list.map((x) => h('tr', {},
+        h('td', { class: 'mono small', style: { wordBreak: 'break-all' } }, x.name, x.kind !== 'daily' ? h('span', { class: 'badge', style: { marginLeft: '6px' } }, t(`bk.kind.${x.kind}`)) : null),
+        h('td', { style: { whiteSpace: 'nowrap' } }, fmtDate(x.at, getLang())),
+        h('td', { class: 'hide-sm mono small', style: { whiteSpace: 'nowrap' } }, size(x.size)),
+        h('td', { class: 'min' }, h('div', { class: 'actions' },
+          h('a', { class: 'btn btn-sm', href: `/api/backups/file/${encodeURIComponent(x.name)}`, download: '' }, t('bk.downloadShort')),
+          btn(t('bk.restore'), { class: 'btn btn-sm btn-ghost', onclick: async () => {
+            if (!await confirmRestore(x.name)) return;
+            try { await api(`/backups/file/${encodeURIComponent(x.name)}/restore`, { method: 'POST', body: {}, headers: { 'X-WOMN-Confirm': 'restore' } }); waitForRestart(); } catch (ex) { fail(ex); }
+          } })))))))) : h('p', { class: 'muted' }, t('bk.none'))),
+    panel(t('bk.restoreUpload'), h('p', { class: 'muted', style: { marginTop: 0 } }, t('bk.restoreLead')), field(t('bk.file'), file), h('div', { class: 'actions' }, upload)));
 }
 
 async function reports(body, _s, reload) {

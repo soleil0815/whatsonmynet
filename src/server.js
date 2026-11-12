@@ -4,6 +4,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { config, paths, COMPOSE_VERSION } from './config.js';
 import { openDatabase, verifyKey, backupDatabase, DatabaseTooNewError, WrongKeyError } from './db.js';
+import { applyPendingRestore } from './backup.js';
 import { initMasterKey } from './lib/crypto.js';
 import { createApp } from './app.js';
 import { createTls } from './tls.js';
@@ -29,6 +30,7 @@ async function main() {
 
   let db;
   try {
+    applyPendingRestore(paths.db, paths.backups);
     db = openDatabase(paths.db);
     verifyKey(db);
   } catch (e) {

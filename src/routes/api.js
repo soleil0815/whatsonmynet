@@ -1,6 +1,7 @@
 // REST API of the web interface.
 import express from 'express';
 import os from 'node:os';
+import fs from 'node:fs';
 import { config } from '../config.js';
 import { HttpError, line, str, int, ids, oneOf } from '../lib/http.js';
 import { safeEqual } from '../lib/crypto.js';
@@ -360,6 +361,31 @@ export function createApi(ctx) {
     const m = await ctx.reports.send(idParam(req), { to });
     audit(req, 'report.send', `${req.params.id}${to ? ` (test to ${to})` : ''}`);
     res.json({ ok: true, count: m.count, attention: m.attention });
+  });
+
+  // Backup and restore (admin)
+  r.get('/backups', admin, (_req, res) => res.json({ list: ctx.backups.list(), keep: settings.get('backup.keep') }));
+  r.post('/backups', admin, async (req, res) => { const name = await ctx.backups.create(); audit(req, 'backup.create', name); res.json({ name }); });
+  r.get('/backups/download', admin, async (req, res) => {
+    const f = await ctx.backups.snapshot();
+    audit(req, 'backup.download');
+    res.download(f, `whatsonmynet-${new Date().toISOString().slice(0, 10)}.sqlite`, () => fs.rm(f, { force: true }, () => {}));
+  });
+  r.get('/backups/file/:name', admin, (req, res) => { audit(req, 'backup.download', req.params.name); res.download(ctx.backups.file(req.params.name), req.params.name); });
+  // Restore: the confirmation header protects against a click by mistake (and the CSRF header against other sites)
+  const confirmRestore = (req) => { if (req.get('X-WOMN-Confirm') !== 'restore') throw new HttpError(400, 'err.backupConfirm'); };
+  r.post('/backups/restore', admin, express.raw({ type: 'application/octet-stream', limit: '2gb' }), async (req, res) => {
+    confirmRestore(req);
+    if (!Buffer.isBuffer(req.body)) throw new HttpError(400, 'err.backupFile');
+    const info = await ctx.backups.restore({ buffer: req.body });
+    audit(req, 'backup.restore', `upload (${info.devices} devices)`);
+    res.json({ ok: true, ...info });
+  });
+  r.post('/backups/file/:name/restore', admin, async (req, res) => {
+    confirmRestore(req);
+    const info = await ctx.backups.restore({ name: req.params.name });
+    audit(req, 'backup.restore', req.params.name);
+    res.json({ ok: true, ...info });
   });
 
   // Scan agents (admin)
