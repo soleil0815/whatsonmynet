@@ -44,6 +44,8 @@ export const DEFAULTS = {
   'ad.groupEditor': '',
   'ad.groupViewer': '',
   'ad.nested': true,              // nested groups (AD)
+  // Proxmox VE / Backup Server
+  'proxmox.interval': 5,          // minutes between two queries
   // Mail (SMTP)
   'smtp.host': '',
   'smtp.port': 587,

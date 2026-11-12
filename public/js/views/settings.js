@@ -5,9 +5,10 @@ import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
+import { openMonitorForm } from './monitoring.js';
 
 const SECTIONS = [
-  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['reports', 'download'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'], ['ad', 'user'], ['agents', 'location'],
+  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['proxmox', 'hypervisor'], ['reports', 'download'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'], ['ad', 'user'], ['agents', 'location'],
   ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
 ];
 
@@ -22,7 +23,7 @@ export async function renderSettings(main, section = 'general') {
         class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, ad, agents, reports, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, ad, agents, reports, proxmox, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
@@ -360,6 +361,92 @@ async function users(body, _s, reload) {
             try { await del(`/users/${u.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
           } }) : null))))))),
     h('p', { class: 'panel-pad muted small', style: { margin: 0 } }, t('users.adHint'), ' ', h('a', { href: '/settings/ad', 'data-link': true }, t('set.ad')))));
+}
+
+const bytes = (n) => { if (!n) return '0'; const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']; let i = 0; let v = n; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 ? 1 : 0)} ${u[i]}`; };
+const meter = (label, pct, sub = '') => h('div', { class: `supply${pct >= 85 ? ' low' : ''}`, 'data-color': 'other' },
+  h('div', { class: 'supply-head' }, h('span', { class: 'supply-name mono' }, label), h('span', { class: 'supply-val mono' }, `${sub}${pct === null || pct === undefined ? '–' : `${pct} %`}`)),
+  h('div', { class: 'supply-track' }, h('i', { style: { width: `${pct || 0}%` } })));
+const ago = (sec) => { if (!sec) return '–'; const hrs = Math.round((Date.now() / 1000 - sec) / 3600); return hrs < 48 ? t('px.hoursAgo', { n: hrs }) : t('px.daysAgo', { n: Math.round(hrs / 24) }); };
+
+function proxmoxDetail(x) {
+  const d = x.data || {};
+  if (!x.last_at) return h('p', { class: 'muted' }, t('prn.none'));
+  const sensor = () => openMonitorForm(null, () => {}, { type: 'proxmox', name: `${x.name} – Sensor`, interval_s: 300, fail_threshold: 1, options: { host: x.id } });
+  const head = h('div', { class: 'actions', style: { marginBottom: '10px' } },
+    !x.last_ok ? h('span', { class: 'note warn', style: { margin: 0 } }, x.last_error) : h('span', { class: 'muted small' }, `${t('prn.checked')}: ${fmtDate(x.last_at, getLang())}`),
+    btn(t('sens.add'), { class: 'btn btn-sm', onclick: sensor }, 'plus'));
+  if (d.kind === 'pve') {
+    const running = (d.guests || []).filter((g) => g.status === 'running').length;
+    return h('div', {}, head,
+      h('h3', { class: 'sub-title' }, t('px.nodes')),
+      h('ul', { class: 'port-macs' }, (d.nodes || []).map((n) => h('li', {}, h('strong', {}, n.name),
+        h('span', { class: `badge ${n.online ? 'badge-ok' : 'badge-bad'}` }, n.online ? 'online' : 'offline'),
+        n.online ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu} % · RAM ${n.mem} %`) : null))),
+      h('h3', { class: 'sub-title' }, t('px.storages')),
+      h('div', { class: 'supplies' }, (d.storages || []).filter((s) => s.total).map((s) => meter(`${s.name} · ${s.node}`, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
+      h('h3', { class: 'sub-title' }, t('px.guests', { running, n: (d.guests || []).length })),
+      h('div', { class: 'chips' }, (d.guests || []).map((g) => h('span', { class: `badge ${g.status === 'running' ? 'badge-ok' : ''}`, title: `${g.kind} · ${g.node} · ${g.status}` }, `${g.vmid} ${g.name}`))),
+      h('h3', { class: 'sub-title' }, t('px.backups')),
+      (d.backups || []).length ? h('ul', { class: 'port-macs' }, d.backups.slice(0, 8).map((b) => h('li', {},
+        h('span', { class: `badge ${b.ok ? 'badge-ok' : b.end ? 'badge-bad' : ''}` }, b.ok ? 'OK' : b.status), h('span', { class: 'mono small' }, b.vmid ? `VM ${b.vmid}` : t('px.allGuests')),
+        h('span', { class: 'muted small' }, `${b.node} · ${fmtDate(new Date(b.start * 1000).toISOString(), getLang())}`)))) : h('p', { class: 'muted small' }, t('px.noBackups')));
+  }
+  return h('div', {}, head,
+    h('h3', { class: 'sub-title' }, t('px.datastores')),
+    h('div', { class: 'supplies' }, (d.datastores || []).map((s) => meter(s.name, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
+    h('h3', { class: 'sub-title' }, t('px.groups', { n: (d.groups || []).length })),
+    h('ul', { class: 'port-macs' }, (d.groups || []).slice(0, 40).map((g) => {
+      const old = g.last && Date.now() / 1000 - g.last > 26 * 3600;
+      return h('li', {}, h('span', { class: `badge ${old ? 'badge-bad' : 'badge-ok'}` }, ago(g.last)), h('span', { class: 'mono small' }, `${g.type}/${g.id}`),
+        h('span', { class: 'muted small' }, [g.comment, g.store, t('px.count', { n: g.count })].filter(Boolean).join(' · ')));
+    })),
+    (d.failed || []).length ? [h('h3', { class: 'sub-title' }, t('px.failed')), h('ul', { class: 'port-macs' }, d.failed.slice(0, 10).map((f) => h('li', {},
+      h('span', { class: 'badge badge-bad' }, f.type), h('span', { class: 'small' }, f.status), h('span', { class: 'muted small' }, fmtDate(new Date(f.start * 1000).toISOString(), getLang())))))] : null);
+}
+
+async function proxmox(body, _s, reload) {
+  const list = await get('/proxmox');
+  const edit = (x) => {
+    const kind = select('kind', [['pve', 'Proxmox VE'], ['pbs', 'Proxmox Backup Server']], x?.kind || 'pve');
+    const url = input('url', x?.url || '', { required: true, class: 'mono', placeholder: 'https://pve01.firma.local:8006' });
+    kind.addEventListener('change', () => { url.placeholder = kind.value === 'pbs' ? 'https://pbs01.firma.local:8007' : 'https://pve01.firma.local:8006'; });
+    const form = h('form', { class: 'form' },
+      h('div', { class: 'form-grid' },
+        field(t('px.name'), input('name', x?.name || '', { required: true, maxlength: 80, placeholder: 'pve01' })),
+        field(t('px.kind'), kind)),
+      field(t('px.url'), url),
+      h('div', { class: 'form-grid' },
+        field(t('px.tokenId'), input('token_id', x?.token_id || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: 'monitor@pve!womn' })),
+        field(t('px.secret'), input('secret', '', { type: 'password', autocomplete: 'new-password', required: !x?.has_secret, placeholder: x?.has_secret ? '••••••' : '' }), x?.has_secret ? t('set.smtpPasswordSet') : null)),
+      h('p', { class: 'muted small', style: { margin: 0 } }, t('px.tokenHint')),
+      field(t('px.ca'), h('textarea', { name: 'ca', rows: 3, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false' }, x?.ca || ''), t('px.caHint')),
+      field(t('px.verify'), h('input', { type: 'checkbox', name: 'verify', checked: x ? x.verify : true }), t('px.verifyHint')));
+    const m = modal(x ? x.name : t('px.add'), form, { wide: true, actions: [
+      btn(t('cancel'), { onclick: () => m.close() }),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
+        if (!form.reportValidity()) return;
+        e.currentTarget.disabled = true;
+        const d = formData(form);
+        if (!d.secret) delete d.secret;
+        try { const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d); m.close(); toast(r.last_ok ? t('px.connected') : r.last_error, r.last_ok ? undefined : 'error'); reload(); } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
+      } }, t('save'))] });
+  };
+  mount(body, h('section', { class: 'panel' },
+    h('div', { class: 'panel-head', style: { paddingBottom: '12px', flexWrap: 'wrap' } }, h('h2', {}, 'Proxmox'), btn(t('px.add'), { class: 'btn btn-sm', onclick: () => edit(null) }, 'plus')),
+    h('p', { class: 'muted', style: { padding: '0 20px' } }, t('px.lead')),
+    !list.length ? h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('px.none')) : null),
+  list.map((x) => h('section', { class: 'panel panel-pad' },
+    h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '6px' } },
+      h('div', {}, h('h2', { class: 'section-title', style: { margin: 0 } }, x.name), h('div', { class: 'muted small mono' }, `${x.kind === 'pbs' ? 'Backup Server' : 'VE'} · ${x.url}`)),
+      h('div', { class: 'actions' },
+        btn(t('prn.refresh'), { class: 'btn btn-sm', onclick: async (e) => { e.currentTarget.disabled = true; try { await post(`/proxmox/${x.id}/poll`, {}); reload(); } catch (ex) { fail(ex); } } }, 'refresh'),
+        btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => edit(x) }),
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${x.name}`, html: icon('trash'), onclick: async () => {
+          if (!await confirmDialog(t('delete'), t('px.deleteConfirm', { name: x.name }), t('delete'), t('cancel'), { danger: true })) return;
+          try { await del(`/proxmox/${x.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
+        } }))),
+    proxmoxDetail(x))));
 }
 
 async function reports(body, _s, reload) {
