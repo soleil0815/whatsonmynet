@@ -5,6 +5,7 @@ import https from 'node:https';
 import net from 'node:net';
 import { config } from '../config.js';
 import { ping, pingAvailable } from '../scan/probes.js';
+import { dockerCheck, mysqlCheck, postgresCheck, redisCheck, DEFAULT_PORTS } from './services.js';
 
 const UA = `WhatsOnMyNet/${config.version} (monitoring)`;
 const MAX_BODY = 1024 * 1024;
@@ -112,9 +113,24 @@ function tlsMessage(e) {
   return map[e.code] || e.code || e.message;
 }
 
-/** Runs the check of a monitor row */
-export function runCheck(m) {
+/**
+ * Runs the check of a monitor row. ctx.dockerUrl(id) gives the address of a Docker host, ctx.secret(m) the stored password.
+ */
+export function runCheck(m, ctx = {}) {
   if (m.type === 'ping') return pingCheck(m.target, Math.min(m.timeout_s, 10));
   if (m.type === 'tcp') return tcpCheck(m.target, m.port, m.timeout_s);
+  if (m.type === 'docker') {
+    const url = ctx.dockerUrl?.(m.docker_host_id);
+    if (!url) return Promise.resolve({ ok: false, ms: null, message: 'Docker host missing' });
+    return dockerCheck(url, m.target, m.timeout_s);
+  }
+  if (m.type === 'mysql' || m.type === 'postgres' || m.type === 'redis') {
+    let o = {};
+    try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
+    const opts = { host: m.target, port: m.port || DEFAULT_PORTS[m.type], user: o.user || '', database: o.database || '', tls: !!o.tls, password: ctx.secret?.(m) || '' };
+    if (m.type === 'mysql') return mysqlCheck(opts, m.timeout_s);
+    if (m.type === 'postgres') return postgresCheck(opts, m.timeout_s);
+    return redisCheck(opts, m.timeout_s);
+  }
   return httpCheck(m.target, { timeoutS: m.timeout_s, status: m.http_status, keyword: m.http_keyword, verify: !!m.tls_verify });
 }
