@@ -73,6 +73,26 @@ WOMN_HTTP_PORT=8780    # only redirects to HTTPS (0 = off)
 
 Then `docker compose up -d`.
 
+## Nightly light scan and new devices (from version 0.3)
+
+Once a night (default 02:30 local time, `TZ` in `.env`) WhatsOnMyNet looks for devices in all subnets of your locations: ARP, NetBIOS and – if allowed – ping only. No ports, no SNMP, no web requests, so the scan stays inconspicuous.
+
+- Known devices get their new IP address automatically (the MAC address is the identity), their monitors follow.
+- Unknown devices wait in the scan result to be adopted or ignored; the overview shows how many are waiting.
+- **Report new devices**: a device that shows up for the very first time is reported once through the notification channels (email, Telegram, webhook). The first scan after the update only learns what is already there – no flood of notices.
+- Time, channels and "Run now" under *Settings → Scan*. After a restart the scan is caught up to 4 hours later.
+
+## Printers via SNMP (from version 0.3)
+
+Devices of type *Printer* are queried regularly (default hourly) via SNMP – read-only, using the Printer MIB that almost every network printer supports:
+
+- Toner or ink per colour, drum, waste toner box, fuser – as bars in the colour of the toner
+- Page counter in total and for the last 30 days, state (ready, printing …), errors such as paper jam, no paper, door open, and the text on the display
+- **Notice** when a supply drops to the threshold (default 15 %) and again when it is empty – once per cartridge, armed again after replacing it
+- The overview lists all printers that are running low
+
+Settings under *Settings → Printers*. The community is the same as for the scan (*Settings → Scan*). SNMP (v1 or v2c) has to be switched on at the printer.
+
 ### Ping
 
 WhatsOnMyNet runs without root. Ping then only works if the host allows ICMP for normal users (`net.ipv4.ping_group_range`, default on Debian, Ubuntu and Proxmox). Without ping the scan still finds local devices via ARP and remote ones via TCP; the program shows a notice.
@@ -127,7 +147,7 @@ docker compose exec whatsonmynet womn-admin create <user>   # new administrator
 
 | Version | Content |
 | --- | --- |
-| 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), nightly light scan with notice of unknown devices, printer data via SNMP (toner, drum), Docker and database monitoring |
+| 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), ~~nightly light scan with notice of unknown devices~~, ~~printer data via SNMP~~ (from 0.3), Docker and database monitoring |
 | 3 | Active Directory (LDAPS), roles per location/subnet |
 | later | Scan agent for branch offices, topology via LLDP/CDP, MAC addresses of remote subnets via SNMP from the router |
 

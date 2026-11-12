@@ -59,11 +59,14 @@ async function main() {
   }
 
   ctx.monitoring.start();
+  ctx.nightly.start();
+  ctx.printers.start();
 
   // Daily: sessions, old check results, backup, renew the self-signed certificate if needed
   const daily = async () => {
     try { ctx.sessions.purgeExpired(); } catch (e) { log.warn(`Session cleanup failed: ${e.message}`); }
     try { ctx.monitoring.cleanup(); } catch (e) { log.warn(`Monitoring cleanup failed: ${e.message}`); }
+    try { ctx.nightly.cleanup(); } catch (e) { log.warn(`Sightings cleanup failed: ${e.message}`); }
     try { await backupDatabase(db, ctx.settings.get('backup.keep')); } catch (e) { log.error(`Daily backup failed: ${e.message}`); }
     try { if (await tls.ensure()) ctx.applyTls(); } catch (e) { log.error(`Certificate check failed: ${e.message}`); }
   };
@@ -73,6 +76,8 @@ async function main() {
   const shutdown = (sig) => {
     log.info(`${sig} received, shutting down ...`);
     ctx.monitoring.stop();
+    ctx.nightly.stop();
+    ctx.printers.stop();
     httpServer?.close();
     httpsServer.close(() => { db.close(); process.exit(0); });
     setTimeout(() => process.exit(0), 5000).unref();

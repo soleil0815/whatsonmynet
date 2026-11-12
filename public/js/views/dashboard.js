@@ -6,6 +6,7 @@ import { icon, LOGO_MARK } from '../icons.js';
 import { state } from '../app.js';
 import { pageHead, TI } from './common.js';
 import { historyText } from './device.js';
+import { lowSuppliesPanel } from './printer.js';
 
 export async function renderDashboard(main) {
   const d = await get('/dashboard');
@@ -40,7 +41,7 @@ export async function renderDashboard(main) {
       h('span', { html: LOGO_MARK }),
       h('div', {},
         h('h2', {}, t('dash.lastScan')),
-        ls ? h('p', {}, `${fmtDate(ls.started_at, getLang())} · ${ls.targets.map((x) => x.cidr).join(', ')}`, h('br'),
+        ls ? h('p', {}, `${fmtDate(ls.started_at, getLang())} · ${ls.kind === 'light' ? t('scan.kind.light') : ls.targets.map((x) => x.cidr).join(', ')}`, h('br'),
           `${t('dash.found', { n: ls.stats.probed ?? 0 })} · ${t('dash.duration', { s: Math.round((ls.stats.durationMs || 0) / 1000) })}`)
           : h('p', {}, t('dash.noScan')),
         h('div', { class: 'actions' },
@@ -78,5 +79,5 @@ export async function renderDashboard(main) {
       figures,
       h('div', { class: 'dash' },
         h('div', { class: 'stack' }, typePanel, recent),
-        h('div', { class: 'stack' }, monPanel, scanPanel, warranty)))));
+        h('div', { class: 'stack' }, monPanel, lowSuppliesPanel(d.printersLow), scanPanel, warranty)))));
 }

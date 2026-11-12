@@ -150,3 +150,20 @@ test('bulk edit and bulk delete need the editor role', async () => {
   assert.equal((await call('POST', '/api/devices/bulk-delete', { ids: [a.id, b.id] }, { who: 'viewer' })).status, 403);
   assert.equal((await call('POST', '/api/devices/bulk-delete', { ids: [a.id, b.id] }, { who: 'editor' })).data.deleted, 2);
 });
+
+test('light scan and printer settings', async () => {
+  assert.equal((await call('PUT', '/api/settings/lightscan', { time: '25:00' })).status, 400);
+  const r = await call('PUT', '/api/settings/lightscan', { enabled: true, time: '03:15', notify: false, channels: [999] });
+  assert.equal(r.data.time, '03:15');
+  assert.deepEqual(r.data.channels, [], 'unknown channels are dropped');
+  const p = await call('PUT', '/api/settings/printer', { interval: 1, threshold: 99 });
+  assert.equal(p.data.interval, 5);
+  assert.equal(p.data.threshold, 50);
+  assert.equal((await call('PUT', '/api/settings/printer', { interval: 30 }, { who: 'editor' })).status, 403);
+  const s = (await call('GET', '/api/settings')).data;
+  assert.ok('lightscan' in s && 'printer' in s);
+  // printer query only for devices of type printer
+  const d = (await call('POST', '/api/devices', { name: 'Kein Drucker', type: 'server', ip: '127.0.0.1' }, { who: 'editor' })).data;
+  assert.equal((await call('POST', `/api/devices/${d.id}/printer`, {}, { who: 'editor' })).status, 404);
+  assert.equal((await call('POST', '/api/lightscan/run', {}, { who: 'viewer' })).status, 403);
+});
