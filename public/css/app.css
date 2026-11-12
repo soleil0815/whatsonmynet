@@ -235,6 +235,8 @@ table.data { width: 100%; border-collapse: collapse; }
 dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 8px 18px; margin: 0; }
 dl.kv dt { color: var(--muted); font-size: 13px; }
 dl.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.web-row + .web-row { margin-top: 4px; }
+.web-row .badge { margin-left: 4px; vertical-align: 1px; }
 .section-title { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 18px 0 8px; }
 .section-title:first-child { margin-top: 0; }
 .timeline { list-style: none; margin: 0; padding: 0; }

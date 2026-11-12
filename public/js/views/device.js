@@ -82,23 +82,39 @@ export async function renderDevice(main, id) {
   }
 
   const c = f.classification || {};
+  const hasFacts = !!(f.ports || f.snmp || f.http);
+  // Web interfaces found by the scan, plus the quick access address when it was entered by hand
+  const sameTarget = (a, b) => {
+    try {
+      const x = new URL(a); const y = new URL(b);
+      return x.protocol === y.protocol && x.hostname === y.hostname && (x.port || x.protocol) === (y.port || y.protocol);
+    } catch { return false; }
+  };
+  const webs = (f.http || []).map((w) => ({ url: `${w.proto}://${d.ip}:${w.port}/`, label: `${w.proto}://${d.ip}:${w.port}`, w }));
+  const quick = d.web_url ? webs.find((x) => sameTarget(x.url, d.web_url)) : null;
+  if (d.web_url && !quick) webs.unshift({ url: d.web_url, label: d.web_url.replace(/\/$/, ''), manual: true });
+  const quickBadge = (manual) => h('span', { class: 'badge badge-ok', title: manual ? t('dev.quickManual') : t('dev.quick') },
+    manual ? `${t('dev.quick')} · ${t('dev.quickManual')}` : t('dev.quick'));
+  const webRow = webs.length ? [h('dt', {}, t('dev.web')), h('dd', {}, webs.map((x) => h('div', { class: 'web-row' },
+    h('a', { href: x.url, target: '_blank', rel: 'noopener noreferrer', class: 'mono' }, x.label),
+    x.w ? [' ', x.w.title || x.w.server || '', x.w.cert?.subject ? h('span', { class: 'muted small' }, ` · ${x.w.cert.subject}`) : null] : null,
+    x.manual ? [' ', quickBadge(true)] : x === quick ? [' ', quickBadge(false)] : null)))] : null;
   const detection = h('section', { class: 'panel panel-pad' },
     h('h2', { class: 'section-title' }, t('dev.detection')),
-    !f.ports && !f.snmp && !f.http ? h('p', { class: 'muted' }, t('dev.noFacts')) : h('dl', { class: 'kv' },
-      c.type ? [h('dt', {}, t('dev.confidence')), h('dd', {}, typeChip(c.type), ' ', confidenceBar(c.confidence))] : null,
-      c.reasons?.length ? [h('dt', {}, t('dev.reasons')), h('dd', {}, c.reasons.map(reasonText).join(' · '))] : null,
-      [h('dt', {}, t('dev.ports')), h('dd', {}, f.ports?.length ? portList(f.ports, services) : '–')],
+    !hasFacts ? h('p', { class: 'muted' }, t('dev.noFacts')) : null,
+    hasFacts || webRow ? h('dl', { class: 'kv' },
+      hasFacts && c.type ? [h('dt', {}, t('dev.confidence')), h('dd', {}, typeChip(c.type), ' ', confidenceBar(c.confidence))] : null,
+      hasFacts && c.reasons?.length ? [h('dt', {}, t('dev.reasons')), h('dd', {}, c.reasons.map(reasonText).join(' · '))] : null,
+      hasFacts ? [h('dt', {}, t('dev.ports')), h('dd', {}, f.ports?.length ? portList(f.ports, services) : '–')] : null,
       f.vendorFull ? [h('dt', {}, t('dev.vendorFull')), h('dd', {}, f.vendorFull)] : null,
       f.randomMac ? [h('dt', {}, 'MAC'), h('dd', {}, t('dev.randomMac'))] : null,
       f.rdns ? [h('dt', {}, t('dev.rdns')), h('dd', { class: 'mono' }, f.rdns)] : null,
       f.netbios ? [h('dt', {}, t('dev.netbios')), h('dd', {}, [f.netbios.name, f.netbios.domain].filter(Boolean).join(' · '))] : null,
       f.ttl ? [h('dt', {}, t('dev.ttl')), h('dd', {}, f.ttl)] : null,
       f.snmp ? [h('dt', {}, t('dev.snmp')), h('dd', {}, [f.snmp.name, f.snmp.descr, f.snmp.location].filter(Boolean).join(' · '))] : null,
-      f.http?.length ? [h('dt', {}, t('dev.web')), h('dd', {}, f.http.map((w) => h('div', {},
-        h('a', { href: `${w.proto}://${d.ip}:${w.port}/`, target: '_blank', rel: 'noopener noreferrer', class: 'mono' }, `${w.proto}://${d.ip}:${w.port}`),
-        ' ', w.title || w.server || '', w.cert?.subject ? h('span', { class: 'muted small' }, ` · ${w.cert.subject}`) : null)))] : null,
+      webRow,
       f.deep?.at ? [h('dt', {}, t('dev.deep')), h('dd', {}, fmtDate(f.deep.at, getLang()))] : null,
-    ));
+    ) : null);
 
   const meta = h('section', { class: 'panel panel-pad' },
     h('dl', { class: 'kv' },
