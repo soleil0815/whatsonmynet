@@ -10,6 +10,7 @@ import { renderDevice } from './views/device.js';
 import { renderScan } from './views/scan.js';
 import { renderLocations } from './views/locations.js';
 import { renderTopology } from './views/topology.js';
+import { renderHelp } from './views/help.js';
 import { renderSettings } from './views/settings.js';
 import { renderAccount } from './views/account.js';
 import { renderMonitoring } from './views/monitoring.js';
@@ -50,6 +51,7 @@ const ROUTES = [
   [/^\/monitoring\/(maintenance)$/, (main, sub) => renderMonitoring(main, null, sub), 'monitoring'],
   [/^\/locations$/, renderLocations, 'locations'],
   [/^\/topology$/, renderTopology, 'topology'],
+  [/^\/help$/, renderHelp, 'help'],
   [/^\/settings(?:\/([a-z]+))?$/, renderSettings, 'settings'],
   [/^\/account$/, renderAccount, 'account'],
 ];
@@ -72,6 +74,7 @@ function sidebar(active) {
     h('div', { class: 'side-foot' },
       h('div', { class: 'who' }, h('strong', {}, u.display_name || u.username), t(`role.${u.role}`)),
       h('nav', { class: 'nav' },
+        link('/help', 'help', 'help'),
         link('/account', 'account', 'user'),
         h('a', { href: '#', onclick: async (e) => { e.preventDefault(); await post('/logout').catch(() => {}); state.user = null; navigate('/login'); } },
           h('span', { html: icon('logout') }), t('nav.logout'))),

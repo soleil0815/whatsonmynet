@@ -6,11 +6,20 @@
 
 WhatsOnMyNet scans your network, recognises manufacturer and device type by itself (switches, Proxmox, Synology, printers, Telematik components …) and lets you tick what goes into your inventory. No typing of manufacturers and models, no marathon of required fields. After signing in you only see your clean inventory – new devices only when you start a scan yourself.
 
-![Scan with radar](docs/images/scan-en.png)
+![Overview](public/help/img/dashboard-en.png)
+
+📖 **Manual:** [as PDF](public/help/WhatsOnMyNet-Manual.pdf) · in the app under *Help* · [deutsches Handbuch](public/help/WhatsOnMyNet-Handbuch.pdf)
+
+| | | |
+|---|---|---|
+| ![Scan with radar](public/help/img/scan-en.png) | ![Network map](public/help/img/topology-en.png) | ![Monitoring](public/help/img/monitoring-en.png) |
+| Gentle scan with radar | Network map from the switches | Monitoring with history |
+| ![Printer](public/help/img/printer-en.png) | ![Switch](public/help/img/switch-en.png) | ![Proxmox](public/help/img/proxmox-en.png) |
+| Toner, drum, counter | Ports and attached devices | Proxmox VE and Backup Server |
 
 > Built for own use. Whoever uses WhatsOnMyNet does so at their own risk.
 
-## What version 0.1 does
+## What WhatsOnMyNet does
 
 - **Gentle network scan** – devices in local networks are found via ARP (every device answers, even with a closed firewall), in routed networks via ping and a few TCP connection attempts. Only 26 typical ports are checked, limited to 40 attempts per second. To a firewall this looks like normal traffic.
 - **Automatic recognition** – manufacturer from the MAC address (IEEE registry), device type from open ports, web interface title, certificate, SNMP (read-only), NetBIOS name and reverse DNS. Unsure guesses are marked; you can change the type before adopting.
@@ -26,7 +35,7 @@ WhatsOnMyNet scans your network, recognises manufacturer and device type by itse
 - **HTTPS from the first start** – generated certificate, own certificate (PEM or PFX) uploadable in the interface, HTTP always redirects to HTTPS.
 - **German and English**, light and dark, usable on a phone.
 
-![Inventory](docs/images/inventory-en.png)
+![Inventory](public/help/img/inventory-en.png)
 
 ## Monitoring (from version 0.2)
 
@@ -226,6 +235,8 @@ Under *Settings → Backup* (from 0.4) you download a current backup at any time
 | 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), ~~nightly light scan with notice of unknown devices~~, ~~printer data via SNMP~~, ~~Docker and database monitoring~~ (from 0.3) |
 | 3 | ~~Active Directory (LDAPS)~~, ~~rights per location~~ (from 0.3) |
 | later | ~~Scan agent for branch offices~~, ~~topology via LLDP~~, ~~MAC addresses of remote subnets via SNMP from the router~~ (from 0.3) |
+
+**Rebuild the manual** (after changes to `public/help/manual.*.md` or the images): `node tools/build-manual.mjs` – needs Playwright with Chromium, ImageMagick makes the PDFs smaller.
 
 ## License
 

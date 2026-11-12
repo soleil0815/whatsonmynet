@@ -6,11 +6,20 @@
 
 WhatsOnMyNet scannt dein Netzwerk, erkennt Hersteller und Gerätetyp selbst (Switches, Proxmox, Synology, Drucker, Telematik-Komponenten …) und lässt dich per Häkchen auswählen, was in dein Inventar kommt. Kein Abtippen von Herstellern und Modellen, kein Pflichtfeld-Marathon. Nach dem Anmelden siehst du nur dein sauberes Inventar – neue Geräte erst, wenn du selbst einen Scan startest.
 
-![Scan mit Radar](docs/images/scan-de.png)
+![Übersicht](public/help/img/dashboard-de.png)
+
+📖 **Handbuch:** [als PDF](public/help/WhatsOnMyNet-Handbuch.pdf) · in der App unter *Hilfe* · [English manual](public/help/WhatsOnMyNet-Manual.pdf)
+
+| | | |
+|---|---|---|
+| ![Scan mit Radar](public/help/img/scan-de.png) | ![Netzplan](public/help/img/topology-de.png) | ![Monitoring](public/help/img/monitoring-de.png) |
+| Schonender Scan mit Radar | Netzplan aus den Switches | Monitoring mit Verlauf |
+| ![Drucker](public/help/img/printer-de.png) | ![Switch](public/help/img/switch-de.png) | ![Proxmox](public/help/img/proxmox-de.png) |
+| Toner, Trommel, Zähler | Ports und angeschlossene Geräte | Proxmox VE und Backup Server |
 
 > Gebaut für den eigenen Einsatz. Wer WhatsOnMyNet nutzt, tut das in eigener Verantwortung.
 
-## Was Version 0.1 kann
+## Was WhatsOnMyNet kann
 
 - **Schonender Netzwerkscan** – Geräte im eigenen Netz werden über ARP gefunden (jedes Gerät antwortet darauf, auch mit geschlossener Firewall), in gerouteten Netzen über Ping und wenige TCP-Verbindungsversuche. Geprüft werden nur 26 typische Ports, gedrosselt auf 40 Versuche pro Sekunde. Für eine Firewall sieht das aus wie normaler Netzwerkverkehr.
 - **Automatische Erkennung** – Hersteller aus der MAC-Adresse (IEEE-Liste), Gerätetyp aus offenen Ports, Titel der Weboberfläche, Zertifikat, SNMP (nur lesend), NetBIOS-Name und Reverse DNS. Unsichere Erkennungen sind markiert, den Typ kannst du vor dem Übernehmen ändern.
@@ -26,7 +35,7 @@ WhatsOnMyNet scannt dein Netzwerk, erkennt Hersteller und Gerätetyp selbst (Swi
 - **HTTPS ab dem ersten Start** – selbst erzeugtes Zertifikat, eigenes Zertifikat (PEM oder PFX) in der Oberfläche hochladbar, HTTP leitet immer auf HTTPS um.
 - **Deutsch und Englisch**, hell und dunkel, auch am Handy bedienbar.
 
-![Inventar](docs/images/inventory-de.png)
+![Inventar](public/help/img/inventory-de.png)
 
 ## Monitoring (ab Version 0.2)
 
@@ -226,6 +235,8 @@ Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle S
 | 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), ~~nächtlicher leichter Scan mit Meldung unbekannter Geräte~~, ~~Druckerdaten per SNMP~~, ~~Docker- und Datenbanküberwachung~~ (ab 0.3) |
 | 3 | ~~Active Directory (LDAPS)~~, ~~Rechte pro Standort~~ (ab 0.3) |
 | später | ~~Scan-Agent für Außenstellen~~, ~~Topologie über LLDP~~, ~~MAC-Adressen entfernter Subnetze per SNMP vom Router~~ (ab 0.3) |
+
+**Handbuch neu bauen** (nach Änderungen an `public/help/manual.*.md` oder den Bildern): `node tools/build-manual.mjs` – braucht Playwright mit Chromium, ImageMagick macht die PDFs kleiner.
 
 ## Lizenz
 

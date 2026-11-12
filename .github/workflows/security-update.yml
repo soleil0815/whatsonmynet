@@ -301,6 +301,8 @@ jobs:
           for f in docker-compose.yml env.example; do git show "$SHA:$f" > "release/$f"; done
           # scan agent compose file (only releases from 0.3 on have it)
           git show "$SHA:docker-compose.agent.yml" > release/docker-compose.agent.yml 2>/dev/null || rm -f release/docker-compose.agent.yml
+          # manuals (only releases from 0.4 on have them)
+          for f in WhatsOnMyNet-Handbuch.pdf WhatsOnMyNet-Manual.pdf; do git show "$SHA:public/help/$f" > "release/$f" 2>/dev/null || rm -f "release/$f"; done
           (cd release && sha256sum -- * > SHA256SUMS)
           {
             echo "Same program as [v$V](https://github.com/$GITHUB_REPOSITORY/releases/tag/v$V), only newer packages (security update on patch day): base image, Alpine and npm packages updated, built without cache, tested and checked with Trivy on amd64 and arm64."

@@ -158,7 +158,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'err.notFound')));
 
   // Static files + single-page app (always revalidated: after an update the new interface arrives at once)
-  app.use(express.static(config.publicDir, { index: false, maxAge: 0, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
+  app.use(express.static(config.publicDir, { index: false, redirect: false, maxAge: 0, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
   const indexHtml = path.join(config.publicDir, 'index.html');
   app.get(/^\/(?!api\/).*/, (_req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
