@@ -61,6 +61,7 @@ async function main() {
   ctx.monitoring.start();
   ctx.nightly.start();
   ctx.printers.start();
+  ctx.snmpDevices.start();
 
   // Daily: sessions, old check results, backup, renew the self-signed certificate if needed
   const daily = async () => {
@@ -78,6 +79,7 @@ async function main() {
     ctx.monitoring.stop();
     ctx.nightly.stop();
     ctx.printers.stop();
+    ctx.snmpDevices.stop();
     httpServer?.close();
     httpsServer.close(() => { db.close(); process.exit(0); });
     setTimeout(() => process.exit(0), 5000).unref();

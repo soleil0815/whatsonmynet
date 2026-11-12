@@ -99,6 +99,17 @@ Devices of type *Printer* are queried regularly (default hourly) via SNMP – re
 
 Settings under *Settings → Printers*. The community is the same as for the scan (*Settings → Scan*). SNMP (v1 or v2c) has to be switched on at the printer.
 
+## Switches and NAS via SNMP (from version 0.3)
+
+Devices of type *Switch* and *NAS* are queried regularly (default every 15 minutes) via SNMP – read-only:
+
+- **Switch**: all ports as tiles like on the front (connected/disconnected, speed, label), which devices are plugged into which port (MAC table, VLAN-aware), LLDP neighbours, model, firmware and serial number.
+- **Where is the device plugged in?** The page of every device shows under *Detection* the switch and port it is connected to. If many devices share a port, WhatsOnMyNet points out that another switch or access point is probably in between.
+- **NAS**: volumes with usage (any NAS or Linux server with SNMP); on Synology also disks with state and temperature, storage pools/RAID, system state, fans, power supply, DSM version and available updates; on QNAP disks and temperature.
+- **Notice** for a failing disk, a degraded RAID, fan or power supply failure and a volume running full (default 90 %) – once when it happens and once when everything is fine again. The overview lists open NAS problems.
+
+Settings under *Settings → Switches & NAS*. Simple switches without SNMP (e.g. TP-Link "Easy Smart") give no data; on LANCOM, HP/Aruba, Cisco, Netgear Smart and others SNMP v1/v2c has to be enabled read-only.
+
 ### Ping
 
 WhatsOnMyNet runs without root. Ping then only works if the host allows ICMP for normal users (`net.ipv4.ping_group_range`, default on Debian, Ubuntu and Proxmox). Without ping the scan still finds local devices via ARP and remote ones via TCP; the program shows a notice.
