@@ -1,4 +1,4 @@
-// Local user accounts (Active Directory follows in a later version).
+// User accounts: local ones (password stored as scrypt hash) and ones from Active Directory (no password here).
 import { hashPassword, verifyPassword } from '../lib/crypto.js';
 import { HttpError, line, oneOf } from '../lib/http.js';
 import { ROLES } from './session.js';
@@ -16,7 +16,7 @@ export function checkPassword(pw, username = '') {
   return p;
 }
 
-const PUBLIC = 'id, username, display_name, email, role, language, theme, active, created_at, last_login';
+const PUBLIC = 'id, username, display_name, email, role, language, theme, active, created_at, last_login, source';
 
 export function createUsers(db) {
   const byName = db.prepare('SELECT * FROM users WHERE username=?');
@@ -47,10 +47,30 @@ export function createUsers(db) {
     count: () => db.prepare('SELECT COUNT(*) n FROM users').get().n,
     list: () => db.prepare(`SELECT ${PUBLIC} FROM users ORDER BY username`).all(),
     get: (id) => db.prepare(`SELECT ${PUBLIC} FROM users WHERE id=?`).get(id),
+    /** Local accounts only – an account from the directory never signs in with a password stored here */
     authenticate(username, password) {
       const u = byName.get(String(username || '').trim());
-      const ok = verifyPassword(String(password || ''), u?.password_hash);
-      return ok && u.active ? u : null;
+      const ok = verifyPassword(String(password || ''), u?.source === 'local' ? u.password_hash : '');
+      return ok && u.active && u.source === 'local' ? u : null;
+    },
+    /** 'local' | 'ldap' | null – which kind of account has this name */
+    sourceOf(username) { return byName.get(String(username || '').trim())?.source || null; },
+    /**
+     * After a successful directory sign-in: create the account or update name, e-mail and role from AD.
+     * Returns the full row, or null if an admin has switched the account off here.
+     */
+    upsertDirectory(info) {
+      const now = new Date().toISOString();
+      const cur = byName.get(info.username);
+      if (cur && cur.source !== 'ldap') throw new HttpError(409, 'err.userExists');
+      if (!cur) {
+        db.prepare("INSERT INTO users(username,display_name,email,password_hash,role,source,ext_dn,created_at) VALUES(?,?,?,'',?,'ldap',?,?)")
+          .run(info.username, info.display_name || '', info.email || '', info.role, info.dn, now);
+      } else {
+        db.prepare('UPDATE users SET display_name=?, email=?, role=?, ext_dn=? WHERE id=?').run(info.display_name || cur.display_name, info.email || cur.email, info.role, info.dn, cur.id);
+      }
+      const u = byName.get(info.username);
+      return u.active ? u : null;
     },
     create(input) {
       const v = clean(input);
@@ -65,7 +85,9 @@ export function createUsers(db) {
       const cur = db.prepare('SELECT * FROM users WHERE id=?').get(id);
       if (!cur) throw new HttpError(404, 'err.notFound');
       // On the own account only personal settings can be changed (never role or active)
-      const allowed = self ? ['display_name', 'email', 'language', 'theme'] : ['display_name', 'email', 'language', 'theme', 'role', 'active'];
+      let allowed = self ? ['display_name', 'email', 'language', 'theme'] : ['display_name', 'email', 'language', 'theme', 'role', 'active'];
+      // Directory accounts: name, e-mail and role come from AD at every sign-in
+      if (cur.source === 'ldap') allowed = allowed.filter((k) => !['display_name', 'email', 'role'].includes(k));
       const subset = Object.fromEntries(Object.entries(input || {}).filter(([k]) => allowed.includes(k)));
       const v = clean(subset, { partial: true });
       const losesAdmin = cur.role === 'admin' && cur.active && ((v.role && v.role !== 'admin') || v.active === 0);
@@ -75,8 +97,9 @@ export function createUsers(db) {
       return this.get(id);
     },
     setPassword(id, password) {
-      const u = db.prepare('SELECT username FROM users WHERE id=?').get(id);
+      const u = db.prepare('SELECT username, source FROM users WHERE id=?').get(id);
       if (!u) throw new HttpError(404, 'err.notFound');
+      if (u.source !== 'local') throw new HttpError(400, 'err.adPassword');
       const pw = checkPassword(password, u.username);
       db.prepare('UPDATE users SET password_hash=?, password_changed_at=? WHERE id=?').run(hashPassword(pw), new Date().toISOString(), id);
     },

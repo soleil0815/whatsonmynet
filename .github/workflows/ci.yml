@@ -63,10 +63,22 @@ jobs:
         image: redis:7-alpine
         ports: ["6379:6379"]
         options: --health-cmd="redis-cli ping" --health-interval=5s --health-retries=20
+      openldap:
+        image: osixia/openldap:1.5.0
+        env:
+          LDAP_ORGANISATION: Example
+          LDAP_DOMAIN: example.org
+          LDAP_ADMIN_PASSWORD: ci-ldap-pw
+          LDAP_TLS_VERIFY_CLIENT: never
+        ports: ["636:636"]
+        options: >-
+          --health-cmd="ldapsearch -x -H ldap://localhost -b dc=example,dc=org -D cn=admin,dc=example,dc=org -w ci-ldap-pw -s base"
+          --health-interval=5s --health-retries=30
     env:
       WOMN_TEST_MYSQL: 127.0.0.1:3306:womn:ci-womn-pw
       WOMN_TEST_POSTGRES: 127.0.0.1:5432:womn:ci-womn-pw
       WOMN_TEST_REDIS: "127.0.0.1:6379::"
+      WOMN_TEST_LDAP: localhost:636:ci-ldap-pw
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
