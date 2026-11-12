@@ -1,6 +1,6 @@
 // Emergency access from the Docker host (see README, "Locked out?"):
 //   docker compose exec whatsonmynet womn-admin list
-//   docker compose exec whatsonmynet womn-admin reset <user>     → new random password, account active, admin
+//   docker compose exec whatsonmynet womn-admin reset <user>     → new random password, account active, admin, 2FA off
 //   docker compose exec whatsonmynet womn-admin create <user>    → new administrator with a random password
 import { paths } from './config.js';
 import { openDatabase, verifyKey } from './db.js';
@@ -23,6 +23,7 @@ try {
     if (!u) { out(`User "${name}" not found.`); process.exit(1); }
     const pw = randomToken(12);
     users.setPassword(u.id, pw);
+    users.disableTotp(u.id);
     db.prepare("UPDATE users SET active=1, role='admin' WHERE id=?").run(u.id);
     db.prepare('DELETE FROM sessions WHERE user_id=?').run(u.id);
     out(`New password for ${name}: ${pw}\nChange it after signing in (top right → My account).`);

@@ -46,6 +46,8 @@ export const DEFAULTS = {
   'ad.nested': true,              // nested groups (AD)
   // Proxmox VE / Backup Server
   'proxmox.interval': 5,          // minutes between two queries
+  // Security
+  'security.require2faAdmins': false, // local administrators must use two-factor sign-in
   // Mail (SMTP)
   'smtp.host': '',
   'smtp.port': 587,

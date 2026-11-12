@@ -1,5 +1,6 @@
 // User accounts: local ones (password stored as scrypt hash) and ones from Active Directory (no password here).
-import { hashPassword, verifyPassword } from '../lib/crypto.js';
+import { hashPassword, verifyPassword, encrypt, decrypt } from '../lib/crypto.js';
+import { newSecret, verifyTotp, newRecoveryCodes, useRecoveryCode } from './totp.js';
 import { HttpError, line, oneOf } from '../lib/http.js';
 import { ROLES } from './session.js';
 
@@ -16,7 +17,7 @@ export function checkPassword(pw, username = '') {
   return p;
 }
 
-const PUBLIC = 'id, username, display_name, email, role, language, theme, active, created_at, last_login, source';
+const PUBLIC = 'id, username, display_name, email, role, language, theme, active, created_at, last_login, source, totp_enabled';
 
 export function createUsers(db) {
   const byName = db.prepare('SELECT * FROM users WHERE username=?');
@@ -66,6 +67,51 @@ export function createUsers(db) {
       const u = byName.get(String(username || '').trim());
       const ok = verifyPassword(String(password || ''), u?.source === 'local' ? u.password_hash : '');
       return ok && u.active && u.source === 'local' ? u : null;
+    },
+    // --- Two-factor sign-in (local accounts) ---------------------------------------------------------------
+    /** New secret, not active until a first code was confirmed */
+    startTotp(id) {
+      const u = db.prepare('SELECT source, totp_enabled FROM users WHERE id=?').get(id);
+      if (!u) throw new HttpError(404, 'err.notFound');
+      if (u.source !== 'local') throw new HttpError(400, 'err.totpLocal');
+      if (u.totp_enabled) throw new HttpError(409, 'err.totpActive');
+      const secret = newSecret();
+      db.prepare('UPDATE users SET totp_secret=? WHERE id=?').run(encrypt(secret), id);
+      return secret;
+    },
+    /** Confirms the first code → active; returns the recovery codes (shown only now) */
+    enableTotp(id, code) {
+      const u = db.prepare('SELECT totp_secret, totp_enabled FROM users WHERE id=?').get(id);
+      if (!u?.totp_secret || u.totp_enabled) throw new HttpError(400, 'err.totpSetup');
+      const step = verifyTotp(decrypt(u.totp_secret), code);
+      if (step === null) throw new HttpError(400, 'err.totpWrong');
+      const rc = newRecoveryCodes();
+      db.prepare('UPDATE users SET totp_enabled=1, totp_last_step=?, recovery_codes=? WHERE id=?').run(step, JSON.stringify(rc.hashes), id);
+      return rc.plain;
+    },
+    disableTotp(id) {
+      db.prepare("UPDATE users SET totp_enabled=0, totp_secret='', totp_last_step=0, recovery_codes='[]' WHERE id=?").run(id);
+    },
+    newRecoveryCodes(id) {
+      const rc = newRecoveryCodes();
+      db.prepare('UPDATE users SET recovery_codes=? WHERE id=? AND totp_enabled=1').run(JSON.stringify(rc.hashes), id);
+      return rc.plain;
+    },
+    recoveryLeft(id) { try { return JSON.parse(db.prepare('SELECT recovery_codes FROM users WHERE id=?').get(id)?.recovery_codes || '[]').length; } catch { return 0; } },
+    /** Second factor at sign-in: app code (each only once) or a recovery code (used up). true/false */
+    checkSecondFactor(id, code) {
+      const u = db.prepare('SELECT totp_secret, totp_last_step, recovery_codes FROM users WHERE id=? AND totp_enabled=1').get(id);
+      if (!u) return false;
+      let secret = '';
+      try { secret = decrypt(u.totp_secret); } catch { return false; }
+      const step = verifyTotp(secret, code, { lastStep: u.totp_last_step });
+      if (step !== null) { db.prepare('UPDATE users SET totp_last_step=? WHERE id=?').run(step, id); return true; }
+      let hashes = [];
+      try { hashes = JSON.parse(u.recovery_codes || '[]'); } catch { hashes = []; }
+      const left = useRecoveryCode(hashes, code);
+      if (!left) return false;
+      db.prepare('UPDATE users SET recovery_codes=? WHERE id=?').run(JSON.stringify(left), id);
+      return true;
     },
     /** 'local' | 'ldap' | null – which kind of account has this name */
     sourceOf(username) { return byName.get(String(username || '').trim())?.source || null; },
