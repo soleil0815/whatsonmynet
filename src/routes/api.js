@@ -123,6 +123,18 @@ export function createApi(ctx) {
     res.json(inventory.list({ q: str(req.query.q, 100), type: str(req.query.type, 30), location: str(req.query.location, 12), tag: str(req.query.tag, 60) })
       .map((d) => ({ ...d, monitor: mon[d.id] || null })));
   });
+  r.get('/devices/suggestions', (_req, res) => res.json(inventory.suggestions()));
+  r.post('/devices/bulk', editor, (req, res) => {
+    const list = ids(req.body.ids, 2000);
+    const n = inventory.bulkUpdate(list, { set: req.body.set, tagsAdd: req.body.tagsAdd, tagsRemove: req.body.tagsRemove }, who(req));
+    if (n) audit(req, 'device.bulkUpdate', `${n} device(s): ${Object.keys(req.body.set || {}).join(', ')}`);
+    res.json({ updated: n });
+  });
+  r.post('/devices/bulk-delete', editor, (req, res) => {
+    const n = inventory.bulkRemove(ids(req.body.ids, 2000));
+    if (n) audit(req, 'device.bulkDelete', `${n} device(s)`);
+    res.json({ deleted: n });
+  });
   r.get('/devices/export.csv', (req, res) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="whatsonmynet-${new Date().toISOString().slice(0, 10)}.csv"`);

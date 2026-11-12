@@ -5,7 +5,7 @@ import { t, getLang, reasonText } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { monitorDot, statusPill, openMonitorForm } from './monitoring.js';
-import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI } from './common.js';
+import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
 
 const FIELD_LABEL = (f) => t(`f.${f}`) !== `f.${f}` ? t(`f.${f}`) : f;
 
@@ -22,7 +22,7 @@ export function historyText(r) {
 }
 
 export async function renderDevice(main, id) {
-  const [d, locations] = await Promise.all([get(`/devices/${id}`), get('/locations')]);
+  const [d, locations, sugg] = await Promise.all([get(`/devices/${id}`), get('/locations'), get('/devices/suggestions').catch(() => null)]);
   const types = state.meta?.types || [];
   const services = state.meta?.services || {};
   const edit = state.user.canEdit;
@@ -31,27 +31,30 @@ export async function renderDevice(main, id) {
   const f = d.facts || {};
   const presence = d.presence || 'unknown';
 
+  const tagsInput = input('tags', d.tags, ro);
   const form = h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); save(); } },
     h('div', { class: 'full' }, field(t('f.name'), input('name', d.name, { required: true, maxlength: 120, ...ro }))),
     field(t('f.type'), select('type', typeOptions(types), d.type, ro)),
     field(t('f.location'), select('location_id', [['', t('none')], ...locations.map((l) => [String(l.id), l.name])], d.location_id ? String(d.location_id) : '', ro)),
     field(t('f.ip'), input('ip', d.ip || '', { class: 'mono', ...ro })),
     field(t('f.mac'), input('mac', d.mac || '', { class: 'mono', ...ro })),
-    field(t('f.vendor'), input('vendor', d.vendor, ro)),
-    field(t('f.model'), input('model', d.model, ro)),
+    field(t('f.vendor'), input('vendor', d.vendor, { list: 'dl-vendor', autocomplete: 'off', ...ro })),
+    field(t('f.model'), input('model', d.model, { list: 'dl-model', autocomplete: 'off', ...ro })),
     field(t('f.hostname'), input('hostname', d.hostname, ro)),
-    field(t('f.os'), input('os', d.os, ro)),
-    field(t('f.owner'), input('owner', d.owner, ro)),
-    field(t('f.tags'), input('tags', d.tags, ro), t('f.tagsHint')),
+    field(t('f.os'), input('os', d.os, { list: 'dl-os', autocomplete: 'off', ...ro })),
+    field(t('f.owner'), input('owner', d.owner, { list: 'dl-owner', autocomplete: 'off', ...ro })),
+    h('div', {}, field(t('f.tags'), tagsInput, t('f.tagsHint')), edit ? tagChips(tagsInput, sugg?.tags) : null),
     h('div', { class: 'full' }, field(t('f.web_url'), input('web_url', d.web_url, { class: 'mono', ...ro }), t('f.web_urlHint'))),
     h('div', { class: 'full' }, field(t('f.notes'), h('textarea', { name: 'notes', ...ro }, d.notes))),
     h('h3', { class: 'full section-title' }, t('dev.purchase')),
     field(t('f.serial'), input('serial', d.serial, ro)),
-    field(t('f.supplier'), input('supplier', d.supplier, ro)),
+    field(t('f.supplier'), input('supplier', d.supplier, { list: 'dl-supplier', autocomplete: 'off', ...ro })),
     field(t('f.purchase_date'), input('purchase_date', d.purchase_date || '', { type: 'date', ...ro })),
     field(t('f.warranty_until'), input('warranty_until', d.warranty_until || '', { type: 'date', ...ro })),
     field(t('f.maintenance_until'), input('maintenance_until', d.maintenance_until || '', { type: 'date', ...ro })),
-    edit ? h('div', { class: 'full actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))) : null);
+    edit ? h('div', { class: 'full actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))) : null,
+    suggestionLists(sugg));
+  wireModelAutofill(form, sugg);
 
   async function save() {
     if (!form.reportValidity()) return;
