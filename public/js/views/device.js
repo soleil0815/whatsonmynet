@@ -6,6 +6,7 @@ import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { monitorDot, statusPill, openMonitorForm } from './monitoring.js';
 import { printerPanel } from './printer.js';
+import { switchPanel, nasPanel, pluggedLine } from './snmpdev.js';
 import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
 
 const FIELD_LABEL = (f) => t(`f.${f}`) !== `f.${f}` ? t(`f.${f}`) : f;
@@ -107,7 +108,7 @@ export async function renderDevice(main, id) {
   const detection = h('section', { class: 'panel panel-pad' },
     h('h2', { class: 'section-title' }, t('dev.detection')),
     !hasFacts ? h('p', { class: 'muted' }, t('dev.noFacts')) : null,
-    hasFacts || webRow ? h('dl', { class: 'kv' },
+    hasFacts || webRow || d.plugged ? h('dl', { class: 'kv' },
       hasFacts && c.type ? [h('dt', {}, t('dev.confidence')), h('dd', {}, typeChip(c.type), ' ', confidenceBar(c.confidence))] : null,
       hasFacts && c.reasons?.length ? [h('dt', {}, t('dev.reasons')), h('dd', {}, c.reasons.map(reasonText).join(' · '))] : null,
       hasFacts ? [h('dt', {}, t('dev.ports')), h('dd', {}, f.ports?.length ? portList(f.ports, services) : '–')] : null,
@@ -119,6 +120,7 @@ export async function renderDevice(main, id) {
       f.snmp ? [h('dt', {}, t('dev.snmp')), h('dd', {}, [f.snmp.name, f.snmp.descr, f.snmp.location].filter(Boolean).join(' · '))] : null,
       webRow,
       f.deep?.at ? [h('dt', {}, t('dev.deep')), h('dd', {}, fmtDate(f.deep.at, getLang()))] : null,
+      pluggedLine(d.plugged),
     ) : null);
 
   const monPanel = h('section', { class: 'panel panel-pad' },
@@ -158,5 +160,5 @@ export async function renderDevice(main, id) {
     ti ? h('div', { class: 'note ti' }, t('dev.deepTi')) : null,
     h('div', { class: 'device-grid' },
       h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('dev.details')), form),
-      h('div', { class: 'stack' }, d.type === 'printer' ? printerPanel(d) : null, monPanel, detection, meta, hist))));
+      h('div', { class: 'stack' }, d.type === 'printer' ? printerPanel(d) : d.type === 'switch' ? switchPanel(d) : d.type === 'nas' ? nasPanel(d) : null, monPanel, detection, meta, hist))));
 }

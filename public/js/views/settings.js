@@ -7,7 +7,7 @@ import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
 
 const SECTIONS = [
-  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['docker', 'server'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'],
+  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'],
   ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
 ];
 
@@ -21,8 +21,8 @@ export async function renderSettings(main, section = 'general') {
       h('nav', { class: 'subnav', 'aria-label': t('set.title') }, SECTIONS.map(([s, ico]) => h('a', { href: `/settings/${s}`, 'data-link': true,
         class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
       body)));
-  const all = ['general', 'scan', 'smtp', 'printers'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, docker, smtp, notify, https, users, ignored, audit, about }[section];
+  const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev'].includes(section) ? await get('/settings') : null;
+  const view = { general, scan, printers, snmpdev, docker, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
@@ -122,6 +122,28 @@ async function printers(body, s) {
   h('p', { class: 'muted small' }, t('prn.community')),
   saveBtn());
   mount(body, panel(t('set.printers'), form));
+}
+
+async function snmpdev(body, s) {
+  const p = s.snmpdev;
+  const n = s.nas;
+  const chans = await loadChannels();
+  const picker = channelPicker(chans, n.channels);
+  const form = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    const d = formData(form);
+    try { await put('/settings/snmpdev', { enabled: d.enabled, interval: d.interval, threshold: d.threshold, notify: d.notify, channels: picker.value() }); toast(t('saved')); } catch (ex) { fail(ex); }
+  } },
+  h('p', { class: 'muted' }, t('snmpd.lead')),
+  field(t('snmpd.enabled'), h('input', { type: 'checkbox', name: 'enabled', checked: p.enabled })),
+  h('div', { class: 'form-grid' },
+    field(t('snmpd.interval'), input('interval', p.interval, { type: 'number', min: 5, max: 1440 }), t('prn.intervalHint')),
+    field(t('snmpd.threshold'), input('threshold', n.threshold, { type: 'number', min: 50, max: 99 }))),
+  field(t('snmpd.notify'), h('input', { type: 'checkbox', name: 'notify', checked: n.notify }), t('snmpd.notifyHint')),
+  picker.el,
+  h('p', { class: 'muted small' }, t('prn.community')),
+  saveBtn());
+  mount(body, panel(t('set.snmpdev'), form));
 }
 
 const PROXY_COMPOSE = `services:

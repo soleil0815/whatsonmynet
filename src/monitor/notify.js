@@ -25,6 +25,10 @@ const TEXT = {
     supplyWasteLow: '🟠 {name}: {supply} fast voll (noch {pct} % frei)',
     supplyEmpty: '🔴 {name}: {supply} ist leer',
     supplyWasteFull: '🔴 {name}: {supply} ist voll',
+    nasBad: '🔴 {name}: {what}',
+    nasOk: '🟢 {name}: wieder in Ordnung – {what}',
+    'nas.system': 'Systemstatus gestört', 'nas.power': 'Netzteil gestört', 'nas.fan': 'Lüfter gestört',
+    'nas.raid': 'Speicherpool {item}: {status}', 'nas.disk': 'Festplatte {item}: {status}', 'nas.volume': 'Volume {item} zu {pct} % voll',
     subject: 'WhatsOnMyNet: {text}',
     target: 'Ziel',
     time: 'Zeit',
@@ -43,6 +47,10 @@ const TEXT = {
     supplyWasteLow: '🟠 {name}: {supply} almost full ({pct} % space left)',
     supplyEmpty: '🔴 {name}: {supply} is empty',
     supplyWasteFull: '🔴 {name}: {supply} is full',
+    nasBad: '🔴 {name}: {what}',
+    nasOk: '🟢 {name}: fine again – {what}',
+    'nas.system': 'system status failed', 'nas.power': 'power supply failed', 'nas.fan': 'fan failed',
+    'nas.raid': 'storage pool {item}: {status}', 'nas.disk': 'disk {item}: {status}', 'nas.volume': 'volume {item} is {pct} % full',
     subject: 'WhatsOnMyNet: {text}',
     target: 'Target',
     time: 'Time',
@@ -70,6 +78,11 @@ export function eventText(ev, lang = 'de') {
       if (ev.empty) return fill(ev.supply?.receptacle ? T.supplyWasteFull : T.supplyEmpty, vars);
       return fill(ev.supply?.receptacle ? T.supplyWasteLow : T.supplyLow, vars);
     }
+    case 'nas': {
+      const p = ev.problem || {};
+      const what = fill(T[`nas.${p.kind}`] || p.kind || '', { item: p.name || '', status: p.status || '', pct: p.pct ?? '' });
+      return fill(p.solved ? T.nasOk : T.nasBad, { name: ev.device?.name || '', what });
+    }
     default: return T.test;
   }
 }
@@ -81,7 +94,7 @@ function details(ev, lang) {
   if (ev.kind === 'newDevices') {
     return [...(ev.devices || []).slice(0, 30).map((d) => `• ${d.ip}  ${d.mac || ''}  ${d.vendor || ''}  ${d.hostname || ''}`.replace(/\s+$/, '')), '', T.inbox].join('\n');
   }
-  if (ev.kind === 'supply' && ev.device) return `${T.target}: ${ev.device.name} (${ev.device.ip || ''})`;
+  if ((ev.kind === 'supply' || ev.kind === 'nas') && ev.device) return `${T.target}: ${ev.device.name} (${ev.device.ip || ''})`;
   if (!ev.monitor) return '';
   const time = new Date(ev.at || Date.now()).toLocaleString(lang === 'en' ? 'en-GB' : 'de-DE', { timeZone: process.env.TZ || undefined });
   return `${T.target}: ${ev.monitor.target}\n${T.time}: ${time}`;
@@ -210,7 +223,7 @@ export function createChannels(db, mailer) {
         : { event: ev.kind, text, monitor: ev.monitor ? { id: ev.monitor.id, name: ev.monitor.name, target: ev.monitor.target } : null,
           message: ev.message || '', time: vars.time, certValidTo: ev.certValidTo || null,
           ...(ev.devices ? { devices: ev.devices.slice(0, 100) } : {}),
-          ...(ev.device ? { device: ev.device, supply: ev.supply || null } : {}) };
+          ...(ev.device ? { device: ev.device, supply: ev.supply || null, problem: ev.problem || null } : {}) };
       const headers = c.headerName && c.headerValue ? { [c.headerName]: c.headerValue } : {};
       try { await postJson(c.url, body, { headers }); } catch (e) { throw new Error(`Webhook: ${e.message}`); }
     }

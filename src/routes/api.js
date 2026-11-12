@@ -100,11 +100,12 @@ export function createApi(ctx) {
   });
 
   r.get('/meta', (_req, res) => {
-    res.json({ types: TYPES, services: SERVICE_NAMES, gentlePorts: GENTLE_PORTS, printerThreshold: Number(settings.get('printer.threshold')) || 15 });
+    res.json({ types: TYPES, services: SERVICE_NAMES, gentlePorts: GENTLE_PORTS, printerThreshold: Number(settings.get('printer.threshold')) || 15,
+      nasThreshold: Number(settings.get('nas.threshold')) || 90 });
   });
 
   r.get('/dashboard', (_req, res) => {
-    res.json({ ...inventory.stats(), monitoring: ctx.monitoring.summary(), printersLow: ctx.printers.low() });
+    res.json({ ...inventory.stats(), monitoring: ctx.monitoring.summary(), printersLow: ctx.printers.low(), nasProblems: ctx.snmpDevices.problems() });
   });
 
   r.get('/network', async (_req, res) => {
@@ -153,7 +154,8 @@ export function createApi(ctx) {
     if (!d) throw new HttpError(404, 'err.notFound');
     const presence = inventory.list({}).find((x) => x.id === d.id)?.presence || 'unknown';
     const monitors = db.prepare('SELECT id FROM monitors WHERE device_id=? ORDER BY name').all(d.id).map((m) => ctx.monitoring.get(m.id));
-    res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null, history: inventory.historyOf(d.id) });
+    res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null,
+      snmp: ['switch', 'nas'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: d.mac ? ctx.snmpDevices.locate(d.mac) : null, history: inventory.historyOf(d.id) });
   });
   r.post('/devices', editor, (req, res) => {
     const d = inventory.create(req.body, who(req));
@@ -183,6 +185,8 @@ export function createApi(ctx) {
     if (!db.prepare("SELECT 1 FROM devices WHERE id=? AND type='printer'").get(id)) throw new HttpError(404, 'err.notFound');
     res.json(await ctx.printers.poll(id));
   });
+
+  r.post('/devices/:id/snmp', editor, async (req, res) => res.json(await ctx.snmpDevices.poll(idParam(req))));
 
   // Nightly light scan: start now (same as at night, all subnets of all locations)
   r.post('/lightscan/run', editor, (req, res) => {
@@ -256,7 +260,8 @@ export function createApi(ctx) {
   // --- Administration ---------------------------------------------------------------------------------------
   r.get('/settings', admin, (_req, res) => {
     res.json({ general: settings.publicGroup('general'), scan: settings.publicGroup('scan'), smtp: settings.publicGroup('smtp'), backup: settings.publicGroup('backup'),
-      lightscan: { ...settings.publicGroup('lightscan'), last: ctx.nightly.lastLight() }, printer: settings.publicGroup('printer') });
+      lightscan: { ...settings.publicGroup('lightscan'), last: ctx.nightly.lastLight() }, printer: settings.publicGroup('printer'),
+      snmpdev: settings.publicGroup('snmpdev'), nas: settings.publicGroup('nas') });
   });
   r.put('/settings/general', admin, (req, res) => {
     settings.set('general.title', line(req.body.title, 60) || 'WhatsOnMyNet');
@@ -301,6 +306,16 @@ export function createApi(ctx) {
     if ('channels' in b) settings.set('printer.channels', channelIds(b.channels));
     audit(req, 'settings.printer');
     res.json(settings.publicGroup('printer'));
+  });
+  r.put('/settings/snmpdev', admin, (req, res) => {
+    const b = req.body;
+    if ('enabled' in b) settings.set('snmpdev.enabled', !!b.enabled);
+    if ('interval' in b) settings.set('snmpdev.interval', Math.min(1440, Math.max(5, int(String(b.interval)) || 15)));
+    if ('threshold' in b) settings.set('nas.threshold', Math.min(99, Math.max(50, int(String(b.threshold)) || 90)));
+    if ('notify' in b) settings.set('nas.notify', !!b.notify);
+    if ('channels' in b) settings.set('nas.channels', channelIds(b.channels));
+    audit(req, 'settings.snmpdev');
+    res.json({ ...settings.publicGroup('snmpdev'), nas: settings.publicGroup('nas') });
   });
   r.put('/settings/smtp', admin, (req, res) => {
     const b = req.body;

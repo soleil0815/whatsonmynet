@@ -200,6 +200,22 @@ const de = {
   'sup.transferUnit': 'Transfereinheit', 'sup.tonerCartridge': 'Tonerkartusche', 'sup.fuserOiler': 'Fixierölgeber', 'sup.water': 'Wasser', 'sup.wasteWater': 'Abwasser',
   'sup.bandingSupply': 'Banderole', 'sup.bindingSupply': 'Bindematerial', 'sup.staples': 'Heftklammern', 'sup.other': 'Verbrauchsmaterial',
   'sup.full': 'voll', 'sup.empty': 'leer', 'sup.freePct': '{pct} % frei', 'sup.some': 'vorhanden', 'sup.unknown': 'unbekannt',
+  // Switches, NAS
+  'set.snmpdev': 'Switches & NAS', 'snmpd.lead': 'Geräte vom Typ Switch und NAS werden regelmäßig per SNMP gefragt (nur lesend). Switches: Ports, welche Geräte an welchem Port hängen, Nachbarn (LLDP), Firmware. NAS: Volumes, Festplatten, RAID, Temperatur.',
+  'snmpd.enabled': 'Switches und NAS regelmäßig abfragen', 'snmpd.interval': 'Abstand (Minuten)', 'snmpd.threshold': 'Volume voll ab (%)',
+  'snmpd.notify': 'NAS-Probleme melden', 'snmpd.notifyHint': 'Festplatte oder RAID gestört, Volume voll, Lüfter, Netzteil – einmal beim Auftreten und einmal, wenn es wieder in Ordnung ist.',
+  'snmp.err.snmp': 'Das Gerät antwortet nicht auf SNMP. Ist SNMP eingeschaltet und stimmt die Community (Einstellungen → Scan)? Angezeigt wird der letzte bekannte Stand.',
+  'snmp.err.noIfMib': 'Das Gerät antwortet auf SNMP, liefert aber keine Port-Daten.', 'snmp.err.noNasMib': 'Das Gerät antwortet auf SNMP, liefert aber keine Speicher-Daten.',
+  'sw.panel': 'Switch', 'sw.summary': '{up} von {n} Ports verbunden – Port anklicken für Details.', 'sw.neighbours': 'Nachbarn (LLDP)', 'sw.firmware': 'Firmware',
+  'sw.descr': 'Beschreibung', 'sw.plugged': 'Angeschlossen an', 'sw.port': 'Port', 'sw.pluggedUplink': 'An diesem Port hängen {n} Geräte – vermutlich ein weiterer Switch oder Access Point dazwischen.',
+  'port.up': 'verbunden', 'port.down': 'getrennt', 'port.testing': 'Test', 'port.dormant': 'ruht', 'port.notPresent': 'fehlt', 'port.lowerLayerDown': 'getrennt', 'port.unknown': 'unbekannt',
+  'port.adminDown': 'Am Switch abgeschaltet.', 'port.errors': '{n} Empfangsfehler', 'port.noMacs': 'Keine Geräte an diesem Port gesehen.', 'port.unknownDevice': 'nicht im Inventar',
+  'nas.panel': 'NAS', 'nas.raids': 'Speicherpools / RAID', 'nas.disks': 'Festplatten', 'nas.free': '{free} frei von {total}', 'nas.version': 'Version', 'nas.upgrade': 'Update verfügbar',
+  'nas.temp': 'Temperatur', 'nas.system': 'System', 'nas.power': 'Netzteil', 'nas.fan': 'Lüfter', 'nas.problems': 'NAS-Probleme',
+  'nas.st.normal': 'in Ordnung', 'nas.st.failed': 'gestört', 'nas.st.degrade': 'eingeschränkt', 'nas.st.crashed': 'ausgefallen', 'nas.st.repairing': 'wird repariert',
+  'nas.st.systemPartitionFailed': 'Systempartition defekt', 'nas.st.rwError': 'Lese-/Schreibfehler', 'nas.st.invalid': 'ungültig', 'nas.st.raidSyncing': 'synchronisiert',
+  'nas.k.system': 'System', 'nas.k.power': 'Netzteil', 'nas.k.fan': 'Lüfter', 'nas.k.raid': 'RAID', 'nas.k.disk': 'Festplatte', 'nas.k.volume': 'Volume voll',
+  'nas.volumeFull': '{name} zu {pct} % voll',
 };
 
 const en = {
@@ -391,6 +407,22 @@ const en = {
   'sup.transferUnit': 'Transfer unit', 'sup.tonerCartridge': 'Toner cartridge', 'sup.fuserOiler': 'Fuser oiler', 'sup.water': 'Water', 'sup.wasteWater': 'Waste water',
   'sup.bandingSupply': 'Banding', 'sup.bindingSupply': 'Binding', 'sup.staples': 'Staples', 'sup.other': 'Supply',
   'sup.full': 'full', 'sup.empty': 'empty', 'sup.freePct': '{pct} % free', 'sup.some': 'available', 'sup.unknown': 'unknown',
+  // Switches, NAS
+  'set.snmpdev': 'Switches & NAS', 'snmpd.lead': 'Devices of type switch and NAS are queried via SNMP at regular intervals (read-only). Switches: ports, which devices are plugged into which port, neighbours (LLDP), firmware. NAS: volumes, disks, RAID, temperature.',
+  'snmpd.enabled': 'Query switches and NAS regularly', 'snmpd.interval': 'Interval (minutes)', 'snmpd.threshold': 'Volume full at (%)',
+  'snmpd.notify': 'Report NAS problems', 'snmpd.notifyHint': 'Disk or RAID failing, volume full, fan, power supply – once when it happens and once when it is fine again.',
+  'snmp.err.snmp': 'The device does not answer SNMP. Is SNMP switched on and is the community right (Settings → Scan)? Showing the last known state.',
+  'snmp.err.noIfMib': 'The device answers SNMP but gives no port data.', 'snmp.err.noNasMib': 'The device answers SNMP but gives no storage data.',
+  'sw.panel': 'Switch', 'sw.summary': '{up} of {n} ports connected – click a port for details.', 'sw.neighbours': 'Neighbours (LLDP)', 'sw.firmware': 'Firmware',
+  'sw.descr': 'Description', 'sw.plugged': 'Plugged in at', 'sw.port': 'port', 'sw.pluggedUplink': '{n} devices are on this port – probably another switch or access point in between.',
+  'port.up': 'connected', 'port.down': 'disconnected', 'port.testing': 'testing', 'port.dormant': 'dormant', 'port.notPresent': 'not present', 'port.lowerLayerDown': 'disconnected', 'port.unknown': 'unknown',
+  'port.adminDown': 'Switched off at the switch.', 'port.errors': '{n} receive errors', 'port.noMacs': 'No devices seen on this port.', 'port.unknownDevice': 'not in the inventory',
+  'nas.panel': 'NAS', 'nas.raids': 'Storage pools / RAID', 'nas.disks': 'Disks', 'nas.free': '{free} free of {total}', 'nas.version': 'Version', 'nas.upgrade': 'Update available',
+  'nas.temp': 'Temperature', 'nas.system': 'System', 'nas.power': 'Power supply', 'nas.fan': 'Fan', 'nas.problems': 'NAS problems',
+  'nas.st.normal': 'normal', 'nas.st.failed': 'failed', 'nas.st.degrade': 'degraded', 'nas.st.crashed': 'crashed', 'nas.st.repairing': 'repairing',
+  'nas.st.systemPartitionFailed': 'system partition failed', 'nas.st.rwError': 'read/write error', 'nas.st.invalid': 'invalid', 'nas.st.raidSyncing': 'syncing',
+  'nas.k.system': 'System', 'nas.k.power': 'Power', 'nas.k.fan': 'Fan', 'nas.k.raid': 'RAID', 'nas.k.disk': 'Disk', 'nas.k.volume': 'Volume full',
+  'nas.volumeFull': '{name} is {pct} % full',
 };
 
 let lang = 'de';
