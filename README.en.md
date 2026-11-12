@@ -155,6 +155,14 @@ ARP – and so the MAC address – is only visible inside the own network. For a
 
 The agent has no web interface and opens no port. It asks the central server for jobs every minute (HTTPS; with the self-signed certificate it trusts exactly this one certificate – checked before the key is sent. When the certificate is renewed, the agent needs the new value), scans there just as gently and follows the time of the nightly light scan. It may only report addresses from the subnets of its location. "Start scan" for that location is handed to the agent automatically; the results show up under *Earlier scans* as usual.
 
+## Proxmox VE and Backup Server (from version 0.4)
+
+Under *Settings → Proxmox* WhatsOnMyNet reads Proxmox VE and Proxmox Backup Server through their built-in API – nothing is installed there. An API token with read rights is enough (VE: role *PVEAuditor* on `/`, Backup Server: role *Audit*); the secret is stored encrypted. For the self-signed certificate enter `/etc/pve/pve-root-ca.pem` or `/etc/proxmox-backup/proxy.pem`, then exactly this certificate is trusted.
+
+- **VE**: nodes (online, CPU, RAM), storage with usage, VMs and containers (running/stopped), the latest backups (vzdump) with errors
+- **Backup Server**: datastores with usage, backup groups with the age of their last backup, failed tasks (verify, GC …)
+- **Sensors** such as "node online", "storage local-zfs above 85 %", "VM 101 running", "last backup of VM 101 older than 26 hours", "datastore above 85 %" or "failed tasks"
+
 ## Planned reports (from version 0.4)
 
 Under *Settings → Reports* WhatsOnMyNet sends reports by e-mail at set times – e.g. the toner levels of all printers to the office every Monday at 8:00, or the state of the NAS once a month.
