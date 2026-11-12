@@ -136,3 +136,17 @@ test('API requests are rate-limited per address', async () => {
   assert.match((await last.json()).error.message, /Zu viele Anfragen|Too many requests/);
   await other.close();
 });
+
+test('bulk edit and bulk delete need the editor role', async () => {
+  const a = (await call('POST', '/api/devices', { name: 'Bulk A', vendor: 'HP', model: 'M404' }, { who: 'editor' })).data;
+  const b = (await call('POST', '/api/devices', { name: 'Bulk B' }, { who: 'editor' })).data;
+  assert.equal((await call('POST', '/api/devices/bulk', { ids: [a.id, b.id], set: { owner: 'IT' } }, { who: 'viewer' })).status, 403);
+  const r = await call('POST', '/api/devices/bulk', { ids: [a.id, b.id], set: { owner: 'IT' }, tagsAdd: ['EG'] }, { who: 'editor' });
+  assert.equal(r.data.updated, 2);
+  assert.equal((await call('GET', `/api/devices/${b.id}`)).data.tags, 'EG');
+  const s = (await call('GET', '/api/devices/suggestions', undefined, { who: 'viewer' })).data;
+  assert.ok(s.owner.includes('IT'));
+  assert.deepEqual(s.models.m404, { vendor: 'HP', type: 'unknown' });
+  assert.equal((await call('POST', '/api/devices/bulk-delete', { ids: [a.id, b.id] }, { who: 'viewer' })).status, 403);
+  assert.equal((await call('POST', '/api/devices/bulk-delete', { ids: [a.id, b.id] }, { who: 'editor' })).data.deleted, 2);
+});
