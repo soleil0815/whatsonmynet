@@ -125,9 +125,12 @@ export async function renderDevice(main, id) {
 
   const monPanel = h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('mon.device')),
-      edit && d.ip ? btn(t('mon.watch'), { class: 'btn btn-sm', onclick: async () => {
-        try { const preset = await get(`/monitors/suggest/${d.id}`); openMonitorForm(null, () => renderDevice(main, id), preset); } catch (e) { fail(e); }
-      } }, 'pulse') : null),
+      h('div', { class: 'actions' },
+        edit && ['printer', 'nas', 'switch'].includes(d.type) ? btn(t('sens.add'), { class: 'btn btn-sm btn-ghost', onclick: () =>
+          openMonitorForm(null, () => renderDevice(main, id), { type: 'sensor', device_id: d.id, name: `${d.name} – Sensor`, interval_s: 300, fail_threshold: 1 }) }, 'plus') : null,
+        edit && d.ip ? btn(t('mon.watch'), { class: 'btn btn-sm', onclick: async () => {
+          try { const preset = await get(`/monitors/suggest/${d.id}`); openMonitorForm(null, () => renderDevice(main, id), preset); } catch (e) { fail(e); }
+        } }, 'pulse') : null)),
     d.monitors?.length ? h('div', { class: 'history-list' }, d.monitors.map((m) => h('button', { type: 'button', onclick: () => navigate(`/monitoring/${m.id}`) },
       h('span', {}, monitorDot(m.status), ' ', h('strong', {}, m.name), h('span', { class: 'muted small mono', style: { display: 'block' } }, `${t(`mon.type.${m.type}`)} · ${m.type === 'tcp' ? `${m.target}:${m.port}` : m.target}`)),
       statusPill(m.status))))
