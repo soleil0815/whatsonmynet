@@ -12,7 +12,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY docker/prune-modules.sh /tmp/prune-modules.sh
 RUN sh /tmp/prune-modules.sh /app/node_modules \
  && node -e "const D=require('better-sqlite3');console.log('SQLite',new D(':memory:').prepare('select sqlite_version() v').get().v)" \
- && node -e "require('mysql2/promise');require('pg');require('net-snmp');console.log('drivers ok')"
+ && node -e "require('mysql2/promise');require('pg');require('net-snmp');require('ldapts');console.log('drivers ok')"
 
 FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
 ARG VERSION=dev

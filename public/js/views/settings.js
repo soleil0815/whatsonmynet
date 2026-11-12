@@ -7,7 +7,7 @@ import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
 
 const SECTIONS = [
-  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'],
+  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'], ['ad', 'user'],
   ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
 ];
 
@@ -22,7 +22,7 @@ export async function renderSettings(main, section = 'general') {
         class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, ad, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
@@ -301,11 +301,13 @@ async function users(body, _s, reload) {
   const list = await get('/users');
   const roleSel = (v) => select('role', ['admin', 'editor', 'viewer'].map((r) => [r, `${t(`role.${r}`)} – ${t(`role.${r}.hint`)}`]), v);
   const edit = (u) => {
+    const fromAd = u?.source === 'ldap';
     const form = h('form', { class: 'form' },
       u ? null : field(t('user.username'), input('username', '', { required: true, autocomplete: 'off' })),
-      field(t('user.display'), input('display_name', u?.display_name || '')),
-      field(t('user.email'), input('email', u?.email || '', { type: 'email' })),
-      field(t('user.role'), roleSel(u?.role || 'editor')),
+      fromAd ? h('p', { class: 'note' }, t('users.adManaged')) : null,
+      fromAd ? null : field(t('user.display'), input('display_name', u?.display_name || '')),
+      fromAd ? null : field(t('user.email'), input('email', u?.email || '', { type: 'email' })),
+      fromAd ? null : field(t('user.role'), roleSel(u?.role || 'editor')),
       u ? field(t('user.active'), h('input', { type: 'checkbox', name: 'active', checked: !!u.active })) : field(t('user.password'), input('password', '', { type: 'password', required: true, minlength: 10, autocomplete: 'new-password' }), t('user.passwordHint')),
       field(t('language'), select('language', [['de', 'Deutsch'], ['en', 'English']], u?.language || getLang())));
     const m = modal(u ? u.username : t('users.add'), form, { actions: [
@@ -329,18 +331,71 @@ async function users(body, _s, reload) {
       h('thead', {}, h('tr', {}, h('th', {}, t('user.username')), h('th', {}, t('user.role')), h('th', { class: 'hide-sm' }, t('user.email')), h('th', { class: 'hide-sm' }, t('user.lastLogin')), h('th', {}))),
       h('tbody', {}, list.map((u) => h('tr', {},
         h('td', {}, h('span', { class: 'name' }, u.username), u.id === state.user.id ? h('span', { class: 'muted small' }, ` (${t('users.you')})`) : null,
+          u.source === 'ldap' ? h('span', { class: 'badge', style: { marginLeft: '6px' }, title: t('users.adManaged') }, 'AD') : null,
           u.display_name ? h('div', { class: 'sub' }, u.display_name) : null),
         h('td', {}, t(`role.${u.role}`), u.active ? null : h('span', { class: 'badge badge-bad', style: { marginLeft: '6px' } }, t('user.inactive'))),
         h('td', { class: 'hide-sm' }, u.email || '–'),
         h('td', { class: 'hide-sm' }, fmtDate(u.last_login, getLang())),
         h('td', { class: 'min' }, h('div', { class: 'actions' },
           btn(t('edit'), { class: 'btn btn-sm', onclick: () => edit(u) }),
-          btn(t('users.resetPassword'), { class: 'btn btn-sm btn-ghost', onclick: () => setPw(u) }),
+          u.source === 'ldap' ? null : btn(t('users.resetPassword'), { class: 'btn btn-sm btn-ghost', onclick: () => setPw(u) }),
           u.id !== state.user.id ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${u.username}`, html: icon('trash'), onclick: async () => {
             if (!await confirmDialog(t('delete'), t('users.deleteConfirm', { name: u.username }), t('delete'), t('cancel'), { danger: true })) return;
             try { await del(`/users/${u.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
           } }) : null))))))),
-    h('p', { class: 'panel-pad muted small', style: { margin: 0 } }, t('users.adLater'))));
+    h('p', { class: 'panel-pad muted small', style: { margin: 0 } }, t('users.adHint'), ' ', h('a', { href: '/settings/ad', 'data-link': true }, t('set.ad')))));
+}
+
+async function ad(body, _s, reload) {
+  const c = await get('/settings/ad');
+  const form = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    const d = formData(form);
+    const payload = { ...d, verify: d.verify, nested: d.nested };
+    if (!d.bindPassword) delete payload.bindPassword;
+    try { await put('/settings/ad', payload); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
+  } },
+  h('p', { class: 'muted' }, t('ad.lead')),
+  field(t('ad.enabled'), h('input', { type: 'checkbox', name: 'enabled', checked: c.enabled })),
+  h('div', { class: 'form-grid' },
+    field(t('ad.url'), input('url', c.url, { class: 'mono', placeholder: 'ldaps://dc01.firma.local' }), t('ad.urlHint')),
+    field(t('ad.baseDn'), input('baseDn', c.baseDn, { class: 'mono', placeholder: 'DC=firma,DC=local' })),
+    field(t('ad.bindDn'), input('bindDn', c.bindDn, { class: 'mono', autocomplete: 'off', placeholder: 'svc-womn@firma.local' }), t('ad.bindDnHint')),
+    field(t('ad.bindPassword'), input('bindPassword', '', { type: 'password', autocomplete: 'new-password', placeholder: c.bindPassword.set ? '••••••' : '' }), c.bindPassword.set ? t('set.smtpPasswordSet') : null)),
+  field(t('ad.startTls'), h('input', { type: 'checkbox', name: 'startTls', checked: c.startTls }), t('ad.startTlsHint')),
+  field(t('ad.verify'), h('input', { type: 'checkbox', name: 'verify', checked: c.verify }), t('ad.verifyHint')),
+  field(t('ad.ca'), h('textarea', { name: 'ca', rows: 4, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false' }, c.ca || ''), t('ad.caHint')),
+  h('h3', { class: 'sub-title' }, t('ad.groups')),
+  h('p', { class: 'muted small', style: { marginTop: 0 } }, t('ad.groupsHint')),
+  field(t('role.admin'), input('groupAdmin', c.groupAdmin, { class: 'mono', placeholder: 'CN=WOMN-Admins,OU=Gruppen,DC=firma,DC=local' })),
+  field(t('role.editor'), input('groupEditor', c.groupEditor, { class: 'mono', placeholder: 'CN=WOMN-Bearbeiter,OU=Gruppen,DC=firma,DC=local' })),
+  field(t('role.viewer'), input('groupViewer', c.groupViewer, { class: 'mono', placeholder: 'CN=WOMN-Lesen,OU=Gruppen,DC=firma,DC=local' })),
+  field(t('ad.nested'), h('input', { type: 'checkbox', name: 'nested', checked: c.nested })),
+  field(t('ad.filter'), input('userFilter', c.userFilter, { class: 'mono', placeholder: c.defaultFilter }), t('ad.filterHint')),
+  saveBtn());
+
+  const out = h('div');
+  const tu = input('username', '', { autocomplete: 'off', placeholder: 'max.mustermann' });
+  const tp = input('password', '', { type: 'password', autocomplete: 'off' });
+  const test = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    const b = test.querySelector('button[type=submit]'); b.disabled = true;
+    try {
+      const r = await post('/settings/ad/test', { username: tu.value, password: tp.value });
+      mount(out, h('dl', { class: 'kv' },
+        h('dt', {}, 'DN'), h('dd', { class: 'mono small' }, r.dn),
+        h('dt', {}, t('user.display')), h('dd', {}, r.display_name || '–'),
+        h('dt', {}, t('user.email')), h('dd', {}, r.email || '–'),
+        h('dt', {}, t('user.role')), h('dd', {}, r.role ? h('span', { class: 'badge badge-ok' }, t(`role.${r.role}`)) : h('span', { class: 'badge badge-bad' }, t('ad.noRole'))),
+        h('dt', {}, t('ad.password')), h('dd', {}, r.passwordChecked ? t('ad.passwordOk') : t('ad.passwordSkipped')),
+        h('dt', {}, t('ad.foundGroups')), h('dd', { class: 'mono small' }, r.groups.length ? r.groups.map((g) => h('div', {}, g)) : '–')));
+    } catch (ex) { mount(out); fail(ex); }
+    b.disabled = false;
+  } },
+  h('p', { class: 'muted', style: { marginTop: 0 } }, t('ad.testLead')),
+  h('div', { class: 'form-grid' }, field(t('user.username'), tu), field(t('ad.testPassword'), tp, t('ad.testPasswordHint'))),
+  h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'submit' }, t('ad.test'))), out);
+  mount(body, panel(t('set.ad'), form), panel(t('ad.test'), test));
 }
 
 async function ignored(body, _s, reload) {
