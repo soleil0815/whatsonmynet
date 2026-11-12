@@ -30,7 +30,7 @@ export async function renderDashboard(main) {
     h('h2', {}, t('dash.byType')),
     types.length
       ? h('div', { class: 'typegrid' }, types.map(([type, n]) => h('a', { href: `/inventory?type=${encodeURIComponent(type)}`, 'data-link': true, class: TI.has(type) ? 'ti' : '' },
-        h('span', { html: icon(type) }), t(`type.${type}`), h('b', {}, n))))
+        h('span', { html: icon(type) }), h('span', { class: 'lbl' }, t(`type.${type}`)), h('b', {}, n))))
       : h('div', { class: 'empty' },
         h('h2', {}, t('dash.emptyTitle')), h('p', {}, t('dash.emptyText')), d.lastScan ? null : scanBtn));
 
