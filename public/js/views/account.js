@@ -42,5 +42,6 @@ export async function renderAccount(main) {
     pageHead(t('acc.title'), `${t(`role.${u.role}`)} – ${t(`role.${u.role}.hint`)}`),
     h('div', { class: 'device-grid' },
       h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('acc.profile')), profile),
-      h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('acc.password')), pw))));
+      h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('acc.password')),
+        u.source === 'ldap' ? h('p', { class: 'muted', style: { margin: 0 } }, t('acc.adPassword')) : pw))));
 }

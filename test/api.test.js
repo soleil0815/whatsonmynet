@@ -167,3 +167,31 @@ test('light scan and printer settings', async () => {
   assert.equal((await call('POST', `/api/devices/${d.id}/printer`, {}, { who: 'editor' })).status, 404);
   assert.equal((await call('POST', '/api/lightscan/run', {}, { who: 'viewer' })).status, 403);
 });
+
+test('sign-in through the directory', async () => {
+  const realVerify = app.ctx.directory.verify;
+  const realEnabled = app.ctx.directory.enabled;
+  app.ctx.directory.enabled = () => true;
+  app.ctx.directory.verify = async (name, pw) => {
+    if (pw !== 'Richtig-1234') throw Object.assign(new Error('x'), { status: 401 });
+    if (name === 'ohnegruppe') return { username: 'ohnegruppe', role: null, dn: 'CN=x', groups: [] };
+    return { username: 'erika', display_name: 'Erika AD', email: 'erika@firma.local', role: 'editor', dn: 'CN=Erika', groups: [] };
+  };
+  try {
+    const ok = await call('POST', '/api/login', { username: 'FIRMA\\erika', password: 'Richtig-1234' }, { who: 'ad' });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.data.user.source, 'ldap');
+    assert.equal(ok.data.user.canEdit, true);
+    assert.equal((await call('POST', '/api/me/password', { current: 'x', password: 'Neues-Passwort-1' }, { who: 'ad' })).status, 400);
+    assert.equal((await call('POST', '/api/login', { username: 'erika', password: 'falsch' }, { who: 'ad2' })).status, 401);
+    assert.equal((await call('POST', '/api/login', { username: 'ohnegruppe', password: 'Richtig-1234' }, { who: 'ad3' })).status, 403);
+    // a local account is never checked against the directory
+    let asked = false;
+    app.ctx.directory.verify = async () => { asked = true; throw Object.assign(new Error('x'), { status: 401 }); };
+    assert.equal((await call('POST', '/api/login', { username: 'bearbeiter', password: 'falsch' }, { who: 'ad4' })).status, 401);
+    assert.equal(asked, false);
+  } finally {
+    app.ctx.directory.verify = realVerify;
+    app.ctx.directory.enabled = realEnabled;
+  }
+});

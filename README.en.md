@@ -118,6 +118,16 @@ WhatsOnMyNet runs without root. Ping then only works if the host allows ICMP for
 
 By default the scan asks devices with the community `public` (SNMP v2c, else v1) for name, description and vendor ID – read-only. Own communities go under *Settings → Scan*; they are stored encrypted. Devices without SNMP (e.g. simple TP-Link switches) are still recognised, just with fewer details.
 
+## Sign-in with Active Directory (from version 0.3)
+
+Under *Settings → Active Directory* users sign in with their Windows account:
+
+- Encrypted connections only: `ldaps://dc01.example.local` (port 636) or `ldap://` with StartTLS. The certificate of the domain controller is checked; the certificate of your company CA can be entered as PEM.
+- A **service account without special rights** finds the account, the domain controller itself checks the password – WhatsOnMyNet never stores it.
+- **Roles by group**: one group each for administrator, editor and read-only (full DN, nested groups included). Members of none cannot sign in. Name, e-mail and role are taken from AD at every sign-in.
+- Local accounts keep working; for the same name the **local account always wins** – so the local admin stays the emergency access.
+- "Test connection" shows the groups found for an account and the role it would get.
+
 ## HTTPS and certificate
 
 - On first start WhatsOnMyNet creates a self-signed certificate for the host name, `localhost`, all IPv4 addresses of the host and the address in `WOMN_BASE_URL`. It is renewed automatically 30 days before it expires.
@@ -165,7 +175,7 @@ docker compose exec whatsonmynet womn-admin create <user>   # new administrator
 | Version | Content |
 | --- | --- |
 | 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), ~~nightly light scan with notice of unknown devices~~, ~~printer data via SNMP~~, ~~Docker and database monitoring~~ (from 0.3) |
-| 3 | Active Directory (LDAPS), roles per location/subnet |
+| 3 | ~~Active Directory (LDAPS)~~ (from 0.3), roles per location/subnet |
 | later | Scan agent for branch offices, topology via LLDP/CDP, MAC addresses of remote subnets via SNMP from the router |
 
 ## License
