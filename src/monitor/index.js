@@ -4,6 +4,8 @@ import { HttpError, line, str, int, ids } from '../lib/http.js';
 import { isIPv4 } from '../lib/net.js';
 import { log } from '../lib/log.js';
 import { runCheck, validStatusSpec } from './checks.js';
+import { CONTAINER_NAME, DEFAULT_PORTS } from './services.js';
+import { encrypt, decrypt } from '../lib/crypto.js';
 import { pingAvailable } from '../scan/probes.js';
 import { bestWebUrl } from '../scan/engine.js';
 
@@ -32,7 +34,14 @@ export function certStep(days, thresholds) {
   return fit.length ? Math.min(...fit) : null;
 }
 
+export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis'];
+const DB_TYPES = ['mysql', 'postgres', 'redis'];
+
 export function createMonitoring({ db, channels, maintenance, now = () => new Date() }) {
+  const checkCtx = {
+    dockerUrl: (id) => (id ? db.prepare('SELECT url FROM docker_hosts WHERE id=?').get(id)?.url : null),
+    secret: (m) => { if (!m.secret) return ''; try { return decrypt(m.secret); } catch { return ''; } },
+  };
   const nextRun = new Map();
   const running = new Set();
   let timer = null;
@@ -40,7 +49,7 @@ export function createMonitoring({ db, channels, maintenance, now = () => new Da
   // ---------------------------------------------------------------------------------------------------- input
   async function clean(input, old = null) {
     const type = old ? (input.type ?? old.type) : input.type;
-    if (!['ping', 'tcp', 'http'].includes(type)) throw new HttpError(400, 'err.monitorType');
+    if (!MONITOR_TYPES.includes(type)) throw new HttpError(400, 'err.monitorType');
     const v = {
       name: line(input.name ?? old?.name, 120),
       type,
@@ -60,7 +69,35 @@ export function createMonitoring({ db, channels, maintenance, now = () => new Da
     v.timeout_s = Math.min(v.timeout_s, v.interval_s - 1);
     for (const c of parse(v.channels, [])) if (!db.prepare('SELECT 1 FROM channels WHERE id=?').get(c)) throw new HttpError(400, 'err.channel');
     const target = line(input.target ?? old?.target, 1000);
-    if (type === 'http') {
+    v.docker_host_id = null;
+    v.options = '{}';
+    if (!DB_TYPES.includes(type)) v.secret = '';
+    if (type === 'docker') {
+      if (!CONTAINER_NAME.test(target)) throw new HttpError(400, 'err.container');
+      const hostId = int(String(input.docker_host_id ?? old?.docker_host_id ?? ''));
+      if (!hostId || !db.prepare('SELECT 1 FROM docker_hosts WHERE id=?').get(hostId)) throw new HttpError(400, 'err.dockerHost');
+      v.target = target;
+      v.docker_host_id = hostId;
+      v.port = null;
+    } else if (DB_TYPES.includes(type)) {
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      v.target = target.toLowerCase();
+      const p = int(String(input.port ?? old?.port ?? '')) || DEFAULT_PORTS[type];
+      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+      v.port = p;
+      const oldOpts = old && old.type === type ? parse(old.options, {}) : {};
+      const o = input.options && typeof input.options === 'object' ? input.options : {};
+      v.options = JSON.stringify({
+        user: line(o.user ?? oldOpts.user ?? '', 120),
+        database: type === 'redis' ? '' : line(o.database ?? oldOpts.database ?? '', 120),
+        tls: !!(o.tls ?? oldOpts.tls),
+      });
+      // Password: only replaced when a new one is sent; kept otherwise (never sent back to the browser)
+      if (typeof input.password === 'string' && input.password !== '') v.secret = encrypt(input.password.slice(0, 512));
+      else if (input.clearPassword) v.secret = '';
+      else if (old && old.type === type) v.secret = old.secret || '';
+      else v.secret = '';
+    } else if (type === 'http') {
       let u;
       try { u = new URL(target); } catch { throw new HttpError(400, 'err.url'); }
       if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw new HttpError(400, 'err.url');
@@ -117,7 +154,7 @@ export function createMonitoring({ db, channels, maintenance, now = () => new Da
     const v = await clean(input, old);
     const keys = Object.keys(v);
     db.prepare(`UPDATE monitors SET ${keys.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...keys.map((k) => v[k]), iso(), id);
-    if (v.target !== old.target || v.type !== old.type || v.port !== old.port) {
+    if (v.target !== old.target || v.type !== old.type || v.port !== old.port || v.docker_host_id !== old.docker_host_id) {
       db.prepare("UPDATE monitors SET status='pending', status_since=?, fail_count=0, cert_valid_to=NULL, cert_alert_days=NULL WHERE id=?").run(iso(), id);
     }
     nextRun.set(id, 0);
@@ -147,7 +184,10 @@ export function createMonitoring({ db, channels, maintenance, now = () => new Da
   function shape(m) {
     if (!m) return null;
     const certDays = m.cert_valid_to ? Math.floor((Date.parse(m.cert_valid_to) - now().getTime()) / 86400000) : null;
-    return { ...m, channels: parse(m.channels, []), enabled: !!m.enabled, tls_verify: !!m.tls_verify, cert_check: !!m.cert_check, cert_days_left: certDays };
+    const { secret, ...rest } = m;
+    return { ...rest, channels: parse(m.channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
+      cert_check: !!m.cert_check, cert_days_left: certDays,
+      docker_host: m.docker_host_id ? db.prepare('SELECT id, name FROM docker_hosts WHERE id=?').get(m.docker_host_id) || null : null };
   }
 
   function get(id) { return shape(db.prepare('SELECT * FROM monitors WHERE id=?').get(id)); }
@@ -219,7 +259,7 @@ export function createMonitoring({ db, channels, maintenance, now = () => new Da
     if (running.has(m.id)) return;
     running.add(m.id);
     try {
-      const res = await runCheck(m);
+      const res = await runCheck(m, checkCtx);
       await record(m, res);
     } catch (e) {
       log.warn(`Monitor ${m.id} (${m.name}): ${e.message}`);
