@@ -54,6 +54,7 @@ export function bestWebUrl(ip, facts = {}, type = '') {
 
 export function createScanner({ db, settings, inventory }) {
   const running = new Map(); // scanId → progress
+  const finishedHooks = [];
 
   const insertScan = db.prepare('INSERT INTO scans(kind,status,targets,started_at,user) VALUES(?,?,?,?,?)');
   const finishScan = db.prepare('UPDATE scans SET status=?, finished_at=?, stats=?, error=? WHERE id=?');
@@ -201,6 +202,50 @@ export function createScanner({ db, settings, inventory }) {
     return { found: all.length, ping: ctx.ping };
   }
 
+  /**
+   * Light scan (nightly): only finds the devices – ARP/NetBIOS/ping, plus the name from DNS. No port checks, no SNMP,
+   * no web requests. Known devices get their new IP, unknown ones land in the scan result for the admin.
+   */
+  async function runLight(scanId, targets) {
+    const ctx = {
+      limiter: createRateLimiter(Math.min(settings.get('scan.rate'), 40)),
+      progress: running.get(scanId),
+      stopped: () => running.get(scanId)?.cancelled,
+      ping: await pingAvailable(),
+    };
+    ctx.progress.pingAvailable = ctx.ping;
+    const gateways = new Set(defaultGateways());
+    const all = [];
+    for (const t of targets) {
+      if (ctx.stopped()) break;
+      const { hosts } = await discover(t, ctx);
+      for (const h of hosts) all.push({ ...h, target: t });
+    }
+    ctx.progress.phase = 'probe';
+    ctx.progress.hosts = all.length;
+    await pool(all, 16, async (h) => {
+      if (ctx.stopped()) return;
+      const macFinal = normalizeMac(h.mac) || normalizeMac(h.nb?.mac) || null;
+      const v = lookupVendor(macFinal);
+      const rdns = await reverseDns(h.ip);
+      const facts = { light: true, vendorFull: v.vendorFull, randomMac: v.random, isGateway: gateways.has(h.ip), isSelf: !!h.isSelf,
+        macSource: h.mac ? 'arp' : h.nb?.mac ? 'netbios' : '', ttl: h.pingRes?.ttl || null };
+      if (h.nb && (h.nb.name || h.nb.domain)) facts.netbios = { name: h.nb.name, domain: h.nb.domain };
+      const c = classify({ ports: [], http: [], ...facts, rdns, vendor: v.vendor, mac: macFinal, random: v.random });
+      facts.classification = { type: c.type, confidence: c.confidence, reasons: c.reasons, os: c.os, model: c.model };
+      const hostname = rdns || h.nb?.name || (h.isSelf ? os.hostname() : '');
+      const row = { scan_id: scanId, ip: h.ip, mac: macFinal, vendor: v.vendor, hostname, detected_type: c.type, confidence: c.confidence,
+        facts: JSON.stringify(facts), location_id: h.target.locationId };
+      try {
+        inventory.applyResult(insertResult.run(row).lastInsertRowid);
+      } catch (e) { log.warn(`Light scan: ${h.ip} failed: ${e.message}`); }
+      ctx.progress.probed++;
+      ctx.progress.recent.push({ ip: h.ip, type: c.type });
+      if (ctx.progress.recent.length > 40) ctx.progress.recent.shift();
+    }, ctx.stopped);
+    return { found: all.length, ping: ctx.ping };
+  }
+
   async function runDeep(scanId, device) {
     const facts = JSON.parse(device.facts || '{}');
     const telematik = isTelematik(device.type) || isTelematik(facts.classification?.type);
@@ -237,6 +282,9 @@ export function createScanner({ db, settings, inventory }) {
       finishScan.run(status, new Date().toISOString(), JSON.stringify(stats), error, id);
       inventory.finishScan(id);
       p.finished = true; p.phase = status;
+      for (const fn of finishedHooks) {
+        try { await fn({ id, kind, status }); } catch (e) { log.warn(`After scan ${id}: ${e.message}`); }
+      }
       log.info(`Scan ${id} (${kind}) ${status}: ${p.probed} device(s) in ${Math.round(stats.durationMs / 1000)} s`);
       setTimeout(() => running.delete(id), 10 * 60 * 1000).unref();
       pruneOld();
@@ -247,6 +295,7 @@ export function createScanner({ db, settings, inventory }) {
   function pruneOld() {
     const keep = Math.max(3, Math.min(500, Number(settings.get('scan.keepScans')) || 20));
     db.prepare(`DELETE FROM scans WHERE kind='network' AND status<>'running' AND id NOT IN (SELECT id FROM scans WHERE kind='network' ORDER BY id DESC LIMIT ?)`).run(keep);
+    db.prepare(`DELETE FROM scans WHERE kind='light' AND status<>'running' AND id NOT IN (SELECT id FROM scans WHERE kind='light' ORDER BY id DESC LIMIT 14)`).run();
     db.prepare(`DELETE FROM scans WHERE kind='deep' AND status<>'running' AND id NOT IN (SELECT id FROM scans WHERE kind='deep' ORDER BY id DESC LIMIT 50)`).run();
   }
 
@@ -255,6 +304,12 @@ export function createScanner({ db, settings, inventory }) {
       const list = validateTargets(targets);
       return launch('network', list, user, (id) => runNetwork(id, list));
     },
+    startLight(targets, user) {
+      const list = validateTargets(targets);
+      return launch('light', list, user, (id) => runLight(id, list));
+    },
+    /** fn({ id, kind, status }) runs after every scan */
+    onFinished(fn) { finishedHooks.push(fn); },
     startDeep(device, user) {
       if (!device.ip) throw new HttpError(400, 'err.noIp');
       return launch('deep', [{ cidr: `${device.ip}/32`, deviceId: device.id }], user, (id) => runDeep(id, device));

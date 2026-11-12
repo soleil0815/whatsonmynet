@@ -96,3 +96,15 @@ export function tagChips(input, tags, max = 14) {
     input.dispatchEvent(new Event('input'));
   } }, `+ ${tg}`)));
 }
+
+/** Checkboxes for notification channels. Nothing ticked = the default channels. Returns { el, value() } */
+export function channelPicker(chans, selectedIds = []) {
+  const sel = new Set(selectedIds || []);
+  const boxes = chans.map((c) => [c.id, h('input', { type: 'checkbox', checked: sel.has(c.id) })]);
+  const el = chans.length ? h('div', { class: 'field' }, t('mon.f.channels'),
+    h('div', { class: 'chips' }, chans.map((c, i) => h('label', { class: 'check', style: { marginRight: '14px' } }, boxes[i][1],
+      `${c.name}${c.is_default ? ` (${t('mon.f.default')})` : ''}`))),
+    h('span', { class: 'hint' }, t('mon.f.channelsHint')))
+    : h('p', { class: 'muted small' }, t('mon.f.noChannelsAdmin'));
+  return { el, value: () => boxes.filter(([, b]) => b.checked).map(([id]) => id) };
+}

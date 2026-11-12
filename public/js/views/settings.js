@@ -4,10 +4,10 @@ import { get, put, post, patch, del } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
-import { pageHead, field, input, select, formData, btn } from './common.js';
+import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
 
 const SECTIONS = [
-  ['general', 'settings'], ['scan', 'radar'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'],
+  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'],
   ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
 ];
 
@@ -21,8 +21,8 @@ export async function renderSettings(main, section = 'general') {
       h('nav', { class: 'subnav', 'aria-label': t('set.title') }, SECTIONS.map(([s, ico]) => h('a', { href: `/settings/${s}`, 'data-link': true,
         class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
       body)));
-  const all = ['general', 'scan', 'smtp'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, smtp, notify, https, users, ignored, audit, about }[section];
+  const all = ['general', 'scan', 'smtp', 'printers'].includes(section) ? await get('/settings') : null;
+  const view = { general, scan, printers, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
@@ -66,8 +66,62 @@ async function scan(body, s) {
     field(t('set.keepScans'), input('keepScans', sc.keepScans, { type: 'number', min: 3, max: 500 }))),
   saveBtn());
   const ports = state.meta?.gentlePorts || [];
-  mount(body, panel(t('set.scan'), form),
+  mount(body, panel(t('set.scan'), form), await lightPanel(s.lightscan),
     panel(t('set.ports'), h('div', { class: 'ports' }, ports.map((p) => h('span', { class: 'port', title: state.meta.services[p] || '' }, `${p} ${state.meta.services[p] ? `· ${state.meta.services[p]}` : ''}`)))));
+}
+
+async function loadChannels() {
+  try { return await get('/channels'); } catch { return []; }
+}
+
+/** Nightly light scan: time, notice about unknown devices, start now */
+async function lightPanel(ls) {
+  const chans = await loadChannels();
+  const picker = channelPicker(chans, ls.channels);
+  const last = ls.last;
+  const lastLine = last
+    ? h('p', { class: 'muted small' }, t('light.last', { when: fmtDate(last.finished_at || last.started_at, getLang()), status: t(`scan.phase.${last.status === 'running' ? 'discover' : last.status}`) }), ' ',
+      h('a', { href: `/scan/${last.id}`, 'data-link': true }, t('light.open')))
+    : h('p', { class: 'muted small' }, t('light.never'));
+  const form = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    const d = formData(form);
+    try { await put('/settings/lightscan', { enabled: d.enabled, time: d.time, notify: d.notify, channels: picker.value() }); toast(t('saved')); } catch (ex) { fail(ex); }
+  } },
+  h('p', { class: 'muted' }, t('light.lead')),
+  field(t('light.enabled'), h('input', { type: 'checkbox', name: 'enabled', checked: ls.enabled })),
+  h('div', { class: 'form-grid' }, field(t('light.time'), input('time', ls.time, { type: 'time', required: true }), t('light.timeHint'))),
+  field(t('light.notify'), h('input', { type: 'checkbox', name: 'notify', checked: ls.notify }), t('light.notifyHint')),
+  picker.el,
+  lastLine,
+  h('div', { class: 'actions' },
+    h('button', { class: 'btn', type: 'button', onclick: async (e) => {
+      e.currentTarget.disabled = true;
+      try { const r = await post('/lightscan/run', {}); navigate(`/scan/${r.id}`); } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
+    } }, h('span', { html: icon('radar') }), t('light.runNow')),
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))));
+  return panel(t('light.title'), form);
+}
+
+async function printers(body, s) {
+  const p = s.printer;
+  const chans = await loadChannels();
+  const picker = channelPicker(chans, p.channels);
+  const form = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    const d = formData(form);
+    try { await put('/settings/printer', { enabled: d.enabled, interval: d.interval, threshold: d.threshold, notify: d.notify, channels: picker.value() }); toast(t('saved')); } catch (ex) { fail(ex); }
+  } },
+  h('p', { class: 'muted' }, t('prn.lead')),
+  field(t('prn.enabled'), h('input', { type: 'checkbox', name: 'enabled', checked: p.enabled })),
+  h('div', { class: 'form-grid' },
+    field(t('prn.interval'), input('interval', p.interval, { type: 'number', min: 5, max: 1440 }), t('prn.intervalHint')),
+    field(t('prn.threshold'), input('threshold', p.threshold, { type: 'number', min: 1, max: 50 }), t('prn.thresholdHint'))),
+  field(t('prn.notify'), h('input', { type: 'checkbox', name: 'notify', checked: p.notify })),
+  picker.el,
+  h('p', { class: 'muted small' }, t('prn.community')),
+  saveBtn());
+  mount(body, panel(t('set.printers'), form));
 }
 
 async function smtp(body, s) {
