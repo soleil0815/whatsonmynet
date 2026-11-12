@@ -147,6 +147,14 @@ ARP – and so the MAC address – is only visible inside the own network. For a
 
 The agent has no web interface and opens no port. It asks the central server for jobs every minute (HTTPS; with the self-signed certificate it trusts exactly this one certificate – checked before the key is sent. When the certificate is renewed, the agent needs the new value), scans there just as gently and follows the time of the nightly light scan. It may only report addresses from the subnets of its location. "Start scan" for that location is handed to the agent automatically; the results show up under *Earlier scans* as usual.
 
+## Planned reports (from version 0.4)
+
+Under *Settings → Reports* WhatsOnMyNet sends reports by e-mail at set times – e.g. the toner levels of all printers to the office every Monday at 8:00, or the state of the NAS once a month.
+
+- **Content**: printers (toner per colour, drum, waste toner, page counter, faults), NAS (usage, disks, temperature) and switches; can be limited to locations, optionally only devices that need action. What should be ordered soon is marked red.
+- **Neutral**: the mail has no link and no program name – only your sender name, subject (`{week}`, `{date}`), introduction, the devices and your closing, e.g. "Your IT team".
+- Schedule daily, weekly or monthly; preview, "Test to me" and "Send now" right in the settings.
+
 ## HTTPS and certificate
 
 - On first start WhatsOnMyNet creates a self-signed certificate for the host name, `localhost`, all IPv4 addresses of the host and the address in `WOMN_BASE_URL`. It is renewed automatically 30 days before it expires.

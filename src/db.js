@@ -355,6 +355,28 @@ export const MIGRATIONS = [
   );
   CREATE INDEX agent_jobs_agent ON agent_jobs(agent_id, done_at);
   `,
+  // 9: planned reports by e-mail (e.g. weekly printer supplies for the office) – neutral, without a link to here
+  `
+  CREATE TABLE reports (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    sections TEXT NOT NULL DEFAULT '["printers"]',
+    recipients TEXT NOT NULL DEFAULT '',
+    schedule TEXT NOT NULL DEFAULT '{}',
+    location_ids TEXT NOT NULL DEFAULT '[]',
+    subject TEXT NOT NULL DEFAULT '',
+    intro TEXT NOT NULL DEFAULT '',
+    signature TEXT NOT NULL DEFAULT '',
+    from_name TEXT NOT NULL DEFAULT '',
+    language TEXT NOT NULL DEFAULT 'de',
+    only_attention INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    last_run TEXT,
+    last_day TEXT,
+    last_status TEXT NOT NULL DEFAULT ''
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
