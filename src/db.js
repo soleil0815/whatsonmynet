@@ -317,6 +317,11 @@ export const MIGRATIONS = [
   );
   CREATE INDEX switch_macs_mac ON switch_macs(mac);
   `,
+  // 6: accounts from Active Directory / LDAP (no local password; role from the AD groups)
+  `
+  ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT 'local';
+  ALTER TABLE users ADD COLUMN ext_dn TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -29,6 +29,20 @@ export const DEFAULTS = {
   'nas.threshold': 90,            // % – report a volume at or above this
   'nas.notify': true,
   'nas.channels': [],
+  // Active Directory / LDAP sign-in
+  'ad.enabled': false,
+  'ad.url': '',                   // ldaps://dc01.firma.local or ldap://… with StartTLS
+  'ad.startTls': false,
+  'ad.verify': true,              // check the server certificate
+  'ad.ca': '',                    // own CA (PEM), empty = system CAs
+  'ad.bindDn': '',                // service account (DN or user@domain)
+  'ad.bindPassword': '',          // encrypted
+  'ad.baseDn': '',
+  'ad.userFilter': '',            // empty = default filter (sAMAccountName / userPrincipalName)
+  'ad.groupAdmin': '',
+  'ad.groupEditor': '',
+  'ad.groupViewer': '',
+  'ad.nested': true,              // nested groups (AD)
   // Mail (SMTP)
   'smtp.host': '',
   'smtp.port': 587,
@@ -41,7 +55,7 @@ export const DEFAULTS = {
   'backup.keep': 7,
 };
 
-const SECRET = new Set(['smtp.password', 'scan.snmpCommunities']);
+const SECRET = new Set(['smtp.password', 'scan.snmpCommunities', 'ad.bindPassword']);
 
 export function createSettings(db) {
   const getRow = db.prepare('SELECT value FROM settings WHERE key=?');

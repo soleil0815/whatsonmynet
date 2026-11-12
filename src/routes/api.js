@@ -9,6 +9,7 @@ import { localInterfaces, defaultGateways, parseCidr } from '../lib/net.js';
 import { pingAvailable } from '../scan/probes.js';
 import { TYPES } from '../scan/classify.js';
 import { validTime } from '../scan/nightly.js';
+import { plainName, DEFAULT_FILTER } from '../auth/directory.js';
 import { SERVICE_NAMES, GENTLE_PORTS } from '../scan/ports.js';
 import { toCsv } from '../inventory.js';
 import { t } from '../i18n.js';
@@ -60,10 +61,30 @@ export function createApi(ctx) {
     res.json({ user: publicUser(u) });
   });
 
-  r.post('/login', (req, res) => {
+  r.post('/login', async (req, res) => {
     const name = line(req.body.username, 64);
+    const password = str(req.body.password, 1024);
     limiter.check(req.ip, name);
-    const u = users.authenticate(name, str(req.body.password, 1024));
+    let u = users.authenticate(name, password);
+    // Active Directory: only for names that are not a local account (a local admin can never be taken over)
+    if (!u && ctx.directory.enabled() && users.sourceOf(plainName(name)) !== 'local' && users.sourceOf(name) !== 'local') {
+      try {
+        const info = await ctx.directory.verify(name, password);
+        if (!info.role) {
+          log.warn(`Directory sign-in of "${name}" refused: in none of the WhatsOnMyNet groups`);
+          limiter.fail(req.ip, name);
+          throw new HttpError(403, 'err.adNoGroup');
+        }
+        u = users.upsertDirectory(info);
+        if (u) db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), u.username, 'login.ad', `role ${info.role}`);
+      } catch (e) {
+        // 401 = unknown user or wrong password → normal failed sign-in below; anything else is shown as it is
+        if (e.status !== 401) {
+          if (e.status === 502) log.warn(`Directory sign-in failed: ${e.detail || e.message}`);
+          throw e;
+        }
+      }
+    }
     if (!u) {
       limiter.fail(req.ip, name);
       log.warn(`Failed sign-in for "${name}" from ${req.ip}`);
@@ -88,6 +109,7 @@ export function createApi(ctx) {
     res.json(publicUser(u));
   });
   r.post('/me/password', (req, res) => {
+    if (req.user.source && req.user.source !== 'local') throw new HttpError(400, 'err.adPassword');
     limiter.check(req.ip, req.user.username);
     if (!users.authenticate(req.user.username, str(req.body.current, 1024))) {
       limiter.fail(req.ip, req.user.username);
@@ -317,6 +339,26 @@ export function createApi(ctx) {
     audit(req, 'settings.snmpdev');
     res.json({ ...settings.publicGroup('snmpdev'), nas: settings.publicGroup('nas') });
   });
+  // Active Directory / LDAP
+  r.get('/settings/ad', admin, (_req, res) => res.json(adPublic()));
+  r.put('/settings/ad', admin, (req, res) => {
+    ctx.directory.save(req.body);
+    audit(req, 'settings.ad', ctx.directory.config().enabled ? 'on' : 'off');
+    res.json(adPublic());
+  });
+  // Test: service account + search; with a password also the user's own sign-in. Shows groups and the resulting role.
+  r.post('/settings/ad/test', admin, async (req, res) => {
+    const username = line(req.body.username, 120);
+    if (!username) throw new HttpError(400, 'err.username');
+    const password = str(req.body.password, 1024);
+    const info = await ctx.directory.verify(username, password, { checkPassword: !!password });
+    audit(req, 'settings.ad.test', username);
+    res.json({ dn: info.dn, username: info.username, display_name: info.display_name, email: info.email, role: info.role, groups: info.groups.slice(0, 200), passwordChecked: !!password });
+  });
+  const adPublic = () => {
+    const { bindPassword, ...cfg } = ctx.directory.config();
+    return { ...cfg, bindPassword: { set: !!bindPassword }, defaultFilter: DEFAULT_FILTER, userFilter: settings.get('ad.userFilter') || '' };
+  };
   r.put('/settings/smtp', admin, (req, res) => {
     const b = req.body;
     settings.set('smtp.host', line(b.host, 253));
@@ -402,5 +444,5 @@ export function createApi(ctx) {
 
 export function publicUser(u) {
   return { id: u.id, username: u.username, display_name: u.display_name, email: u.email, role: u.role, language: u.language,
-    theme: u.theme, canEdit: can(u, 'editor'), isAdmin: can(u, 'admin') };
+    theme: u.theme, source: u.source || 'local', canEdit: can(u, 'editor'), isAdmin: can(u, 'admin') };
 }

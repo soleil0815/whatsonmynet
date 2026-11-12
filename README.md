@@ -118,6 +118,16 @@ WhatsOnMyNet läuft ohne Root-Rechte. Ping funktioniert dann nur, wenn der Host 
 
 Standardmäßig fragt der Scan Geräte mit der Community `public` (SNMP v2c, sonst v1) nach Name, Beschreibung und Hersteller-ID – nur lesend. Eigene Communities trägst du unter *Einstellungen → Scan* ein; sie werden verschlüsselt gespeichert. Geräte ohne SNMP (z. B. einfache TP-Link-Switches) werden trotzdem erkannt, nur mit weniger Details.
 
+## Anmeldung mit Active Directory (ab Version 0.3)
+
+Unter *Einstellungen → Active Directory* meldest du dich mit dem Windows-Konto an:
+
+- Verbindung nur verschlüsselt: `ldaps://dc01.firma.local` (Port 636) oder `ldap://` mit StartTLS. Das Zertifikat des Domänencontrollers wird geprüft; das Zertifikat deiner Unternehmens-CA kannst du als PEM eintragen.
+- Ein **Dienstkonto ohne besondere Rechte** sucht das Konto, das Passwort prüft der Domänencontroller selbst – WhatsOnMyNet speichert es nie.
+- **Rollen über Gruppen**: je eine Gruppe für Administrator, Bearbeiter und Nur lesen (vollständiger DN, verschachtelte Gruppen werden berücksichtigt). Wer in keiner Gruppe ist, kann sich nicht anmelden. Name, E-Mail und Rolle werden bei jeder Anmeldung aus dem AD übernommen.
+- Lokale Konten funktionieren weiter; bei gleichem Namen hat das **lokale Konto immer Vorrang** – so bleibt der lokale Admin der Notfallzugang.
+- „Verbindung testen“ zeigt für ein Konto die gefundenen Gruppen und die Rolle, die es bekäme.
+
 ## HTTPS und Zertifikat
 
 - Beim ersten Start erzeugt WhatsOnMyNet ein selbstsigniertes Zertifikat für den Hostnamen, `localhost`, alle IPv4-Adressen des Hosts und die Adresse aus `WOMN_BASE_URL`. Es wird 30 Tage vor Ablauf automatisch erneuert.
@@ -165,7 +175,7 @@ docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administ
 | Version | Inhalt |
 | --- | --- |
 | 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), ~~nächtlicher leichter Scan mit Meldung unbekannter Geräte~~, ~~Druckerdaten per SNMP~~, ~~Docker- und Datenbanküberwachung~~ (ab 0.3) |
-| 3 | Active Directory (LDAPS), Rollen pro Standort/Subnetz |
+| 3 | ~~Active Directory (LDAPS)~~ (ab 0.3), Rollen pro Standort/Subnetz |
 | später | Scan-Agent für Außenstellen, Topologie über LLDP/CDP, MAC-Adressen entfernter Subnetze per SNMP vom Router |
 
 ## Lizenz
