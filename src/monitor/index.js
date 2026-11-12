@@ -218,8 +218,9 @@ export function createMonitoring({ db, channels, maintenance, now = () => new Da
     };
   }
 
-  function summary() {
-    const rows = db.prepare('SELECT id, name, status, status_since, last_message, enabled, cert_valid_to, device_id FROM monitors').all();
+  /** keep(m): optional filter (location limit of the user) */
+  function summary(keep = null) {
+    const rows = db.prepare('SELECT id, name, status, status_since, last_message, enabled, cert_valid_to, device_id FROM monitors').all().filter((m) => !keep || keep(m));
     const soon = rows.filter((m) => m.cert_valid_to && (Date.parse(m.cert_valid_to) - now().getTime()) / 86400000 <= 30)
       .map((m) => ({ id: m.id, name: m.name, cert_valid_to: m.cert_valid_to }));
     return {

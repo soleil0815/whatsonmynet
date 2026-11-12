@@ -178,11 +178,13 @@ export function createInventory(db) {
     return d.last_seen && d.last_seen >= s.started_at ? 'online' : (d.created_at > s.started_at ? 'unknown' : 'missing');
   }
 
-  function list({ q = '', type = '', location = '', tag = '' } = {}) {
+  /** allowed: Set of location ids the user may see (null = all) */
+  function list({ q = '', type = '', location = '', tag = '', allowed = null } = {}) {
     const rows = db.prepare('SELECT d.*, l.name location_name FROM devices d LEFT JOIN locations l ON l.id=d.location_id').all();
     const scans = coverage();
     const needle = String(q).trim().toLowerCase();
     return rows.filter((d) => {
+      if (allowed && !allowed.has(d.location_id)) return false;
       if (type === 'telematik' ? !isTelematik(d.type) : type && d.type !== type) return false;
       if (location === 'none' ? d.location_id : location && String(d.location_id) !== String(location)) return false;
       if (tag && !d.tags.toLowerCase().split(/,\s*/).includes(String(tag).toLowerCase())) return false;
@@ -245,12 +247,14 @@ export function createInventory(db) {
     return n;
   }
 
-  function stats() {
-    const devices = list();
+  function stats({ allowed = null } = {}) {
+    const devices = list({ allowed });
     const byType = {};
     for (const d of devices) byType[d.type] = (byType[d.type] || 0) + 1;
     const lastScan = db.prepare("SELECT * FROM scans WHERE kind IN ('network','light') AND status IN ('done','cancelled','failed') ORDER BY id DESC LIMIT 1").get();
-    const waiting = lastScan ? db.prepare("SELECT COUNT(*) n FROM scan_results WHERE scan_id=? AND status='new' AND handled IS NULL").get(lastScan.id).n : 0;
+    const waiting = lastScan ? db.prepare("SELECT location_id FROM scan_results WHERE scan_id=? AND status='new' AND handled IS NULL").all(lastScan.id)
+      .filter((r) => !allowed || allowed.has(r.location_id)).length : 0;
+    const seeDevice = new Set(devices.map((d) => d.id));
     return {
       devices: devices.length,
       online: devices.filter((d) => d.presence === 'online').length,
@@ -261,7 +265,7 @@ export function createInventory(db) {
       lastScan: lastScan ? { ...lastScan, stats: parse(lastScan.stats), targets: parse(lastScan.targets, []) } : null,
       locations: db.prepare('SELECT COUNT(*) n FROM locations').get().n,
       recent: db.prepare(`SELECT h.*, d.name device_name FROM device_history h JOIN devices d ON d.id=h.device_id
-        ORDER BY h.id DESC LIMIT 12`).all().map((h) => ({ ...h, detail: parse(h.detail) })),
+        ORDER BY h.id DESC LIMIT 200`).all().filter((h) => seeDevice.has(h.device_id)).slice(0, 12).map((h) => ({ ...h, detail: parse(h.detail) })),
       warranty: devices.filter((d) => d.warranty_until && d.warranty_until <= new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10))
         .map((d) => ({ id: d.id, name: d.name, warranty_until: d.warranty_until })).slice(0, 10),
     };

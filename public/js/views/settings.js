@@ -298,10 +298,16 @@ async function https(body, _s, reload) {
 }
 
 async function users(body, _s, reload) {
-  const list = await get('/users');
+  const [list, locs] = await Promise.all([get('/users'), get('/locations')]);
+  const locName = Object.fromEntries(locs.map((l) => [l.id, l.name]));
   const roleSel = (v) => select('role', ['admin', 'editor', 'viewer'].map((r) => [r, `${t(`role.${r}`)} – ${t(`role.${r}.hint`)}`]), v);
   const edit = (u) => {
     const fromAd = u?.source === 'ldap';
+    const mine = new Set(u?.locations || []);
+    const locBox = h('div', { class: 'field' }, t('users.locations'),
+      h('div', { class: 'chips' }, locs.map((l) => h('label', { class: 'check', style: { marginRight: '14px' } },
+        h('input', { type: 'checkbox', name: `loc_${l.id}`, checked: mine.has(l.id) }), l.name))),
+      h('span', { class: 'hint' }, t('users.locationsHint')));
     const form = h('form', { class: 'form' },
       u ? null : field(t('user.username'), input('username', '', { required: true, autocomplete: 'off' })),
       fromAd ? h('p', { class: 'note' }, t('users.adManaged')) : null,
@@ -309,12 +315,20 @@ async function users(body, _s, reload) {
       fromAd ? null : field(t('user.email'), input('email', u?.email || '', { type: 'email' })),
       fromAd ? null : field(t('user.role'), roleSel(u?.role || 'editor')),
       u ? field(t('user.active'), h('input', { type: 'checkbox', name: 'active', checked: !!u.active })) : field(t('user.password'), input('password', '', { type: 'password', required: true, minlength: 10, autocomplete: 'new-password' }), t('user.passwordHint')),
-      field(t('language'), select('language', [['de', 'Deutsch'], ['en', 'English']], u?.language || getLang())));
+      field(t('language'), select('language', [['de', 'Deutsch'], ['en', 'English']], u?.language || getLang())),
+      locBox);
+    // Location limit (editors and viewers): nothing ticked = all locations
+    function syncLoc() { const r = form.querySelector('[name=role]')?.value || u?.role; locBox.hidden = r === 'admin' || !locs.length; }
+    form.querySelector('[name=role]')?.addEventListener('change', syncLoc);
+    syncLoc();
     const m = modal(u ? u.username : t('users.add'), form, { actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
       h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
         if (!form.reportValidity()) return;
-        try { if (u) await patch(`/users/${u.id}`, formData(form)); else await post('/users', formData(form)); m.close(); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
+        const d = formData(form);
+        for (const k of Object.keys(d)) if (k.startsWith('loc_')) delete d[k];
+        d.locations = locs.filter((l) => form.querySelector(`[name=loc_${l.id}]`)?.checked).map((l) => l.id);
+        try { if (u) await patch(`/users/${u.id}`, d); else await post('/users', d); m.close(); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
       } }, t('save'))] });
   };
   const setPw = (u) => {
@@ -333,7 +347,8 @@ async function users(body, _s, reload) {
         h('td', {}, h('span', { class: 'name' }, u.username), u.id === state.user.id ? h('span', { class: 'muted small' }, ` (${t('users.you')})`) : null,
           u.source === 'ldap' ? h('span', { class: 'badge', style: { marginLeft: '6px' }, title: t('users.adManaged') }, 'AD') : null,
           u.display_name ? h('div', { class: 'sub' }, u.display_name) : null),
-        h('td', {}, t(`role.${u.role}`), u.active ? null : h('span', { class: 'badge badge-bad', style: { marginLeft: '6px' } }, t('user.inactive'))),
+        h('td', {}, t(`role.${u.role}`), u.active ? null : h('span', { class: 'badge badge-bad', style: { marginLeft: '6px' } }, t('user.inactive')),
+          u.role !== 'admin' && u.locations?.length ? h('div', { class: 'sub' }, u.locations.map((l) => locName[l]).filter(Boolean).join(', ')) : null),
         h('td', { class: 'hide-sm' }, u.email || '–'),
         h('td', { class: 'hide-sm' }, fmtDate(u.last_login, getLang())),
         h('td', { class: 'min' }, h('div', { class: 'actions' },
