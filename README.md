@@ -22,7 +22,7 @@ WhatsOnMyNet scannt dein Netzwerk, erkennt Hersteller und Gerätetyp selbst (Swi
 - **Kauf, Garantie, Wartung** – optionale Felder mit Hinweis auf der Übersicht, wenn die Garantie bald endet.
 - **Tiefenprüfung** – für einzelne unklare Geräte, von Hand gestartet: rund 120 Ports und alle Weboberflächen.
 - **Standorte** – fassen Subnetze zusammen. Vor dem Scan nur noch Häkchen setzen, gefundene Geräte bekommen ihren Standort automatisch.
-- **Benutzer und Rollen** – Administrator, Bearbeiter, Nur lesen. Active Directory folgt in einer späteren Version.
+- **Benutzer und Rollen** – Administrator, Bearbeiter, Nur lesen; Anmeldung auch über Active Directory, Rechte auf Standorte beschränkbar (ab 0.3).
 - **HTTPS ab dem ersten Start** – selbst erzeugtes Zertifikat, eigenes Zertifikat (PEM oder PFX) in der Oberfläche hochladbar, HTTP leitet immer auf HTTPS um.
 - **Deutsch und Englisch**, hell und dunkel, auch am Handy bedienbar.
 
@@ -110,6 +110,12 @@ Geräte vom Typ *Switch* und *NAS* werden regelmäßig (Standard alle 15 Minuten
 
 Einstellungen unter *Einstellungen → Switches & NAS*. Einfache Switches ohne SNMP (z. B. TP-Link „Easy Smart“) liefern keine Daten; bei LANCOM, HP/Aruba, Cisco, Netgear Smart und Co. muss SNMP v1/v2c lesend aktiv sein.
 
+## Netzplan (ab Version 0.3)
+
+Der *Netzplan* zeigt aus den MAC-Tabellen und LLDP-Daten der Switches, welches Gerät an welchem Port hängt und wie die Switches untereinander verbunden sind – als Baum vom Switch mit dem Router aus. Geräte ohne Zuordnung (keine MAC-Adresse, WLAN, Switch ohne SNMP) stehen darunter.
+
+**Entfernte Subnetze**: Hinter einem Router sieht der Scan keine MAC-Adressen. Ist SNMP an deinen Routern/Firewalls aktiv (im Inventar mit Typ *Router* oder *Firewall*), liest der Scan deren ARP-Tabelle – so bleibt die MAC-Adresse auch in entfernten Subnetzen die Identität eines Geräts (abschaltbar unter *Einstellungen → Scan*).
+
 ### Ping
 
 WhatsOnMyNet läuft ohne Root-Rechte. Ping funktioniert dann nur, wenn der Host normalen Benutzern ICMP erlaubt (`net.ipv4.ping_group_range`, bei Debian, Ubuntu und Proxmox Standard). Ohne Ping findet der Scan lokale Geräte trotzdem über ARP und entfernte über TCP; das Programm zeigt dann einen Hinweis.
@@ -180,7 +186,7 @@ docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administ
 | --- | --- |
 | 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), ~~nächtlicher leichter Scan mit Meldung unbekannter Geräte~~, ~~Druckerdaten per SNMP~~, ~~Docker- und Datenbanküberwachung~~ (ab 0.3) |
 | 3 | ~~Active Directory (LDAPS)~~, ~~Rechte pro Standort~~ (ab 0.3) |
-| später | Scan-Agent für Außenstellen, Topologie über LLDP/CDP, MAC-Adressen entfernter Subnetze per SNMP vom Router |
+| später | Scan-Agent für Außenstellen, ~~Topologie über LLDP~~, ~~MAC-Adressen entfernter Subnetze per SNMP vom Router~~ (ab 0.3) |
 
 ## Lizenz
 
