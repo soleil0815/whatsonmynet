@@ -1,0 +1,110 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { startApp } from './helpers.js';
+
+const app = await startApp();
+const { call } = app;
+test.after(() => app.close());
+
+const ADMIN = { username: 'michael', password: 'Sicher-Passwort-1', email: 'm@example.org' };
+
+test('setup: needs the code from the log, only once', async () => {
+  assert.equal((await call('GET', '/api/bootstrap')).data.setupRequired, true);
+  assert.equal((await call('POST', '/api/setup', { ...ADMIN, code: 'wrong' })).status, 403);
+  assert.equal((await call('POST', '/api/setup', { ...ADMIN, code: 'setup-123', password: 'short' })).status, 400);
+  const ok = await call('POST', '/api/setup', { ...ADMIN, code: 'setup-123' });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.user.role, 'admin');
+  assert.equal((await call('POST', '/api/setup', { ...ADMIN, username: 'x', code: 'setup-123' }, { who: 'other' })).status, 409);
+  assert.equal((await call('GET', '/api/bootstrap')).data.user.username, 'michael');
+});
+
+test('writing calls need the CSRF header', async () => {
+  assert.equal((await call('POST', '/api/locations', { name: 'X' }, { csrf: false })).status, 403);
+});
+
+test('sign-in with wrong password, lockout after many attempts', async () => {
+  for (let i = 0; i < 8; i++) assert.equal((await call('POST', '/api/login', { username: 'nobody', password: 'x' }, { who: 'anon' })).status, 401);
+  assert.equal((await call('POST', '/api/login', { username: 'nobody', password: 'x' }, { who: 'anon' })).status, 429);
+  assert.equal((await call('GET', '/api/devices', undefined, { who: 'anon' })).status, 401);
+});
+
+test('roles: viewer reads, editor scans, only admin changes settings', async () => {
+  assert.equal((await call('POST', '/api/users', { username: 'leser', password: 'Lesen-Lesen-1', role: 'viewer' })).status, 201);
+  assert.equal((await call('POST', '/api/users', { username: 'bearbeiter', password: 'Bearbeiten-1', role: 'editor' })).status, 201);
+  assert.equal((await call('POST', '/api/login', { username: 'leser', password: 'Lesen-Lesen-1' }, { who: 'viewer' })).status, 200);
+  assert.equal((await call('POST', '/api/login', { username: 'bearbeiter', password: 'Bearbeiten-1' }, { who: 'editor' })).status, 200);
+  assert.equal((await call('GET', '/api/devices', undefined, { who: 'viewer' })).status, 200);
+  assert.equal((await call('POST', '/api/devices', { name: 'x' }, { who: 'viewer' })).status, 403);
+  assert.equal((await call('POST', '/api/scans', { cidrs: ['127.0.0.1/32'] }, { who: 'viewer' })).status, 403);
+  assert.equal((await call('GET', '/api/settings', undefined, { who: 'editor' })).status, 403);
+  assert.equal((await call('POST', '/api/devices', { name: 'Switch Keller', type: 'switch', ip: '192.168.1.2' }, { who: 'editor' })).status, 201);
+  // the last admin cannot be demoted or deleted
+  const me = (await call('GET', '/api/me')).data;
+  assert.equal((await call('PATCH', `/api/users/${me.id}`, { role: 'viewer' })).status, 400);
+  assert.equal((await call('DELETE', `/api/users/${me.id}`)).status, 400);
+  // own account: role cannot be raised
+  const ed = (await call('PATCH', '/api/me', { role: 'admin', theme: 'dark' }, { who: 'editor' })).data;
+  assert.equal(ed.role, 'editor');
+  assert.equal(ed.theme, 'dark');
+});
+
+test('locations with subnets; a subnet belongs to one location only', async () => {
+  const a = await call('POST', '/api/locations', { name: 'Hauptgebäude', subnets: ['192.168.10.7/24', { cidr: '192.168.20.0/24', label: 'Server' }] });
+  assert.equal(a.status, 201);
+  assert.deepEqual(a.data.subnets.map((s) => s.cidr), ['192.168.10.0/24', '192.168.20.0/24']);
+  assert.equal((await call('POST', '/api/locations', { name: 'Außenstelle', subnets: ['192.168.10.0/24'] })).status, 409);
+  assert.equal((await call('POST', '/api/locations', { name: 'Zu groß', subnets: ['10.0.0.0/8'] })).status, 400);
+  assert.equal((await call('POST', '/api/locations', { name: 'hauptgebäude' })).status, 409);
+});
+
+test('scan input is validated', async () => {
+  assert.equal((await call('POST', '/api/scans', {})).status, 400);
+  const r = await call('POST', '/api/scans', { cidrs: ['10.0.0.0/8'] });
+  assert.equal(r.status, 400);
+  assert.match(r.data.error.message, /zu groß/);
+});
+
+test('device edit, history, export, delete', async () => {
+  const d = (await call('POST', '/api/devices', { name: 'Drucker EG', type: 'printer', ip: '192.168.1.40', mac: '3c:2a:f4:00:00:09' })).data;
+  const u = await call('PATCH', `/api/devices/${d.id}`, { owner: 'IT', warranty_until: '2027-03-01' });
+  assert.equal(u.data.owner, 'IT');
+  const full = (await call('GET', `/api/devices/${d.id}`)).data;
+  assert.deepEqual(full.history.map((h) => h.kind), ['edit', 'created']);
+  const csv = await call('GET', '/api/devices/export.csv', undefined, { raw: true });
+  assert.match(await csv.text(), /Drucker EG/);
+  assert.equal((await call('DELETE', `/api/devices/${d.id}`)).status, 200);
+  assert.equal((await call('GET', `/api/devices/${d.id}`)).status, 404);
+  assert.equal((await call('GET', '/api/devices/abc')).status, 404);
+});
+
+test('settings: secrets are never sent back', async () => {
+  await call('PUT', '/api/settings/smtp', { host: 'mail.example.org', port: 587, security: 'starttls', user: 'u', password: 'geheim', from: 'net@example.org' });
+  await call('PUT', '/api/settings/scan', { snmpCommunities: 'public\nprivat123', rate: 1000 });
+  const s = (await call('GET', '/api/settings')).data;
+  assert.deepEqual(s.smtp.password, { set: true });
+  assert.deepEqual(s.scan.snmpCommunities, { set: true });
+  assert.equal(s.scan.rate, 200);
+  assert.ok(!JSON.stringify(s).includes('geheim') && !JSON.stringify(s).includes('privat123'));
+  assert.equal(app.ctx.settings.get('scan.snmpCommunities'), 'public\nprivat123');
+  // stored encrypted
+  const raw = app.db.prepare("SELECT value FROM settings WHERE key='smtp.password'").get().value;
+  assert.ok(!raw.includes('geheim'));
+});
+
+test('own password change signs out other sessions', async () => {
+  await call('POST', '/api/login', ADMIN, { who: 'second' });
+  assert.equal((await call('GET', '/api/me', undefined, { who: 'second' })).status, 200);
+  assert.equal((await call('POST', '/api/me/password', { current: 'wrong', password: 'Neues-Passwort-2' })).status, 400);
+  assert.equal((await call('POST', '/api/me/password', { current: ADMIN.password, password: 'Neues-Passwort-2' })).status, 200);
+  assert.equal((await call('GET', '/api/me')).status, 200);
+  assert.equal((await call('GET', '/api/me', undefined, { who: 'second' })).status, 401);
+});
+
+test('pages and security headers', async () => {
+  const res = await call('GET', '/inventory', undefined, { raw: true });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-security-policy'), /script-src 'self'/);
+  assert.equal(res.headers.get('x-powered-by'), null);
+  assert.equal((await call('GET', '/api/nothing')).status, 404);
+});

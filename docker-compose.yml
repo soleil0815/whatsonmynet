@@ -1,0 +1,43 @@
+# WhatsOnMyNet – docker-compose.yml
+#
+# This file usually stays the same across updates. Settings belong in .env,
+# everything else (SMTP, SNMP, users, certificate) is configured in the web interface.
+#
+#   Install:      copy env.example to .env, adjust it if needed, then  docker compose up -d
+#   Update:       Dockhand/Watchtower – or  docker compose pull && docker compose up -d
+#   First setup:  the setup code is in the log:  docker compose logs whatsonmynet
+
+services:
+  whatsonmynet:
+    image: ghcr.io/soleil0815/whatsonmynet:${WOMN_VERSION:-latest}
+    container_name: whatsonmynet
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Version of this file – do not change. WhatsOnMyNet warns in the log when it is outdated.
+      WOMN_COMPOSE_VERSION: "1"
+    # Host network: only this way the scanner sees the MAC addresses of your devices (ARP).
+    # The ports come from .env (WOMN_HTTPS_PORT, WOMN_HTTP_PORT) – there is no "ports:" section.
+    network_mode: host
+    volumes:
+      # Database, certificate, backups, key file
+      - ./data:/data
+    labels:
+      # Allow automatic updates via Watchtower (Dockhand detects new images by itself)
+      - com.centurylinklabs.watchtower.enable=true
+    stop_grace_period: 15s
+    # Hardening: program files read-only, no extra privileges, no root at runtime
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # only to set the permissions of ./data at startup and to switch to PUID/PGID
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID

@@ -1,0 +1,29 @@
+{
+  "name": "whatsonmynet",
+  "version": "0.1.0",
+  "description": "WhatsOnMyNet – scan your network, recognise devices automatically and keep only what you want in a clean inventory",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "WOMN_DATA_DIR=./data node --watch src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.1.1",
+    "express": "^5.3.0",
+    "helmet": "^8.3.0",
+    "net-snmp": "^3.29.2",
+    "nodemailer": "^10.5.0",
+    "oui-data": "^2.1.58"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/soleil0815/whatsonmynet"
+  }
+}
