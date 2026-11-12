@@ -419,6 +419,24 @@ export const MIGRATIONS = [
   ALTER TABLE monitors_new RENAME TO monitors;
   CREATE INDEX monitors_device ON monitors(device_id);
   ` },
+  // 11: Proxmox VE and Proxmox Backup Server via their API (read-only token)
+  `
+  CREATE TABLE proxmox_hosts (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('pve','pbs')),
+    url TEXT NOT NULL,
+    token_id TEXT NOT NULL,
+    secret TEXT NOT NULL DEFAULT '',
+    verify INTEGER NOT NULL DEFAULT 1,
+    ca TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    last_at TEXT,
+    last_ok INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL DEFAULT '{}'
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

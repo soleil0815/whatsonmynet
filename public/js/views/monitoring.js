@@ -22,6 +22,10 @@ export const isValueType = (m) => m.type === 'sensor' || m.type === 'snmp';
 const OPS = ['lt', 'le', 'gt', 'ge', 'eq', 'ne', 'contains', 'notcontains'];
 
 /** Readable name of a sensor value, e.g. "Toner: Black Toner (free %)" */
+export function pxLabel(x) {
+  return t(`px.m.${x.metric}`, { name: x.name || '' });
+}
+
 export function sensorLabel(x) {
   const base = t(`sens.m.${x.metric}`, { name: x.name || '' });
   return x.receptacle ? `${base} (${t('sens.free')})` : base;
@@ -211,7 +215,7 @@ export async function openMonitorForm(m, done, preset = null) {
     tls_verify: false, cert_check: true, cert_days: '30,14,7', channels: [], ...(preset || {}) };
   let dockerHosts = [];
   try { dockerHosts = await get('/docker/hosts'); } catch { /* none or no right */ }
-  const TYPES = ['http', 'tcp', 'ping', 'sensor', 'snmp', 'docker', 'mysql', 'postgres', 'redis'];
+  const TYPES = ['http', 'tcp', 'ping', 'sensor', 'snmp', 'proxmox', 'docker', 'mysql', 'postgres', 'redis'];
   const DBT = ['mysql', 'postgres', 'redis'];
   const DEF_PORT = { mysql: 3306, postgres: 5432, redis: 6379 };
   const typeSel = select('type', TYPES.map((x) => [x, t(`mon.type.${x}`)]), v.type);
@@ -281,6 +285,33 @@ export async function openMonitorForm(m, done, preset = null) {
   const sensorBox = h('div', { class: 'form-grid full' },
     field(t('sens.device'), devSel),
     h('div', {}, h('label', { class: 'field' }, t('sens.metric'), metricSel, metricHint)));
+  // Proxmox: a value of a PVE/PBS host
+  let pxHosts = [];
+  try { pxHosts = await get('/proxmox'); } catch { /* none or no right */ }
+  const pxSel = select('px_host', [['', t('px.chooseHost')], ...pxHosts.map((x) => [String(x.id), x.name])], so.host ? String(so.host) : (pxHosts.length === 1 ? String(pxHosts[0].id) : ''));
+  let pxMetrics = [];
+  const pxMetricSel = h('select', { name: 'px_metric' });
+  const pxHint = h('span', { class: 'hint' });
+  const syncPx = () => {
+    const x = pxMetrics.find((y) => `${y.metric}|${y.key}` === pxMetricSel.value);
+    if (typeSel.value === 'proxmox') condBox.hidden = !x || x.kind === 'state';
+    pxHint.textContent = x ? t('sens.now', { value: x.value === null || x.value === undefined ? '–' : `${x.value}${x.unit ? ` ${x.unit}` : ''}` }) : '';
+    if (x && !m && x.kind === 'number' && !thr.dataset.touched) { opSel.value = x.op; thr.value = x.threshold; }
+  };
+  pxMetricSel.addEventListener('change', syncPx);
+  async function loadPx() {
+    mount(pxMetricSel);
+    pxMetrics = [];
+    if (!pxSel.value) { syncPx(); return; }
+    try { pxMetrics = await get(`/proxmox/${pxSel.value}/metrics`); } catch { pxMetrics = []; }
+    mount(pxMetricSel, pxMetrics.length ? pxMetrics.map((x) => h('option', { value: `${x.metric}|${x.key}` }, pxLabel(x))) : h('option', { value: '' }, t('sens.noValues')));
+    if (so.metric && so.host) pxMetricSel.value = `${so.metric}|${so.key || ''}`;
+    syncPx();
+  }
+  pxSel.addEventListener('change', loadPx);
+  const pxBox = h('div', { class: 'form-grid full' },
+    pxHosts.length ? field(t('px.host'), pxSel) : h('p', { class: 'full muted small' }, t('px.noHosts')),
+    h('div', {}, h('label', { class: 'field' }, t('sens.metric'), pxMetricSel, pxHint)));
   // Free SNMP value
   const oid = input('oid', so.oid || '', { class: 'mono', placeholder: '1.3.6.1.2.1.33.1.2.4.0' });
   const snmpBox = h('div', { class: 'form-grid full' },
@@ -295,13 +326,16 @@ export async function openMonitorForm(m, done, preset = null) {
     const ty = typeSel.value;
     const isDb = DBT.includes(ty);
     sensorBox.hidden = ty !== 'sensor';
+    pxBox.hidden = ty !== 'proxmox';
+    pxSel.required = ty === 'proxmox';
     snmpBox.hidden = ty !== 'snmp';
-    targetWrap.hidden = ty === 'sensor';
-    target.required = ty !== 'sensor';
+    targetWrap.hidden = ty === 'sensor' || ty === 'proxmox';
+    target.required = ty !== 'sensor' && ty !== 'proxmox';
     devSel.required = ty === 'sensor';
     oid.required = ty === 'snmp';
-    condBox.hidden = !(ty === 'snmp' || ty === 'sensor');
+    condBox.hidden = !(ty === 'snmp' || ty === 'sensor' || ty === 'proxmox');
     if (ty === 'sensor') syncMetric();
+    if (ty === 'proxmox') { if (!pxMetrics.length && pxSel.value) loadPx(); else syncPx(); }
     if (ty === 'sensor' && !metrics.length && devSel.value) loadMetrics();
     portBox.hidden = ty !== 'tcp' && ty !== 'snmp' && !isDb;
     httpBox.hidden = ty !== 'http';
@@ -328,6 +362,7 @@ export async function openMonitorForm(m, done, preset = null) {
     targetWrap,
     portBox,
     sensorBox,
+    pxBox,
     snmpBox,
     condBox,
     dockerBox,
@@ -358,6 +393,13 @@ export async function openMonitorForm(m, done, preset = null) {
       body.device_id = Number(d.device_id || v.device_id);
       body.target = '';
       body.options = { metric, key, op: d.op, threshold: d.threshold, label: x ? sensorLabel(x) : so.label };
+    }
+    if (d.type === 'proxmox') {
+      const x = pxMetrics.find((y) => `${y.metric}|${y.key}` === d.px_metric);
+      if (!x && !m) { toast(t('err.sensorMetric'), 'error'); return; }
+      const [metric, key] = (d.px_metric || `${so.metric}|${so.key || ''}`).split('|');
+      body.target = '';
+      body.options = { host: Number(d.px_host), metric, key, op: d.op, threshold: d.threshold, label: x ? pxLabel(x) : so.label };
     }
     if (d.type === 'snmp') body.options = { oid: d.oid.trim(), op: d.op, threshold: d.threshold, label: '' };
     if (DBT.includes(d.type)) {
