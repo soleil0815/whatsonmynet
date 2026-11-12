@@ -2,6 +2,7 @@
 import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
 import { config, paths } from './config.js';
 import { createSettings } from './settings.js';
 import { createSessions, parseCookies, createLoginLimiter } from './auth/session.js';
@@ -116,6 +117,15 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   app.use((req, _res, next) => { if (!req.body || typeof req.body !== 'object') req.body = {}; next(); });
 
   app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+  // Upper limit per address: generous for the interface (it polls every few seconds), stops scripted floods
+  app.use('/api', rateLimit({
+    windowMs: 60 * 1000,
+    limit: 600,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    validate: { xForwardedForHeader: false },
+    handler: (_req, _res, next) => next(new HttpError(429, 'err.rateLimit')),
+  }));
   // CSRF protection: writing API calls need a custom header (only sent cross-site after a CORS grant – none exists)
   app.use('/api', (req, _res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();

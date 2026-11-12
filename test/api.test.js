@@ -126,3 +126,13 @@ test('monitoring: roles and secrets', async () => {
   assert.equal((await call('POST', '/api/maintenance', { name: 'x', kind: 'weekly', weekdays: [1], time_from: '01:00', time_to: '02:00' }, { who: 'viewer' })).status, 403);
   assert.equal((await call('DELETE', `/api/monitors/${m.data.id}`, undefined, { who: 'editor' })).status, 200);
 });
+
+test('API requests are rate-limited per address', async () => {
+  const { startApp: start } = await import('./helpers.js');
+  const other = await start();
+  let last;
+  for (let i = 0; i < 605; i++) last = await other.call('GET', '/api/bootstrap', undefined, { raw: true });
+  assert.equal(last.status, 429);
+  assert.match((await last.json()).error.message, /Zu viele Anfragen|Too many requests/);
+  await other.close();
+});
