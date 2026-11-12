@@ -18,16 +18,27 @@ export function monitorDot(status) {
   return h('span', { class: `dot mon-${status}`, title: t(`mon.status.${status}`), role: 'img', 'aria-label': t(`mon.status.${status}`) });
 }
 
+export const isValueType = (m) => m.type === 'sensor' || m.type === 'snmp';
+const OPS = ['lt', 'le', 'gt', 'ge', 'eq', 'ne', 'contains', 'notcontains'];
+
+/** Readable name of a sensor value, e.g. "Toner: Black Toner (free %)" */
+export function sensorLabel(x) {
+  const base = t(`sens.m.${x.metric}`, { name: x.name || '' });
+  return x.receptacle ? `${base} (${t('sens.free')})` : base;
+}
+
 export function targetText(m) {
   if (m.type === 'docker') return m.docker_host ? `${m.target} @ ${m.docker_host.name}` : m.target;
+  if (m.type === 'sensor') return m.device_name ? `${m.device_name} · ${m.target}` : m.target;
+  if (m.type === 'snmp') return `${m.target}:${m.port} · ${m.options?.oid || ''}`;
   return ['tcp', 'mysql', 'postgres', 'redis'].includes(m.type) ? `${m.target}:${m.port}` : m.target;
 }
 
-function beatsBar(beats, slots = 40) {
+function beatsBar(beats, slots = 40, valueMode = false) {
   const pad = Math.max(0, slots - beats.length);
   return h('span', { class: 'beats', 'aria-hidden': 'true' },
     Array.from({ length: pad }, () => h('i', { class: 'none' })),
-    beats.slice(-slots).map((b) => h('i', { class: b.ok ? 'ok' : 'bad', title: `${fmtDate(b.at, getLang())} · ${b.ok ? `${b.ms ?? '–'} ms` : b.message}` })));
+    beats.slice(-slots).map((b) => h('i', { class: b.ok ? 'ok' : 'bad', title: `${fmtDate(b.at, getLang())} · ${valueMode || !b.ok ? b.message : `${b.ms ?? '–'} ms`}` })));
 }
 
 const pct = (v) => (v === null || v === undefined ? '–' : `${v.toLocaleString(getLang() === 'en' ? 'en-GB' : 'de-DE', { maximumFractionDigits: 2 })} %`);
@@ -60,9 +71,9 @@ export async function renderMonitoring(main, id, sub) {
             h('td', {}, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
               h('div', {}, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
                 h('div', { class: 'sub mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`)))),
-            h('td', { class: 'hide-sm' }, beatsBar(m.beats)),
+            h('td', { class: 'hide-sm' }, beatsBar(m.beats, 40, isValueType(m))),
             h('td', {}, pct(m.uptime24)),
-            h('td', { class: 'hide-sm' }, m.last_ms !== null && m.status === 'up' ? `${m.last_ms} ms` : '–'),
+            h('td', { class: 'hide-sm' }, isValueType(m) ? (m.last_ms ?? '–') : m.last_ms !== null && m.status === 'up' ? `${m.last_ms} ms` : '–'),
             h('td', { class: 'hide-sm' }, certBadge(m))))))));
     }
     timer = setTimeout(load, 15000);
@@ -90,7 +101,8 @@ function certBadge(m) {
 }
 
 /** Response time chart: line for answers, red marks for failed checks */
-function chart(checks, hours) {
+/** valueMode: sensors – the line shows the measured value (also while the alarm is on), without unit */
+function chart(checks, hours, valueMode = false) {
   const W = 720; const H = 160; const P = 6;
   const svg = svgEl('svg', { class: 'mon-chart', viewBox: `0 0 ${W} ${H + 18}`, role: 'img', 'aria-label': t('mon.chart') });
   if (!checks.length) {
@@ -104,17 +116,19 @@ function chart(checks, hours) {
   const first = Date.parse(checks[0].at);
   const start = Math.max(end - hours * 3600 * 1000, Math.min(first - 60000, end - 10 * 60000));
   const x = (at) => P + ((Date.parse(at) - start) / (end - start)) * (W - 2 * P);
-  const max = Math.max(10, ...checks.filter((c) => c.ok && c.ms !== null).map((c) => c.ms));
+  const drawn = (c) => c.ms !== null && (c.ok || valueMode);
+  const max = Math.max(10, ...checks.filter(drawn).map((c) => c.ms));
   const y = (ms) => H - P - (ms / max) * (H - 2 * P - 10);
   for (const f of [0.5, 1]) {
     svg.append(svgEl('line', { x1: 0, x2: W, y1: y(max * f), y2: y(max * f), class: 'grid' }));
     const lab = svgEl('text', { x: 2, y: y(max * f) - 3, class: 'axis' });
-    lab.textContent = `${Math.round(max * f)} ms`;
+    lab.textContent = `${Math.round(max * f)}${valueMode ? '' : ' ms'}`;
     svg.append(lab);
   }
   let d = ''; let pen = false;
   for (const c of checks) {
-    if (!c.ok || c.ms === null) { pen = false; svg.append(svgEl('rect', { x: x(c.at) - 1, y: H - 14, width: 2.5, height: 12, class: 'fail' })); continue; }
+    if (!c.ok) svg.append(svgEl('rect', { x: x(c.at) - 1, y: H - 14, width: 2.5, height: 12, class: 'fail' }));
+    if (!drawn(c)) { pen = false; continue; }
     d += `${pen ? 'L' : 'M'}${x(c.at).toFixed(1)},${y(c.ms).toFixed(1)}`;
     pen = true;
   }
@@ -165,12 +179,13 @@ async function renderDetail(main, id) {
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.h24.pct)), h('span', {}, t('mon.uptime24'))),
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d7.pct)), h('span', {}, t('mon.uptime7'))),
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d30.pct)), h('span', {}, t('mon.uptime30'))),
-        h('div', { class: 'figure' }, h('b', {}, m.uptime.h24.avgMs !== null ? `${m.uptime.h24.avgMs} ms` : '–'), h('span', {}, t('mon.avgMs'))),
+        isValueType(m) ? h('div', { class: 'figure' }, h('b', {}, m.last_ms ?? '–'), h('span', {}, t('sens.current')))
+          : h('div', { class: 'figure' }, h('b', {}, m.uptime.h24.avgMs !== null ? `${m.uptime.h24.avgMs} ms` : '–'), h('span', {}, t('mon.avgMs'))),
         m.cert_valid_to ? h('div', { class: `figure${m.cert_days_left <= 14 ? ' alert' : ''}` }, h('b', {}, m.cert_days_left < 0 ? t('mon.certExpired') : m.cert_days_left),
           h('span', {}, t('mon.certLeft', { date: fmtDate(m.cert_valid_to, getLang(), false) }))) : null),
       h('section', { class: 'panel panel-pad' },
-        h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '10px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('mon.chart')), span),
-        chart(m.checks, hours)),
+        h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '10px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, isValueType(m) ? t('sens.chart') : t('mon.chart')), span),
+        chart(m.checks, hours, isValueType(m))),
       h('section', { class: 'panel panel-pad' },
         h('h2', { class: 'section-title' }, t('mon.events')),
         m.events.length ? h('ul', { class: 'timeline' }, m.events.map((e) => h('li', { class: `ev-${e.kind}` },
@@ -196,7 +211,7 @@ export async function openMonitorForm(m, done, preset = null) {
     tls_verify: false, cert_check: true, cert_days: '30,14,7', channels: [], ...(preset || {}) };
   let dockerHosts = [];
   try { dockerHosts = await get('/docker/hosts'); } catch { /* none or no right */ }
-  const TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis'];
+  const TYPES = ['http', 'tcp', 'ping', 'sensor', 'snmp', 'docker', 'mysql', 'postgres', 'redis'];
   const DBT = ['mysql', 'postgres', 'redis'];
   const DEF_PORT = { mysql: 3306, postgres: 5432, redis: 6379 };
   const typeSel = select('type', TYPES.map((x) => [x, t(`mon.type.${x}`)]), v.type);
@@ -219,6 +234,7 @@ export async function openMonitorForm(m, done, preset = null) {
     } catch (e) { containerHint.textContent = e.message; }
   }
   hostSel.addEventListener('change', loadContainers);
+  const targetWrap = h('div', {}, h('label', { class: 'field' }, targetLabel, target), containers);
   const dockerBox = h('div', { class: 'form-grid full' },
     dockerHosts.length ? field(t('mon.f.dockerHost'), hostSel, containerHint)
       : h('p', { class: 'full muted small' }, state.user.isAdmin ? t('mon.f.noDockerAdmin') : t('mon.f.noDocker')));
@@ -232,6 +248,43 @@ export async function openMonitorForm(m, done, preset = null) {
     dbName,
     field(t('mon.f.dbTls'), h('input', { type: 'checkbox', name: 'db_tls', checked: !!o.tls })),
     h('p', { class: 'full muted small', style: { margin: 0 } }, t('mon.f.dbHint')));
+  // Sensor: a value a device already delivers (printer supplies, NAS volumes, switch ports …)
+  const so = v.options || {};
+  let sensorDevices = [];
+  try { sensorDevices = (await get('/devices')).filter((d) => ['printer', 'nas', 'switch'].includes(d.type)); } catch { /* none */ }
+  const devSel = select('device_id', [['', t('sens.chooseDevice')], ...sensorDevices.map((d) => [String(d.id), `${d.name}${d.ip ? ` (${d.ip})` : ''}`])],
+    v.device_id ? String(v.device_id) : '', m ? { disabled: true } : {});
+  let metrics = [];
+  const metricSel = h('select', { name: 'metric' });
+  const opSel = select('op', OPS.map((x) => [x, t(`sens.op.${x}`)]), so.op || 'le');
+  const thr = input('threshold', so.threshold ?? '', { maxlength: 60, class: 'mono' });
+  const condBox = h('div', { class: 'form-grid full' }, field(t('sens.op'), opSel), field(t('sens.threshold'), thr));
+  const metricHint = h('span', { class: 'hint' });
+  const syncMetric = () => {
+    const x = metrics.find((y) => `${y.metric}|${y.key}` === metricSel.value);
+    condBox.hidden = typeSel.value === 'sensor' && (!x || x.kind === 'state');
+    metricHint.textContent = x ? t('sens.now', { value: x.value === null || x.value === undefined ? '–' : `${x.value}${x.unit ? ` ${x.unit}` : ''}` }) : '';
+    if (x && !m && x.kind === 'number' && !thr.dataset.touched) { opSel.value = x.op; thr.value = x.threshold; }
+  };
+  thr.addEventListener('input', () => { thr.dataset.touched = '1'; });
+  metricSel.addEventListener('change', syncMetric);
+  async function loadMetrics() {
+    mount(metricSel);
+    metrics = [];
+    if (!devSel.value) { syncMetric(); return; }
+    try { metrics = await get(`/devices/${devSel.value}/sensors`); } catch { metrics = []; }
+    mount(metricSel, metrics.length ? metrics.map((x) => h('option', { value: `${x.metric}|${x.key}` }, sensorLabel(x))) : h('option', { value: '' }, t('sens.noValues')));
+    if (so.metric) metricSel.value = `${so.metric}|${so.key || ''}`;
+    syncMetric();
+  }
+  devSel.addEventListener('change', loadMetrics);
+  const sensorBox = h('div', { class: 'form-grid full' },
+    field(t('sens.device'), devSel),
+    h('div', {}, h('label', { class: 'field' }, t('sens.metric'), metricSel, metricHint)));
+  // Free SNMP value
+  const oid = input('oid', so.oid || '', { class: 'mono', placeholder: '1.3.6.1.2.1.33.1.2.4.0' });
+  const snmpBox = h('div', { class: 'form-grid full' },
+    h('div', { class: 'full' }, field('OID', oid, t('sens.oidHint'))));
   const httpBox = h('div', { class: 'form-grid full' },
     field(t('mon.f.status'), input('http_status', v.http_status, { class: 'mono' }), t('mon.f.statusHint')),
     field(t('mon.f.keyword'), input('http_keyword', v.http_keyword, { maxlength: 200 }), t('mon.f.keywordHint')),
@@ -241,13 +294,22 @@ export async function openMonitorForm(m, done, preset = null) {
   const sync = () => {
     const ty = typeSel.value;
     const isDb = DBT.includes(ty);
-    portBox.hidden = ty !== 'tcp' && !isDb;
+    sensorBox.hidden = ty !== 'sensor';
+    snmpBox.hidden = ty !== 'snmp';
+    targetWrap.hidden = ty === 'sensor';
+    target.required = ty !== 'sensor';
+    devSel.required = ty === 'sensor';
+    oid.required = ty === 'snmp';
+    condBox.hidden = !(ty === 'snmp' || ty === 'sensor');
+    if (ty === 'sensor') syncMetric();
+    if (ty === 'sensor' && !metrics.length && devSel.value) loadMetrics();
+    portBox.hidden = ty !== 'tcp' && ty !== 'snmp' && !isDb;
     httpBox.hidden = ty !== 'http';
     dockerBox.hidden = ty !== 'docker';
     dbBox.hidden = !isDb;
     dbName.hidden = ty === 'redis';
     port.required = ty === 'tcp';
-    port.placeholder = isDb ? String(DEF_PORT[ty]) : '';
+    port.placeholder = isDb ? String(DEF_PORT[ty]) : ty === 'snmp' ? '161' : '';
     hostSel.required = ty === 'docker';
     targetLabel.textContent = ty === 'docker' ? t('mon.f.container') : t('mon.f.target');
     target.placeholder = ty === 'http' ? 'https://intranet.firma.local/' : ty === 'docker' ? 'nextcloud' : '192.168.1.10';
@@ -263,8 +325,11 @@ export async function openMonitorForm(m, done, preset = null) {
   const form = h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); save(); } },
     h('div', { class: 'full' }, field(t('mon.f.name'), input('name', v.name || '', { required: true, maxlength: 120 }))),
     field(t('mon.f.type'), typeSel),
-    h('div', {}, h('label', { class: 'field' }, targetLabel, target), containers),
+    targetWrap,
     portBox,
+    sensorBox,
+    snmpBox,
+    condBox,
     dockerBox,
     dbBox,
     field(t('mon.f.interval'), input('interval_s', v.interval_s, { type: 'number', min: 20, max: 86400 }), t('mon.f.intervalHint')),
@@ -286,6 +351,15 @@ export async function openMonitorForm(m, done, preset = null) {
       tls_verify: d.tls_verify, cert_check: d.cert_check, cert_days: d.cert_days,
       channels: chans.filter((c) => d[`ch_${c.id}`]).map((c) => c.id) };
     if (d.type === 'docker') body.docker_host_id = d.docker_host_id;
+    if (d.type === 'sensor') {
+      const x = metrics.find((y) => `${y.metric}|${y.key}` === d.metric);
+      if (!x && !m) { toast(t('err.sensorMetric'), 'error'); return; }
+      const [metric, key] = (d.metric || `${so.metric}|${so.key || ''}`).split('|');
+      body.device_id = Number(d.device_id || v.device_id);
+      body.target = '';
+      body.options = { metric, key, op: d.op, threshold: d.threshold, label: x ? sensorLabel(x) : so.label };
+    }
+    if (d.type === 'snmp') body.options = { oid: d.oid.trim(), op: d.op, threshold: d.threshold, label: '' };
     if (DBT.includes(d.type)) {
       body.options = { user: d.db_user, database: d.database, tls: d.db_tls };
       if (d.password) body.password = d.password;

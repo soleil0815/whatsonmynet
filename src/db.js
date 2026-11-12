@@ -377,6 +377,48 @@ export const MIGRATIONS = [
     last_status TEXT NOT NULL DEFAULT ''
   );
   `,
+  // 10: sensors on values the devices deliver, free SNMP values, Proxmox (monitor table rebuilt for the new types)
+  { foreignKeysOff: true, sql: `
+  CREATE TABLE monitors_new (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('ping','tcp','http','docker','mysql','postgres','redis','sensor','snmp','proxmox')),
+    target TEXT NOT NULL,
+    port INTEGER,
+    device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+    interval_s INTEGER NOT NULL DEFAULT 60,
+    timeout_s INTEGER NOT NULL DEFAULT 10,
+    fail_threshold INTEGER NOT NULL DEFAULT 3,
+    resend_min INTEGER NOT NULL DEFAULT 0,
+    http_status TEXT NOT NULL DEFAULT '200-399',
+    http_keyword TEXT NOT NULL DEFAULT '',
+    tls_verify INTEGER NOT NULL DEFAULT 0,
+    cert_check INTEGER NOT NULL DEFAULT 1,
+    cert_days TEXT NOT NULL DEFAULT '30,14,7',
+    channels TEXT NOT NULL DEFAULT '[]',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    status_since TEXT,
+    last_check TEXT,
+    last_ms INTEGER,
+    last_message TEXT NOT NULL DEFAULT '',
+    fail_count INTEGER NOT NULL DEFAULT 0,
+    notified_down INTEGER NOT NULL DEFAULT 0,
+    last_alert_at TEXT,
+    cert_valid_to TEXT,
+    cert_alert_days INTEGER,
+    docker_host_id INTEGER REFERENCES docker_hosts(id) ON DELETE RESTRICT,
+    options TEXT NOT NULL DEFAULT '{}',
+    secret TEXT NOT NULL DEFAULT ''
+  );
+  INSERT INTO monitors_new(id,name,type,target,port,device_id,interval_s,timeout_s,fail_threshold,resend_min,http_status,http_keyword,tls_verify,cert_check,cert_days,channels,enabled,created_at,updated_at,status,status_since,last_check,last_ms,last_message,fail_count,notified_down,last_alert_at,cert_valid_to,cert_alert_days,docker_host_id,options,secret)
+  SELECT id,name,type,target,port,device_id,interval_s,timeout_s,fail_threshold,resend_min,http_status,http_keyword,tls_verify,cert_check,cert_days,channels,enabled,created_at,updated_at,status,status_since,last_check,last_ms,last_message,fail_count,notified_down,last_alert_at,cert_valid_to,cert_alert_days,docker_host_id,options,secret FROM monitors;
+  DROP TABLE monitors;
+  ALTER TABLE monitors_new RENAME TO monitors;
+  CREATE INDEX monitors_device ON monitors(device_id);
+  ` },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

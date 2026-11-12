@@ -6,6 +6,7 @@ import net from 'node:net';
 import { config } from '../config.js';
 import { ping, pingAvailable } from '../scan/probes.js';
 import { dockerCheck, mysqlCheck, postgresCheck, redisCheck, DEFAULT_PORTS } from './services.js';
+import { sensorCheck, snmpCheck } from './sensors.js';
 
 const UA = `WhatsOnMyNet/${config.version} (monitoring)`;
 const MAX_BODY = 1024 * 1024;
@@ -119,6 +120,12 @@ function tlsMessage(e) {
 export function runCheck(m, ctx = {}) {
   if (m.type === 'ping') return pingCheck(m.target, Math.min(m.timeout_s, 10));
   if (m.type === 'tcp') return tcpCheck(m.target, m.port, m.timeout_s);
+  if (m.type === 'sensor') return Promise.resolve(ctx.db ? sensorCheck(ctx.db, m) : { ok: false, ms: null, message: 'no database' });
+  if (m.type === 'snmp') {
+    let o = {};
+    try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
+    return snmpCheck(m.target, m.port, ctx.communities?.() || ['public'], o, m.timeout_s).catch((e) => ({ ok: false, ms: null, message: e.message }));
+  }
   if (m.type === 'docker') {
     const url = ctx.dockerUrl?.(m.docker_host_id);
     if (!url) return Promise.resolve({ ok: false, ms: null, message: 'Docker host missing' });
