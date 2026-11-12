@@ -104,7 +104,9 @@ docker compose exec whatsonmynet womn-admin create <user>   # new administrator
 ## Updates and backup
 
 - Dockhand or Watchtower fetch updates automatically, or by hand: `docker compose pull && docker compose up -d`.
-- Security updates are published on patch day (second Tuesday of the month), like the other programs.
+- Security updates are published on patch day (second Tuesday of the month) as `<version>-s<n>`: the same program with a new base image and updated Alpine and npm packages, built, tested and checked with Trivy. If nothing changed, nothing is published.
+- Trivy checks the published image every day. Fixable vulnerabilities open an issue; the security update on patch day fixes them.
+- In the week before patch day a ZAP scan attacks the program in a throwaway container without login. The monthly code audit evaluates the result.
 - WhatsOnMyNet writes a daily database backup to `data/backups/` (number under *Settings → General*). Back up the whole `data/` folder, including `secret.key` and `tls/`.
 
 ## What comes next
