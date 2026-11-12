@@ -363,10 +363,11 @@ async function users(body, _s, reload) {
 }
 
 async function agents(body, _s, reload) {
-  const [list, locs, fp] = await Promise.all([get('/agents'), get('/locations'), get('/tls/fingerprint').catch(() => ({ fingerprint: '' }))]);
+  const [list, locs, cert] = await Promise.all([get('/agents'), get('/locations'), get('/tls/agent-ca').catch(() => ({ ca: '' }))]);
   const server = location.origin;
   const showToken = (a) => {
-    const env = [`WOMN_AGENT_SERVER=${server}`, `WOMN_AGENT_TOKEN=${a.token}`, fp.fingerprint ? `WOMN_AGENT_FINGERPRINT=${fp.fingerprint}` : null, 'TZ=Europe/Berlin', 'PUID=1000', 'PGID=1000']
+    // Self-signed certificate: the agent trusts exactly this one (pinned); an uploaded one from a real CA needs nothing
+    const env = [`WOMN_AGENT_SERVER=${server}`, `WOMN_AGENT_TOKEN=${a.token}`, cert.ca && cert.source !== 'custom' ? `WOMN_AGENT_CA=${cert.ca}` : null, 'TZ=Europe/Berlin', 'PUID=1000', 'PGID=1000']
       .filter(Boolean).join('\n');
     const m = modal(`${t('agent.tokenTitle')}: ${a.name}`, h('div', { class: 'form' },
       h('p', { class: 'note warn', style: { margin: 0 } }, t('agent.tokenOnce')),

@@ -142,10 +142,10 @@ Bearbeiter und Leser lassen sich unter *Einstellungen → Benutzer* auf einen od
 
 ARP – und damit die MAC-Adresse – sieht man nur im eigenen Netz. Für eine Außenstelle läuft dort ein zweiter Container als **Scan-Agent**:
 
-1. Zentrale: Standort der Außenstelle mit ihren Subnetzen anlegen, dann *Einstellungen → Scan-Agenten → Agent hinzufügen*. Angezeigt werden Schlüssel und Zertifikats-Fingerabdruck als fertige `.env`.
+1. Zentrale: Standort der Außenstelle mit ihren Subnetzen anlegen, dann *Einstellungen → Scan-Agenten → Agent hinzufügen*. Angezeigt werden Schlüssel und – beim selbstsignierten Zertifikat – das Zertifikat der Zentrale als fertige `.env`.
 2. Außenstelle: `docker-compose.agent.yml` aus dem Release und die `.env` ablegen, `docker compose -f docker-compose.agent.yml up -d`.
 
-Der Agent hat keine Weboberfläche und öffnet keinen Port. Er fragt die Zentrale jede Minute nach Aufträgen (HTTPS; bei selbstsigniertem Zertifikat wird der Fingerabdruck geprüft, bevor der Schlüssel gesendet wird), scannt dort genauso schonend und folgt der Uhrzeit des nächtlichen Leicht-Scans. Er darf nur Adressen aus den Subnetzen seines Standorts melden. „Scan starten“ für diesen Standort geht in der Zentrale automatisch als Auftrag an den Agenten; die Ergebnisse erscheinen wie gewohnt unter *Frühere Scans*.
+Der Agent hat keine Weboberfläche und öffnet keinen Port. Er fragt die Zentrale jede Minute nach Aufträgen (HTTPS; beim selbstsignierten Zertifikat vertraut er genau diesem einen Zertifikat – geprüft, bevor der Schlüssel gesendet wird. Erneuert sich das Zertifikat, braucht der Agent den neuen Wert), scannt dort genauso schonend und folgt der Uhrzeit des nächtlichen Leicht-Scans. Er darf nur Adressen aus den Subnetzen seines Standorts melden. „Scan starten“ für diesen Standort geht in der Zentrale automatisch als Auftrag an den Agenten; die Ergebnisse erscheinen wie gewohnt unter *Frühere Scans*.
 
 ## HTTPS und Zertifikat
 
