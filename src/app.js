@@ -1,0 +1,140 @@
+// Assembles the Express application (without listening – so it can be tested).
+import path from 'node:path';
+import express from 'express';
+import helmet from 'helmet';
+import { config, paths } from './config.js';
+import { createSettings } from './settings.js';
+import { createSessions, parseCookies, createLoginLimiter } from './auth/session.js';
+import { createUsers } from './auth/users.js';
+import { createInventory } from './inventory.js';
+import { createLocations } from './locations.js';
+import { createScanner } from './scan/engine.js';
+import { createMailer } from './mail/smtp.js';
+import { createApi } from './routes/api.js';
+import { HttpError } from './lib/http.js';
+import { randomToken } from './lib/crypto.js';
+import { t, langFromHeader, normalizeLang, hasKey } from './i18n.js';
+import { log } from './lib/log.js';
+import { httpPortMiddleware, proxyHttpsMiddleware, directHstsMiddleware, createHttpsHosts } from './https.js';
+
+/**
+ * WOMN_TRUST_PROXY: addresses/networks of the reverse proxy. Empty = no proxy (nothing is trusted).
+ * "true"/numbers are rejected – they would trust every X-Forwarded-For header.
+ */
+export function applyTrustProxy(app, raw) {
+  const value = String(raw ?? '').trim();
+  if (!value) { app.set('trust proxy', false); return ''; }
+  if (/^(true|false|yes|no|ja|nein|on|off|\d+)$/i.test(value)) {
+    log.warn(`WOMN_TRUST_PROXY="${value}" is not valid – enter the address of the reverse proxy, e.g. 10.0.10.5. No proxy is trusted.`);
+    app.set('trust proxy', false);
+    return '';
+  }
+  try { app.set('trust proxy', value); } catch (e) {
+    log.warn(`WOMN_TRUST_PROXY="${value}" is invalid (${e.message}) – no proxy is trusted.`);
+    app.set('trust proxy', false);
+    return '';
+  }
+  return value;
+}
+
+/**
+ * @param db open database
+ * @param opts.tls certificate store (src/tls.js) – optional in tests
+ * @param opts.plainHttp tests only: serve the app on plain HTTP instead of redirecting
+ */
+export function createApp(db, { tls = null, plainHttp = false } = {}) {
+  const settings = createSettings(db);
+  const sessions = createSessions(db);
+  const users = createUsers(db);
+  const inventory = createInventory(db);
+  const locations = createLocations(db);
+  const scanner = createScanner({ db, settings, inventory });
+  scanner.recover();
+  const mailer = createMailer(settings);
+  const limiter = createLoginLimiter();
+
+  // Initial setup: one-time code from the log, only as long as there is no user
+  const setup = { token: null };
+  if (users.count() === 0) {
+    setup.token = process.env.WOMN_SETUP_TOKEN || randomToken(9);
+    const bar = '='.repeat(64);
+    const where = config.baseUrl || `https://<address of this server>:${config.httpsPort}`;
+    console.log(`\n${bar}\n  WhatsOnMyNet – Ersteinrichtung / initial setup\n  Einrichtungscode / setup code:  ${setup.token}\n  ${where}/setup\n${bar}\n`);
+  }
+
+  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls,
+    // replaced by server.js: loads a new certificate into the running HTTPS server
+    applyTls: () => {} };
+
+  const app = express();
+  app.disable('x-powered-by');
+  ctx.trustProxy = applyTrustProxy(app, config.trustProxy);
+
+  // Plain HTTP port: only redirects to HTTPS (a trusted reverse proxy is served)
+  if (!plainHttp) {
+    const httpPort = httpPortMiddleware(app, { baseUrl: config.baseUrl, httpsPort: config.httpsPort });
+    app.use((req, res, next) => (req.socket.encrypted ? next() : httpPort(req, res, next)));
+  }
+
+  app.use(helmet({
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        'script-src': ["'self'"],
+        'style-src': ["'self'"],
+        'img-src': ["'self'", 'data:'],
+        'connect-src': ["'self'"],
+        'font-src': ["'self'"],
+        'form-action': ["'self'"],
+        'frame-ancestors': ["'none'"],
+      },
+    },
+    // HSTS: see https.js (never with a self-signed certificate)
+    strictTransportSecurity: false,
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    referrerPolicy: { policy: 'same-origin' },
+  }));
+  app.use(directHstsMiddleware({ hsts: config.hsts, certSource: () => tls?.describe()?.source }));
+  const proxy = proxyHttpsMiddleware(app, { baseUrl: config.baseUrl, hsts: config.hsts, hosts: createHttpsHosts(paths.httpsHosts) });
+  if (proxy) app.use(proxy);
+
+  app.get('/healthz', (_req, res) => {
+    try { db.prepare('SELECT 1').get(); res.json({ ok: true, version: config.version }); }
+    catch { res.status(503).json({ ok: false }); }
+  });
+
+  app.use(parseCookies);
+  app.use(sessions.middleware);
+  app.use(express.json({ limit: '1mb' }));
+  app.use((req, _res, next) => { if (!req.body || typeof req.body !== 'object') req.body = {}; next(); });
+
+  app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+  // CSRF protection: writing API calls need a custom header (only sent cross-site after a CORS grant – none exists)
+  app.use('/api', (req, _res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    if (req.get('X-WOMN-Request') !== '1') return next(new HttpError(403, 'err.csrf'));
+    next();
+  });
+  app.use('/api', createApi(ctx));
+  app.use('/api', (_req, _res, next) => next(new HttpError(404, 'err.notFound')));
+
+  // Static files + single-page app (always revalidated: after an update the new interface arrives at once)
+  app.use(express.static(config.publicDir, { index: false, maxAge: 0, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
+  const indexHtml = path.join(config.publicDir, 'index.html');
+  app.get(/^\/(?!api\/).*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(indexHtml);
+  });
+
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, _next) => {
+    const lang = normalizeLang(req.user?.language || langFromHeader(req.get('accept-language')));
+    let status = err.status || err.statusCode || 500;
+    let code = err instanceof HttpError ? err.code : (status === 400 ? 'err.badRequest' : 'err.internal');
+    if (err.type === 'entity.parse.failed' || err.type === 'entity.too.large') { status = err.type === 'entity.too.large' ? 413 : 400; code = 'err.badRequest'; }
+    if (status >= 500 && !(err instanceof HttpError)) log.error(`${req.method} ${req.originalUrl}: ${err.stack || err.message}`);
+    res.status(status).json({ error: { code, message: hasKey(code) ? t(lang, code, { detail: err.detail ?? '' }) : code, detail: err.detail } });
+  });
+
+  return { app, ctx };
+}

@@ -1,0 +1,228 @@
+// Administration: general, scan, email, HTTPS certificate, users, ignored devices, log, about.
+import { h, mount, toast, modal, confirmDialog, fmtDate } from '../dom.js';
+import { get, put, post, patch, del } from '../api.js';
+import { t, getLang } from '../i18n.js';
+import { icon } from '../icons.js';
+import { state, navigate, fail } from '../app.js';
+import { pageHead, field, input, select, formData, btn } from './common.js';
+
+const SECTIONS = [
+  ['general', 'settings'], ['scan', 'radar'], ['smtp', 'mail'], ['https', 'lock'], ['users', 'users'],
+  ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
+];
+
+export async function renderSettings(main, section = 'general') {
+  if (!state.user.isAdmin) { navigate('/', { replace: true }); return; }
+  if (!SECTIONS.some(([s]) => s === section)) section = 'general';
+  const body = h('div', { class: 'stack' });
+  mount(main, h('div', { class: 'page' },
+    pageHead(t('set.title'), null),
+    h('div', { class: 'settings' },
+      h('nav', { class: 'subnav', 'aria-label': t('set.title') }, SECTIONS.map(([s, ico]) => h('a', { href: `/settings/${s}`, 'data-link': true,
+        class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
+      body)));
+  const all = ['general', 'scan', 'smtp'].includes(section) ? await get('/settings') : null;
+  const view = { general, scan, smtp, https, users, ignored, audit, about }[section];
+  await view(body, all, () => renderSettings(main, section));
+}
+
+const panel = (title, ...content) => h('section', { class: 'panel panel-pad' }, title ? h('h2', { class: 'section-title' }, title) : null, content);
+const saveBtn = () => h('div', { class: 'actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, t('save')));
+
+async function general(body, s) {
+  const form = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    try {
+      const d = formData(form);
+      await put('/settings/general', { title: d.title });
+      await put('/settings/backup', { keep: d.keep });
+      state.boot.title = d.title;
+      toast(t('saved'));
+    } catch (ex) { fail(ex); }
+  } },
+  field(t('set.instance'), input('title', s.general.title, { maxlength: 60 })),
+  field(t('set.backupKeep'), input('keep', s.backup.keep, { type: 'number', min: 1, max: 90 }), t('set.backupHint')),
+  saveBtn());
+  mount(body, panel(t('set.general'), form));
+}
+
+async function scan(body, s) {
+  const sc = s.scan;
+  const comm = h('textarea', { name: 'snmpCommunities', rows: 3, class: 'mono', placeholder: sc.snmpCommunities.set ? '••••••' : 'public', autocomplete: 'off', spellcheck: 'false' });
+  const form = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    const d = formData(form);
+    const payload = { ping: d.ping, snmp: d.snmp, httpTitles: d.httpTitles, rate: d.rate, keepScans: d.keepScans };
+    if (d.snmpCommunities.trim() || d.clearCommunities) payload.snmpCommunities = d.clearCommunities ? '' : d.snmpCommunities;
+    try { await put('/settings/scan', payload); toast(t('saved')); } catch (ex) { fail(ex); }
+  } },
+  field(t('set.ping'), h('input', { type: 'checkbox', name: 'ping', checked: sc.ping })),
+  field(t('set.snmp'), h('input', { type: 'checkbox', name: 'snmp', checked: sc.snmp })),
+  field(t('set.httpTitles'), h('input', { type: 'checkbox', name: 'httpTitles', checked: sc.httpTitles })),
+  field(t('set.communities'), comm, sc.snmpCommunities.set ? t('set.communitiesSet') : t('set.communitiesHint')),
+  sc.snmpCommunities.set ? field('public', h('input', { type: 'checkbox', name: 'clearCommunities' })) : null,
+  h('div', { class: 'form-grid' },
+    field(t('set.rate'), input('rate', sc.rate, { type: 'number', min: 5, max: 200 }), t('set.rateHint')),
+    field(t('set.keepScans'), input('keepScans', sc.keepScans, { type: 'number', min: 3, max: 500 }))),
+  saveBtn());
+  const ports = state.meta?.gentlePorts || [];
+  mount(body, panel(t('set.scan'), form),
+    panel(t('set.ports'), h('div', { class: 'ports' }, ports.map((p) => h('span', { class: 'port', title: state.meta.services[p] || '' }, `${p} ${state.meta.services[p] ? `· ${state.meta.services[p]}` : ''}`)))));
+}
+
+async function smtp(body, s) {
+  const m = s.smtp;
+  const form = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    try { await put('/settings/smtp', formData(form)); toast(t('saved')); } catch (ex) { fail(ex); }
+  } },
+  h('div', { class: 'form-grid' },
+    field(t('set.smtpHost'), input('host', m.host, { placeholder: 'mail.firma.de' })),
+    field(t('set.smtpPort'), input('port', m.port, { type: 'number', min: 1, max: 65535 })),
+    field(t('set.smtpSecurity'), select('security', [['starttls', t('sec.starttls')], ['tls', t('sec.tls')], ['none', t('sec.none')]], m.security)),
+    field(t('set.smtpFrom'), input('from', m.from), t('set.smtpFromHint')),
+    field(t('set.smtpUser'), input('user', m.user, { autocomplete: 'off' })),
+    field(t('set.smtpPassword'), input('password', '', { type: 'password', autocomplete: 'new-password', placeholder: m.password.set ? '••••••' : '' }), m.password.set ? t('set.smtpPasswordSet') : null)),
+  field(t('set.smtpSelfSigned'), h('input', { type: 'checkbox', name: 'allowSelfSigned', checked: m.allowSelfSigned })),
+  saveBtn());
+  const to = input('to', state.user.email, { type: 'email', 'aria-label': t('set.smtpTestTo') });
+  const test = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    const b = test.querySelector('button'); b.disabled = true;
+    try { await post('/settings/smtp/test', { to: to.value }); toast(t('set.smtpTestSent')); } catch (ex) { fail(ex); }
+    b.disabled = false;
+  } }, field(t('set.smtpTestTo'), to), h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'submit' }, h('span', { html: icon('mail') }), t('set.smtpTest'))));
+  mount(body, panel(t('set.smtp'), h('p', { class: 'muted' }, t('set.smtpLater')), form), panel(t('set.smtpTest'), test));
+}
+
+const readFile = (file, asText) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(asText ? r.result : String(r.result).split(',')[1] || '');
+  r.onerror = () => reject(r.error);
+  if (asText) r.readAsText(file); else r.readAsDataURL(file);
+});
+
+async function https(body, _s, reload) {
+  const c = await get('/tls');
+  const info = c ? h('dl', { class: 'kv' },
+    h('dt', {}, t('tls.current')), h('dd', {}, h('span', { class: `badge${c.source === 'custom' ? ' badge-ok' : ' badge-new'}` }, t(`tls.source.${c.source}`))),
+    h('dt', {}, t('tls.subject')), h('dd', {}, c.subject),
+    h('dt', {}, t('tls.issuer')), h('dd', {}, c.issuer, c.chain > 1 ? h('span', { class: 'muted small' }, ` · ${t('tls.chain', { n: c.chain })}`) : null),
+    h('dt', {}, t('tls.names')), h('dd', { class: 'mono' }, (c.names || []).join(', ')),
+    h('dt', {}, t('tls.validTo')), h('dd', {}, fmtDate(c.validTo, getLang())),
+    h('dt', {}, t('tls.fingerprint')), h('dd', { class: 'mono small' }, c.fingerprint)) : null;
+
+  let mode = 'pem';
+  const certFile = h('input', { type: 'file', accept: '.pem,.crt,.cer,.txt' });
+  const keyFile = h('input', { type: 'file', accept: '.pem,.key,.txt' });
+  const pfxFile = h('input', { type: 'file', accept: '.pfx,.p12' });
+  const pass = input('passphrase', '', { type: 'password', autocomplete: 'off' });
+  const pemBox = h('div', { class: 'form' }, field(t('tls.certFile'), certFile), field(t('tls.keyFile'), keyFile));
+  const pfxBox = h('div', { class: 'form', hidden: true }, field(t('tls.pfxFile'), pfxFile));
+  const seg = h('div', { class: 'seg' }, [['pem', t('tls.pem')], ['pfx', t('tls.pfx')]].map(([k, l]) => h('button', { type: 'button', class: k === mode ? 'on' : '',
+    onclick: (e) => { mode = k; seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === e.currentTarget)); pemBox.hidden = k !== 'pem'; pfxBox.hidden = k !== 'pfx'; } }, l)));
+  const form = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    const b = form.querySelector('button[type=submit]');
+    b.disabled = true;
+    try {
+      const payload = { passphrase: pass.value };
+      if (mode === 'pem') {
+        if (!certFile.files[0] || !keyFile.files[0]) throw new Error(t('tls.certFile'));
+        payload.cert = await readFile(certFile.files[0], true);
+        payload.key = await readFile(keyFile.files[0], true);
+      } else {
+        if (!pfxFile.files[0]) throw new Error(t('tls.pfxFile'));
+        payload.pfx = await readFile(pfxFile.files[0], false);
+      }
+      await post('/tls', payload);
+      toast(t('tls.installed'));
+      reload();
+    } catch (ex) { fail(ex); b.disabled = false; }
+  } }, seg, pemBox, pfxBox, field(t('tls.passphrase'), pass, t('tls.passphraseHint')),
+  h('div', { class: 'actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, h('span', { html: icon('lock') }), t('tls.install'))));
+
+  mount(body,
+    panel(t('set.https'), c?.source !== 'custom' ? h('div', { class: 'note warn' }, t('tls.selfHint')) : null, info,
+      c?.source === 'custom' ? h('div', { class: 'actions', style: { marginTop: '14px' } }, btn(t('tls.reset'), { onclick: async () => {
+        if (!await confirmDialog(t('tls.reset'), t('tls.resetConfirm'), t('tls.reset'), t('cancel'))) return;
+        try { await post('/tls/self-signed'); toast(t('tls.installed')); reload(); } catch (ex) { fail(ex); }
+      } })) : null),
+    panel(t('tls.upload'), form));
+}
+
+async function users(body, _s, reload) {
+  const list = await get('/users');
+  const roleSel = (v) => select('role', ['admin', 'editor', 'viewer'].map((r) => [r, `${t(`role.${r}`)} – ${t(`role.${r}.hint`)}`]), v);
+  const edit = (u) => {
+    const form = h('form', { class: 'form' },
+      u ? null : field(t('user.username'), input('username', '', { required: true, autocomplete: 'off' })),
+      field(t('user.display'), input('display_name', u?.display_name || '')),
+      field(t('user.email'), input('email', u?.email || '', { type: 'email' })),
+      field(t('user.role'), roleSel(u?.role || 'editor')),
+      u ? field(t('user.active'), h('input', { type: 'checkbox', name: 'active', checked: !!u.active })) : field(t('user.password'), input('password', '', { type: 'password', required: true, minlength: 10, autocomplete: 'new-password' }), t('user.passwordHint')),
+      field(t('language'), select('language', [['de', 'Deutsch'], ['en', 'English']], u?.language || getLang())));
+    const m = modal(u ? u.username : t('users.add'), form, { actions: [
+      btn(t('cancel'), { onclick: () => m.close() }),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+        if (!form.reportValidity()) return;
+        try { if (u) await patch(`/users/${u.id}`, formData(form)); else await post('/users', formData(form)); m.close(); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
+      } }, t('save'))] });
+  };
+  const setPw = (u) => {
+    const pw = input('password', '', { type: 'password', minlength: 10, required: true, autocomplete: 'new-password' });
+    const m = modal(`${t('users.resetPassword')}: ${u.username}`, h('form', { class: 'form' }, field(t('users.newPassword'), pw, t('user.passwordHint'))), { actions: [
+      btn(t('cancel'), { onclick: () => m.close() }),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+        try { await post(`/users/${u.id}/password`, { password: pw.value }); m.close(); toast(t('saved')); } catch (ex) { fail(ex); }
+      } }, t('save'))] });
+  };
+  mount(body, h('section', { class: 'panel' },
+    h('div', { class: 'panel-head', style: { paddingBottom: '12px' } }, h('h2', {}, t('set.users')), btn(t('users.add'), { class: 'btn btn-primary btn-sm', onclick: () => edit(null) }, 'plus')),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('user.username')), h('th', {}, t('user.role')), h('th', { class: 'hide-sm' }, t('user.email')), h('th', { class: 'hide-sm' }, t('user.lastLogin')), h('th', {}))),
+      h('tbody', {}, list.map((u) => h('tr', {},
+        h('td', {}, h('span', { class: 'name' }, u.username), u.id === state.user.id ? h('span', { class: 'muted small' }, ` (${t('users.you')})`) : null,
+          u.display_name ? h('div', { class: 'sub' }, u.display_name) : null),
+        h('td', {}, t(`role.${u.role}`), u.active ? null : h('span', { class: 'badge badge-bad', style: { marginLeft: '6px' } }, t('user.inactive'))),
+        h('td', { class: 'hide-sm' }, u.email || '–'),
+        h('td', { class: 'hide-sm' }, fmtDate(u.last_login, getLang())),
+        h('td', { class: 'min' }, h('div', { class: 'actions' },
+          btn(t('edit'), { class: 'btn btn-sm', onclick: () => edit(u) }),
+          btn(t('users.resetPassword'), { class: 'btn btn-sm btn-ghost', onclick: () => setPw(u) }),
+          u.id !== state.user.id ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${u.username}`, html: icon('trash'), onclick: async () => {
+            if (!await confirmDialog(t('delete'), t('users.deleteConfirm', { name: u.username }), t('delete'), t('cancel'), { danger: true })) return;
+            try { await del(`/users/${u.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
+          } }) : null))))))),
+    h('p', { class: 'panel-pad muted small', style: { margin: 0 } }, t('users.adLater'))));
+}
+
+async function ignored(body, _s, reload) {
+  const list = await get('/ignored');
+  mount(body, panel(t('set.ignored'), h('p', { class: 'muted' }, t('ign.lead')),
+    list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('col.mac')), h('th', {}, t('col.ip')), h('th', {}, t('col.name')), h('th', {}))),
+      h('tbody', {}, list.map((x) => h('tr', {},
+        h('td', { class: 'mono' }, x.mac || '–'), h('td', { class: 'mono' }, x.ip || '–'), h('td', {}, x.label || '–'),
+        h('td', { class: 'min' }, btn(t('ign.remove'), { class: 'btn btn-sm', onclick: async () => {
+          try { await del(`/ignored/${x.id}`); reload(); } catch (ex) { fail(ex); }
+        } }))))))) : h('p', { class: 'muted' }, t('ign.empty'))));
+}
+
+async function audit(body) {
+  const list = await get('/audit');
+  mount(body, panel(t('set.audit'), list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+    h('tbody', {}, list.map((a) => h('tr', {},
+      h('td', { class: 'min muted small' }, fmtDate(a.at, getLang())), h('td', { class: 'min' }, a.user || '–'),
+      h('td', { class: 'mono small' }, a.action), h('td', { class: 'small' }, a.detail)))))) : h('p', { class: 'muted' }, t('audit.empty'))));
+}
+
+async function about(body) {
+  mount(body, panel(t('set.about'),
+    h('img', { src: document.documentElement.dataset.theme === 'dark' ? '/logo-dark.svg' : '/logo.svg', alt: 'WhatsOnMyNet', style: { height: '48px', marginBottom: '14px' } }),
+    h('p', {}, t('about.text')),
+    h('dl', { class: 'kv' },
+      h('dt', {}, t('about.version')), h('dd', {}, state.boot.version),
+      h('dt', {}, t('about.license')), h('dd', {}, 'AGPL-3.0-or-later'),
+      h('dt', {}, t('about.source')), h('dd', {}, h('a', { href: state.boot.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, state.boot.sourceUrl)))));
+}

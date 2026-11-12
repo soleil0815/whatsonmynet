@@ -1,0 +1,28 @@
+# Check dependencies, actions and base image weekly
+version: 2
+updates:
+  # Minor and patch updates as ONE pull request per week (fewer CI runs); major versions stay separate
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly }
+    ignore:
+      # Do not propose new Node major versions automatically: odd versions up to 25
+      # get no long-term support. Moving to the next LTS version (e.g. 26) is done
+      # deliberately, together with node-version in .github/workflows/ci.yml.
+      # Security fixes still arrive: the base image is pinned by digest, and Dependabot
+      # proposes the new node:24-alpine digest as a pull request every week.
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
