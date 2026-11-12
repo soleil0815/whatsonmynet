@@ -63,3 +63,36 @@ export function confidenceBar(c) {
 export function portList(ports, services = {}) {
   return h('span', { class: 'ports' }, (ports || []).map((p) => h('span', { class: 'port', title: services[p] || '' }, p)));
 }
+
+/** <datalist> elements with values already used in the inventory (suggestions while typing) */
+export function suggestionLists(sugg) {
+  return ['vendor', 'model', 'os', 'owner', 'supplier', 'tags'].map((k) => h('datalist', { id: `dl-${k}` },
+    (sugg?.[k] || []).map((v) => h('option', { value: v }))));
+}
+
+/**
+ * Choosing a known model fills in manufacturer and type when they are still empty/unknown.
+ * form: the form with fields named model, vendor and type
+ */
+export function wireModelAutofill(form, sugg) {
+  const model = form.querySelector('[name=model]');
+  if (!model) return;
+  model.addEventListener('change', () => {
+    const known = sugg?.models?.[model.value.trim().toLowerCase()];
+    if (!known) return;
+    const vendor = form.querySelector('[name=vendor]');
+    const type = form.querySelector('[name=type]');
+    if (vendor && !vendor.value.trim() && known.vendor) { vendor.value = known.vendor; vendor.dispatchEvent(new Event('input')); }
+    if (type && (type.value === 'unknown' || !type.value) && known.type) type.value = known.type;
+  });
+}
+
+/** Clickable chips of tags already in use: a click adds the tag to the comma list in `input` */
+export function tagChips(input, tags, max = 14) {
+  const current = () => input.value.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  return h('div', { class: 'chips' }, (tags || []).slice(0, max).map((tg) => h('button', { type: 'button', class: 'chip', onclick: () => {
+    if (current().includes(tg.toLowerCase())) return;
+    input.value = [...input.value.split(',').map((x) => x.trim()).filter(Boolean), tg].join(', ');
+    input.dispatchEvent(new Event('input'));
+  } }, `+ ${tg}`)));
+}
