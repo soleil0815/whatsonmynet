@@ -22,6 +22,20 @@ export function createUsers(db) {
   const byName = db.prepare('SELECT * FROM users WHERE username=?');
   const adminsLeft = (exceptId) => db.prepare("SELECT COUNT(*) n FROM users WHERE role='admin' AND active=1 AND id<>?").get(exceptId).n;
 
+  const locsOf = db.prepare('SELECT location_id FROM user_locations WHERE user_id=? ORDER BY location_id');
+  function withLocations(u) { return u ? { ...u, locations: locsOf.all(u.id).map((r) => r.location_id) } : u; }
+
+  /** Limits a user to locations (empty list = all). Admins are never limited. */
+  function setLocations(id, list) {
+    const idsIn = [...new Set((Array.isArray(list) ? list : []).map(Number).filter((x) => Number.isInteger(x) && x > 0))].slice(0, 200);
+    for (const l of idsIn) if (!db.prepare('SELECT 1 FROM locations WHERE id=?').get(l)) throw new HttpError(400, 'err.location');
+    db.transaction(() => {
+      db.prepare('DELETE FROM user_locations WHERE user_id=?').run(id);
+      const ins = db.prepare('INSERT INTO user_locations(user_id,location_id) VALUES(?,?)');
+      for (const l of idsIn) ins.run(id, l);
+    })();
+  }
+
   function clean(input, { partial = false } = {}) {
     const out = {};
     if (!partial || 'username' in input) {
@@ -45,8 +59,8 @@ export function createUsers(db) {
 
   return {
     count: () => db.prepare('SELECT COUNT(*) n FROM users').get().n,
-    list: () => db.prepare(`SELECT ${PUBLIC} FROM users ORDER BY username`).all(),
-    get: (id) => db.prepare(`SELECT ${PUBLIC} FROM users WHERE id=?`).get(id),
+    list: () => db.prepare(`SELECT ${PUBLIC} FROM users ORDER BY username`).all().map(withLocations),
+    get: (id) => withLocations(db.prepare(`SELECT ${PUBLIC} FROM users WHERE id=?`).get(id)),
     /** Local accounts only – an account from the directory never signs in with a password stored here */
     authenticate(username, password) {
       const u = byName.get(String(username || '').trim());
@@ -79,6 +93,7 @@ export function createUsers(db) {
       const now = new Date().toISOString();
       const r = db.prepare('INSERT INTO users(username,display_name,email,password_hash,role,language,theme,created_at,password_changed_at) VALUES(?,?,?,?,?,?,?,?,?)')
         .run(v.username, v.display_name, v.email, hashPassword(pw), v.role, v.language, v.theme || 'system', now, now);
+      if (v.role !== 'admin' && 'locations' in input) setLocations(Number(r.lastInsertRowid), input.locations);
       return this.get(r.lastInsertRowid);
     },
     update(id, input, { self = false } = {}) {
@@ -94,6 +109,7 @@ export function createUsers(db) {
       if (losesAdmin && adminsLeft(id) === 0) throw new HttpError(400, 'err.lastAdmin');
       const keys = Object.keys(v);
       if (keys.length) db.prepare(`UPDATE users SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`).run(...keys.map((k) => v[k]), id);
+      if (!self && input && 'locations' in input) setLocations(id, input.locations);
       return this.get(id);
     },
     setPassword(id, password) {

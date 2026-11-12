@@ -195,3 +195,37 @@ test('sign-in through the directory', async () => {
     app.ctx.directory.enabled = realEnabled;
   }
 });
+
+test('users limited to locations see and change only their part', async () => {
+  const la = (await call('POST', '/api/locations', { name: 'Außenstelle A', subnets: ['10.77.1.0/24'] })).data;
+  const lb = (await call('POST', '/api/locations', { name: 'Außenstelle B', subnets: ['10.77.2.0/24'] })).data;
+  const da = (await call('POST', '/api/devices', { name: 'Gerät A', ip: '10.77.1.5', location_id: la.id })).data;
+  const db2 = (await call('POST', '/api/devices', { name: 'Gerät B', ip: '10.77.2.5', location_id: lb.id })).data;
+  const u = (await call('POST', '/api/users', { username: 'standort-a', password: 'Standort-A-1234', role: 'editor', locations: [la.id] })).data;
+  assert.deepEqual(u.locations, [la.id]);
+  assert.equal((await call('POST', '/api/login', { username: 'standort-a', password: 'Standort-A-1234' }, { who: 'seg' })).status, 200);
+  const seg = (m, p, b) => call(m, p, b, { who: 'seg' });
+  const names = (await seg('GET', '/api/devices')).data.map((d) => d.name);
+  assert.ok(names.includes('Gerät A') && !names.includes('Gerät B'));
+  assert.equal((await seg('GET', `/api/devices/${db2.id}`)).status, 404);
+  assert.equal((await seg('PATCH', `/api/devices/${db2.id}`, { name: 'x' })).status, 404);
+  assert.equal((await seg('PATCH', `/api/devices/${da.id}`, { location_id: lb.id })).status, 403);
+  assert.equal((await seg('PATCH', `/api/devices/${da.id}`, { owner: 'Team A' })).status, 200);
+  assert.equal((await seg('POST', '/api/devices', { name: 'Ohne Standort' })).status, 403);
+  assert.equal((await seg('POST', '/api/devices/bulk-delete', { ids: [db2.id] })).data.deleted, 0);
+  assert.equal((await seg('POST', '/api/scans', { locationIds: [lb.id] })).status, 403);
+  assert.equal((await seg('POST', '/api/scans', { cidrs: ['10.77.9.0/24'] })).status, 403);
+  assert.equal((await seg('POST', '/api/lightscan/run', {})).status, 403);
+  assert.deepEqual((await seg('GET', '/api/locations')).data.map((l) => l.name), ['Außenstelle A']);
+  assert.equal((await seg('GET', '/api/dashboard')).data.devices, 1);
+  assert.equal((await seg('POST', '/api/monitors', { name: 'Fremd', type: 'tcp', target: '10.77.2.5', port: 22, device_id: db2.id })).status, 403);
+  assert.equal((await seg('POST', '/api/monitors', { name: 'Global', type: 'tcp', target: '10.77.2.5', port: 22 })).status, 403);
+  const mon = await seg('POST', '/api/monitors', { name: 'Eigen', type: 'tcp', target: '10.77.1.5', port: 22, device_id: da.id });
+  assert.equal(mon.status, 201);
+  assert.deepEqual((await seg('GET', '/api/monitors')).data.map((m) => m.name), ['Eigen']);
+  const me = (await seg('GET', '/api/me')).data;
+  assert.deepEqual(me.locations, [la.id]);
+  // Admin is never limited; removing the limit opens everything
+  await call('PATCH', `/api/users/${u.id}`, { locations: [] });
+  assert.ok((await seg('GET', '/api/devices')).data.some((d) => d.name === 'Gerät B'));
+});

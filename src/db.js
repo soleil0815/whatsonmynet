@@ -322,6 +322,14 @@ export const MIGRATIONS = [
   ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT 'local';
   ALTER TABLE users ADD COLUMN ext_dn TEXT NOT NULL DEFAULT '';
   `,
+  // 7: editors and viewers can be limited to locations (no rows = all locations)
+  `
+  CREATE TABLE user_locations (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, location_id)
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

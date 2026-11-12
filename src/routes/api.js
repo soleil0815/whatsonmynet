@@ -10,6 +10,7 @@ import { pingAvailable } from '../scan/probes.js';
 import { TYPES } from '../scan/classify.js';
 import { validTime } from '../scan/nightly.js';
 import { plainName, DEFAULT_FILTER } from '../auth/directory.js';
+import { scopeOf, inScope, deviceInScope, requireUnscoped } from '../auth/scope.js';
 import { SERVICE_NAMES, GENTLE_PORTS } from '../scan/ports.js';
 import { toCsv } from '../inventory.js';
 import { t } from '../i18n.js';
@@ -26,6 +27,8 @@ export function createApi(ctx) {
   const audit = (req, action, detail = '') => {
     db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), who(req), action, String(detail).slice(0, 500));
   };
+  // The user for the browser, with the location limit (null = all locations)
+  const userOut = (u) => { const sc = scopeOf(db, u); return { ...publicUser(u), locations: sc ? [...sc] : null }; };
   const idParam = (req) => {
     const n = int(req.params.id);
     if (!n || n < 1) throw new HttpError(404, 'err.notFound');
@@ -40,7 +43,7 @@ export function createApi(ctx) {
       version: config.version,
       title: settings.get('general.title'),
       sourceUrl: config.sourceUrl,
-      user: req.user ? publicUser(req.user) : null,
+      user: req.user ? userOut(req.user) : null,
     });
   });
 
@@ -92,7 +95,7 @@ export function createApi(ctx) {
     }
     limiter.success(req.ip, name);
     sessions.create(req, res, u.id);
-    res.json({ user: publicUser(u) });
+    res.json({ user: userOut(u) });
   });
 
   r.post('/logout', (req, res) => {
@@ -102,11 +105,15 @@ export function createApi(ctx) {
 
   // --- Signed in ------------------------------------------------------------------------------------------
   r.use(requireAuth);
+  // Location limit of the user (null = everything); also used by the monitoring routes
+  r.use((req, _res, next) => { req.scope = scopeOf(db, req.user); next(); });
+  const visible = (req, deviceId) => deviceInScope(db, req.scope, deviceId);
+  const seeDeviceId = (req, deviceId) => !req.scope || (deviceId && inScope(req.scope, db.prepare('SELECT location_id FROM devices WHERE id=?').get(deviceId)?.location_id));
 
-  r.get('/me', (req, res) => res.json(publicUser(req.user)));
+  r.get('/me', (req, res) => res.json(userOut(req.user)));
   r.patch('/me', (req, res) => {
     const u = users.update(req.user.id, req.body, { self: true });
-    res.json(publicUser(u));
+    res.json(userOut(u));
   });
   r.post('/me/password', (req, res) => {
     if (req.user.source && req.user.source !== 'local') throw new HttpError(400, 'err.adPassword');
@@ -126,8 +133,12 @@ export function createApi(ctx) {
       nasThreshold: Number(settings.get('nas.threshold')) || 90 });
   });
 
-  r.get('/dashboard', (_req, res) => {
-    res.json({ ...inventory.stats(), monitoring: ctx.monitoring.summary(), printersLow: ctx.printers.low(), nasProblems: ctx.snmpDevices.problems() });
+  r.get('/dashboard', (req, res) => {
+    // Limited users: only monitors of their devices
+    const mon = ctx.monitoring.summary(req.scope ? (m) => seeDeviceId(req, m.device_id) : null);
+    res.json({ ...inventory.stats({ allowed: req.scope }), monitoring: mon,
+      printersLow: ctx.printers.low().filter((x) => seeDeviceId(req, x.deviceId)),
+      nasProblems: ctx.snmpDevices.problems().filter((x) => seeDeviceId(req, x.deviceId)) });
   });
 
   r.get('/network', async (_req, res) => {
@@ -146,32 +157,34 @@ export function createApi(ctx) {
   // Devices
   r.get('/devices', (req, res) => {
     const mon = ctx.monitoring.deviceStatus();
-    res.json(inventory.list({ q: str(req.query.q, 100), type: str(req.query.type, 30), location: str(req.query.location, 12), tag: str(req.query.tag, 60) })
+    res.json(inventory.list({ q: str(req.query.q, 100), type: str(req.query.type, 30), location: str(req.query.location, 12), tag: str(req.query.tag, 60), allowed: req.scope })
       .map((d) => ({ ...d, monitor: mon[d.id] || null })));
   });
   r.get('/devices/suggestions', (_req, res) => res.json(inventory.suggestions()));
   r.post('/devices/bulk', editor, (req, res) => {
-    const list = ids(req.body.ids, 2000);
+    const list = ids(req.body.ids, 2000).filter((id) => seeDeviceId(req, id));
+    if (req.scope && req.body.set && 'location_id' in req.body.set && !inScope(req.scope, req.body.set.location_id)) throw new HttpError(403, 'err.scope');
     const n = inventory.bulkUpdate(list, { set: req.body.set, tagsAdd: req.body.tagsAdd, tagsRemove: req.body.tagsRemove }, who(req));
     if (n) audit(req, 'device.bulkUpdate', `${n} device(s): ${Object.keys(req.body.set || {}).join(', ')}`);
     res.json({ updated: n });
   });
   r.post('/devices/bulk-delete', editor, (req, res) => {
-    const n = inventory.bulkRemove(ids(req.body.ids, 2000));
+    const n = inventory.bulkRemove(ids(req.body.ids, 2000).filter((id) => seeDeviceId(req, id)));
     if (n) audit(req, 'device.bulkDelete', `${n} device(s)`);
     res.json({ deleted: n });
   });
   r.get('/devices/export.csv', (req, res) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="whatsonmynet-${new Date().toISOString().slice(0, 10)}.csv"`);
-    res.send(toCsv(inventory.list({ q: str(req.query.q, 100), type: str(req.query.type, 30), location: str(req.query.location, 12) })));
+    res.send(toCsv(inventory.list({ q: str(req.query.q, 100), type: str(req.query.type, 30), location: str(req.query.location, 12), allowed: req.scope })));
   });
   r.get('/devices/export.json', (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="whatsonmynet-${new Date().toISOString().slice(0, 10)}.json"`);
     res.json({ exported: new Date().toISOString(), version: config.version,
-      devices: inventory.list({}).map((d) => ({ ...d, facts: inventory.get(d.id)?.facts })) });
+      devices: inventory.list({ allowed: req.scope }).map((d) => ({ ...d, facts: inventory.get(d.id)?.facts })) });
   });
   r.get('/devices/:id', (req, res) => {
+    visible(req, idParam(req));
     const d = inventory.get(idParam(req));
     if (!d) throw new HttpError(404, 'err.notFound');
     const presence = inventory.list({}).find((x) => x.id === d.id)?.presence || 'unknown';
@@ -180,21 +193,26 @@ export function createApi(ctx) {
       snmp: ['switch', 'nas'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: d.mac ? ctx.snmpDevices.locate(d.mac) : null, history: inventory.historyOf(d.id) });
   });
   r.post('/devices', editor, (req, res) => {
+    if (req.scope && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
     const d = inventory.create(req.body, who(req));
     audit(req, 'device.create', d.name);
     res.status(201).json(d);
   });
   r.patch('/devices/:id', editor, (req, res) => {
+    visible(req, idParam(req));
+    if (req.scope && 'location_id' in req.body && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
     res.json(inventory.update(idParam(req), req.body, who(req)));
   });
   r.delete('/devices/:id', editor, (req, res) => {
     const id = idParam(req);
+    visible(req, id);
     const d = inventory.get(id);
     inventory.remove(id);
     audit(req, 'device.delete', d?.name);
     res.json({ ok: true });
   });
   r.post('/devices/:id/deep', editor, (req, res) => {
+    visible(req, idParam(req));
     const d = db.prepare('SELECT * FROM devices WHERE id=?').get(idParam(req));
     if (!d) throw new HttpError(404, 'err.notFound');
     const id = scanner.startDeep(d, who(req));
@@ -204,14 +222,16 @@ export function createApi(ctx) {
 
   r.post('/devices/:id/printer', editor, async (req, res) => {
     const id = idParam(req);
+    visible(req, id);
     if (!db.prepare("SELECT 1 FROM devices WHERE id=? AND type='printer'").get(id)) throw new HttpError(404, 'err.notFound');
     res.json(await ctx.printers.poll(id));
   });
 
-  r.post('/devices/:id/snmp', editor, async (req, res) => res.json(await ctx.snmpDevices.poll(idParam(req))));
+  r.post('/devices/:id/snmp', editor, async (req, res) => { visible(req, idParam(req)); res.json(await ctx.snmpDevices.poll(idParam(req))); });
 
   // Nightly light scan: start now (same as at night, all subnets of all locations)
   r.post('/lightscan/run', editor, (req, res) => {
+    requireUnscoped(req);
     const id = ctx.nightly.run(who(req));
     if (!id) throw new HttpError(400, 'err.noSubnets');
     audit(req, 'scan.light');
@@ -219,22 +239,32 @@ export function createApi(ctx) {
   });
 
   // Scans
-  r.get('/scans', (_req, res) => {
-    res.json(db.prepare('SELECT * FROM scans ORDER BY id DESC LIMIT 30').all().map((s) => ({ ...s, targets: parse(s.targets, []), stats: parse(s.stats),
+  // A limited user sees scans that only touched his locations (deep checks: of his devices)
+  const scanVisible = (req, s) => {
+    if (!req.scope) return true;
+    const t = parse(s.targets, []);
+    if (s.kind === 'deep') return t.every((x) => seeDeviceId(req, x.deviceId));
+    return t.length > 0 && t.every((x) => inScope(req.scope, x.locationId));
+  };
+  r.get('/scans', (req, res) => {
+    res.json(db.prepare('SELECT * FROM scans ORDER BY id DESC LIMIT 100').all().filter((s) => scanVisible(req, s)).slice(0, 30).map((s) => ({ ...s, targets: parse(s.targets, []), stats: parse(s.stats),
       counts: db.prepare('SELECT status, COUNT(*) n FROM scan_results WHERE scan_id=? GROUP BY status').all(s.id) })));
   });
   r.get('/scans/:id', (req, res) => {
     const id = idParam(req);
     const s = db.prepare('SELECT * FROM scans WHERE id=?').get(id);
-    if (!s) throw new HttpError(404, 'err.notFound');
+    if (!s || !scanVisible(req, s)) throw new HttpError(404, 'err.notFound');
     const results = db.prepare(`SELECT r.*, d.name device_name, d.type device_type, l.name location_name FROM scan_results r
       LEFT JOIN devices d ON d.id=r.device_id LEFT JOIN locations l ON l.id=r.location_id WHERE r.scan_id=?`).all(id)
+      .filter((x) => inScope(req.scope, x.location_id))
       .map((x) => ({ ...x, facts: parse(x.facts) }));
     res.json({ ...s, targets: parse(s.targets, []), stats: parse(s.stats), progress: scanner.progress(id), results });
   });
   r.post('/scans', editor, (req, res) => {
     const locIds = ids(req.body.locationIds, 100);
     const cidrs = Array.isArray(req.body.cidrs) ? req.body.cidrs.slice(0, 32).map((c) => line(c, 40)).filter(Boolean) : [];
+    // Limited users scan only the subnets of their locations
+    if (req.scope && (cidrs.length || locIds.some((l) => !req.scope.has(l)))) throw new HttpError(403, 'err.scope');
     const targets = [
       ...locations.targets(locIds),
       ...cidrs.map((c) => ({ cidr: c, locationId: (parseCidr(c) && locations.locationForCidr(parseCidr(c).cidr)) || null })),
@@ -244,11 +274,13 @@ export function createApi(ctx) {
     res.status(202).json({ id });
   });
   r.post('/scans/:id/cancel', editor, (req, res) => {
+    const s = db.prepare('SELECT * FROM scans WHERE id=?').get(idParam(req));
+    if (!s || !scanVisible(req, s)) throw new HttpError(404, 'err.notFound');
     res.json({ ok: scanner.cancel(idParam(req)) });
   });
   r.post('/scans/:id/adopt', editor, (req, res) => {
     const scanId = idParam(req);
-    const resultIds = ids(req.body.ids).filter((x) => db.prepare('SELECT 1 FROM scan_results WHERE id=? AND scan_id=?').get(x, scanId));
+    const resultIds = ids(req.body.ids).filter((x) => { const r0 = db.prepare('SELECT location_id FROM scan_results WHERE id=? AND scan_id=?').get(x, scanId); return r0 && inScope(req.scope, r0.location_id); });
     const overrides = {};
     const raw = req.body.overrides && typeof req.body.overrides === 'object' ? req.body.overrides : {};
     for (const rid of resultIds) {
@@ -261,7 +293,7 @@ export function createApi(ctx) {
   });
   r.post('/scans/:id/ignore', editor, (req, res) => {
     const scanId = idParam(req);
-    const resultIds = ids(req.body.ids).filter((x) => db.prepare('SELECT 1 FROM scan_results WHERE id=? AND scan_id=?').get(x, scanId));
+    const resultIds = ids(req.body.ids).filter((x) => { const r0 = db.prepare('SELECT location_id FROM scan_results WHERE id=? AND scan_id=?').get(x, scanId); return r0 && inScope(req.scope, r0.location_id); });
     const n = inventory.ignore(resultIds, who(req));
     if (n) audit(req, 'inventory.ignore', `${n} device(s) from scan ${scanId}`);
     res.json({ ignored: n });
@@ -269,12 +301,13 @@ export function createApi(ctx) {
 
   r.get('/ignored', (_req, res) => res.json(db.prepare('SELECT * FROM ignored ORDER BY created_at DESC').all()));
   r.delete('/ignored/:id', editor, (req, res) => {
+    requireUnscoped(req);
     if (!db.prepare('DELETE FROM ignored WHERE id=?').run(idParam(req)).changes) throw new HttpError(404, 'err.notFound');
     res.json({ ok: true });
   });
 
   // Locations
-  r.get('/locations', (_req, res) => res.json(locations.list()));
+  r.get('/locations', (req, res) => res.json(locations.list().filter((l) => inScope(req.scope, l.id))));
   r.post('/locations', admin, (req, res) => { const l = locations.create(req.body); audit(req, 'location.create', l.name); res.status(201).json(l); });
   r.put('/locations/:id', admin, (req, res) => { const l = locations.update(idParam(req), req.body); audit(req, 'location.update', l.name); res.json(l); });
   r.delete('/locations/:id', admin, (req, res) => { locations.remove(idParam(req)); audit(req, 'location.delete', req.params.id); res.json({ ok: true }); });
