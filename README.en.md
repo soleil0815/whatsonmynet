@@ -128,6 +128,10 @@ Under *Settings → Active Directory* users sign in with their Windows account:
 - Local accounts keep working; for the same name the **local account always wins** – so the local admin stays the emergency access.
 - "Test connection" shows the groups found for an account and the role it would get.
 
+## Rights per location (from version 0.3)
+
+Editors and viewers can be limited to one or more locations under *Settings → Users* – e.g. for the IT of a branch office. A limited account only sees and changes devices, scan results and monitors of these locations, scans only their subnets and counts only them on the overview. Devices without a location, free subnets, the nightly scan, maintenance windows and Docker hosts stay with unlimited accounts. Administrators are never limited; this also applies to accounts from Active Directory.
+
 ## HTTPS and certificate
 
 - On first start WhatsOnMyNet creates a self-signed certificate for the host name, `localhost`, all IPv4 addresses of the host and the address in `WOMN_BASE_URL`. It is renewed automatically 30 days before it expires.
@@ -175,7 +179,7 @@ docker compose exec whatsonmynet womn-admin create <user>   # new administrator
 | Version | Content |
 | --- | --- |
 | 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), ~~nightly light scan with notice of unknown devices~~, ~~printer data via SNMP~~, ~~Docker and database monitoring~~ (from 0.3) |
-| 3 | ~~Active Directory (LDAPS)~~ (from 0.3), roles per location/subnet |
+| 3 | ~~Active Directory (LDAPS)~~, ~~rights per location~~ (from 0.3) |
 | later | Scan agent for branch offices, topology via LLDP/CDP, MAC addresses of remote subnets via SNMP from the router |
 
 ## License

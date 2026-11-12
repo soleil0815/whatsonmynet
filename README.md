@@ -128,6 +128,10 @@ Unter *Einstellungen → Active Directory* meldest du dich mit dem Windows-Konto
 - Lokale Konten funktionieren weiter; bei gleichem Namen hat das **lokale Konto immer Vorrang** – so bleibt der lokale Admin der Notfallzugang.
 - „Verbindung testen“ zeigt für ein Konto die gefundenen Gruppen und die Rolle, die es bekäme.
 
+## Rechte pro Standort (ab Version 0.3)
+
+Bearbeiter und Leser lassen sich unter *Einstellungen → Benutzer* auf einen oder mehrere Standorte beschränken – etwa für die IT einer Außenstelle. Ein beschränktes Konto sieht und ändert nur Geräte, Scan-Ergebnisse und Monitore dieser Standorte, scannt nur deren Subnetze und zählt auf der Übersicht nur sie. Geräte ohne Standort, freie Subnetze, der nächtliche Scan, Wartungsfenster und Docker-Hosts bleiben unbeschränkten Konten vorbehalten. Administratoren sind nie beschränkt; das gilt auch für Konten aus dem Active Directory.
+
 ## HTTPS und Zertifikat
 
 - Beim ersten Start erzeugt WhatsOnMyNet ein selbstsigniertes Zertifikat für den Hostnamen, `localhost`, alle IPv4-Adressen des Hosts und die Adresse aus `WOMN_BASE_URL`. Es wird 30 Tage vor Ablauf automatisch erneuert.
@@ -175,7 +179,7 @@ docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administ
 | Version | Inhalt |
 | --- | --- |
 | 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), ~~nächtlicher leichter Scan mit Meldung unbekannter Geräte~~, ~~Druckerdaten per SNMP~~, ~~Docker- und Datenbanküberwachung~~ (ab 0.3) |
-| 3 | ~~Active Directory (LDAPS)~~ (ab 0.3), Rollen pro Standort/Subnetz |
+| 3 | ~~Active Directory (LDAPS)~~, ~~Rechte pro Standort~~ (ab 0.3) |
 | später | Scan-Agent für Außenstellen, Topologie über LLDP/CDP, MAC-Adressen entfernter Subnetze per SNMP vom Router |
 
 ## Lizenz

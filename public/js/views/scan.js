@@ -85,7 +85,7 @@ export async function renderScan(main, scanId) {
       h('input', { type: 'checkbox', name: 'loc', value: l.id, checked: i === 0 && usable.length === 1 }),
       h('div', {}, h('strong', {}, l.name), h('div', { class: 'cidrs' }, l.subnets.map((x) => x.cidr).join(', ')))))
       : h('p', { class: 'muted' }, t('scan.noLocations')));
-  if (!usable.length && net.suggestions[0]) cidrs.value = net.suggestions[0];
+  if (!usable.length && net.suggestions[0] && !state.user.locations) cidrs.value = net.suggestions[0];
 
   const radar = createRadar();
   const rp = radarPanel(radar);
@@ -117,13 +117,15 @@ export async function renderScan(main, scanId) {
         !net.hostNetwork ? h('div', { class: 'note warn' }, t('scan.noHostNet')) : null,
         h('section', { class: 'panel panel-pad' },
           h('h2', { class: 'section-title' }, t('scan.locations')), targets,
-          h('h2', { class: 'section-title' }, t('scan.adhoc')),
-          h('label', { class: 'field' }, cidrs, h('span', { class: 'hint' }, t('scan.adhocHint'))),
-          net.suggestions.length ? h('div', { class: 'chips' }, h('span', { class: 'muted small' }, t('scan.suggest')),
-            net.suggestions.map((c) => h('button', { type: 'button', class: 'chip', onclick: () => {
-              const cur = cidrs.value.split(/[\s,;]+/).filter(Boolean);
-              if (!cur.includes(c)) cidrs.value = [...cur, c].join(', ');
-            } }, c))) : null,
+          // Users limited to locations scan only the subnets of their locations
+          state.user.locations ? null : [
+            h('h2', { class: 'section-title' }, t('scan.adhoc')),
+            h('label', { class: 'field' }, cidrs, h('span', { class: 'hint' }, t('scan.adhocHint'))),
+            net.suggestions.length ? h('div', { class: 'chips' }, h('span', { class: 'muted small' }, t('scan.suggest')),
+              net.suggestions.map((c) => h('button', { type: 'button', class: 'chip', onclick: () => {
+                const cur = cidrs.value.split(/[\s,;]+/).filter(Boolean);
+                if (!cur.includes(c)) cidrs.value = [...cur, c].join(', ');
+              } }, c))) : null],
           h('div', { class: 'actions', style: { marginTop: '18px' } },
             edit ? h('button', { class: 'btn btn-primary btn-big', type: 'button', onclick: (e) => start(e.currentTarget) }, h('span', { html: icon('radar') }), t('scan.start')) : null)),
         history),
