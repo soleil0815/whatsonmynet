@@ -12,6 +12,7 @@ import { validTime } from '../scan/nightly.js';
 import { plainName, DEFAULT_FILTER } from '../auth/directory.js';
 import { scopeOf, inScope, deviceInScope, requireUnscoped } from '../auth/scope.js';
 import { buildTopology } from '../topology.js';
+import { metricsFor } from '../monitor/sensors.js';
 import { SERVICE_NAMES, GENTLE_PORTS } from '../scan/ports.js';
 import { toCsv } from '../inventory.js';
 import { t } from '../i18n.js';
@@ -238,6 +239,11 @@ export function createApi(ctx) {
     res.json(await ctx.printers.poll(id));
   });
 
+  // Values of a device that a sensor can watch (from the latest printer/switch/NAS query)
+  r.get('/devices/:id/sensors', (req, res) => {
+    visible(req, idParam(req));
+    res.json(metricsFor(db, idParam(req), { printerThreshold: Number(settings.get('printer.threshold')) || 15, nasThreshold: Number(settings.get('nas.threshold')) || 90 }));
+  });
   r.post('/devices/:id/snmp', editor, async (req, res) => { visible(req, idParam(req)); res.json(await ctx.snmpDevices.poll(idParam(req))); });
 
   r.get('/topology', (req, res) => res.json(buildTopology(db, { allowed: req.scope })));

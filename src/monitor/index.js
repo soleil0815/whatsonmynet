@@ -5,6 +5,7 @@ import { isIPv4 } from '../lib/net.js';
 import { log } from '../lib/log.js';
 import { runCheck, validStatusSpec } from './checks.js';
 import { CONTAINER_NAME, DEFAULT_PORTS } from './services.js';
+import { OPS, validOid } from './sensors.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { pingAvailable } from '../scan/probes.js';
 import { bestWebUrl } from '../scan/engine.js';
@@ -34,13 +35,26 @@ export function certStep(days, thresholds) {
   return fit.length ? Math.min(...fit) : null;
 }
 
-export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis'];
+export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp'];
+export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors'];
 const DB_TYPES = ['mysql', 'postgres', 'redis'];
 
-export function createMonitoring({ db, channels, maintenance, now = () => new Date() }) {
+export function createMonitoring({ db, channels, maintenance, settings = null, now = () => new Date() }) {
   const checkCtx = {
     dockerUrl: (id) => (id ? db.prepare('SELECT url FROM docker_hosts WHERE id=?').get(id)?.url : null),
     secret: (m) => { if (!m.secret) return ''; try { return decrypt(m.secret); } catch { return ''; } },
+    db,
+    communities: () => {
+      const list = String(settings?.get('scan.snmpCommunities') || '').split(/[\n,]/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
+      return list.length ? list : ['public'];
+    },
+  };
+  const sensorOptions = (input, old) => {
+    const prev = old ? parse(old.options, {}) : {};
+    const o = input.options && typeof input.options === 'object' ? input.options : {};
+    const op = o.op ?? prev.op;
+    if (!OPS.includes(op)) throw new HttpError(400, 'err.sensorOp');
+    return { op, threshold: line(o.threshold ?? prev.threshold ?? '', 60), label: line(o.label ?? prev.label ?? '', 120) };
   };
   const nextRun = new Map();
   const running = new Set();
@@ -72,7 +86,28 @@ export function createMonitoring({ db, channels, maintenance, now = () => new Da
     v.docker_host_id = null;
     v.options = '{}';
     if (!DB_TYPES.includes(type)) v.secret = '';
-    if (type === 'docker') {
+    if (type === 'sensor') {
+      const prev = old && old.type === 'sensor' ? parse(old.options, {}) : {};
+      const o = input.options && typeof input.options === 'object' ? input.options : {};
+      const metric = o.metric ?? prev.metric;
+      if (!SENSOR_METRICS.includes(metric)) throw new HttpError(400, 'err.sensorMetric');
+      const deviceId = old ? old.device_id : Number(input.device_id);
+      if (!deviceId || !db.prepare('SELECT 1 FROM devices WHERE id=?').get(deviceId)) throw new HttpError(400, 'err.sensorDevice');
+      const base = ['printerErrors', 'health', 'disk', 'raid', 'port'].includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'sensor' ? old : null);
+      v.options = JSON.stringify({ metric, key: line(o.key ?? prev.key ?? '', 120), ...base });
+      v.target = (base.label || metric).slice(0, 200);
+      v.port = null;
+    } else if (type === 'snmp') {
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      v.target = target.toLowerCase();
+      const p = int(String(input.port ?? old?.port ?? '')) || 161;
+      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+      v.port = p;
+      const prev = old && old.type === 'snmp' ? parse(old.options, {}) : {};
+      const oid = line(input.options?.oid ?? prev.oid ?? '', 200).replace(/^\./, '');
+      if (!validOid(oid)) throw new HttpError(400, 'err.oid');
+      v.options = JSON.stringify({ oid, ...sensorOptions(input, old && old.type === 'snmp' ? old : null) });
+    } else if (type === 'docker') {
       if (!CONTAINER_NAME.test(target)) throw new HttpError(400, 'err.container');
       const hostId = int(String(input.docker_host_id ?? old?.docker_host_id ?? ''));
       if (!hostId || !db.prepare('SELECT 1 FROM docker_hosts WHERE id=?').get(hostId)) throw new HttpError(400, 'err.dockerHost');
@@ -117,6 +152,7 @@ export function createMonitoring({ db, channels, maintenance, now = () => new Da
     }
     if (!old) {
       const dev = input.device_id ? Number(input.device_id) : null;
+      if (type === 'sensor' && !dev) throw new HttpError(400, 'err.sensorDevice');
       if (dev && !db.prepare('SELECT 1 FROM devices WHERE id=?').get(dev)) throw new HttpError(400, 'err.notFound');
       v.device_id = dev;
     }

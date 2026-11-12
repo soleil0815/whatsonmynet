@@ -48,6 +48,14 @@ Prüfergebnisse bleiben 7 Tage im Detail und stundenweise über ein Jahr gespeic
   Empfohlen ist ein **Socket-Proxy** auf dem Docker-Host, der nur lesende Container-Abfragen erlaubt (z. B. `tecnativa/docker-socket-proxy` mit `CONTAINERS=1`, `POST=0`; Adresse dann `http://<host>:2375`). Die Vorlage steht in den Einstellungen. Den Docker-Socket direkt durchzureichen geht auch (`unix:///var/run/docker.sock`, in der `docker-compose.yml` als `:ro` einbinden und mit `group_add` die Gruppen-ID von `docker` ergänzen) – das gibt aber mehr Rechte als nötig.
 - **Datenbanken**: MariaDB/MySQL, PostgreSQL und Redis/Valkey. Geprüft wird: anmelden und eine harmlose Abfrage (Version bzw. `PING`), auf Wunsch über TLS. Lege dafür am besten einen eigenen Benutzer nur mit Login-Recht an. Das Passwort wird verschlüsselt gespeichert und nie an den Browser zurückgegeben.
 
+### Sensoren (ab Version 0.4)
+
+Wie bei PRTG lässt sich jeder Wert, den ein Gerät liefert, als eigener Monitor überwachen – mit Verlauf, Alarm und Wartungsfenstern:
+
+- **Sensor (Gerätewert)**: auf der Geräteseite „Sensor anlegen“, dann Wert und Bedingung wählen – z. B. „Toner Cyan kleiner oder gleich 10 %“, „Volume 1 größer oder gleich 85 %“, „Temperatur Drive 2 über 50 °C“, „Port 10 (Uplink) verbunden“, „Festplatte/Speicherpool in Ordnung“, „Störungen am Drucker“. Gelesen wird der letzte Stand der Drucker-/Switch-/NAS-Abfrage, ohne zusätzliche Anfragen ans Gerät.
+- **SNMP-Wert (OID)**: jeder per SNMP lesbare Wert mit eigener Bedingung (kleiner, größer, gleich, enthält Text …) – z. B. Restlaufzeit einer USV, Temperatur einer Klimaanlage, Sitzungen einer Firewall.
+- Der Verlauf zeigt den gemessenen Wert über 24 Stunden bis 7 Tage.
+
 ## Installation
 
 Voraussetzung: ein **Linux-Host mit Docker** (Server, VM, Proxmox-LXC mit Docker, Synology Container Manager). WhatsOnMyNet läuft im **Host-Netzwerk** – nur so sieht es die MAC-Adressen deiner Geräte. Docker Desktop unter Windows oder macOS sieht das echte Netz nicht und eignet sich deshalb nicht.

@@ -66,7 +66,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   const limiter = createLoginLimiter();
   const channels = createChannels(db, mailer);
   const maintenance = createMaintenance(db);
-  const monitoring = createMonitoring({ db, channels, maintenance });
+  const monitoring = createMonitoring({ db, channels, maintenance, settings });
   const nightly = createNightly({ db, settings, scanner, channels });
   const printers = createPrinters({ db, settings, channels });
   const dockerHosts = createDockerHosts(db);
