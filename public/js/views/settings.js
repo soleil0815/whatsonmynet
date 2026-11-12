@@ -7,7 +7,7 @@ import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
 
 const SECTIONS = [
-  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'], ['ad', 'user'],
+  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'], ['ad', 'user'], ['agents', 'location'],
   ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
 ];
 
@@ -22,7 +22,7 @@ export async function renderSettings(main, section = 'general') {
         class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, ad, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, ad, agents, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
@@ -360,6 +360,68 @@ async function users(body, _s, reload) {
             try { await del(`/users/${u.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
           } }) : null))))))),
     h('p', { class: 'panel-pad muted small', style: { margin: 0 } }, t('users.adHint'), ' ', h('a', { href: '/settings/ad', 'data-link': true }, t('set.ad')))));
+}
+
+async function agents(body, _s, reload) {
+  const [list, locs, cert] = await Promise.all([get('/agents'), get('/locations'), get('/tls/agent-ca').catch(() => ({ ca: '' }))]);
+  const server = location.origin;
+  const showToken = (a) => {
+    // Self-signed certificate: the agent trusts exactly this one (pinned); an uploaded one from a real CA needs nothing
+    const env = [`WOMN_AGENT_SERVER=${server}`, `WOMN_AGENT_TOKEN=${a.token}`, cert.ca && cert.source !== 'custom' ? `WOMN_AGENT_CA=${cert.ca}` : null, 'TZ=Europe/Berlin', 'PUID=1000', 'PGID=1000']
+      .filter(Boolean).join('\n');
+    const m = modal(`${t('agent.tokenTitle')}: ${a.name}`, h('div', { class: 'form' },
+      h('p', { class: 'note warn', style: { margin: 0 } }, t('agent.tokenOnce')),
+      h('p', { class: 'muted', style: { margin: 0 } }, t('agent.envLead')),
+      h('pre', { class: 'code wrap' }, env),
+      h('p', { class: 'muted small', style: { margin: 0 } }, t('agent.composeHint'))), { wide: true, actions: [
+      btn(t('agent.copy'), { onclick: async () => { try { await navigator.clipboard.writeText(env); toast(t('agent.copied')); } catch { /* not allowed */ } } }),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { m.close(); reload(); } }, t('agent.done'))] });
+  };
+  const edit = (a) => {
+    const form = h('form', { class: 'form' },
+      field(t('agent.name'), input('name', a?.name || '', { required: true, maxlength: 80, placeholder: 'Außenstelle Nord' })),
+      field(t('agent.location'), select('location_id', locs.map((l) => [String(l.id), l.name]), a ? String(a.location_id) : String(locs[0]?.id || '')), t('agent.locationHint')),
+      a ? field(t('user.active'), h('input', { type: 'checkbox', name: 'enabled', checked: !!a.enabled })) : null);
+    const m = modal(a ? a.name : t('agent.add'), form, { actions: [
+      btn(t('cancel'), { onclick: () => m.close() }),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+        if (!form.reportValidity()) return;
+        try {
+          if (a) { await put(`/agents/${a.id}`, formData(form)); m.close(); toast(t('saved')); reload(); }
+          else { const r = await post('/agents', formData(form)); m.close(); showToken(r); }
+        } catch (ex) { fail(ex); }
+      } }, t('save'))] });
+  };
+  const seen = (a) => {
+    if (!a.last_seen) return h('span', { class: 'badge' }, t('agent.never'));
+    const fresh = Date.now() - Date.parse(a.last_seen) < 5 * 60 * 1000;
+    return h('span', { class: `badge ${fresh ? 'badge-ok' : 'badge-bad'}`, title: fmtDate(a.last_seen, getLang()) }, fresh ? t('agent.online') : t('agent.offline'));
+  };
+  mount(body, h('section', { class: 'panel' },
+    h('div', { class: 'panel-head', style: { paddingBottom: '12px', flexWrap: 'wrap' } }, h('h2', {}, t('set.agents')),
+      locs.length ? btn(t('agent.add'), { class: 'btn btn-sm', onclick: () => edit(null) }, 'plus') : null),
+    h('p', { class: 'muted', style: { padding: '0 20px' } }, t('agent.lead')),
+    !locs.length ? h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('agent.noLocations')) : null,
+    list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('agent.name')), h('th', {}, t('agent.location')), h('th', {}, t('agent.state')), h('th', { class: 'hide-sm' }, t('agent.version')), h('th', {}))),
+      h('tbody', {}, list.map((a) => h('tr', {},
+        h('td', {}, h('span', { class: 'name' }, a.name), a.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('user.inactive')),
+          a.last_ip ? h('div', { class: 'sub mono' }, a.last_ip) : null),
+        h('td', {}, a.location_name),
+        h('td', {}, seen(a), a.open_jobs ? h('span', { class: 'muted small', style: { marginLeft: '6px' } }, t('agent.openJobs', { n: a.open_jobs })) : null),
+        h('td', { class: 'hide-sm mono small' }, a.version || '–'),
+        h('td', { class: 'min' }, h('div', { class: 'actions' },
+          btn(t('agent.scan'), { class: 'btn btn-sm', onclick: async () => { try { await post(`/agents/${a.id}/scan`, { kind: 'network' }); toast(t('agent.jobSent', { names: a.name })); reload(); } catch (ex) { fail(ex); } } }, 'radar'),
+          btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => edit(a) }),
+          btn(t('agent.newToken'), { class: 'btn btn-sm btn-ghost', onclick: async () => {
+            if (!await confirmDialog(t('agent.newToken'), t('agent.newTokenConfirm', { name: a.name }), t('agent.newToken'), t('cancel'))) return;
+            try { showToken(await post(`/agents/${a.id}/token`, {})); } catch (ex) { fail(ex); }
+          } }),
+          h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${a.name}`, html: icon('trash'), onclick: async () => {
+            if (!await confirmDialog(t('delete'), t('agent.deleteConfirm', { name: a.name }), t('delete'), t('cancel'), { danger: true })) return;
+            try { await del(`/agents/${a.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
+          } }))))))))
+      : h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('agent.none'))));
 }
 
 async function ad(body, _s, reload) {

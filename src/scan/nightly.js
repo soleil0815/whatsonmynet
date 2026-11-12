@@ -28,7 +28,9 @@ export function createNightly({ db, settings, scanner, channels }) {
   let timer = null;
 
   function targets() {
-    return db.prepare('SELECT cidr, location_id FROM subnets ORDER BY cidr').all().map((s) => ({ cidr: s.cidr, locationId: s.location_id }));
+    // Subnets of locations with a scan agent are scanned by the agent itself (it follows the same nightly time)
+    return db.prepare(`SELECT cidr, location_id FROM subnets s
+      WHERE NOT EXISTS (SELECT 1 FROM agents a WHERE a.location_id=s.location_id AND a.enabled=1) ORDER BY cidr`).all().map((s) => ({ cidr: s.cidr, locationId: s.location_id }));
   }
 
   function run(user = 'nightly') {

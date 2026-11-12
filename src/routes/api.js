@@ -99,6 +99,16 @@ export function createApi(ctx) {
     res.json({ user: userOut(u) });
   });
 
+  // --- Scan agents (own token, no session) -----------------------------------------------------------------
+  r.get('/agent/poll', (req, res) => res.json(ctx.agents.poll(ctx.agents.authenticate(req))));
+  r.post('/agent/results', express.json({ limit: '16mb' }), async (req, res) => {
+    const agent = ctx.agents.authenticate(req);
+    const out = ctx.agents.report(agent, req.body || {});
+    log.info(`Scan agent ${agent.name}: ${out.accepted} device(s)${out.rejected ? `, ${out.rejected} outside its subnets refused` : ''}`);
+    await scanner.runFinishedHooks({ id: out.scanId, kind: req.body?.kind === 'light' ? 'light' : 'network', status: 'done' });
+    res.json(out);
+  });
+
   r.post('/logout', (req, res) => {
     sessions.destroy(req, res);
     res.json({ ok: true });
@@ -272,9 +282,18 @@ export function createApi(ctx) {
       ...locations.targets(locIds),
       ...cidrs.map((c) => ({ cidr: c, locationId: (parseCidr(c) && locations.locationForCidr(parseCidr(c).cidr)) || null })),
     ];
-    const id = scanner.startNetwork(targets, who(req));
-    audit(req, 'scan.start', targets.map((x) => x.cidr).join(', '));
-    res.status(202).json({ id });
+    // Locations with a scan agent: the agent scans there (ARP only works inside the network)
+    const agentJobs = [];
+    for (const l of locIds) {
+      const name = ctx.agents.jobForLocation(l, 'network', who(req));
+      if (name) agentJobs.push(name);
+    }
+    const local = targets.filter((x) => !(x.locationId && locIds.includes(x.locationId) && ctx.agents.hasAgent(x.locationId)));
+    if (agentJobs.length) audit(req, 'scan.agent', agentJobs.join(', '));
+    if (!local.length && agentJobs.length) return res.status(202).json({ id: null, agentJobs });
+    const id = scanner.startNetwork(local, who(req));
+    audit(req, 'scan.start', local.map((x) => x.cidr).join(', '));
+    res.status(202).json({ id, agentJobs });
   });
   r.post('/scans/:id/cancel', editor, (req, res) => {
     const s = db.prepare('SELECT * FROM scans WHERE id=?').get(idParam(req));
@@ -314,6 +333,25 @@ export function createApi(ctx) {
   r.post('/locations', admin, (req, res) => { const l = locations.create(req.body); audit(req, 'location.create', l.name); res.status(201).json(l); });
   r.put('/locations/:id', admin, (req, res) => { const l = locations.update(idParam(req), req.body); audit(req, 'location.update', l.name); res.json(l); });
   r.delete('/locations/:id', admin, (req, res) => { locations.remove(idParam(req)); audit(req, 'location.delete', req.params.id); res.json({ ok: true }); });
+
+  // Scan agents (admin)
+  r.get('/agents', admin, (_req, res) => res.json(ctx.agents.list()));
+  r.post('/agents', admin, (req, res) => { const a = ctx.agents.create(req.body); audit(req, 'agent.create', `${a.name} (${a.location_name})`); res.status(201).json(a); });
+  r.put('/agents/:id', admin, (req, res) => { const a = ctx.agents.update(idParam(req), req.body); audit(req, 'agent.update', a.name); res.json(a); });
+  r.post('/agents/:id/token', admin, (req, res) => { const a = ctx.agents.newToken(idParam(req)); audit(req, 'agent.token', a.name); res.json(a); });
+  r.delete('/agents/:id', admin, (req, res) => { ctx.agents.remove(idParam(req)); audit(req, 'agent.delete', req.params.id); res.json({ ok: true }); });
+  r.post('/agents/:id/scan', admin, (req, res) => {
+    const a = ctx.agents.get(idParam(req));
+    if (!a) throw new HttpError(404, 'err.notFound');
+    ctx.agents.jobForLocation(a.location_id, req.body.kind === 'light' ? 'light' : 'network', who(req));
+    audit(req, 'scan.agent', a.name);
+    res.status(202).json({ ok: true });
+  });
+  // Certificate of this server for the scan agents (public anyway: every browser gets it)
+  r.get('/tls/agent-ca', admin, (_req, res) => {
+    const pem = String(tls?.current()?.cert || '').match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/)?.[0] || '';
+    res.json({ ca: pem ? Buffer.from(`${pem}\n`).toString('base64') : '', source: tls?.describe()?.source || '' });
+  });
 
   // --- Administration ---------------------------------------------------------------------------------------
   r.get('/settings', admin, (_req, res) => {

@@ -23,6 +23,9 @@ export function initMasterKey() {
 
 export function setMasterKeyForTests(buf) { masterKey = buf; }
 
+/** Scan agent: a key that lives only in memory (the agent stores nothing secret on disk) */
+export function useEphemeralKey() { masterKey = crypto.randomBytes(32); }
+
 export function encrypt(plain) {
   if (plain === null || plain === undefined || plain === '') return '';
   const iv = crypto.randomBytes(12);

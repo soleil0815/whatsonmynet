@@ -334,6 +334,12 @@ export function createScanner({ db, settings, inventory }) {
     },
     /** fn({ id, kind, status }) runs after every scan */
     onFinished(fn) { finishedHooks.push(fn); },
+    /** Runs the hooks for a scan that did not run here (results of a scan agent) */
+    async runFinishedHooks(info) {
+      for (const fn of finishedHooks) {
+        try { await fn(info); } catch (e) { log.warn(`After scan ${info.id}: ${e.message}`); }
+      }
+    },
     startDeep(device, user) {
       if (!device.ip) throw new HttpError(400, 'err.noIp');
       return launch('deep', [{ cidr: `${device.ip}/32`, deviceId: device.id }], user, (id) => runDeep(id, device));
