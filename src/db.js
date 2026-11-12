@@ -295,6 +295,28 @@ export const MIGRATIONS = [
   ALTER TABLE monitors_new RENAME TO monitors;
   CREATE INDEX monitors_device ON monitors(device_id);
   ` },
+  // 5: switches and NAS via SNMP – latest status, MAC table of the switches (where is a device plugged in?)
+  `
+  CREATE TABLE snmp_status (
+    device_id INTEGER PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    at TEXT NOT NULL,
+    ok INTEGER NOT NULL DEFAULT 1,
+    error TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL DEFAULT '{}',
+    alerts TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE TABLE switch_macs (
+    switch_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    mac TEXT NOT NULL,
+    if_index INTEGER NOT NULL,
+    port TEXT NOT NULL DEFAULT '',
+    vlan INTEGER NOT NULL DEFAULT 0,
+    seen_at TEXT NOT NULL,
+    PRIMARY KEY (switch_id, mac, vlan)
+  );
+  CREATE INDEX switch_macs_mac ON switch_macs(mac);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

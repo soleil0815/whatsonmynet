@@ -7,6 +7,7 @@ import { state } from '../app.js';
 import { pageHead, TI } from './common.js';
 import { historyText } from './device.js';
 import { lowSuppliesPanel } from './printer.js';
+import { nasProblemsPanel } from './snmpdev.js';
 
 export async function renderDashboard(main) {
   const d = await get('/dashboard');
@@ -79,5 +80,5 @@ export async function renderDashboard(main) {
       figures,
       h('div', { class: 'dash' },
         h('div', { class: 'stack' }, typePanel, recent),
-        h('div', { class: 'stack' }, monPanel, lowSuppliesPanel(d.printersLow), scanPanel, warranty)))));
+        h('div', { class: 'stack' }, monPanel, nasProblemsPanel(d.nasProblems), lowSuppliesPanel(d.printersLow), scanPanel, warranty)))));
 }
