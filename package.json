@@ -19,9 +19,11 @@
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.4",
     "helmet": "^8.3.0",
+    "mysql2": "^3.24.6",
     "net-snmp": "^3.29.2",
     "nodemailer": "^10.5.0",
-    "oui-data": "^2.1.58"
+    "oui-data": "^2.1.58",
+    "pg": "^8.23.1"
   },
   "repository": {
     "type": "git",

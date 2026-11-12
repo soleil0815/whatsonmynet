@@ -7,7 +7,7 @@ import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
 
 const SECTIONS = [
-  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'],
+  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['docker', 'server'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'],
   ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
 ];
 
@@ -22,7 +22,7 @@ export async function renderSettings(main, section = 'general') {
         class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, docker, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
@@ -122,6 +122,76 @@ async function printers(body, s) {
   h('p', { class: 'muted small' }, t('prn.community')),
   saveBtn());
   mount(body, panel(t('set.printers'), form));
+}
+
+const PROXY_COMPOSE = `services:
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "2375:2375"   # only reachable from your LAN – better bind it to one address`;
+
+async function docker(body, _s, reload) {
+  const list = await get('/docker/hosts');
+  const edit = (x) => {
+    const form = h('form', { class: 'form' },
+      field(t('dock.name'), input('name', x?.name || '', { required: true, maxlength: 80, placeholder: 'docker01' })),
+      field(t('dock.url'), input('url', x?.url || '', { required: true, class: 'mono', placeholder: 'http://10.0.0.5:2375' }), t('dock.urlHint')));
+    const dlg = modal(x ? x.name : t('dock.add'), form, { wide: true, actions: [
+      btn(t('cancel'), { onclick: () => dlg.close() }),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+        if (!form.reportValidity()) return;
+        try {
+          if (x) await put(`/docker/hosts/${x.id}`, formData(form)); else await post('/docker/hosts', formData(form));
+          dlg.close(); toast(t('saved')); reload();
+        } catch (ex) { fail(ex); }
+      } }, t('save'))] });
+  };
+  const result = h('div');
+  async function test(x, button) {
+    button.disabled = true;
+    try {
+      const r = await get(`/docker/hosts/${x.id}/containers`);
+      toast(t('dock.ok', { version: r.version, n: r.containers.length }));
+      mount(result, h('section', { class: 'panel' },
+        h('h2', {}, `${t('dock.containers')} · ${x.name}`),
+        h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+          h('thead', {}, h('tr', {}, h('th', {}, t('dock.name')), h('th', {}, t('dock.state')), h('th', { class: 'hide-sm' }, t('dock.image')))),
+          h('tbody', {}, r.containers.map((c) => h('tr', {},
+            h('td', { class: 'mono' }, c.name),
+            h('td', {}, h('span', { class: `badge ${c.state === 'running' ? 'badge-ok' : c.state === 'exited' || c.state === 'dead' ? 'badge-bad' : ''}` }, c.state), ' ', h('span', { class: 'muted small' }, c.status)),
+            h('td', { class: 'hide-sm mono small' }, c.image))))))));
+    } catch (ex) { fail(ex); }
+    button.disabled = false;
+  }
+  mount(body, h('section', { class: 'panel' },
+    h('div', { class: 'panel-head', style: { paddingBottom: '12px', flexWrap: 'wrap' } }, h('h2', {}, t('set.docker')),
+      btn(t('dock.add'), { class: 'btn btn-sm', onclick: () => edit(null) }, 'plus')),
+    h('p', { class: 'muted', style: { padding: '0 20px' } }, t('dock.lead')),
+    list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('dock.name')), h('th', { class: 'hide-sm' }, t('dock.url')), h('th', {}))),
+      h('tbody', {}, list.map((x) => h('tr', {},
+        h('td', {}, h('span', { class: 'name' }, x.name), x.monitors ? h('span', { class: 'muted small', style: { display: 'block' } }, t('dock.monitors', { n: x.monitors })) : null),
+        h('td', { class: 'hide-sm mono small' }, x.url),
+        h('td', { class: 'min' }, h('div', { class: 'actions' },
+          btn(t('dock.test'), { class: 'btn btn-sm', onclick: (e) => test(x, e.currentTarget) }),
+          btn(t('dock.monitorAll'), { class: 'btn btn-sm', onclick: async (e) => {
+            const b = e.currentTarget; b.disabled = true;
+            try { const r = await post(`/docker/hosts/${x.id}/monitor-all`, {}); toast(t('dock.monitorAllDone', { n: r.created })); reload(); } catch (ex) { fail(ex); b.disabled = false; }
+          } }, 'pulse'),
+          btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => edit(x) }),
+          h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${x.name}`, html: icon('trash'), onclick: async () => {
+            if (!await confirmDialog(t('delete'), t('dock.deleteConfirm', { name: x.name }), t('delete'), t('cancel'), { danger: true })) return;
+            try { await del(`/docker/hosts/${x.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
+          } }))))))))
+      : h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('dock.none'))),
+  result,
+  panel(null, h('p', { class: 'muted', style: { marginTop: 0 } }, t('dock.proxy')), h('pre', { class: 'code' }, PROXY_COMPOSE)));
 }
 
 async function smtp(body, s) {

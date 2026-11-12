@@ -368,3 +368,5 @@ dialog.modal footer { display: flex; justify-content: flex-end; gap: 8px; paddin
 .printer-display { background: var(--radar-bg); color: var(--radar-ink); border-radius: var(--r-s); padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
 :root[data-theme='dark'] .supply[data-color=black] .supply-track i { background: #d9dde3; }
 @media (prefers-reduced-motion: reduce) { .supply-track i { transition: none; } }
+
+pre.code { margin: 0; padding: 14px 16px; background: var(--radar-bg); color: var(--radar-ink); border-radius: var(--r-s); font: 12.5px/1.55 var(--mono); overflow-x: auto; white-space: pre; }
