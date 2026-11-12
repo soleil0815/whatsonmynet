@@ -8,6 +8,7 @@ import { requireAuth, requireRole, can } from '../auth/session.js';
 import { localInterfaces, defaultGateways, parseCidr } from '../lib/net.js';
 import { pingAvailable } from '../scan/probes.js';
 import { TYPES } from '../scan/classify.js';
+import { validTime } from '../scan/nightly.js';
 import { SERVICE_NAMES, GENTLE_PORTS } from '../scan/ports.js';
 import { toCsv } from '../inventory.js';
 import { t } from '../i18n.js';
@@ -99,10 +100,12 @@ export function createApi(ctx) {
   });
 
   r.get('/meta', (_req, res) => {
-    res.json({ types: TYPES, services: SERVICE_NAMES, gentlePorts: GENTLE_PORTS });
+    res.json({ types: TYPES, services: SERVICE_NAMES, gentlePorts: GENTLE_PORTS, printerThreshold: Number(settings.get('printer.threshold')) || 15 });
   });
 
-  r.get('/dashboard', (_req, res) => res.json({ ...inventory.stats(), monitoring: ctx.monitoring.summary() }));
+  r.get('/dashboard', (_req, res) => {
+    res.json({ ...inventory.stats(), monitoring: ctx.monitoring.summary(), printersLow: ctx.printers.low() });
+  });
 
   r.get('/network', async (_req, res) => {
     const ifaces = localInterfaces();
@@ -150,7 +153,7 @@ export function createApi(ctx) {
     if (!d) throw new HttpError(404, 'err.notFound');
     const presence = inventory.list({}).find((x) => x.id === d.id)?.presence || 'unknown';
     const monitors = db.prepare('SELECT id FROM monitors WHERE device_id=? ORDER BY name').all(d.id).map((m) => ctx.monitoring.get(m.id));
-    res.json({ ...d, presence, monitors, history: inventory.historyOf(d.id) });
+    res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null, history: inventory.historyOf(d.id) });
   });
   r.post('/devices', editor, (req, res) => {
     const d = inventory.create(req.body, who(req));
@@ -172,6 +175,20 @@ export function createApi(ctx) {
     if (!d) throw new HttpError(404, 'err.notFound');
     const id = scanner.startDeep(d, who(req));
     audit(req, 'scan.deep', `${d.name} (${d.ip})`);
+    res.status(202).json({ id });
+  });
+
+  r.post('/devices/:id/printer', editor, async (req, res) => {
+    const id = idParam(req);
+    if (!db.prepare("SELECT 1 FROM devices WHERE id=? AND type='printer'").get(id)) throw new HttpError(404, 'err.notFound');
+    res.json(await ctx.printers.poll(id));
+  });
+
+  // Nightly light scan: start now (same as at night, all subnets of all locations)
+  r.post('/lightscan/run', editor, (req, res) => {
+    const id = ctx.nightly.run(who(req));
+    if (!id) throw new HttpError(400, 'err.noSubnets');
+    audit(req, 'scan.light');
     res.status(202).json({ id });
   });
 
@@ -238,7 +255,8 @@ export function createApi(ctx) {
 
   // --- Administration ---------------------------------------------------------------------------------------
   r.get('/settings', admin, (_req, res) => {
-    res.json({ general: settings.publicGroup('general'), scan: settings.publicGroup('scan'), smtp: settings.publicGroup('smtp'), backup: settings.publicGroup('backup') });
+    res.json({ general: settings.publicGroup('general'), scan: settings.publicGroup('scan'), smtp: settings.publicGroup('smtp'), backup: settings.publicGroup('backup'),
+      lightscan: { ...settings.publicGroup('lightscan'), last: ctx.nightly.lastLight() }, printer: settings.publicGroup('printer') });
   });
   r.put('/settings/general', admin, (req, res) => {
     settings.set('general.title', line(req.body.title, 60) || 'WhatsOnMyNet');
@@ -259,6 +277,30 @@ export function createApi(ctx) {
     }
     audit(req, 'settings.scan');
     res.json(settings.publicGroup('scan'));
+  });
+  const channelIds = (v) => (Array.isArray(v) ? v : []).map((x) => int(String(x))).filter((x) => x > 0)
+    .filter((x) => db.prepare('SELECT 1 FROM channels WHERE id=?').get(x)).slice(0, 20);
+  r.put('/settings/lightscan', admin, (req, res) => {
+    const b = req.body;
+    if ('enabled' in b) settings.set('lightscan.enabled', !!b.enabled);
+    if ('time' in b) {
+      if (!validTime(b.time)) throw new HttpError(400, 'err.time');
+      settings.set('lightscan.time', b.time);
+    }
+    if ('notify' in b) settings.set('lightscan.notify', !!b.notify);
+    if ('channels' in b) settings.set('lightscan.channels', channelIds(b.channels));
+    audit(req, 'settings.lightscan');
+    res.json({ ...settings.publicGroup('lightscan'), last: ctx.nightly.lastLight() });
+  });
+  r.put('/settings/printer', admin, (req, res) => {
+    const b = req.body;
+    if ('enabled' in b) settings.set('printer.enabled', !!b.enabled);
+    if ('interval' in b) settings.set('printer.interval', Math.min(1440, Math.max(5, int(String(b.interval)) || 60)));
+    if ('threshold' in b) settings.set('printer.threshold', Math.min(50, Math.max(1, int(String(b.threshold)) || 15)));
+    if ('notify' in b) settings.set('printer.notify', !!b.notify);
+    if ('channels' in b) settings.set('printer.channels', channelIds(b.channels));
+    audit(req, 'settings.printer');
+    res.json(settings.publicGroup('printer'));
   });
   r.put('/settings/smtp', admin, (req, res) => {
     const b = req.body;

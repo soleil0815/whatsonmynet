@@ -348,3 +348,23 @@ dialog.modal footer { display: flex; justify-content: flex-end; gap: 8px; paddin
 .timeline li.ev-cert::before { background: var(--new); }
 .timeline li.ev-maintenance::before { background: var(--ti); }
 .history-list button .pill { flex: none; }
+
+/* Printer: supplies as bars in the colour of the toner/ink */
+.supplies { display: grid; gap: 12px; }
+.supply-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 5px; }
+.supply-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.supply-val { color: var(--muted); flex: none; }
+.supply.low .supply-val { color: var(--bad); font-weight: 600; }
+.supply-track { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.supply-track i { display: block; height: 100%; border-radius: 5px; background: var(--muted); transition: width .4s ease; }
+.supply-track i.unknown { background: repeating-linear-gradient(45deg, var(--line), var(--line) 4px, transparent 4px, transparent 8px); width: 100% !important; }
+.supply[data-color=black] .supply-track i { background: #2b2f36; }
+.supply[data-color=cyan] .supply-track i { background: #12a7d8; }
+.supply[data-color=magenta] .supply-track i { background: #d4237a; }
+.supply[data-color=yellow] .supply-track i { background: #f2c200; }
+.supply[data-color=waste] .supply-track i { background: #8a7f6e; }
+.supply[data-color=other] .supply-track i { background: var(--accent); }
+.supply.low .supply-track { box-shadow: 0 0 0 1px var(--bad) inset; }
+.printer-display { background: var(--radar-bg); color: var(--radar-ink); border-radius: var(--r-s); padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
+:root[data-theme='dark'] .supply[data-color=black] .supply-track i { background: #d9dde3; }
+@media (prefers-reduced-motion: reduce) { .supply-track i { transition: none; } }

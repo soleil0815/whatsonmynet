@@ -10,6 +10,19 @@ export const DEFAULTS = {
   'scan.rate': 40,                // new connection attempts per second (gentle)
   'scan.httpTitles': true,        // read the title of web interfaces
   'scan.keepScans': 20,           // how many scans are kept
+  // Nightly light scan: only finds devices (ARP/ping/NetBIOS), takes over new IPs, reports unknown devices
+  'lightscan.enabled': true,
+  'lightscan.time': '02:30',      // local time (TZ), runs within 4 hours after it
+  'lightscan.notify': true,       // report devices seen for the first time
+  'lightscan.channels': [],       // empty = default channels
+  'lightscan.lastRun': '',        // YYYY-MM-DD of the last automatic run
+  'lightscan.baseline': false,    // true after the first scan has learned the devices that were already there
+  // Printers (SNMP): supplies, page counter, errors
+  'printer.enabled': true,
+  'printer.interval': 60,         // minutes between two queries of a printer
+  'printer.threshold': 15,        // % – report a supply at or below this
+  'printer.notify': true,
+  'printer.channels': [],
   // Mail (SMTP)
   'smtp.host': '',
   'smtp.port': 587,

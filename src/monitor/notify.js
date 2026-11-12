@@ -19,9 +19,16 @@ const TEXT = {
     cert: '🟠 Das Zertifikat von {name} läuft in {days} Tagen ab ({date}).',
     certExpired: '🔴 Das Zertifikat von {name} ist abgelaufen ({date}).',
     test: '✅ Testnachricht von WhatsOnMyNet – dieser Kanal funktioniert.',
+    newDevice: '🆕 Neues Gerät im Netz: {list}',
+    newDevices: '🆕 {n} neue Geräte im Netz: {list}',
+    supplyLow: '🟠 {name}: {supply} nur noch {pct} %',
+    supplyWasteLow: '🟠 {name}: {supply} fast voll (noch {pct} % frei)',
+    supplyEmpty: '🔴 {name}: {supply} ist leer',
+    supplyWasteFull: '🔴 {name}: {supply} ist voll',
     subject: 'WhatsOnMyNet: {text}',
     target: 'Ziel',
     time: 'Zeit',
+    inbox: 'Übernehmen oder ignorieren: Scan → letzter Leicht-Scan',
   },
   en: {
     down: '🔴 {name} is down – {message}',
@@ -30,9 +37,16 @@ const TEXT = {
     cert: '🟠 The certificate of {name} expires in {days} days ({date}).',
     certExpired: '🔴 The certificate of {name} has expired ({date}).',
     test: '✅ Test message from WhatsOnMyNet – this channel works.',
+    newDevice: '🆕 New device on the network: {list}',
+    newDevices: '🆕 {n} new devices on the network: {list}',
+    supplyLow: '🟠 {name}: {supply} down to {pct} %',
+    supplyWasteLow: '🟠 {name}: {supply} almost full ({pct} % space left)',
+    supplyEmpty: '🔴 {name}: {supply} is empty',
+    supplyWasteFull: '🔴 {name}: {supply} is full',
     subject: 'WhatsOnMyNet: {text}',
     target: 'Target',
     time: 'Time',
+    inbox: 'Adopt or ignore: Scan → latest light scan',
   },
 };
 
@@ -47,12 +61,27 @@ export function eventText(ev, lang = 'de') {
     case 'down': return fill(T.down, { name, message: ev.message || '' });
     case 'up': return fill(T.up, { name, downtime: ev.downtimeMin ? fill(T.downtime, { min: ev.downtimeMin }) : '' });
     case 'cert': return ev.certDays < 0 ? fill(T.certExpired, { name, date }) : fill(T.cert, { name, days: ev.certDays, date });
+    case 'newDevices': {
+      const list = (ev.devices || []).slice(0, 5).map(deviceLabel).join(', ') + ((ev.devices || []).length > 5 ? ', …' : '');
+      return ev.devices?.length === 1 ? fill(T.newDevice, { list }) : fill(T.newDevices, { n: ev.devices?.length || 0, list });
+    }
+    case 'supply': {
+      const vars = { name: ev.device?.name || '', supply: ev.supply?.description || '', pct: ev.supply?.pct ?? '' };
+      if (ev.empty) return fill(ev.supply?.receptacle ? T.supplyWasteFull : T.supplyEmpty, vars);
+      return fill(ev.supply?.receptacle ? T.supplyWasteLow : T.supplyLow, vars);
+    }
     default: return T.test;
   }
 }
 
+const deviceLabel = (d) => [d.ip, d.vendor || d.hostname].filter(Boolean).join(' ');
+
 function details(ev, lang) {
   const T = TEXT[lang === 'en' ? 'en' : 'de'];
+  if (ev.kind === 'newDevices') {
+    return [...(ev.devices || []).slice(0, 30).map((d) => `• ${d.ip}  ${d.mac || ''}  ${d.vendor || ''}  ${d.hostname || ''}`.replace(/\s+$/, '')), '', T.inbox].join('\n');
+  }
+  if (ev.kind === 'supply' && ev.device) return `${T.target}: ${ev.device.name} (${ev.device.ip || ''})`;
   if (!ev.monitor) return '';
   const time = new Date(ev.at || Date.now()).toLocaleString(lang === 'en' ? 'en-GB' : 'de-DE', { timeZone: process.env.TZ || undefined });
   return `${T.target}: ${ev.monitor.target}\n${T.time}: ${time}`;
@@ -175,11 +204,13 @@ export function createChannels(db, mailer) {
         throw new Error(`Telegram: ${String(why).replace(c.token, '***')}`);
       }
     } else {
-      const vars = { event: ev.kind, status: ev.kind === 'up' ? 'up' : ev.kind === 'down' ? 'down' : ev.kind, name: ev.monitor?.name || '', target: ev.monitor?.target || '',
+      const vars = { event: ev.kind, status: ev.kind === 'up' ? 'up' : ev.kind === 'down' ? 'down' : ev.kind, name: ev.monitor?.name || ev.device?.name || '', target: ev.monitor?.target || ev.device?.ip || '',
         message: ev.message || '', text, time: new Date(ev.at || Date.now()).toISOString(), url: ev.monitor?.target || '' };
       const body = c.template ? renderTemplate(c.template, vars)
         : { event: ev.kind, text, monitor: ev.monitor ? { id: ev.monitor.id, name: ev.monitor.name, target: ev.monitor.target } : null,
-          message: ev.message || '', time: vars.time, certValidTo: ev.certValidTo || null };
+          message: ev.message || '', time: vars.time, certValidTo: ev.certValidTo || null,
+          ...(ev.devices ? { devices: ev.devices.slice(0, 100) } : {}),
+          ...(ev.device ? { device: ev.device, supply: ev.supply || null } : {}) };
       const headers = c.headerName && c.headerValue ? { [c.headerName]: c.headerValue } : {};
       try { await postJson(c.url, body, { headers }); } catch (e) { throw new Error(`Webhook: ${e.message}`); }
     }
@@ -197,9 +228,14 @@ export function createChannels(db, mailer) {
       try { await sendTo(row, { kind: 'test' }); } catch (e) { throw new HttpError(502, 'err.channelFailed', e.detail || (e.code === 'err.smtpNotConfigured' ? 'SMTP' : e.message)); }
     },
     /** Sends an event to the monitor's channels (empty list = all default channels). Returns the names reached. */
-    async notify(monitor, ev) {
+    notify(monitor, ev) {
       let ids = [];
       try { ids = JSON.parse(monitor.channels || '[]'); } catch { ids = []; }
+      return this.notifyIds(ids, ev);
+    },
+    /** Sends an event to the given channels (empty list = all default channels). Returns the names reached. */
+    async notifyIds(ids, ev) {
+      ids = (Array.isArray(ids) ? ids : []).map(Number).filter((x) => Number.isInteger(x) && x > 0);
       const rows = ids.length
         ? db.prepare(`SELECT * FROM channels WHERE enabled=1 AND id IN (${ids.map(() => '?').join(',')})`).all(...ids)
         : db.prepare('SELECT * FROM channels WHERE enabled=1 AND is_default=1').all();
