@@ -21,6 +21,7 @@ import { createPrinters } from './printers.js';
 import { createDockerHosts } from './monitor/docker.js';
 import { createSnmpDevices } from './snmpdevices.js';
 import { createDirectory } from './auth/directory.js';
+import { createAgents } from './agents.js';
 import { HttpError } from './lib/http.js';
 import { randomToken } from './lib/crypto.js';
 import { t, langFromHeader, normalizeLang, hasKey } from './i18n.js';
@@ -70,6 +71,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   const dockerHosts = createDockerHosts(db);
   const snmpDevices = createSnmpDevices({ db, settings, channels });
   const directory = createDirectory(settings);
+  const agents = createAgents({ db, settings, inventory, scanner });
 
   // Initial setup: one-time code from the log, only as long as there is no user
   const setup = { token: null };
@@ -80,7 +82,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     console.log(`\n${bar}\n  WhatsOnMyNet – Ersteinrichtung / initial setup\n  Einrichtungscode / setup code:  ${setup.token}\n  ${where}/setup\n${bar}\n`);
   }
 
-  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, directory,
+  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, directory, agents,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 
@@ -123,7 +125,9 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
 
   app.use(parseCookies);
   app.use(sessions.middleware);
-  app.use(express.json({ limit: '1mb' }));
+  // Scan agents send larger result lists (own limit on that route)
+  const jsonBody = express.json({ limit: '1mb' });
+  app.use((req, res, next) => (req.path === '/api/agent/results' ? next() : jsonBody(req, res, next)));
   app.use((req, _res, next) => { if (!req.body || typeof req.body !== 'object') req.body = {}; next(); });
 
   app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });

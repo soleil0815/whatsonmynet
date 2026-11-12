@@ -1,0 +1,44 @@
+# WhatsOnMyNet – scan agent for a branch office (docker-compose.agent.yml)
+#
+# The agent scans the subnets of its location in the branch office and sends the results to the central
+# WhatsOnMyNet over HTTPS. It has no web interface and opens no port.
+#
+#   1. Central server: Settings → Scan agents → "Add agent" (choose the location), copy the ready .env
+#   2. Here: put them into .env (see below), then  docker compose -f docker-compose.agent.yml up -d
+#
+# .env next to this file:
+#   WOMN_AGENT_SERVER=https://womn.firma.local:8743
+#   WOMN_AGENT_TOKEN=<token from the central server>
+#   WOMN_AGENT_CA=<certificate of the central server, needed for its self-signed certificate>
+#   TZ=Europe/Berlin
+#   PUID=1000
+#   PGID=1000
+
+services:
+  whatsonmynet-agent:
+    image: ghcr.io/soleil0815/whatsonmynet:${WOMN_VERSION:-latest}
+    container_name: whatsonmynet-agent
+    restart: unless-stopped
+    env_file: .env
+    command: ["node", "src/agent.js"]
+    # Host network: only this way the agent sees the MAC addresses of the devices (ARP)
+    network_mode: host
+    volumes:
+      - ./data:/data
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+    stop_grace_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
+      - KILL
