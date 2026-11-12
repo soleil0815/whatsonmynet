@@ -105,7 +105,7 @@ export async function renderScan(main, scanId) {
     h('div', { class: 'history-list' }, scans.slice(0, 12).map((x) => {
       const n = Object.fromEntries((x.counts || []).map((c) => [c.status, c.n]));
       return h('button', { type: 'button', onclick: () => navigate(`/scan/${x.id}`) },
-        h('span', {}, h('strong', {}, x.kind === 'deep' ? t('scan.kind.deep') : x.targets.map((c) => c.cidr).join(', ')),
+        h('span', {}, h('strong', {}, x.kind === 'deep' ? t('scan.kind.deep') : x.kind === 'light' ? `${t('scan.kind.light')} · ${x.targets.map((c) => c.cidr).join(', ')}` : x.targets.map((c) => c.cidr).join(', ')),
           h('span', { class: 'muted small', style: { display: 'block' } }, `${fmtDate(x.started_at, getLang())} · ${t(`scan.phase.${x.status === 'running' ? 'discover' : x.status}`)}`)),
         n.new ? h('span', { class: 'badge badge-new' }, `${n.new} ${t('scan.statusNew')}`) : h('span', { class: 'badge' }, x.stats?.probed ?? 0));
     }))) : null;
@@ -180,11 +180,11 @@ async function renderResult(main, id) {
   }
 
   function renderHead(runningNow) {
-    const title = data.kind === 'deep' ? t('scan.kind.deep') : t('scan.title');
+    const title = data.kind === 'deep' ? t('scan.kind.deep') : data.kind === 'light' ? t('scan.kind.light') : t('scan.title');
     const lead = `${data.targets.map((x) => x.cidr).join(', ')} · ${fmtDate(data.started_at, getLang())}${data.user ? ` · ${t('scan.by', { user: data.user })}` : ''}`;
     mount(head, pageHead(title, lead,
       runningNow && edit ? btn(t('scan.cancel'), { onclick: async (e) => { e.currentTarget.disabled = true; await post(`/scans/${id}/cancel`).catch(fail); } }, 'stop') : null,
-      !runningNow && edit && data.kind === 'network' ? h('a', { class: 'btn', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('scan.title')) : null),
+      !runningNow && edit && data.kind !== 'deep' ? h('a', { class: 'btn', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('scan.title')) : null),
     data.progress && data.progress.pingAvailable === false && runningNow ? h('div', { class: 'note' }, t('scan.noPing')) : null,
     data.error ? h('div', { class: 'note warn' }, data.error) : null);
   }

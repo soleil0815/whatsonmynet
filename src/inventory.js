@@ -48,7 +48,9 @@ export function createInventory(db) {
     const facts = parse(r.facts);
     const changes = [];
     const ts = now();
-    const set = { last_seen: ts, facts: JSON.stringify({ ...parse(device.facts), ...facts }), updated_at: ts };
+    // A light scan knows little: it must not replace what a full scan found (ports, SNMP, classification ...)
+    const merged = facts.light ? { ...parse(device.facts), ...(facts.netbios ? { netbios: facts.netbios } : {}), lightSeen: ts } : { ...parse(device.facts), ...facts };
+    const set = { last_seen: ts, facts: JSON.stringify(merged), updated_at: ts };
     if (device.ip !== r.ip) { changes.push({ field: 'ip', from: device.ip, to: r.ip }); set.ip = r.ip; }
     if (!device.mac && mac) { changes.push({ field: 'mac', from: null, to: mac }); set.mac = mac; }
     if (r.hostname && device.hostname !== r.hostname) {
@@ -56,7 +58,7 @@ export function createInventory(db) {
       set.hostname = r.hostname;
     }
     if (!device.vendor && r.vendor) set.vendor = r.vendor;
-    if (!device.os && facts.classification?.os) set.os = facts.classification.os;
+    if (!device.os && facts.classification?.os && !facts.light) set.os = facts.classification.os;
     if (!device.web_url) { const u = bestWebUrl(r.ip, facts, device.type); if (u) set.web_url = u; }
     else if (set.ip && device.web_url.includes(`//${device.ip}`)) set.web_url = device.web_url.replace(`//${device.ip}`, `//${r.ip}`);
     const keys = Object.keys(set);
@@ -247,7 +249,7 @@ export function createInventory(db) {
     const devices = list();
     const byType = {};
     for (const d of devices) byType[d.type] = (byType[d.type] || 0) + 1;
-    const lastScan = db.prepare("SELECT * FROM scans WHERE kind='network' AND status IN ('done','cancelled','failed') ORDER BY id DESC LIMIT 1").get();
+    const lastScan = db.prepare("SELECT * FROM scans WHERE kind IN ('network','light') AND status IN ('done','cancelled','failed') ORDER BY id DESC LIMIT 1").get();
     const waiting = lastScan ? db.prepare("SELECT COUNT(*) n FROM scan_results WHERE scan_id=? AND status='new' AND handled IS NULL").get(lastScan.id).n : 0;
     return {
       devices: devices.length,

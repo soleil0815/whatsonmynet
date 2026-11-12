@@ -217,6 +217,32 @@ const MIGRATIONS = [
     created_at TEXT NOT NULL
   );
   `,
+  // 3: devices seen by scans (unknown-device notice), printer status (SNMP)
+  `
+  CREATE TABLE sightings (
+    key TEXT PRIMARY KEY,
+    ip TEXT,
+    mac TEXT,
+    vendor TEXT NOT NULL DEFAULT '',
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    notified_at TEXT
+  );
+  CREATE TABLE printer_status (
+    device_id INTEGER PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+    at TEXT NOT NULL,
+    ok INTEGER NOT NULL DEFAULT 1,
+    error TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL DEFAULT '{}',
+    alerts TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE TABLE printer_pages (
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY (device_id, day)
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -5,6 +5,7 @@ import { t, getLang, reasonText } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { monitorDot, statusPill, openMonitorForm } from './monitoring.js';
+import { printerPanel } from './printer.js';
 import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
 
 const FIELD_LABEL = (f) => t(`f.${f}`) !== `f.${f}` ? t(`f.${f}`) : f;
@@ -157,5 +158,5 @@ export async function renderDevice(main, id) {
     ti ? h('div', { class: 'note ti' }, t('dev.deepTi')) : null,
     h('div', { class: 'device-grid' },
       h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('dev.details')), form),
-      h('div', { class: 'stack' }, monPanel, detection, meta, hist))));
+      h('div', { class: 'stack' }, d.type === 'printer' ? printerPanel(d) : null, monPanel, detection, meta, hist))));
 }

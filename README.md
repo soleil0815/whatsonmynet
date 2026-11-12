@@ -73,6 +73,26 @@ WOMN_HTTP_PORT=8780    # leitet nur auf HTTPS um (0 = aus)
 
 Danach `docker compose up -d`.
 
+## Nächtlicher Leicht-Scan und neue Geräte (ab Version 0.3)
+
+Einmal pro Nacht (Standard 02:30 Uhr Ortszeit, `TZ` in der `.env`) sucht WhatsOnMyNet in allen Subnetzen deiner Standorte nur nach Geräten: ARP, NetBIOS und – wenn erlaubt – Ping, keine Ports, kein SNMP, keine Webanfragen. So bleibt der Scan unauffällig.
+
+- Bekannte Geräte bekommen ihre neue IP-Adresse automatisch (die MAC-Adresse ist die Identität), ihre Monitore ziehen mit.
+- Unbekannte Geräte landen im Scan-Ergebnis zum Übernehmen oder Ignorieren; die Übersicht zeigt, wie viele warten.
+- **Neue Geräte melden**: Ein Gerät, das zum allerersten Mal auftaucht, wird einmal über die Benachrichtigungskanäle gemeldet (E-Mail, Telegram, Webhook). Der erste Scan nach dem Update lernt nur, was schon da ist – keine Flut an Meldungen.
+- Uhrzeit, Kanäle und „Jetzt ausführen“ unter *Einstellungen → Scan*. Nach einem Neustart holt WhatsOnMyNet den Scan bis zu 4 Stunden später nach.
+
+## Drucker per SNMP (ab Version 0.3)
+
+Geräte vom Typ *Drucker* werden regelmäßig (Standard stündlich) per SNMP gefragt – nur lesend, über die Printer-MIB, die fast alle Netzwerkdrucker können:
+
+- Toner bzw. Tinte je Farbe, Trommel, Resttonerbehälter, Fixiereinheit – als Balken in der Farbe des Toners
+- Seitenzähler gesamt und der letzten 30 Tage, Zustand (bereit, druckt …), Fehler wie Papierstau, kein Papier, Klappe offen, und der Text auf dem Display
+- **Meldung**, wenn ein Verbrauchsmaterial auf den Schwellwert fällt (Standard 15 %) und noch einmal, wenn es leer ist – einmal pro Kartusche, nach dem Wechsel wieder scharf
+- Die Übersicht zeigt alle Drucker, bei denen etwas zur Neige geht
+
+Einstellungen unter *Einstellungen → Drucker*. Die Community ist dieselbe wie beim Scan (*Einstellungen → Scan*). Am Drucker muss SNMP (v1 oder v2c) eingeschaltet sein.
+
 ### Ping
 
 WhatsOnMyNet läuft ohne Root-Rechte. Ping funktioniert dann nur, wenn der Host normalen Benutzern ICMP erlaubt (`net.ipv4.ping_group_range`, bei Debian, Ubuntu und Proxmox Standard). Ohne Ping findet der Scan lokale Geräte trotzdem über ARP und entfernte über TCP; das Programm zeigt dann einen Hinweis.
@@ -127,7 +147,7 @@ docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administ
 
 | Version | Inhalt |
 | --- | --- |
-| 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), nächtlicher leichter Scan mit Meldung unbekannter Geräte, Druckerdaten per SNMP (Toner, Trommel), Docker- und Datenbanküberwachung |
+| 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), ~~nächtlicher leichter Scan mit Meldung unbekannter Geräte~~, ~~Druckerdaten per SNMP~~ (ab 0.3), Docker- und Datenbanküberwachung |
 | 3 | Active Directory (LDAPS), Rollen pro Standort/Subnetz |
 | später | Scan-Agent für Außenstellen, Topologie über LLDP/CDP, MAC-Adressen entfernter Subnetze per SNMP vom Router |
 
