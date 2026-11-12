@@ -17,7 +17,7 @@ fail() {
 out="$(docker run -d --name "$NAME" --network host -v "$DATA:/data" -e WOMN_COMPOSE_VERSION=1 \
   -e WOMN_HTTPS_PORT=$HTTPS_PORT -e WOMN_HTTP_PORT=$HTTP_PORT \
   --read-only --tmpfs /tmp --security-opt no-new-privileges:true \
-  --cap-drop ALL --cap-add CHOWN --cap-add FOWNER --cap-add DAC_OVERRIDE --cap-add SETUID --cap-add SETGID \
+  --cap-drop ALL --cap-add CHOWN --cap-add FOWNER --cap-add DAC_OVERRIDE --cap-add SETUID --cap-add SETGID --cap-add KILL \
   "$IMG" 2>&1)" || fail "docker run: $out"
 
 i=0
@@ -45,6 +45,11 @@ kmode="$(sudo stat -c %a "$DATA/tls/key.pem")"
 # Tools the scanner and the certificate need
 docker exec "$NAME" sh -c 'command -v openssl && command -v ping' >/dev/null || fail "openssl or ping missing in the image"
 docker exec "$NAME" womn-admin list >/dev/null || fail "womn-admin does not run"
+# Stop must reach the program (clean shutdown), not end in a hard kill after the grace period
+docker stop -t 20 "$NAME" >/dev/null
+docker logs "$NAME" 2>&1 | grep -q 'SIGTERM received' || fail "stop signal did not reach WhatsOnMyNet"
+if docker logs "$NAME" 2>&1 | grep -q 'FATAL tini'; then fail "tini could not forward the stop signal"; fi
+[ "$(docker inspect -f '{{.State.ExitCode}}' "$NAME")" = 0 ] || fail "exit code after stop is not 0"
 docker rm -f "$NAME" >/dev/null
 
 # Slim image: no package tools of the Node base image, only one SQLite binary, no sources
