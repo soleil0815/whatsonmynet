@@ -11,6 +11,7 @@ import { TYPES } from '../scan/classify.js';
 import { validTime } from '../scan/nightly.js';
 import { plainName, DEFAULT_FILTER } from '../auth/directory.js';
 import { scopeOf, inScope, deviceInScope, requireUnscoped } from '../auth/scope.js';
+import { buildTopology } from '../topology.js';
 import { SERVICE_NAMES, GENTLE_PORTS } from '../scan/ports.js';
 import { toCsv } from '../inventory.js';
 import { t } from '../i18n.js';
@@ -229,6 +230,8 @@ export function createApi(ctx) {
 
   r.post('/devices/:id/snmp', editor, async (req, res) => { visible(req, idParam(req)); res.json(await ctx.snmpDevices.poll(idParam(req))); });
 
+  r.get('/topology', (req, res) => res.json(buildTopology(db, { allowed: req.scope })));
+
   // Nightly light scan: start now (same as at night, all subnets of all locations)
   r.post('/lightscan/run', editor, (req, res) => {
     requireUnscoped(req);
@@ -328,6 +331,7 @@ export function createApi(ctx) {
     if ('ping' in b) settings.set('scan.ping', !!b.ping);
     if ('snmp' in b) settings.set('scan.snmp', !!b.snmp);
     if ('httpTitles' in b) settings.set('scan.httpTitles', !!b.httpTitles);
+    if ('routerArp' in b) settings.set('scan.routerArp', !!b.routerArp);
     if ('rate' in b) settings.set('scan.rate', Math.min(200, Math.max(5, int(String(b.rate)) || 40)));
     if ('keepScans' in b) settings.set('scan.keepScans', Math.min(500, Math.max(3, int(String(b.keepScans)) || 20)));
     // Communities: only replaced when a new value is sent (empty string = back to "public")

@@ -52,13 +52,14 @@ async function scan(body, s) {
   const form = h('form', { class: 'form', onsubmit: async (e) => {
     e.preventDefault();
     const d = formData(form);
-    const payload = { ping: d.ping, snmp: d.snmp, httpTitles: d.httpTitles, rate: d.rate, keepScans: d.keepScans };
+    const payload = { ping: d.ping, snmp: d.snmp, httpTitles: d.httpTitles, routerArp: d.routerArp, rate: d.rate, keepScans: d.keepScans };
     if (d.snmpCommunities.trim() || d.clearCommunities) payload.snmpCommunities = d.clearCommunities ? '' : d.snmpCommunities;
     try { await put('/settings/scan', payload); toast(t('saved')); } catch (ex) { fail(ex); }
   } },
   field(t('set.ping'), h('input', { type: 'checkbox', name: 'ping', checked: sc.ping })),
   field(t('set.snmp'), h('input', { type: 'checkbox', name: 'snmp', checked: sc.snmp })),
   field(t('set.httpTitles'), h('input', { type: 'checkbox', name: 'httpTitles', checked: sc.httpTitles })),
+  field(t('set.routerArp'), h('input', { type: 'checkbox', name: 'routerArp', checked: sc.routerArp !== false }), t('set.routerArpHint')),
   field(t('set.communities'), comm, sc.snmpCommunities.set ? t('set.communitiesSet') : t('set.communitiesHint')),
   sc.snmpCommunities.set ? field('public', h('input', { type: 'checkbox', name: 'clearCommunities' })) : null,
   h('div', { class: 'form-grid' },
