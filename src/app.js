@@ -22,6 +22,7 @@ import { createDockerHosts } from './monitor/docker.js';
 import { createSnmpDevices } from './snmpdevices.js';
 import { createDirectory } from './auth/directory.js';
 import { createAgents } from './agents.js';
+import { createReports } from './reports.js';
 import { HttpError } from './lib/http.js';
 import { randomToken } from './lib/crypto.js';
 import { t, langFromHeader, normalizeLang, hasKey } from './i18n.js';
@@ -72,6 +73,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   const snmpDevices = createSnmpDevices({ db, settings, channels });
   const directory = createDirectory(settings);
   const agents = createAgents({ db, settings, inventory, scanner });
+  const reports = createReports({ db, settings, mailer });
 
   // Initial setup: one-time code from the log, only as long as there is no user
   const setup = { token: null };
@@ -82,7 +84,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     console.log(`\n${bar}\n  WhatsOnMyNet – Ersteinrichtung / initial setup\n  Einrichtungscode / setup code:  ${setup.token}\n  ${where}/setup\n${bar}\n`);
   }
 
-  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, directory, agents,
+  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, directory, agents, reports,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 

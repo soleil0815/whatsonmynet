@@ -334,6 +334,28 @@ export function createApi(ctx) {
   r.put('/locations/:id', admin, (req, res) => { const l = locations.update(idParam(req), req.body); audit(req, 'location.update', l.name); res.json(l); });
   r.delete('/locations/:id', admin, (req, res) => { locations.remove(idParam(req)); audit(req, 'location.delete', req.params.id); res.json({ ok: true }); });
 
+  // Planned reports (admin): neutral mails, e.g. printer supplies for the office
+  r.get('/reports', admin, (_req, res) => res.json(ctx.reports.list()));
+  r.post('/reports', admin, (req, res) => { const x = ctx.reports.create(req.body); audit(req, 'report.create', x.name); res.status(201).json(x); });
+  r.put('/reports/:id', admin, (req, res) => { const x = ctx.reports.update(idParam(req), req.body); audit(req, 'report.update', x.name); res.json(x); });
+  r.delete('/reports/:id', admin, (req, res) => { ctx.reports.remove(idParam(req)); audit(req, 'report.delete', req.params.id); res.json({ ok: true }); });
+  // Preview as the recipients see it (own CSP: the mail has inline styles, nothing else is allowed)
+  r.get('/reports/:id/preview', admin, (req, res) => {
+    const x = ctx.reports.get(idParam(req));
+    if (!x) throw new HttpError(404, 'err.notFound');
+    const m = ctx.reports.render(x);
+    res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'");
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.type('html').send(m.html);
+  });
+  r.post('/reports/:id/send', admin, async (req, res) => {
+    const to = req.body.test ? line(req.user.email, 254) : null;
+    if (req.body.test && !to) throw new HttpError(400, 'err.email');
+    const m = await ctx.reports.send(idParam(req), { to });
+    audit(req, 'report.send', `${req.params.id}${to ? ` (test to ${to})` : ''}`);
+    res.json({ ok: true, count: m.count, attention: m.attention });
+  });
+
   // Scan agents (admin)
   r.get('/agents', admin, (_req, res) => res.json(ctx.agents.list()));
   r.post('/agents', admin, (req, res) => { const a = ctx.agents.create(req.body); audit(req, 'agent.create', `${a.name} (${a.location_name})`); res.status(201).json(a); });

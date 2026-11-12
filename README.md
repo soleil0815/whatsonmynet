@@ -147,6 +147,14 @@ ARP – und damit die MAC-Adresse – sieht man nur im eigenen Netz. Für eine A
 
 Der Agent hat keine Weboberfläche und öffnet keinen Port. Er fragt die Zentrale jede Minute nach Aufträgen (HTTPS; beim selbstsignierten Zertifikat vertraut er genau diesem einen Zertifikat – geprüft, bevor der Schlüssel gesendet wird. Erneuert sich das Zertifikat, braucht der Agent den neuen Wert), scannt dort genauso schonend und folgt der Uhrzeit des nächtlichen Leicht-Scans. Er darf nur Adressen aus den Subnetzen seines Standorts melden. „Scan starten“ für diesen Standort geht in der Zentrale automatisch als Auftrag an den Agenten; die Ergebnisse erscheinen wie gewohnt unter *Frühere Scans*.
 
+## Geplante Berichte (ab Version 0.4)
+
+Unter *Einstellungen → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Berichte per E-Mail – zum Beispiel jeden Montag um 8 Uhr die Tonerstände aller Drucker ans Büro, oder monatlich den Zustand der NAS.
+
+- **Inhalt**: Drucker (Toner je Farbe, Trommel, Resttoner, Seitenzähler, Störungen), NAS (Belegung, Platten, Temperatur) und Switches; auf Standorte beschränkbar, wahlweise nur Geräte mit Handlungsbedarf. Was bald nachbestellt werden muss, ist rot markiert.
+- **Neutral**: Die Mail enthält keinen Link und keinen Programmnamen – nur deinen Absendernamen, Betreff (`{kw}`, `{datum}`), Einleitung, die Geräte und deinen Gruß, z. B. „Ihre freundliche IT“.
+- Zeitplan täglich, wöchentlich oder monatlich; Vorschau, „Test an mich“ und „Jetzt senden“ direkt in den Einstellungen.
+
 ## HTTPS und Zertifikat
 
 - Beim ersten Start erzeugt WhatsOnMyNet ein selbstsigniertes Zertifikat für den Hostnamen, `localhost`, alle IPv4-Adressen des Hosts und die Adresse aus `WOMN_BASE_URL`. Es wird 30 Tage vor Ablauf automatisch erneuert.

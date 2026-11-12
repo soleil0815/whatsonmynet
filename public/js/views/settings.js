@@ -7,7 +7,7 @@ import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
 
 const SECTIONS = [
-  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'], ['ad', 'user'], ['agents', 'location'],
+  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['reports', 'download'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'], ['ad', 'user'], ['agents', 'location'],
   ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
 ];
 
@@ -22,7 +22,7 @@ export async function renderSettings(main, section = 'general') {
         class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, ad, agents, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, ad, agents, reports, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
@@ -360,6 +360,83 @@ async function users(body, _s, reload) {
             try { await del(`/users/${u.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
           } }) : null))))))),
     h('p', { class: 'panel-pad muted small', style: { margin: 0 } }, t('users.adHint'), ' ', h('a', { href: '/settings/ad', 'data-link': true }, t('set.ad')))));
+}
+
+async function reports(body, _s, reload) {
+  const [list, locs] = await Promise.all([get('/reports'), get('/locations')]);
+  const SECS = ['printers', 'nas', 'switches'];
+  const DAYS = [1, 2, 3, 4, 5, 6, 7];
+  const when = (s) => {
+    const day = s.freq === 'weekly' ? t(`day.${s.weekday % 7}`) : s.freq === 'monthly' ? t('rep.monthDay', { d: s.day }) : t('rep.daily');
+    return `${day}, ${s.time}`;
+  };
+  const edit = (r) => {
+    const v = r || { name: '', sections: ['printers'], recipients: [], schedule: { freq: 'weekly', weekday: 1, day: 1, time: '08:00' }, location_ids: [],
+      subject: '', intro: t('rep.introDefault'), signature: t('rep.signatureDefault'), from_name: '', language: getLang(), only_attention: false, enabled: true };
+    const freq = select('freq', [['daily', t('rep.freq.daily')], ['weekly', t('rep.freq.weekly')], ['monthly', t('rep.freq.monthly')]], v.schedule.freq);
+    const wd = h('div', {}, field(t('rep.weekday'), select('weekday', DAYS.map((d) => [String(d), t(`day.${d % 7}`)]), String(v.schedule.weekday || 1))));
+    const md = h('div', {}, field(t('rep.day'), input('day', v.schedule.day || 1, { type: 'number', min: 1, max: 28 })));
+    const syncFreq = () => { wd.hidden = freq.value !== 'weekly'; md.hidden = freq.value !== 'monthly'; };
+    freq.addEventListener('change', syncFreq);
+    const form = h('form', { class: 'form-grid' },
+      h('div', { class: 'full' }, field(t('rep.name'), input('name', v.name, { required: true, maxlength: 100, placeholder: t('rep.namePh') }))),
+      h('div', { class: 'full field' }, t('rep.sections'), h('div', { class: 'chips' }, SECS.map((x) => h('label', { class: 'check', style: { marginRight: '14px' } },
+        h('input', { type: 'checkbox', name: `sec_${x}`, checked: v.sections.includes(x) }), t(`rep.sec.${x}`))))),
+      h('div', { class: 'full' }, field(t('rep.recipients'), h('textarea', { name: 'recipients', rows: 2, required: true, placeholder: 'buero@firma.de, einkauf@firma.de' }, v.recipients.join(', ')), t('rep.recipientsHint'))),
+      field(t('rep.freq'), freq), wd, md,
+      field(t('rep.time'), input('time', v.schedule.time, { type: 'time', required: true })),
+      locs.length > 1 ? h('div', { class: 'full field' }, t('rep.locations'), h('div', { class: 'chips' }, locs.map((l) => h('label', { class: 'check', style: { marginRight: '14px' } },
+        h('input', { type: 'checkbox', name: `loc_${l.id}`, checked: v.location_ids.includes(l.id) }), l.name))), h('span', { class: 'hint' }, t('rep.locationsHint'))) : null,
+      h('div', { class: 'full' }, h('h3', { class: 'sub-title' }, t('rep.mail')), h('p', { class: 'muted small', style: { margin: 0 } }, t('rep.neutral'))),
+      field(t('rep.fromName'), input('from_name', v.from_name, { maxlength: 100, placeholder: t('rep.fromNamePh') }), t('rep.fromNameHint')),
+      field(t('rep.subject'), input('subject', v.subject, { maxlength: 200, placeholder: t('rep.subjectPh') }), t('rep.subjectHint')),
+      h('div', { class: 'full' }, field(t('rep.intro'), h('textarea', { name: 'intro', rows: 3 }, v.intro))),
+      h('div', { class: 'full' }, field(t('rep.signature'), h('textarea', { name: 'signature', rows: 3 }, v.signature))),
+      field(t('ch.language'), select('language', [['de', 'Deutsch'], ['en', 'English']], v.language)),
+      h('div', {}, field(t('rep.onlyAttention'), h('input', { type: 'checkbox', name: 'only_attention', checked: v.only_attention }), t('rep.onlyAttentionHint'))),
+      r ? field(t('user.active'), h('input', { type: 'checkbox', name: 'enabled', checked: v.enabled })) : null);
+    syncFreq();
+    const m = modal(r ? r.name : t('rep.add'), form, { wide: true, actions: [
+      btn(t('cancel'), { onclick: () => m.close() }),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+        if (!form.reportValidity()) return;
+        const d = formData(form);
+        const payload = { name: d.name, sections: SECS.filter((x) => d[`sec_${x}`]), recipients: d.recipients,
+          schedule: { freq: d.freq, weekday: Number(d.weekday), day: Number(d.day), time: d.time }, location_ids: locs.filter((l) => d[`loc_${l.id}`]).map((l) => l.id),
+          subject: d.subject, intro: d.intro, signature: d.signature, from_name: d.from_name, language: d.language, only_attention: d.only_attention, enabled: r ? d.enabled : true };
+        try { if (r) await put(`/reports/${r.id}`, payload); else await post('/reports', payload); m.close(); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
+      } }, t('save'))] });
+  };
+  const preview = (r) => {
+    const frame = h('iframe', { src: `/api/reports/${r.id}/preview`, title: t('rep.preview'), class: 'report-frame', sandbox: '' });
+    const m = modal(`${t('rep.preview')}: ${r.name}`, frame, { wide: true, actions: [btn(t('agent.done'), { class: 'btn btn-primary', onclick: () => m.close() })] });
+  };
+  const sendNow = async (r, test, b) => {
+    b.disabled = true;
+    try { const x = await post(`/reports/${r.id}/send`, { test }); toast(test ? t('rep.testSent', { email: state.user.email }) : t('rep.sent', { n: x.count })); reload(); } catch (ex) { fail(ex); }
+    b.disabled = false;
+  };
+  mount(body, h('section', { class: 'panel' },
+    h('div', { class: 'panel-head', style: { paddingBottom: '12px', flexWrap: 'wrap' } }, h('h2', {}, t('set.reports')), btn(t('rep.add'), { class: 'btn btn-sm', onclick: () => edit(null) }, 'plus')),
+    h('p', { class: 'muted', style: { padding: '0 20px' } }, t('rep.lead')),
+    list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('rep.name')), h('th', {}, t('rep.when')), h('th', { class: 'hide-sm' }, t('rep.recipients')), h('th', {}))),
+      h('tbody', {}, list.map((r) => h('tr', {},
+        h('td', {}, h('span', { class: 'name' }, r.name), r.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('user.inactive')),
+          h('div', { class: 'sub' }, r.sections.map((x) => t(`rep.sec.${x}`)).join(', '))),
+        h('td', {}, when(r.schedule), r.last_run ? h('div', { class: 'sub' }, `${t('rep.last')}: ${fmtDate(r.last_run, getLang())}`,
+          r.last_status && r.last_status !== 'ok' ? h('span', { class: 'badge badge-bad', style: { marginLeft: '6px' }, title: r.last_status }, t('rep.failed')) : null) : null),
+        h('td', { class: 'hide-sm small' }, r.recipients.join(', ')),
+        h('td', { class: 'min' }, h('div', { class: 'actions' },
+          btn(t('rep.preview'), { class: 'btn btn-sm', onclick: () => preview(r) }),
+          btn(t('rep.test'), { class: 'btn btn-sm btn-ghost', title: t('rep.testHint'), onclick: (e) => sendNow(r, true, e.currentTarget) }),
+          btn(t('rep.sendNow'), { class: 'btn btn-sm btn-ghost', onclick: (e) => sendNow(r, false, e.currentTarget) }),
+          btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => edit(r) }),
+          h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${r.name}`, html: icon('trash'), onclick: async () => {
+            if (!await confirmDialog(t('delete'), t('rep.deleteConfirm', { name: r.name }), t('delete'), t('cancel'), { danger: true })) return;
+            try { await del(`/reports/${r.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
+          } }))))))))
+      : h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('rep.none'))));
 }
 
 async function agents(body, _s, reload) {
