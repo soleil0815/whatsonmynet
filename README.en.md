@@ -28,6 +28,20 @@ WhatsOnMyNet scans your network, recognises manufacturer and device type by itse
 
 ![Inventory](docs/images/inventory-en.png)
 
+## Monitoring (from version 0.2)
+
+WhatsOnMyNet monitors devices, services and websites and replaces Uptime Kuma for the online status:
+
+- **Checks**: web (HTTP/HTTPS with valid status codes and an optional keyword), TCP port or ping, every 20 seconds up to 24 hours.
+- **No false alarms**: an alarm comes only after several failed checks in a row (default 3), the all-clear with the length of the outage. Optionally the alarm repeats while the outage lasts.
+- **Certificates**: for HTTPS the expiry date is read; warnings e.g. 30, 14 and 7 days before, each step once. Checking chain and name can be switched on for internet sites; LAN devices with self-signed certificates work without it.
+- **Notifications** under *Settings → Notifications*: email (through the SMTP server), Telegram bot (token from @BotFather, chat ID) and webhook with an own JSON template (`{{text}}`, `{{name}}`, `{{status}}`, `{{message}}`, `{{target}}`, `{{time}}`) and an optional header for a key. Token and header are stored encrypted. Every channel has a test message.
+- **Maintenance windows** once or weekly (also across midnight), for all or selected monitors – no alarms meanwhile.
+- **Availability** over 24 hours, 7 and 30 days, response time chart, events showing who was notified.
+- **Devices**: on a device page, “Monitor” adds a fitting monitor (web interface, else ping or an open port). When the scan changes a device's IP address, its monitors follow.
+
+Check results are kept in detail for 7 days and hourly for a year.
+
 ## Installation
 
 Requirement: a **Linux host with Docker** (server, VM, Proxmox LXC with Docker, Synology Container Manager). WhatsOnMyNet runs in the **host network** – only this way it sees the MAC addresses of your devices. Docker Desktop on Windows or macOS does not see the real network and is therefore not suitable.
@@ -113,7 +127,7 @@ docker compose exec whatsonmynet womn-admin create <user>   # new administrator
 
 | Version | Content |
 | --- | --- |
-| 2 | Monitoring like Uptime Kuma: online status, certificates, external targets, alarms via email, Telegram and webhook, maintenance windows, Docker and database monitoring, nightly light scan, printer data via SNMP (toner, drum) |
+| 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), nightly light scan with notice of unknown devices, printer data via SNMP (toner, drum), Docker and database monitoring |
 | 3 | Active Directory (LDAPS), roles per location/subnet |
 | later | Scan agent for branch offices, topology via LLDP/CDP, MAC addresses of remote subnets via SNMP from the router |
 

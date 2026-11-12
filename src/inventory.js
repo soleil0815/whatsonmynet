@@ -63,6 +63,18 @@ export function createInventory(db) {
     db.transaction(() => {
       db.prepare(`UPDATE devices SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`).run(...keys.map((k) => set[k]), device.id);
       for (const c of changes) history(device.id, c.field === 'ip' ? 'ip' : 'change', c, 'scan');
+      // Monitors of this device follow the new address
+      if (set.ip && device.ip) {
+        db.prepare("UPDATE monitors SET target=?, updated_at=? WHERE device_id=? AND type IN ('ping','tcp') AND target=?").run(set.ip, ts, device.id, device.ip);
+        for (const mon of db.prepare("SELECT id, target FROM monitors WHERE device_id=? AND type='http'").all(device.id)) {
+          try {
+            const u = new URL(mon.target);
+            if (u.hostname !== device.ip) continue;
+            u.hostname = set.ip;
+            db.prepare('UPDATE monitors SET target=?, updated_at=? WHERE id=?').run(u.toString(), ts, mon.id);
+          } catch { /* not a URL */ }
+        }
+      }
       if (deep) history(device.id, 'deep', { ports: facts.ports?.length || 0 }, 'scan');
       db.prepare('UPDATE scan_results SET status=?, device_id=? WHERE id=?').run(changes.some((c) => c.field === 'ip' || c.field === 'mac') ? 'changed' : 'known', device.id, resultId);
     })();

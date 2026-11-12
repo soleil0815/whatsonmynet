@@ -10,6 +10,8 @@ import { historyText } from './device.js';
 export async function renderDashboard(main) {
   const d = await get('/dashboard');
   state.waiting = d.waiting;
+  const mon = d.monitoring || { total: 0, up: 0, down: [], certs: [] };
+  state.down = mon.down.length;
   const canScan = state.user.canEdit;
   const scanBtn = canScan ? h('a', { class: 'btn btn-primary btn-big', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('dash.scanNow')) : null;
 
@@ -19,6 +21,8 @@ export async function renderDashboard(main) {
     d.missing ? h('a', { class: 'figure bad', href: '/inventory', 'data-link': true }, h('b', {}, d.missing), h('span', {}, t('dash.missing'))) : null,
     d.waiting ? h('a', { class: 'figure alert', href: d.lastScan ? `/scan/${d.lastScan.id}` : '/scan', 'data-link': true }, h('b', {}, d.waiting), h('span', {}, t('dash.waiting'))) : null,
     d.telematik ? h('a', { class: 'figure ti', href: '/inventory?type=telematik', 'data-link': true }, h('b', {}, d.telematik), h('span', {}, t('dash.telematik'))) : null,
+    mon.total ? h('a', { class: `figure${mon.down.length ? ' bad' : ''}`, href: '/monitoring', 'data-link': true },
+      h('b', {}, mon.down.length ? mon.down.length : `${mon.up}/${mon.total}`), h('span', {}, mon.down.length ? t('mon.status.down') : t('mon.status.up'))) : null,
   );
 
   const types = Object.entries(d.byType).sort((a, b) => b[1] - a[1]);
@@ -51,6 +55,17 @@ export async function renderDashboard(main) {
       h('span', { class: 'what' }, historyText(r)))))
       : h('p', { class: 'panel-pad muted' }, t('dash.noRecent')));
 
+  const monPanel = mon.total ? h('section', { class: 'panel' },
+    h('h2', {}, h('a', { href: '/monitoring', 'data-link': true, style: { color: 'inherit', textDecoration: 'none' } }, t('mon.dashTitle'))),
+    mon.down.length ? h('ul', { class: 'feed' }, mon.down.map((m) => h('li', {},
+      h('a', { href: `/monitoring/${m.id}`, 'data-link': true }, h('span', { class: 'dot mon-down', style: { marginRight: '8px' } }), m.name),
+      h('span', { class: 'when' }, fmtAgo(m.since, t)),
+      h('span', { class: 'what' }, m.message))))
+      : h('p', { class: 'panel-pad muted', style: { margin: 0 } }, h('span', { class: 'dot mon-up', style: { marginRight: '8px' } }), t('mon.dashAllUp')),
+    mon.certs.length ? [h('h2', { style: { paddingTop: '6px' } }, t('mon.dashCerts')), h('ul', { class: 'feed' }, mon.certs.map((c) => h('li', {},
+      h('a', { href: `/monitoring/${c.id}`, 'data-link': true }, c.name),
+      h('span', { class: 'when' }, fmtDate(c.cert_valid_to, getLang(), false)))))] : null) : null;
+
   const warranty = d.warranty.length ? h('section', { class: 'panel' },
     h('h2', {}, t('dash.warranty')),
     h('ul', { class: 'feed' }, d.warranty.map((w) => h('li', {},
@@ -63,5 +78,5 @@ export async function renderDashboard(main) {
       figures,
       h('div', { class: 'dash' },
         h('div', { class: 'stack' }, typePanel, recent),
-        h('div', { class: 'stack' }, scanPanel, warranty)))));
+        h('div', { class: 'stack' }, monPanel, scanPanel, warranty)))));
 }

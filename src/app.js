@@ -11,6 +11,10 @@ import { createLocations } from './locations.js';
 import { createScanner } from './scan/engine.js';
 import { createMailer } from './mail/smtp.js';
 import { createApi } from './routes/api.js';
+import { createMonitoringApi } from './routes/monitoring.js';
+import { createChannels } from './monitor/notify.js';
+import { createMaintenance } from './monitor/maintenance.js';
+import { createMonitoring } from './monitor/index.js';
 import { HttpError } from './lib/http.js';
 import { randomToken } from './lib/crypto.js';
 import { t, langFromHeader, normalizeLang, hasKey } from './i18n.js';
@@ -52,6 +56,9 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   scanner.recover();
   const mailer = createMailer(settings);
   const limiter = createLoginLimiter();
+  const channels = createChannels(db, mailer);
+  const maintenance = createMaintenance(db);
+  const monitoring = createMonitoring({ db, channels, maintenance });
 
   // Initial setup: one-time code from the log, only as long as there is no user
   const setup = { token: null };
@@ -62,7 +69,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     console.log(`\n${bar}\n  WhatsOnMyNet – Ersteinrichtung / initial setup\n  Einrichtungscode / setup code:  ${setup.token}\n  ${where}/setup\n${bar}\n`);
   }
 
-  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls,
+  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 
@@ -116,6 +123,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     next();
   });
   app.use('/api', createApi(ctx));
+  app.use('/api', createMonitoringApi(ctx));
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'err.notFound')));
 
   // Static files + single-page app (always revalidated: after an update the new interface arrives at once)

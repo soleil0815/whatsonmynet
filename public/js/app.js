@@ -11,8 +11,9 @@ import { renderScan } from './views/scan.js';
 import { renderLocations } from './views/locations.js';
 import { renderSettings } from './views/settings.js';
 import { renderAccount } from './views/account.js';
+import { renderMonitoring } from './views/monitoring.js';
 
-export const state = { user: null, boot: null, meta: null, waiting: 0 };
+export const state = { user: null, boot: null, meta: null, waiting: 0, down: 0 };
 const root = document.getElementById('app');
 let cleanup = null;
 
@@ -43,6 +44,8 @@ const ROUTES = [
   [/^\/inventory$/, renderInventory, 'inventory'],
   [/^\/devices\/(\d+)$/, renderDevice, 'inventory'],
   [/^\/scan(?:\/(\d+))?$/, renderScan, 'scan'],
+  [/^\/monitoring(?:\/(\d+))?$/, renderMonitoring, 'monitoring'],
+  [/^\/monitoring\/(maintenance)$/, (main, sub) => renderMonitoring(main, null, sub), 'monitoring'],
   [/^\/locations$/, renderLocations, 'locations'],
   [/^\/settings(?:\/([a-z]+))?$/, renderSettings, 'settings'],
   [/^\/account$/, renderAccount, 'account'],
@@ -58,6 +61,7 @@ function sidebar(active) {
       link('/', 'dashboard', 'dashboard'),
       link('/inventory', 'inventory', 'inventory'),
       link('/scan', 'scan', 'radar', state.waiting ? h('span', { class: 'badge badge-new', title: t('dash.waiting') }, state.waiting) : null),
+      link('/monitoring', 'monitoring', 'pulse', state.down ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.down) : null),
       link('/locations', 'locations', 'location'),
       u.isAdmin ? link('/settings', 'settings', 'settings') : null,
     ),
@@ -75,6 +79,7 @@ async function refreshBadge() {
   try {
     const d = await get('/dashboard');
     state.waiting = d.waiting;
+    state.down = d.monitoring?.down?.length || 0;
   } catch { /* shown elsewhere */ }
 }
 
@@ -113,9 +118,15 @@ export async function render() {
 export async function updateBadge() {
   await refreshBadge();
   const a = document.querySelector('.nav a[href="/scan"]');
-  if (!a) return;
-  a.querySelector('.badge')?.remove();
-  if (state.waiting) a.append(h('span', { class: 'badge badge-new', title: t('dash.waiting') }, state.waiting));
+  if (a) {
+    a.querySelector('.badge')?.remove();
+    if (state.waiting) a.append(h('span', { class: 'badge badge-new', title: t('dash.waiting') }, state.waiting));
+  }
+  const m = document.querySelector('.nav a[href="/monitoring"]');
+  if (m) {
+    m.querySelector('.badge')?.remove();
+    if (state.down) m.append(h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.down));
+  }
 }
 
 export function setUser(u) {
@@ -160,5 +171,7 @@ export async function afterLogin(user) {
   await refreshBadge();
   navigate('/', { replace: true });
 }
+
+setInterval(() => { if (state.user && document.visibilityState === 'visible') updateBadge(); }, 60000);
 
 start();

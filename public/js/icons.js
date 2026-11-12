@@ -47,6 +47,7 @@ const P = {
   moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="1.5"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   pulse: '<path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>',
 };
 

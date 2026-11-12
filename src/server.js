@@ -58,9 +58,12 @@ async function main() {
     log.info(`HTTP on port ${config.httpPort} (redirects to HTTPS${ctx.trustProxy ? `; serves the reverse proxy ${ctx.trustProxy}` : ''})`);
   }
 
-  // Daily: sessions, backup, renew the self-signed certificate if needed
+  ctx.monitoring.start();
+
+  // Daily: sessions, old check results, backup, renew the self-signed certificate if needed
   const daily = async () => {
     try { ctx.sessions.purgeExpired(); } catch (e) { log.warn(`Session cleanup failed: ${e.message}`); }
+    try { ctx.monitoring.cleanup(); } catch (e) { log.warn(`Monitoring cleanup failed: ${e.message}`); }
     try { await backupDatabase(db, ctx.settings.get('backup.keep')); } catch (e) { log.error(`Daily backup failed: ${e.message}`); }
     try { if (await tls.ensure()) ctx.applyTls(); } catch (e) { log.error(`Certificate check failed: ${e.message}`); }
   };
@@ -69,6 +72,7 @@ async function main() {
 
   const shutdown = (sig) => {
     log.info(`${sig} received, shutting down ...`);
+    ctx.monitoring.stop();
     httpServer?.close();
     httpsServer.close(() => { db.close(); process.exit(0); });
     setTimeout(() => process.exit(0), 5000).unref();
