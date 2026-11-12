@@ -1,4 +1,4 @@
-// Sending email (SMTP). In version 1: test mail; alarms follow with the monitoring.
+// Sending email (SMTP): test mail, alarms, planned reports.
 import nodemailer from 'nodemailer';
 import { HttpError } from '../lib/http.js';
 import { log } from '../lib/log.js';
@@ -27,12 +27,15 @@ export function createMailer(settings) {
   });
   return {
     configured: () => !!cfg().host && !!cfg().from,
-    async send({ to, subject, text }) {
+    /** fromName: shown sender name (the address stays the one from the settings) */
+    async send({ to, subject, text, html, fromName }) {
       const s = cfg();
       if (!s.host || !s.from) throw new HttpError(400, 'err.smtpNotConfigured');
       try {
         const t = nodemailer.createTransport(transportOptions(s));
-        await t.sendMail({ from: s.from, to, subject, text });
+        const address = /<([^>]+)>/.exec(s.from)?.[1] || s.from;
+        const from = fromName ? { name: fromName, address } : s.from;
+        await t.sendMail({ from, to, subject, text, ...(html ? { html } : {}) });
       } catch (e) {
         log.warn(`Sending mail failed: ${e.message}`);
         throw new HttpError(502, 'err.smtpFailed', String(e.message).slice(0, 300));
