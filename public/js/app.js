@@ -32,6 +32,7 @@ export function navigate(path, { replace = false } = {}) {
 
 /** Error from the API as a toast in the user's language */
 export function fail(e) {
+  if (e instanceof ApiError && e.code === 'err.totpRequiredByAdmin') { toast(e.message, 'error'); navigate('/account'); return; }
   if (e instanceof ApiError && e.code === 'network') toast(t('err.network'), 'error');
   else toast(e?.message || String(e), 'error');
 }

@@ -11,6 +11,7 @@ import { pingAvailable } from '../scan/probes.js';
 import { TYPES } from '../scan/classify.js';
 import { validTime } from '../scan/nightly.js';
 import { plainName, DEFAULT_FILTER } from '../auth/directory.js';
+import { otpauthUri, qrSvg } from '../auth/totp.js';
 import { scopeOf, inScope, deviceInScope, requireUnscoped } from '../auth/scope.js';
 import { buildTopology } from '../topology.js';
 import { metricsFor } from '../monitor/sensors.js';
@@ -96,6 +97,16 @@ export function createApi(ctx) {
       log.warn(`Failed sign-in for "${name}" from ${req.ip}`);
       throw new HttpError(401, 'err.login');
     }
+    // Second factor: the browser sends name + password again together with the code
+    if (u.source === 'local' && u.totp_enabled) {
+      const code = str(req.body.code, 40).trim();
+      if (!code) throw new HttpError(401, 'err.totpRequired');
+      if (!users.checkSecondFactor(u.id, code)) {
+        limiter.fail(req.ip, name);
+        log.warn(`Wrong second factor for "${name}" from ${req.ip}`);
+        throw new HttpError(401, 'err.totpWrong');
+      }
+    }
     limiter.success(req.ip, name);
     sessions.create(req, res, u.id);
     res.json({ user: userOut(u) });
@@ -118,12 +129,54 @@ export function createApi(ctx) {
 
   // --- Signed in ------------------------------------------------------------------------------------------
   r.use(requireAuth);
+  // Admin setting: local administrators must use two-factor sign-in – until set up only the own account works
+  const twoFactorRequired = (u) => !!settings.get('security.require2faAdmins') && u.role === 'admin' && u.source === 'local';
+  r.use((req, _res, next) => {
+    if (!twoFactorRequired(req.user) || req.user.totp_enabled) return next();
+    if (/^\/(me(\/|$)|bootstrap$|meta$|logout$)/.test(req.path)) return next();
+    next(new HttpError(403, 'err.totpRequiredByAdmin'));
+  });
   // Location limit of the user (null = everything); also used by the monitoring routes
   r.use((req, _res, next) => { req.scope = scopeOf(db, req.user); next(); });
   const visible = (req, deviceId) => deviceInScope(db, req.scope, deviceId);
   const seeDeviceId = (req, deviceId) => !req.scope || (deviceId && inScope(req.scope, db.prepare('SELECT location_id FROM devices WHERE id=?').get(deviceId)?.location_id));
 
   r.get('/me', (req, res) => res.json(userOut(req.user)));
+
+  // Two-factor sign-in of the own account (local accounts)
+  r.get('/me/2fa', (req, res) => res.json({ enabled: !!req.user.totp_enabled, available: req.user.source === 'local', recoveryLeft: users.recoveryLeft(req.user.id),
+    required: twoFactorRequired(req.user) }));
+  r.post('/me/2fa/setup', async (req, res) => {
+    const secret = users.startTotp(req.user.id);
+    const uri = otpauthUri(secret, req.user.username, settings.get('general.title') || 'WhatsOnMyNet');
+    res.json({ secret, uri, svg: await qrSvg(uri) });
+  });
+  r.post('/me/2fa/enable', (req, res) => {
+    limiter.check(req.ip, `2fa:${req.user.username}`);
+    try {
+      const codes = users.enableTotp(req.user.id, str(req.body.code, 20));
+      audit(req, '2fa.enable');
+      res.json({ recoveryCodes: codes });
+    } catch (e) { limiter.fail(req.ip, `2fa:${req.user.username}`); throw e; }
+  });
+  // Switching off or new recovery codes: password (and, if on, a code) again
+  const recheck = (req) => {
+    limiter.check(req.ip, req.user.username);
+    if (!users.authenticate(req.user.username, str(req.body.password, 1024))) { limiter.fail(req.ip, req.user.username); throw new HttpError(400, 'err.passwordWrong'); }
+    if (req.user.totp_enabled && !users.checkSecondFactor(req.user.id, str(req.body.code, 40))) { limiter.fail(req.ip, req.user.username); throw new HttpError(400, 'err.totpWrong'); }
+  };
+  r.post('/me/2fa/disable', (req, res) => {
+    recheck(req);
+    if (twoFactorRequired(req.user)) throw new HttpError(400, 'err.totpRequiredByAdmin');
+    users.disableTotp(req.user.id);
+    audit(req, '2fa.disable');
+    res.json({ ok: true });
+  });
+  r.post('/me/2fa/recovery', (req, res) => {
+    recheck(req);
+    audit(req, '2fa.recovery');
+    res.json({ recoveryCodes: users.newRecoveryCodes(req.user.id) });
+  });
   r.patch('/me', (req, res) => {
     const u = users.update(req.user.id, req.body, { self: true });
     res.json(userOut(u));
@@ -409,7 +462,7 @@ export function createApi(ctx) {
 
   // --- Administration ---------------------------------------------------------------------------------------
   r.get('/settings', admin, (_req, res) => {
-    res.json({ general: settings.publicGroup('general'), scan: settings.publicGroup('scan'), smtp: settings.publicGroup('smtp'), backup: settings.publicGroup('backup'),
+    res.json({ security: { require2faAdmins: !!settings.get('security.require2faAdmins') }, general: settings.publicGroup('general'), scan: settings.publicGroup('scan'), smtp: settings.publicGroup('smtp'), backup: settings.publicGroup('backup'),
       lightscan: { ...settings.publicGroup('lightscan'), last: ctx.nightly.lastLight() }, printer: settings.publicGroup('printer'),
       snmpdev: settings.publicGroup('snmpdev'), nas: settings.publicGroup('nas') });
   });
@@ -551,6 +604,20 @@ export function createApi(ctx) {
     audit(req, 'user.update', `${u.username} (${u.role}${u.active ? '' : ', inactive'})`);
     res.json(u);
   });
+  // Admin: switch off the two-factor sign-in of an account (lost phone and codes)
+  r.delete('/users/:id/2fa', admin, (req, res) => {
+    const id = idParam(req);
+    users.disableTotp(id);
+    sessions.destroyAllForUser(id);
+    audit(req, '2fa.reset', String(id));
+    res.json({ ok: true });
+  });
+  r.put('/settings/security', admin, (req, res) => {
+    if (req.body.require2faAdmins && !req.user.totp_enabled && req.user.source === 'local') throw new HttpError(400, 'err.totpOwnFirst');
+    settings.set('security.require2faAdmins', !!req.body.require2faAdmins);
+    audit(req, 'settings.security');
+    res.json({ require2faAdmins: !!settings.get('security.require2faAdmins') });
+  });
   r.post('/users/:id/password', admin, (req, res) => {
     const id = idParam(req);
     users.setPassword(id, req.body.password);
@@ -573,5 +640,5 @@ export function createApi(ctx) {
 
 export function publicUser(u) {
   return { id: u.id, username: u.username, display_name: u.display_name, email: u.email, role: u.role, language: u.language,
-    theme: u.theme, source: u.source || 'local', canEdit: can(u, 'editor'), isAdmin: can(u, 'admin') };
+    theme: u.theme, source: u.source || 'local', totp: !!u.totp_enabled, canEdit: can(u, 'editor'), isAdmin: can(u, 'admin') };
 }
