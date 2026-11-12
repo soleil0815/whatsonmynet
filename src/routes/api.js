@@ -102,7 +102,7 @@ export function createApi(ctx) {
     res.json({ types: TYPES, services: SERVICE_NAMES, gentlePorts: GENTLE_PORTS });
   });
 
-  r.get('/dashboard', (_req, res) => res.json(inventory.stats()));
+  r.get('/dashboard', (_req, res) => res.json({ ...inventory.stats(), monitoring: ctx.monitoring.summary() }));
 
   r.get('/network', async (_req, res) => {
     const ifaces = localInterfaces();
@@ -119,7 +119,9 @@ export function createApi(ctx) {
 
   // Devices
   r.get('/devices', (req, res) => {
-    res.json(inventory.list({ q: str(req.query.q, 100), type: str(req.query.type, 30), location: str(req.query.location, 12), tag: str(req.query.tag, 60) }));
+    const mon = ctx.monitoring.deviceStatus();
+    res.json(inventory.list({ q: str(req.query.q, 100), type: str(req.query.type, 30), location: str(req.query.location, 12), tag: str(req.query.tag, 60) })
+      .map((d) => ({ ...d, monitor: mon[d.id] || null })));
   });
   r.get('/devices/export.csv', (req, res) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -135,7 +137,8 @@ export function createApi(ctx) {
     const d = inventory.get(idParam(req));
     if (!d) throw new HttpError(404, 'err.notFound');
     const presence = inventory.list({}).find((x) => x.id === d.id)?.presence || 'unknown';
-    res.json({ ...d, presence, history: inventory.historyOf(d.id) });
+    const monitors = db.prepare('SELECT id FROM monitors WHERE device_id=? ORDER BY name').all(d.id).map((m) => ctx.monitoring.get(m.id));
+    res.json({ ...d, presence, monitors, history: inventory.historyOf(d.id) });
   });
   r.post('/devices', editor, (req, res) => {
     const d = inventory.create(req.body, who(req));

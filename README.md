@@ -28,6 +28,20 @@ WhatsOnMyNet scannt dein Netzwerk, erkennt Hersteller und Gerätetyp selbst (Swi
 
 ![Inventar](docs/images/inventory-de.png)
 
+## Monitoring (ab Version 0.2)
+
+WhatsOnMyNet überwacht Geräte, Dienste und Webseiten und ersetzt damit Uptime Kuma für den Online-Status:
+
+- **Prüfungen**: Web (HTTP/HTTPS mit gültigen Statuscodes und optionalem Stichwort), TCP-Port oder Ping, alle 20 Sekunden bis 24 Stunden.
+- **Ohne Fehlalarme**: Ein Alarm kommt erst nach mehreren Fehlversuchen hintereinander (Standard 3), eine Entwarnung mit der Dauer des Ausfalls. Optional wiederholt sich der Alarm, solange die Störung anhält.
+- **Zertifikate**: Bei HTTPS wird das Ablaufdatum gelesen, gewarnt wird z. B. 30, 14 und 7 Tage vorher, jede Stufe einmal. Die Prüfung von Kette und Name ist für Internetseiten einschaltbar; LAN-Geräte mit selbstsigniertem Zertifikat funktionieren ohne.
+- **Benachrichtigungen** unter *Einstellungen → Benachrichtigungen*: E-Mail (über den SMTP-Server), Telegram-Bot (Token von @BotFather, Chat-ID) und Webhook mit eigener JSON-Vorlage (`{{text}}`, `{{name}}`, `{{status}}`, `{{message}}`, `{{target}}`, `{{time}}`) und optionalem Header für einen Schlüssel. Token und Header werden verschlüsselt gespeichert. Jeder Kanal hat eine Testnachricht.
+- **Wartungsfenster** einmalig oder wöchentlich (auch über Mitternacht), für alle oder ausgewählte Monitore – währenddessen keine Alarme.
+- **Verfügbarkeit** über 24 Stunden, 7 und 30 Tage, Antwortzeit als Diagramm, Ereignisse mit Hinweis, an wen gemeldet wurde.
+- **Geräte**: Auf der Seite eines Geräts legt „Überwachen“ einen passenden Monitor an (Weboberfläche, sonst Ping oder ein offener Port). Ändert der Scan die IP-Adresse eines Geräts, ziehen seine Monitore mit.
+
+Prüfergebnisse bleiben 7 Tage im Detail und stundenweise über ein Jahr gespeichert.
+
 ## Installation
 
 Voraussetzung: ein **Linux-Host mit Docker** (Server, VM, Proxmox-LXC mit Docker, Synology Container Manager). WhatsOnMyNet läuft im **Host-Netzwerk** – nur so sieht es die MAC-Adressen deiner Geräte. Docker Desktop unter Windows oder macOS sieht das echte Netz nicht und eignet sich deshalb nicht.
@@ -113,7 +127,7 @@ docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administ
 
 | Version | Inhalt |
 | --- | --- |
-| 2 | Monitoring wie Uptime Kuma: Online-Status, Zertifikate, externe Ziele, Alarm per E-Mail, Telegram und Webhook, Wartungsfenster, Docker- und Datenbanküberwachung, nächtlicher leichter Scan, Druckerdaten per SNMP (Toner, Trommel) |
+| 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), nächtlicher leichter Scan mit Meldung unbekannter Geräte, Druckerdaten per SNMP (Toner, Trommel), Docker- und Datenbanküberwachung |
 | 3 | Active Directory (LDAPS), Rollen pro Standort/Subnetz |
 | später | Scan-Agent für Außenstellen, Topologie über LLDP/CDP, MAC-Adressen entfernter Subnetze per SNMP vom Router |
 

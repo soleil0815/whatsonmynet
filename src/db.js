@@ -133,6 +133,90 @@ const MIGRATIONS = [
     detail TEXT NOT NULL DEFAULT ''
   );
   `,
+  // 2: monitoring (checks, notifications, maintenance windows)
+  `
+  CREATE TABLE monitors (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('ping','tcp','http')),
+    target TEXT NOT NULL,
+    port INTEGER,
+    device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+    interval_s INTEGER NOT NULL DEFAULT 60,
+    timeout_s INTEGER NOT NULL DEFAULT 10,
+    fail_threshold INTEGER NOT NULL DEFAULT 3,
+    resend_min INTEGER NOT NULL DEFAULT 0,
+    http_status TEXT NOT NULL DEFAULT '200-399',
+    http_keyword TEXT NOT NULL DEFAULT '',
+    tls_verify INTEGER NOT NULL DEFAULT 0,
+    cert_check INTEGER NOT NULL DEFAULT 1,
+    cert_days TEXT NOT NULL DEFAULT '30,14,7',
+    channels TEXT NOT NULL DEFAULT '[]',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    status_since TEXT,
+    last_check TEXT,
+    last_ms INTEGER,
+    last_message TEXT NOT NULL DEFAULT '',
+    fail_count INTEGER NOT NULL DEFAULT 0,
+    notified_down INTEGER NOT NULL DEFAULT 0,
+    last_alert_at TEXT,
+    cert_valid_to TEXT,
+    cert_alert_days INTEGER
+  );
+  CREATE INDEX monitors_device ON monitors(device_id);
+  CREATE TABLE checks (
+    id INTEGER PRIMARY KEY,
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    at TEXT NOT NULL,
+    ok INTEGER NOT NULL,
+    ms INTEGER,
+    message TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX checks_monitor ON checks(monitor_id, at);
+  CREATE TABLE monitor_hourly (
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    hour TEXT NOT NULL,
+    ok INTEGER NOT NULL DEFAULT 0,
+    total INTEGER NOT NULL DEFAULT 0,
+    ms_sum INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (monitor_id, hour)
+  );
+  CREATE TABLE monitor_events (
+    id INTEGER PRIMARY KEY,
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    at TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    message TEXT NOT NULL DEFAULT '',
+    notified TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX monitor_events_monitor ON monitor_events(monitor_id, id);
+  CREATE TABLE channels (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('email','telegram','webhook')),
+    config TEXT NOT NULL DEFAULT '',
+    language TEXT NOT NULL DEFAULT 'de',
+    is_default INTEGER NOT NULL DEFAULT 1,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE maintenance (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('once','weekly')),
+    starts_at TEXT,
+    ends_at TEXT,
+    weekdays TEXT NOT NULL DEFAULT '[]',
+    time_from TEXT,
+    time_to TEXT,
+    monitor_ids TEXT NOT NULL DEFAULT '[]',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
@@ -143,6 +227,17 @@ export function openDatabase(file = paths.db) {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
+  // Before an update changes the schema: copy of the database next to the daily backups
+  const version = db.pragma('user_version', { simple: true });
+  if (file !== ':memory:' && version > 0 && version < MIGRATIONS.length) {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    const dir = path.join(path.dirname(file), 'backups');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const target = path.join(dir, `whatsonmynet-before-schema-${version + 1}-${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.sqlite`);
+    fs.copyFileSync(file, target);
+    fs.chmodSync(target, 0o600);
+    log.info(`Backup before the schema update: ${target}`);
+  }
   migrate(db);
   if (file !== ':memory:') {
     for (const f of [file, `${file}-wal`, `${file}-shm`]) { try { fs.chmodSync(f, 0o600); } catch { /* not there */ } }
@@ -187,7 +282,7 @@ export async function backupDatabase(db, keep = 7, dir = paths.backups) {
   const target = path.join(dir, `whatsonmynet-${stamp}.sqlite`);
   await db.backup(target);
   fs.chmodSync(target, 0o600);
-  const files = fs.readdirSync(dir).filter((f) => /^whatsonmynet-.*\.sqlite$/.test(f)).sort();
+  const files = fs.readdirSync(dir).filter((f) => /^whatsonmynet-\d{4}-.*\.sqlite$/.test(f)).sort();
   for (const f of files.slice(0, Math.max(0, files.length - Math.max(1, keep)))) fs.rmSync(path.join(dir, f), { force: true });
   return target;
 }
