@@ -437,6 +437,13 @@ export const MIGRATIONS = [
     data TEXT NOT NULL DEFAULT '{}'
   );
   `,
+  // 12: two-factor sign-in (TOTP) for local accounts
+  `
+  ALTER TABLE users ADD COLUMN totp_secret TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN recovery_codes TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

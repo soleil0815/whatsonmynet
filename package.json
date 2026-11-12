@@ -24,7 +24,8 @@
     "net-snmp": "^3.29.2",
     "nodemailer": "^10.5.0",
     "oui-data": "^2.1.58",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "qrcode": "^1.5.4"
   },
   "repository": {
     "type": "git",

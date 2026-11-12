@@ -57,6 +57,9 @@ export function renderSetup(root) {
 export function renderLogin(root) {
   document.title = `${t('login.title')} · WhatsOnMyNet`;
   const err = h('div', { class: 'error-box', hidden: true, role: 'alert' });
+  // Second step (two-factor sign-in): appears when the server asks for the code
+  const code = input('code', '', { inputmode: 'numeric', autocomplete: 'one-time-code', class: 'mono', maxlength: 20, spellcheck: 'false' });
+  const codeBox = h('div', { hidden: true }, field(t('login.code'), code, t('login.codeHint')));
   const form = h('form', {
     onsubmit: async (e) => {
       e.preventDefault();
@@ -65,15 +68,21 @@ export function renderLogin(root) {
       const b = form.querySelector('button[type=submit]');
       b.disabled = true;
       try {
-        const r = await post('/login', { username: d.username, password: d.password });
+        const r = await post('/login', { username: d.username, password: d.password, ...(codeBox.hidden ? {} : { code: d.code }) });
         await afterLogin(r.user);
-      } catch (ex) { err.textContent = ex.message; err.hidden = false; b.disabled = false; form.querySelector('[name=password]').select(); }
+      } catch (ex) {
+        b.disabled = false;
+        if (ex.code === 'err.totpRequired') { codeBox.hidden = false; code.required = true; code.focus(); return; }
+        err.textContent = ex.message; err.hidden = false;
+        if (codeBox.hidden) form.querySelector('[name=password]').select(); else { code.value = ''; code.focus(); }
+      }
     },
   },
   h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, h('h1', {}, t('login.title')), langSwitch(() => renderLogin(root))),
   err,
   field(t('login.user'), input('username', '', { required: true, autocomplete: 'username', autocapitalize: 'off', spellcheck: 'false' })),
   field(t('login.password'), input('password', '', { type: 'password', required: true, autocomplete: 'current-password' })),
+  codeBox,
   h('button', { class: 'btn btn-primary btn-big', type: 'submit' }, t('login.submit')));
   mount(root, h('div', { class: 'auth' }, art(), h('div', { class: 'auth-form' }, form)));
   form.querySelector('[name=username]').focus();

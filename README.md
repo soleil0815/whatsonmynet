@@ -197,11 +197,15 @@ Der Proxy leitet dann entweder an `https://<server>:8743` (selbstsigniert, beim 
 - Passwörter werden mit scrypt gespeichert, SMTP-Passwort und SNMP-Communities mit AES-256-GCM verschlüsselt. Den Schlüssel (`data/secret.key`) bitte mitsichern.
 - Sicherheitslücken bitte vertraulich melden, siehe [SECURITY.md](SECURITY.md).
 
+## Zwei-Faktor-Anmeldung (ab Version 0.4)
+
+Lokale Konten schalten unter *Mein Konto* die Zwei-Faktor-Anmeldung ein: QR-Code mit einer Authenticator-App scannen (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), Code bestätigen, die zehn **Wiederherstellungscodes** sicher aufbewahren. Danach fragt die Anmeldung nach dem sechsstelligen Code; jeder Code gilt nur einmal. Unter *Einstellungen → Allgemein* lässt sich die Zwei-Faktor-Anmeldung **für Administratoren verpflichtend** machen. Admins können sie bei verlorenem Handy für ein Konto zurücksetzen; Konten aus dem Active Directory schützt das AD selbst.
+
 ## Ausgesperrt?
 
 ```sh
 docker compose exec whatsonmynet womn-admin list
-docker compose exec whatsonmynet womn-admin reset <benutzer>    # neues Zufallspasswort, wieder Administrator
+docker compose exec whatsonmynet womn-admin reset <benutzer>    # neues Zufallspasswort, wieder Administrator, 2FA aus
 docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administrator
 ```
 
