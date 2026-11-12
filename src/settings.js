@@ -23,6 +23,12 @@ export const DEFAULTS = {
   'printer.threshold': 15,        // % – report a supply at or below this
   'printer.notify': true,
   'printer.channels': [],
+  // Switches and NAS (SNMP): ports, MAC table, volumes, disks
+  'snmpdev.enabled': true,
+  'snmpdev.interval': 15,         // minutes
+  'nas.threshold': 90,            // % – report a volume at or above this
+  'nas.notify': true,
+  'nas.channels': [],
   // Mail (SMTP)
   'smtp.host': '',
   'smtp.port': 587,
