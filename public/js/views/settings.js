@@ -504,7 +504,7 @@ async function backup(body, _s, reload) {
 
 async function reports(body, _s, reload) {
   const [list, locs] = await Promise.all([get('/reports'), get('/locations')]);
-  const SECS = ['printers', 'nas', 'switches'];
+  const SECS = ['printers', 'nas', 'switches', 'shares'];
   const DAYS = [1, 2, 3, 4, 5, 6, 7];
   const when = (s) => {
     const day = s.freq === 'weekly' ? t(`day.${s.weekday % 7}`) : s.freq === 'monthly' ? t('rep.monthDay', { d: s.day }) : t('rep.daily');

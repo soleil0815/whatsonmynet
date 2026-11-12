@@ -7,6 +7,7 @@ import { config } from '../config.js';
 import { ping, pingAvailable } from '../scan/probes.js';
 import { dockerCheck, mysqlCheck, postgresCheck, redisCheck, DEFAULT_PORTS } from './services.js';
 import { sensorCheck, snmpCheck, proxmoxCheck } from './sensors.js';
+import { smbCheck } from './smb.js';
 
 const UA = `WhatsOnMyNet/${config.version} (monitoring)`;
 const MAX_BODY = 1024 * 1024;
@@ -126,6 +127,11 @@ export function runCheck(m, ctx = {}) {
     let o = {};
     try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
     return snmpCheck(m.target, m.port, ctx.communities?.() || ['public'], o, m.timeout_s).catch((e) => ({ ok: false, ms: null, message: e.message }));
+  }
+  if (m.type === 'smb') {
+    let o = {};
+    try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
+    return smbCheck(m.target, m.port || 445, o, ctx.secret?.(m) || '', m.timeout_s).catch((e) => ({ ok: false, ms: null, message: e.message }));
   }
   if (m.type === 'docker') {
     const url = ctx.dockerUrl?.(m.docker_host_id);

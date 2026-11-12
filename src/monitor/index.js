@@ -6,6 +6,7 @@ import { log } from '../lib/log.js';
 import { runCheck, validStatusSpec } from './checks.js';
 import { CONTAINER_NAME, DEFAULT_PORTS } from './services.js';
 import { OPS, validOid } from './sensors.js';
+import { SHARE, SMB_USER, SMB_DOMAIN, smbPath } from './smb.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { pingAvailable } from '../scan/probes.js';
 import { bestWebUrl } from '../scan/engine.js';
@@ -35,10 +36,11 @@ export function certStep(days, thresholds) {
   return fit.length ? Math.min(...fit) : null;
 }
 
-export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox'];
+export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb'];
 export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed'];
 export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors'];
 const DB_TYPES = ['mysql', 'postgres', 'redis'];
+const SECRET_TYPES = [...DB_TYPES, 'smb'];
 
 export function createMonitoring({ db, channels, maintenance, settings = null, now = () => new Date() }) {
   const checkCtx = {
@@ -86,7 +88,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const target = line(input.target ?? old?.target, 1000);
     v.docker_host_id = null;
     v.options = '{}';
-    if (!DB_TYPES.includes(type)) v.secret = '';
+    if (!SECRET_TYPES.includes(type)) v.secret = '';
     if (type === 'sensor') {
       const prev = old && old.type === 'sensor' ? parse(old.options, {}) : {};
       const o = input.options && typeof input.options === 'object' ? input.options : {};
@@ -119,6 +121,31 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       const oid = line(input.options?.oid ?? prev.oid ?? '', 200).replace(/^\./, '');
       if (!validOid(oid)) throw new HttpError(400, 'err.oid');
       v.options = JSON.stringify({ oid, ...sensorOptions(input, old && old.type === 'snmp' ? old : null) });
+    } else if (type === 'smb') {
+      // Network drive: \\host\share, optional folder or file, read-only account, warning below free space
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      v.target = target.toLowerCase();
+      const p = int(String(input.port ?? old?.port ?? '')) || 445;
+      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+      v.port = p;
+      const prev = old && old.type === 'smb' ? parse(old.options, {}) : {};
+      const o = input.options && typeof input.options === 'object' ? input.options : {};
+      const share = line(o.share ?? prev.share ?? '', 80).replace(/^[\\/]+|[\\/]+$/g, '');
+      if (!SHARE.test(share)) throw new HttpError(400, 'err.smbShare');
+      const path = smbPath(o.path ?? prev.path ?? '');
+      if (path === null) throw new HttpError(400, 'err.smbPath');
+      const user = line(o.user ?? prev.user ?? '', 104);
+      if (user && !SMB_USER.test(user)) throw new HttpError(400, 'err.smbUser');
+      const domain = line(o.domain ?? prev.domain ?? '', 63);
+      if (domain && !SMB_DOMAIN.test(domain)) throw new HttpError(400, 'err.smbDomain');
+      const pct = Number(o.minFreePct ?? prev.minFreePct ?? 0) || 0;
+      const gb = Number(o.minFreeGb ?? prev.minFreeGb ?? 0) || 0;
+      if (pct < 0 || pct > 99 || gb < 0 || gb > 1e6) throw new HttpError(400, 'err.smbFree');
+      v.options = JSON.stringify({ share, path, user, domain, minFreePct: Math.round(pct * 10) / 10, minFreeGb: Math.round(gb * 10) / 10 });
+      if (typeof input.password === 'string' && input.password !== '') v.secret = encrypt(input.password.slice(0, 512));
+      else if (input.clearPassword || !user) v.secret = '';
+      else if (old && old.type === 'smb') v.secret = old.secret || '';
+      else v.secret = '';
     } else if (type === 'docker') {
       if (!CONTAINER_NAME.test(target)) throw new HttpError(400, 'err.container');
       const hostId = int(String(input.docker_host_id ?? old?.docker_host_id ?? ''));
@@ -203,7 +230,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const keys = Object.keys(v);
     db.prepare(`UPDATE monitors SET ${keys.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...keys.map((k) => v[k]), iso(), id);
     if (v.target !== old.target || v.type !== old.type || v.port !== old.port || v.docker_host_id !== old.docker_host_id) {
-      db.prepare("UPDATE monitors SET status='pending', status_since=?, fail_count=0, cert_valid_to=NULL, cert_alert_days=NULL WHERE id=?").run(iso(), id);
+      db.prepare("UPDATE monitors SET status='pending', status_since=?, fail_count=0, cert_valid_to=NULL, cert_alert_days=NULL, data='{}' WHERE id=?").run(iso(), id);
     }
     nextRun.set(id, 0);
     return get(id);
@@ -232,8 +259,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   function shape(m) {
     if (!m) return null;
     const certDays = m.cert_valid_to ? Math.floor((Date.parse(m.cert_valid_to) - now().getTime()) / 86400000) : null;
-    const { secret, ...rest } = m;
-    return { ...rest, channels: parse(m.channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
+    const { secret, data, ...rest } = m;
+    return { ...rest, data: parse(data, {}), channels: parse(m.channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
       cert_check: !!m.cert_check, cert_days_left: certDays,
       docker_host: m.docker_host_id ? db.prepare('SELECT id, name FROM docker_hosts WHERE id=?').get(m.docker_host_id) || null : null };
   }
@@ -332,6 +359,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
 
     const inMaintenance = !!maintenance.activeFor(m.id, at);
     const set = { last_check: iso(at), last_ms: res.ms ?? null, last_message: msg };
+    if (res.data && typeof res.data === 'object') set.data = JSON.stringify({ ...res.data, at: iso(at) });
     let notifyEv = null;
 
     if (inMaintenance) {

@@ -51,6 +51,7 @@ Ein Monitor prüft regelmäßig (20 Sekunden bis 24 Stunden) und meldet sich ers
 - **TCP-Port** und **Ping**
 - **Docker-Container** (über einen Socket-Proxy, *Einstellungen → Docker*): läuft, startet ständig neu, Healthcheck „unhealthy“
 - **Datenbanken**: MariaDB/MySQL, PostgreSQL, Redis/Valkey – Anmeldung und eine harmlose Abfrage
+- **Netzlaufwerk (SMB)**: Windows-Freigaben und NAS – siehe unten
 - **Sensor (Gerätewert)**, **SNMP-Wert (OID)** und **Proxmox** – siehe unten
 
 Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert sich die IP eines Geräts, ziehen seine Monitore mit.
@@ -90,6 +91,18 @@ Jeder Wert, den ein Gerät liefert, kann ein eigener Monitor werden – mit Verl
 
 Der Typ **SNMP-Wert (OID)** fragt jeden beliebigen SNMP-Wert ab (z. B. Restlaufzeit einer USV) und vergleicht mit kleiner, größer, gleich oder „enthält Text“.
 
+## Netzlaufwerke (SMB)
+
+![Netzlaufwerk](img/smb-de.png)
+
+Der Typ **Netzlaufwerk (SMB)** meldet sich wirklich an einer Freigabe an – nicht nur am offenen Port. So fällt auch auf, wenn das Passwort abgelaufen ist, die Rechte nicht mehr stimmen oder ein Ordner fehlt.
+
+1. Ein eigenes Konto nur mit **Leserecht** auf die Freigabe anlegen (im AD z. B. `FIRMA\monitor`, auf dem NAS ein lokaler Benutzer).
+2. *Monitor anlegen* → Art **Netzlaufwerk (SMB)**. Einfach den Pfad einfügen, z. B. `\\fs01\Abteilung\Projekte` – Server, Freigabe und Ordner werden daraus übernommen.
+3. Benutzer, Domäne (bei NAS-Konten leer) und Passwort eintragen. Optional: warnen unter … % oder … GB frei.
+
+Geprüft wird über SMB 2/3: anmelden, die Freigabe (oder den Ordner bzw. die Datei) lesen, den freien Platz abfragen. WhatsOnMyNet schreibt nichts auf die Freigabe. Die Detailseite zeigt den freien Platz; im Bericht gibt es dafür den Abschnitt *Netzlaufwerke*.
+
 ## Proxmox VE und Backup Server
 
 ![Proxmox](img/proxmox-de.png)
@@ -108,7 +121,7 @@ Angezeigt werden Knoten, Speicher, VMs und Container, Sicherungen, Datastores un
 
 Unter *Einstellungen → Berichte* gehen Berichte zu festen Zeiten per E-Mail raus – z. B. jeden Montag um 8 Uhr die Tonerstände ans Büro.
 
-- Inhalt: Drucker, NAS, Switches; auf Standorte beschränkbar; wahlweise nur Geräte mit Handlungsbedarf.
+- Inhalt: Drucker, NAS, Switches, Netzlaufwerke; auf Standorte beschränkbar; wahlweise nur Geräte mit Handlungsbedarf.
 - Die Mail ist **neutral**: kein Link, kein Programmname – nur dein Absendername, Betreff (`{kw}`, `{datum}`), Einleitung, die Geräte und dein Gruß.
 - „Vorschau“, „Test an mich“ und „Jetzt senden“ direkt in der Liste.
 
@@ -135,4 +148,5 @@ Für eine Außenstelle läuft dort ein zweiter Container als Scan-Agent. Unter *
 - **Oberfläche nicht erreichbar**: Firewall des Hosts für den HTTPS-Port öffnen. Mit Host-Netzwerk zeigt Docker/Dockhand keine Port-Zuordnung – das ist richtig so.
 - **Keine Drucker-/Switch-Daten**: SNMP am Gerät einschalten, Community unter *Einstellungen → Scan* prüfen, auf der Geräteseite „Jetzt abfragen“.
 - **Ausgesperrt**: `docker compose exec whatsonmynet womn-admin reset <benutzer>` setzt ein neues Passwort, macht das Konto wieder zum Administrator und schaltet die Zwei-Faktor-Anmeldung aus. `womn-admin create <benutzer>` legt einen neuen Administrator an.
+- **Netzlaufwerk meldet „protocol not supported“**: Das Gerät kann nur das alte SMB1 – das wird aus Sicherheitsgründen nicht verwendet. SMB2/3 am Gerät einschalten (bei Synology: *Dateidienste → SMB → Erweitert*).
 - **Protokoll**: *Einstellungen → Protokoll* zeigt, wer was geändert hat; technische Meldungen stehen im Container-Log.
