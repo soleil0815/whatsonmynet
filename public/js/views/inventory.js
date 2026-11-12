@@ -4,6 +4,7 @@ import { get, post } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
+import { monitorDot } from './monitoring.js';
 import { pageHead, typeChip, presenceDot, select, input, field, typeOptions, formData, btn } from './common.js';
 
 const VIEW_KEY = 'womn-inv-view';
@@ -67,7 +68,7 @@ export async function renderInventory(main) {
   function row(d) {
     const open = () => navigate(`/devices/${d.id}`);
     return h('tr', { class: 'click', onclick: (e) => { if (!e.target.closest('a')) open(); } },
-      h('td', { class: 'min' }, presenceDot(d.presence)),
+      h('td', { class: 'min' }, d.monitor ? monitorDot(d.monitor) : presenceDot(d.presence)),
       h('td', {}, h('a', { href: `/devices/${d.id}`, 'data-link': true, class: 'name', style: { color: 'inherit', textDecoration: 'none' } }, d.name),
         d.hostname && d.hostname.split('.')[0].toLowerCase() !== d.name.toLowerCase() ? h('div', { class: 'sub' }, d.hostname) : null,
         d.location_name ? h('div', { class: 'sub' }, d.location_name) : null),

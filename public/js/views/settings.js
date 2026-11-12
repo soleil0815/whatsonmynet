@@ -7,7 +7,7 @@ import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn } from './common.js';
 
 const SECTIONS = [
-  ['general', 'settings'], ['scan', 'radar'], ['smtp', 'mail'], ['https', 'lock'], ['users', 'users'],
+  ['general', 'settings'], ['scan', 'radar'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'],
   ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
 ];
 
@@ -22,7 +22,7 @@ export async function renderSettings(main, section = 'general') {
         class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
       body)));
   const all = ['general', 'scan', 'smtp'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, smtp, https, users, ignored, audit, about }[section];
+  const view = { general, scan, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
@@ -225,4 +225,68 @@ async function about(body) {
       h('dt', {}, t('about.version')), h('dd', {}, state.boot.version),
       h('dt', {}, t('about.license')), h('dd', {}, 'AGPL-3.0-or-later'),
       h('dt', {}, t('about.source')), h('dd', {}, h('a', { href: state.boot.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, state.boot.sourceUrl)))));
+}
+
+async function notify(body, _s, reload) {
+  const list = await get('/channels');
+  const edit = (c, type) => {
+    const ty = c ? c.type : type;
+    const cfg = c?.config || {};
+    const fields = {
+      email: [field(t('ch.to'), input('to', cfg.to || '', { required: true, placeholder: 'it@firma.local' }), t('ch.toHint'))],
+      telegram: [
+        field(t('ch.token'), input('token', '', { type: 'password', autocomplete: 'off', required: !cfg.token?.set, placeholder: cfg.token?.set ? '••••••' : '123456789:ABC…' }), cfg.token?.set ? t('ch.tokenSet') : t('ch.tokenHint')),
+        field(t('ch.chatId'), input('chatId', cfg.chatId || '', { required: true, class: 'mono' }), t('ch.chatIdHint')),
+        field(t('ch.threadId'), input('threadId', cfg.threadId || '', { class: 'mono' })),
+      ],
+      webhook: [
+        field(t('ch.url'), input('url', cfg.url || '', { required: true, class: 'mono', placeholder: 'https://…' })),
+        field(t('ch.template'), h('textarea', { name: 'template', class: 'mono', rows: 4, placeholder: '{"text": "{{text}}"}' }, cfg.template || ''), t('ch.templateHint')),
+        h('div', { class: 'form-grid' },
+          field(t('ch.headerName'), input('headerName', cfg.headerName || '', { class: 'mono', placeholder: 'Authorization' })),
+          field(t('ch.headerValue'), input('headerValue', '', { type: 'password', autocomplete: 'off', placeholder: cfg.headerValue?.set ? '••••••' : '' }), cfg.headerValue?.set ? t('ch.headerSet') : null)),
+      ],
+    }[ty];
+    const form = h('form', { class: 'form' },
+      field(t('ch.name'), input('name', c?.name || t(`ch.type.${ty}`), { required: true, maxlength: 80 })),
+      fields,
+      field(t('ch.language'), select('language', [['de', 'Deutsch'], ['en', 'English']], c?.language || getLang())),
+      field(t('ch.default'), h('input', { type: 'checkbox', name: 'is_default', checked: c ? c.is_default : true }), t('ch.defaultHint')),
+      field(t('user.active'), h('input', { type: 'checkbox', name: 'enabled', checked: c ? c.enabled : true })));
+    const dlg = modal(c ? c.name : `${t('ch.add')}: ${t(`ch.type.${ty}`)}`, form, { wide: true, actions: [
+      btn(t('cancel'), { onclick: () => dlg.close() }),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+        if (!form.reportValidity()) return;
+        const d = formData(form);
+        const { name, language, is_default: isDefault, enabled, ...config } = d;
+        try {
+          const payload = { name, language, is_default: isDefault, enabled, type: ty, config };
+          if (c) await put(`/channels/${c.id}`, payload); else await post('/channels', payload);
+          dlg.close(); toast(t('saved')); reload();
+        } catch (ex) { fail(ex); }
+      } }, t('save'))] });
+  };
+  const chooser = h('div', { class: 'actions' }, ['email', 'telegram', 'webhook'].map((ty) =>
+    btn(t(`ch.type.${ty}`), { class: 'btn btn-sm', onclick: () => edit(null, ty) }, 'plus')));
+  mount(body, h('section', { class: 'panel' },
+    h('div', { class: 'panel-head', style: { paddingBottom: '12px', flexWrap: 'wrap' } }, h('h2', {}, t('set.notify')), chooser),
+    h('p', { class: 'muted', style: { padding: '0 20px' } }, t('ch.lead')),
+    list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('ch.name')), h('th', {}, t('ch.type')), h('th', { class: 'hide-sm' }, ''), h('th', {}))),
+      h('tbody', {}, list.map((c) => h('tr', {},
+        h('td', {}, h('span', { class: 'name' }, c.name), c.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('user.inactive'))),
+        h('td', {}, t(`ch.type.${c.type}`)),
+        h('td', { class: 'hide-sm' }, c.is_default ? h('span', { class: 'badge badge-ok' }, t('ch.default')) : null),
+        h('td', { class: 'min' }, h('div', { class: 'actions' },
+          btn(t('ch.test'), { class: 'btn btn-sm', onclick: async (e) => {
+            const b = e.currentTarget; b.disabled = true;
+            try { await post(`/channels/${c.id}/test`); toast(t('ch.testSent')); } catch (ex) { fail(ex); }
+            b.disabled = false;
+          } }, 'mail'),
+          btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => edit(c) }),
+          h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${c.name}`, html: icon('trash'), onclick: async () => {
+            if (!await confirmDialog(t('delete'), t('ch.deleteConfirm', { name: c.name }), t('delete'), t('cancel'), { danger: true })) return;
+            try { await del(`/channels/${c.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
+          } }))))))))
+      : h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('ch.empty'))));
 }

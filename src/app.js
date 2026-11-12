@@ -2,6 +2,7 @@
 import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
 import { config, paths } from './config.js';
 import { createSettings } from './settings.js';
 import { createSessions, parseCookies, createLoginLimiter } from './auth/session.js';
@@ -11,6 +12,10 @@ import { createLocations } from './locations.js';
 import { createScanner } from './scan/engine.js';
 import { createMailer } from './mail/smtp.js';
 import { createApi } from './routes/api.js';
+import { createMonitoringApi } from './routes/monitoring.js';
+import { createChannels } from './monitor/notify.js';
+import { createMaintenance } from './monitor/maintenance.js';
+import { createMonitoring } from './monitor/index.js';
 import { HttpError } from './lib/http.js';
 import { randomToken } from './lib/crypto.js';
 import { t, langFromHeader, normalizeLang, hasKey } from './i18n.js';
@@ -52,6 +57,9 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   scanner.recover();
   const mailer = createMailer(settings);
   const limiter = createLoginLimiter();
+  const channels = createChannels(db, mailer);
+  const maintenance = createMaintenance(db);
+  const monitoring = createMonitoring({ db, channels, maintenance });
 
   // Initial setup: one-time code from the log, only as long as there is no user
   const setup = { token: null };
@@ -62,7 +70,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     console.log(`\n${bar}\n  WhatsOnMyNet – Ersteinrichtung / initial setup\n  Einrichtungscode / setup code:  ${setup.token}\n  ${where}/setup\n${bar}\n`);
   }
 
-  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls,
+  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 
@@ -109,6 +117,15 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   app.use((req, _res, next) => { if (!req.body || typeof req.body !== 'object') req.body = {}; next(); });
 
   app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+  // Upper limit per address: generous for the interface (it polls every few seconds), stops scripted floods
+  app.use('/api', rateLimit({
+    windowMs: 60 * 1000,
+    limit: 600,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    validate: { xForwardedForHeader: false },
+    handler: (_req, _res, next) => next(new HttpError(429, 'err.rateLimit')),
+  }));
   // CSRF protection: writing API calls need a custom header (only sent cross-site after a CORS grant – none exists)
   app.use('/api', (req, _res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
@@ -116,6 +133,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     next();
   });
   app.use('/api', createApi(ctx));
+  app.use('/api', createMonitoringApi(ctx));
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'err.notFound')));
 
   // Static files + single-page app (always revalidated: after an update the new interface arrives at once)

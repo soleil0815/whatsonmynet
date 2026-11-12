@@ -108,3 +108,31 @@ test('pages and security headers', async () => {
   assert.equal(res.headers.get('x-powered-by'), null);
   assert.equal((await call('GET', '/api/nothing')).status, 404);
 });
+
+test('monitoring: roles and secrets', async () => {
+  assert.equal((await call('POST', '/api/channels', { name: 'TG', type: 'telegram', config: { token: '123456789:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', chatId: '-100123' } }, { who: 'editor' })).status, 403);
+  const ch = await call('POST', '/api/channels', { name: 'TG', type: 'telegram', config: { token: '123456789:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', chatId: '-100123' } });
+  assert.equal(ch.status, 201);
+  const asViewer = (await call('GET', '/api/channels', undefined, { who: 'viewer' })).data;
+  assert.deepEqual(Object.keys(asViewer[0]).sort(), ['enabled', 'id', 'is_default', 'name', 'type']);
+  const asAdmin = JSON.stringify((await call('GET', '/api/channels')).data);
+  assert.ok(!asAdmin.includes('AAAAAAAAAA'));
+  assert.equal((await call('POST', '/api/monitors', { name: 'Web', type: 'http', target: 'https://intranet.firma.local/' }, { who: 'viewer' })).status, 403);
+  const m = await call('POST', '/api/monitors', { name: 'Web', type: 'http', target: 'https://intranet.firma.local/', channels: [ch.data.id] }, { who: 'editor' });
+  assert.equal(m.status, 201);
+  assert.equal((await call('GET', `/api/monitors/${m.data.id}`, undefined, { who: 'viewer' })).data.name, 'Web');
+  assert.equal((await call('POST', `/api/monitors/${m.data.id}/pause`, {}, { who: 'editor' })).data.status, 'paused');
+  assert.equal((await call('GET', '/api/dashboard')).data.monitoring.paused, 1);
+  assert.equal((await call('POST', '/api/maintenance', { name: 'x', kind: 'weekly', weekdays: [1], time_from: '01:00', time_to: '02:00' }, { who: 'viewer' })).status, 403);
+  assert.equal((await call('DELETE', `/api/monitors/${m.data.id}`, undefined, { who: 'editor' })).status, 200);
+});
+
+test('API requests are rate-limited per address', async () => {
+  const { startApp: start } = await import('./helpers.js');
+  const other = await start();
+  let last;
+  for (let i = 0; i < 605; i++) last = await other.call('GET', '/api/bootstrap', undefined, { raw: true });
+  assert.equal(last.status, 429);
+  assert.match((await last.json()).error.message, /Zu viele Anfragen|Too many requests/);
+  await other.close();
+});
