@@ -6,7 +6,7 @@ import net from 'node:net';
 import { config } from '../config.js';
 import { ping, pingAvailable } from '../scan/probes.js';
 import { dockerCheck, mysqlCheck, postgresCheck, redisCheck, DEFAULT_PORTS } from './services.js';
-import { sensorCheck, snmpCheck } from './sensors.js';
+import { sensorCheck, snmpCheck, proxmoxCheck } from './sensors.js';
 
 const UA = `WhatsOnMyNet/${config.version} (monitoring)`;
 const MAX_BODY = 1024 * 1024;
@@ -120,6 +120,7 @@ function tlsMessage(e) {
 export function runCheck(m, ctx = {}) {
   if (m.type === 'ping') return pingCheck(m.target, Math.min(m.timeout_s, 10));
   if (m.type === 'tcp') return tcpCheck(m.target, m.port, m.timeout_s);
+  if (m.type === 'proxmox') return Promise.resolve(ctx.db ? proxmoxCheck(ctx.db, m) : { ok: false, ms: null, message: 'no database' });
   if (m.type === 'sensor') return Promise.resolve(ctx.db ? sensorCheck(ctx.db, m) : { ok: false, ms: null, message: 'no database' });
   if (m.type === 'snmp') {
     let o = {};

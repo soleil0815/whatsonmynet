@@ -155,6 +155,14 @@ ARP – und damit die MAC-Adresse – sieht man nur im eigenen Netz. Für eine A
 
 Der Agent hat keine Weboberfläche und öffnet keinen Port. Er fragt die Zentrale jede Minute nach Aufträgen (HTTPS; beim selbstsignierten Zertifikat vertraut er genau diesem einen Zertifikat – geprüft, bevor der Schlüssel gesendet wird. Erneuert sich das Zertifikat, braucht der Agent den neuen Wert), scannt dort genauso schonend und folgt der Uhrzeit des nächtlichen Leicht-Scans. Er darf nur Adressen aus den Subnetzen seines Standorts melden. „Scan starten“ für diesen Standort geht in der Zentrale automatisch als Auftrag an den Agenten; die Ergebnisse erscheinen wie gewohnt unter *Frühere Scans*.
 
+## Proxmox VE und Backup Server (ab Version 0.4)
+
+Unter *Einstellungen → Proxmox* liest WhatsOnMyNet Proxmox VE und Proxmox Backup Server über ihre eingebaute API – dort wird nichts installiert. Ein API-Token mit Leserechten genügt (VE: Rolle *PVEAuditor* auf `/`, Backup Server: Rolle *Audit*); das Geheimnis wird verschlüsselt gespeichert. Für das selbstsignierte Zertifikat trägst du `/etc/pve/pve-root-ca.pem` bzw. `/etc/proxmox-backup/proxy.pem` ein, dann wird genau diesem Zertifikat vertraut.
+
+- **VE**: Knoten (online, CPU, RAM), Speicher mit Belegung, VMs und Container (läuft/gestoppt), die letzten Sicherungen (vzdump) mit Fehlern
+- **Backup Server**: Datastores mit Belegung, Sicherungsgruppen mit dem Alter der letzten Sicherung, fehlgeschlagene Aufgaben (Verify, GC …)
+- **Sensoren** wie „Knoten online“, „Speicher local-zfs über 85 %“, „VM 101 läuft“, „letzte Sicherung von VM 101 älter als 26 Stunden“, „Datastore über 85 %“ oder „fehlgeschlagene Aufgaben“
+
 ## Geplante Berichte (ab Version 0.4)
 
 Unter *Einstellungen → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Berichte per E-Mail – zum Beispiel jeden Montag um 8 Uhr die Tonerstände aller Drucker ans Büro, oder monatlich den Zustand der NAS.

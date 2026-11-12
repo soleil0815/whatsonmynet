@@ -3,6 +3,7 @@
 // pollers stored (no extra traffic to the device); the free SNMP sensor asks the device itself (read-only).
 import { openSnmp, getValues, text } from '../scan/snmpwalk.js';
 import { nasProblems } from '../scan/nas.js';
+import { proxmoxMetrics } from '../proxmox.js';
 
 export const OPS = ['lt', 'le', 'gt', 'ge', 'eq', 'ne', 'contains', 'notcontains'];
 const OID = /^\.?([0-2])(\.\d{1,10}){2,40}$/;
@@ -130,4 +131,22 @@ export async function snmpCheck(host, port, communities, o, timeoutS = 10) {
     return { ok: !alarm, ms: Number.isFinite(n) && String(value) !== '' ? Math.round(n) : Date.now() - t0,
       message: `${o.label || oid}: ${value}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}` };
   } finally { s.close(); }
+}
+
+/** Proxmox sensor on the stored state of a PVE/PBS host. options: { host, metric, key, op, threshold, label } */
+export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
+  const o = parse(m.options, {});
+  const h = db.prepare('SELECT name, last_at, last_ok, last_error, data FROM proxmox_hosts WHERE id=?').get(o.host);
+  if (!h) return { ok: false, ms: null, message: 'Proxmox host missing' };
+  if (!h.last_at) return { ok: false, ms: null, message: 'no data yet' };
+  if (!h.last_ok) return { ok: false, ms: null, message: `${h.name}: ${h.last_error}` };
+  if (Date.now() - Date.parse(h.last_at) > staleMin * 60 * 1000) return { ok: false, ms: null, message: 'no current data' };
+  const label = o.label || o.metric;
+  const x = proxmoxMetrics(parse(h.data, {})).find((y) => y.metric === o.metric && String(y.key) === String(o.key || ''));
+  if (!x) return { ok: false, ms: null, message: `${label}: not found` };
+  if (o.metric === 'nodeOnline') return x.value === 'online' ? { ok: true, ms: null, message: `${label}: online` } : { ok: false, ms: null, message: `${label}: offline` };
+  if (o.metric === 'guestRunning') return x.value === 'running' ? { ok: true, ms: null, message: `${label}: running` } : { ok: false, ms: null, message: `${label}: ${x.value}` };
+  if (x.value === null || x.value === undefined) return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found' : 'no value'}` };
+  const alarm = compare(o.op, x.value, o.threshold);
+  return { ok: !alarm, ms: Math.round(Number(x.value)), message: `${label}: ${x.value}${x.unit ? ` ${x.unit}` : ''}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}` };
 }
