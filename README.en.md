@@ -48,6 +48,14 @@ Check results are kept in detail for 7 days and hourly for a year.
   Recommended is a **socket proxy** on the Docker host that only allows read-only container queries (e.g. `tecnativa/docker-socket-proxy` with `CONTAINERS=1`, `POST=0`; address `http://<host>:2375`). The template is shown in the settings. Passing the Docker socket directly also works (`unix:///var/run/docker.sock`, mounted `:ro` in `docker-compose.yml` plus `group_add` with the group ID of `docker`) – but that grants more rights than needed.
 - **Databases**: MariaDB/MySQL, PostgreSQL and Redis/Valkey. The check logs in and runs one harmless query (version or `PING`), optionally over TLS. Best create a user of its own with login rights only. The password is stored encrypted and never sent back to the browser.
 
+### Sensors (from version 0.4)
+
+Like in PRTG, every value a device delivers can be watched as a monitor of its own – with history, alarm and maintenance windows:
+
+- **Sensor (device value)**: "Add sensor" on the device page, then choose value and condition – e.g. "toner cyan less than or equal 10 %", "volume 1 at least 85 %", "temperature drive 2 above 50 °C", "port 10 (uplink) connected", "disk/storage pool fine", "faults at the printer". It reads the latest state of the printer/switch/NAS query, without extra requests to the device.
+- **SNMP value (OID)**: any value readable via SNMP with its own condition (less, greater, equal, contains text …) – e.g. runtime left of a UPS, temperature of an air conditioner, sessions of a firewall.
+- The history shows the measured value over 24 hours up to 7 days.
+
 ## Installation
 
 Requirement: a **Linux host with Docker** (server, VM, Proxmox LXC with Docker, Synology Container Manager). WhatsOnMyNet runs in the **host network** – only this way it sees the MAC addresses of your devices. Docker Desktop on Windows or macOS does not see the real network and is therefore not suitable.
