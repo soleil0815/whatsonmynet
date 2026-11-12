@@ -417,3 +417,22 @@ pre.code.wrap { white-space: pre-wrap; word-break: break-all; }
 .tf-qr { width: 200px; max-width: 100%; padding: 8px; background: #fff; border-radius: var(--r-s); }
 .tf-qr svg { display: block; width: 100%; height: auto; }
 .tf-steps { margin: 0 0 6px; padding-left: 20px; display: grid; gap: 4px; }
+
+/* Help: manual with contents on the side */
+.help-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; align-items: start; }
+.help-toc { position: sticky; top: 20px; font-size: 13.5px; }
+.help-toc strong { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+.help-toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.help-toc a { display: block; padding: 5px 10px; border-radius: var(--r-s); color: var(--ink); text-decoration: none; }
+.help-toc a:hover { background: var(--accent-soft); color: var(--accent); }
+.manual { max-width: 780px; font-size: 15px; line-height: 1.65; }
+.manual h2 { font-size: 21px; margin: 34px 0 10px; padding-top: 6px; scroll-margin-top: 16px; }
+.manual h2:first-child { margin-top: 0; }
+.manual h3 { font-size: 16px; margin: 22px 0 6px; }
+.manual p, .manual ul, .manual ol { margin: 0 0 12px; }
+.manual li { margin: 3px 0; }
+.manual code { font: 13px var(--mono); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+.manual figure { margin: 16px 0 22px; }
+.manual img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--r-m); display: block; }
+.manual figcaption { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+@media (max-width: 900px) { .help-layout { grid-template-columns: 1fr; } .help-toc { position: static; } }
