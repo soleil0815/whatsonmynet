@@ -37,12 +37,14 @@ async function general(body, s) {
       const d = formData(form);
       await put('/settings/general', { title: d.title });
       await put('/settings/backup', { keep: d.keep });
+      await put('/settings/security', { require2faAdmins: d.require2faAdmins });
       state.boot.title = d.title;
       toast(t('saved'));
     } catch (ex) { fail(ex); }
   } },
   field(t('set.instance'), input('title', s.general.title, { maxlength: 60 })),
   field(t('set.backupKeep'), input('keep', s.backup.keep, { type: 'number', min: 1, max: 90 }), t('set.backupHint')),
+  field(t('tf.requireAdmins'), h('input', { type: 'checkbox', name: 'require2faAdmins', checked: !!s.security?.require2faAdmins }), t('tf.requireAdminsHint')),
   saveBtn());
   mount(body, panel(t('set.general'), form));
 }
@@ -348,6 +350,7 @@ async function users(body, _s, reload) {
       h('tbody', {}, list.map((u) => h('tr', {},
         h('td', {}, h('span', { class: 'name' }, u.username), u.id === state.user.id ? h('span', { class: 'muted small' }, ` (${t('users.you')})`) : null,
           u.source === 'ldap' ? h('span', { class: 'badge', style: { marginLeft: '6px' }, title: t('users.adManaged') }, 'AD') : null,
+          u.totp_enabled ? h('span', { class: 'badge badge-ok', style: { marginLeft: '6px' }, title: t('tf.on') }, '2FA') : null,
           u.display_name ? h('div', { class: 'sub' }, u.display_name) : null),
         h('td', {}, t(`role.${u.role}`), u.active ? null : h('span', { class: 'badge badge-bad', style: { marginLeft: '6px' } }, t('user.inactive')),
           u.role !== 'admin' && u.locations?.length ? h('div', { class: 'sub' }, u.locations.map((l) => locName[l]).filter(Boolean).join(', ')) : null),
@@ -356,6 +359,10 @@ async function users(body, _s, reload) {
         h('td', { class: 'min' }, h('div', { class: 'actions' },
           btn(t('edit'), { class: 'btn btn-sm', onclick: () => edit(u) }),
           u.source === 'ldap' ? null : btn(t('users.resetPassword'), { class: 'btn btn-sm btn-ghost', onclick: () => setPw(u) }),
+          u.totp_enabled && u.id !== state.user.id ? btn(t('tf.reset'), { class: 'btn btn-sm btn-ghost', onclick: async () => {
+            if (!await confirmDialog(t('tf.reset'), t('tf.resetConfirm', { name: u.username }), t('tf.reset'), t('cancel'), { danger: true })) return;
+            try { await del(`/users/${u.id}/2fa`); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
+          } }) : null,
           u.id !== state.user.id ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${u.username}`, html: icon('trash'), onclick: async () => {
             if (!await confirmDialog(t('delete'), t('users.deleteConfirm', { name: u.username }), t('delete'), t('cancel'), { danger: true })) return;
             try { await del(`/users/${u.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
