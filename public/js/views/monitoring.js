@@ -35,6 +35,7 @@ export function targetText(m) {
   if (m.type === 'docker') return m.docker_host ? `${m.target} @ ${m.docker_host.name}` : m.target;
   if (m.type === 'sensor') return m.device_name ? `${m.device_name} · ${m.target}` : m.target;
   if (m.type === 'snmp') return `${m.target}:${m.port} · ${m.options?.oid || ''}`;
+  if (m.type === 'smb') return `\\\\${m.target}${m.port && m.port !== 445 ? `:${m.port}` : ''}\\${m.options?.share || ''}${m.options?.path ? `\\${m.options.path}` : ''}`;
   return ['tcp', 'mysql', 'postgres', 'redis'].includes(m.type) ? `${m.target}:${m.port}` : m.target;
 }
 
@@ -43,6 +44,21 @@ function beatsBar(beats, slots = 40, valueMode = false) {
   return h('span', { class: 'beats', 'aria-hidden': 'true' },
     Array.from({ length: pad }, () => h('i', { class: 'none' })),
     beats.slice(-slots).map((b) => h('i', { class: b.ok ? 'ok' : 'bad', title: `${fmtDate(b.at, getLang())} · ${valueMode || !b.ok ? b.message : `${b.ms ?? '–'} ms`}` })));
+}
+
+/** Size in bytes, readable: 31,8 GB */
+export function fmtBytes(n) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  let v = Number(n) || 0; let i = 0;
+  while (v >= 1000 && i < units.length - 1) { v /= 1000; i++; }
+  return `${v.toLocaleString(getLang() === 'en' ? 'en-GB' : 'de-DE', { maximumFractionDigits: v >= 100 || i === 0 ? 0 : 1 })} ${units[i]}`;
+}
+
+/** "\\\\fs01\\Abteilung\\Projekte" or "//fs01/Abteilung" → { host, share, path }; null if not a UNC path */
+export function parseUnc(s) {
+  const m = /^(?:\\\\|\/\/|smb:\/\/)([^\\/]+)[\\/]+([^\\/]+)(?:[\\/]+(.*))?$/i.exec(String(s || '').trim());
+  if (!m) return null;
+  return { host: m[1], share: m[2], path: (m[3] || '').replace(/[\\/]+/g, '\\').replace(/\\$/, '') };
 }
 
 const pct = (v) => (v === null || v === undefined ? '–' : `${v.toLocaleString(getLang() === 'en' ? 'en-GB' : 'de-DE', { maximumFractionDigits: 2 })} %`);
@@ -185,6 +201,8 @@ async function renderDetail(main, id) {
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d30.pct)), h('span', {}, t('mon.uptime30'))),
         isValueType(m) ? h('div', { class: 'figure' }, h('b', {}, m.last_ms ?? '–'), h('span', {}, t('sens.current')))
           : h('div', { class: 'figure' }, h('b', {}, m.uptime.h24.avgMs !== null ? `${m.uptime.h24.avgMs} ms` : '–'), h('span', {}, t('mon.avgMs'))),
+        m.type === 'smb' && m.data && m.data.total ? h('div', { class: `figure${m.data.low ? ' alert' : ''}` }, h('b', {}, t('smb.free', { size: fmtBytes(m.data.free) })),
+          h('span', {}, t('smb.of', { total: fmtBytes(m.data.total), pct: pct(m.data.pct) }))) : null,
         m.cert_valid_to ? h('div', { class: `figure${m.cert_days_left <= 14 ? ' alert' : ''}` }, h('b', {}, m.cert_days_left < 0 ? t('mon.certExpired') : m.cert_days_left),
           h('span', {}, t('mon.certLeft', { date: fmtDate(m.cert_valid_to, getLang(), false) }))) : null),
       h('section', { class: 'panel panel-pad' },
@@ -215,7 +233,7 @@ export async function openMonitorForm(m, done, preset = null) {
     tls_verify: false, cert_check: true, cert_days: '30,14,7', channels: [], ...(preset || {}) };
   let dockerHosts = [];
   try { dockerHosts = await get('/docker/hosts'); } catch { /* none or no right */ }
-  const TYPES = ['http', 'tcp', 'ping', 'sensor', 'snmp', 'proxmox', 'docker', 'mysql', 'postgres', 'redis'];
+  const TYPES = ['http', 'tcp', 'ping', 'smb', 'sensor', 'snmp', 'proxmox', 'docker', 'mysql', 'postgres', 'redis'];
   const DBT = ['mysql', 'postgres', 'redis'];
   const DEF_PORT = { mysql: 3306, postgres: 5432, redis: 6379 };
   const typeSel = select('type', TYPES.map((x) => [x, t(`mon.type.${x}`)]), v.type);
@@ -252,6 +270,28 @@ export async function openMonitorForm(m, done, preset = null) {
     dbName,
     field(t('mon.f.dbTls'), h('input', { type: 'checkbox', name: 'db_tls', checked: !!o.tls })),
     h('p', { class: 'full muted small', style: { margin: 0 } }, t('mon.f.dbHint')));
+  // Network drive (SMB): share, optional folder/file, read-only account, warning below free space
+  const smbShare = input('smb_share', o.share || '', { maxlength: 80, class: 'mono', placeholder: t('smb.sharePh') });
+  const smbPw = input('smb_password', '', { type: 'password', autocomplete: 'new-password', placeholder: v.type === 'smb' && v.has_password ? '••••••' : '' });
+  const smbBox = h('div', { class: 'form-grid full' },
+    field(t('smb.share'), smbShare, t('smb.shareHint')),
+    field(t('smb.path'), input('smb_path', o.path || '', { maxlength: 400, class: 'mono', placeholder: t('smb.pathPh') }), t('smb.pathHint')),
+    field(t('smb.user'), input('smb_user', o.user || '', { maxlength: 104, autocomplete: 'off', class: 'mono', placeholder: 'monitor' }), t('smb.userHint')),
+    field(t('smb.domain'), input('smb_domain', o.domain || '', { maxlength: 63, class: 'mono', placeholder: 'FIRMA' }), t('smb.domainHint')),
+    field(t('mon.f.dbPassword'), smbPw, v.type === 'smb' && v.has_password ? t('mon.f.dbPasswordSet') : null),
+    h('div', {}),
+    field(t('smb.minPct'), input('smb_min_pct', o.minFreePct || '', { type: 'number', min: 0, max: 99, step: '0.1', placeholder: '10' }), t('smb.minPctHint')),
+    field(t('smb.minGb'), input('smb_min_gb', o.minFreeGb || '', { type: 'number', min: 0, step: '0.1', placeholder: '50' }), t('smb.minGbHint')),
+    h('p', { class: 'full muted small', style: { margin: 0 } }, t('smb.hint')));
+  // A pasted \\\\server\\share\\folder fills server, share and folder
+  target.addEventListener('change', () => {
+    if (typeSel.value !== 'smb') return;
+    const u = parseUnc(target.value);
+    if (!u) return;
+    target.value = u.host;
+    smbShare.value = u.share;
+    smbBox.querySelector('[name=smb_path]').value = u.path;
+  });
   // Sensor: a value a device already delivers (printer supplies, NAS volumes, switch ports …)
   const so = v.options || {};
   let sensorDevices = [];
@@ -337,16 +377,18 @@ export async function openMonitorForm(m, done, preset = null) {
     if (ty === 'sensor') syncMetric();
     if (ty === 'proxmox') { if (!pxMetrics.length && pxSel.value) loadPx(); else syncPx(); }
     if (ty === 'sensor' && !metrics.length && devSel.value) loadMetrics();
-    portBox.hidden = ty !== 'tcp' && ty !== 'snmp' && !isDb;
+    portBox.hidden = ty !== 'tcp' && ty !== 'snmp' && ty !== 'smb' && !isDb;
+    smbBox.hidden = ty !== 'smb';
+    smbShare.required = ty === 'smb';
     httpBox.hidden = ty !== 'http';
     dockerBox.hidden = ty !== 'docker';
     dbBox.hidden = !isDb;
     dbName.hidden = ty === 'redis';
     port.required = ty === 'tcp';
-    port.placeholder = isDb ? String(DEF_PORT[ty]) : ty === 'snmp' ? '161' : '';
+    port.placeholder = isDb ? String(DEF_PORT[ty]) : ty === 'snmp' ? '161' : ty === 'smb' ? '445' : '';
     hostSel.required = ty === 'docker';
-    targetLabel.textContent = ty === 'docker' ? t('mon.f.container') : t('mon.f.target');
-    target.placeholder = ty === 'http' ? 'https://intranet.firma.local/' : ty === 'docker' ? 'nextcloud' : '192.168.1.10';
+    targetLabel.textContent = ty === 'docker' ? t('mon.f.container') : ty === 'smb' ? t('smb.server') : t('mon.f.target');
+    target.placeholder = ty === 'http' ? 'https://intranet.firma.local/' : ty === 'docker' ? 'nextcloud' : ty === 'smb' ? t('smb.serverPh') : '192.168.1.10';
     if (ty === 'docker' && !containers.children.length) loadContainers();
   };
   typeSel.addEventListener('change', sync);
@@ -367,6 +409,7 @@ export async function openMonitorForm(m, done, preset = null) {
     condBox,
     dockerBox,
     dbBox,
+    smbBox,
     field(t('mon.f.interval'), input('interval_s', v.interval_s, { type: 'number', min: 20, max: 86400 }), t('mon.f.intervalHint')),
     field(t('mon.f.retries'), input('fail_threshold', v.fail_threshold, { type: 'number', min: 1, max: 10 }), t('mon.f.retriesHint')),
     field(t('mon.f.timeout'), input('timeout_s', v.timeout_s, { type: 'number', min: 1, max: 60 })),
@@ -402,6 +445,13 @@ export async function openMonitorForm(m, done, preset = null) {
       body.options = { host: Number(d.px_host), metric, key, op: d.op, threshold: d.threshold, label: x ? pxLabel(x) : so.label };
     }
     if (d.type === 'snmp') body.options = { oid: d.oid.trim(), op: d.op, threshold: d.threshold, label: '' };
+    if (d.type === 'smb') {
+      const u = parseUnc(d.target);
+      if (u) { body.target = u.host; d.smb_share = d.smb_share || u.share; d.smb_path = d.smb_path || u.path; }
+      body.options = { share: d.smb_share.trim(), path: d.smb_path.trim(), user: d.smb_user.trim(), domain: d.smb_domain.trim(),
+        minFreePct: d.smb_min_pct || 0, minFreeGb: d.smb_min_gb || 0 };
+      if (d.smb_password) body.password = d.smb_password;
+    }
     if (DBT.includes(d.type)) {
       body.options = { user: d.db_user, database: d.database, tls: d.db_tls };
       if (d.password) body.password = d.password;

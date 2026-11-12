@@ -45,6 +45,9 @@ kmode="$(sudo stat -c %a "$DATA/tls/key.pem")"
 # Tools the scanner and the certificate need
 docker exec "$NAME" sh -c 'command -v openssl && command -v ping' >/dev/null || fail "openssl or ping missing in the image"
 docker exec "$NAME" womn-admin list >/dev/null || fail "womn-admin does not run"
+# Network drive check runs as the program user on the read-only file system (no SMB server here: refused)
+smb="$(docker exec -u 1000 "$NAME" node -e "import('/app/src/monitor/smb.js').then((m) => m.smbCheck('127.0.0.1', 1, { share: 'x' }, '', 3)).then((r) => console.log(r.message))" 2>&1)"
+[ "$smb" = "connection refused" ] || fail "network drive check in the container: $smb"
 # Stop must reach the program (clean shutdown), not end in a hard kill after the grace period
 docker stop -t 20 "$NAME" >/dev/null
 docker logs "$NAME" 2>&1 | grep -q 'SIGTERM received' || fail "stop signal did not reach WhatsOnMyNet"

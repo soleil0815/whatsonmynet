@@ -51,6 +51,7 @@ A monitor checks regularly (20 seconds to 24 hours) and reports only after sever
 - **TCP port** and **ping**
 - **Docker container** (through a socket proxy, *Settings → Docker*): running, restarting all the time, health check "unhealthy"
 - **Databases**: MariaDB/MySQL, PostgreSQL, Redis/Valkey – sign-in and one harmless query
+- **Network drive (SMB)**: Windows shares and NAS – see below
 - **Sensor (device value)**, **SNMP value (OID)** and **Proxmox** – see below
 
 On the device page "Monitor" creates a fitting monitor. If the IP of a device changes, its monitors follow.
@@ -90,6 +91,18 @@ Every value a device delivers can become a monitor of its own – with history, 
 
 The kind **SNMP value (OID)** reads any SNMP value (e.g. runtime left of a UPS) and compares with less, greater, equal or "contains text".
 
+## Network drives (SMB)
+
+![Network drive](img/smb-en.png)
+
+The kind **Network drive (SMB)** really signs in to a share – not just to the open port. So you also notice when the password expired, the rights changed or a folder is missing.
+
+1. Create an account of its own with **read rights** on the share (in AD e.g. `COMPANY\monitor`, on a NAS a local user).
+2. *Add monitor* → kind **Network drive (SMB)**. Just paste the path, e.g. `\\fs01\Department\Projects` – server, share and folder are taken from it.
+3. Enter user, domain (empty for NAS accounts) and password. Optional: warn below … % or … GB free.
+
+The check runs over SMB 2/3: sign in, read the share (or the folder or file), ask for the free space. WhatsOnMyNet writes nothing to the share. The detail page shows the free space; reports have the section *Network drives* for it.
+
 ## Proxmox VE and Backup Server
 
 ![Proxmox](img/proxmox-en.png)
@@ -108,7 +121,7 @@ Nodes, storage, VMs and containers, backups, datastores and failed tasks are sho
 
 Under *Settings → Reports* reports go out by e-mail at set times – e.g. the toner levels to the office every Monday at 8:00.
 
-- Content: printers, NAS, switches; can be limited to locations; optionally only devices that need action.
+- Content: printers, NAS, switches, network drives; can be limited to locations; optionally only devices that need action.
 - The mail is **neutral**: no link, no program name – only your sender name, subject (`{week}`, `{date}`), introduction, the devices and your closing.
 - "Preview", "Test to me" and "Send now" right in the list.
 
@@ -135,4 +148,5 @@ For a branch office a second container runs there as scan agent. Under *Settings
 - **Interface not reachable**: open the host firewall for the HTTPS port. With host networking Docker/Dockhand shows no port mapping – that is correct.
 - **No printer/switch data**: switch on SNMP at the device, check the community under *Settings → Scan*, "Query now" on the device page.
 - **Locked out**: `docker compose exec whatsonmynet womn-admin reset <user>` sets a new password, makes the account administrator again and switches two-factor sign-in off. `womn-admin create <user>` adds a new administrator.
+- **Network drive reports "protocol not supported"**: the device only speaks the old SMB1 – it is not used for security reasons. Switch on SMB2/3 at the device (Synology: *File Services → SMB → Advanced*).
 - **Log**: *Settings → Log* shows who changed what; technical messages are in the container log.
