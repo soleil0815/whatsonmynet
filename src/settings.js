@@ -10,6 +10,7 @@ export const DEFAULTS = {
   'scan.rate': 40,                // new connection attempts per second (gentle)
   'scan.httpTitles': true,        // read the title of web interfaces
   'scan.keepScans': 20,           // how many scans are kept
+  'scan.routerArp': true,         // routed subnets: MAC addresses from the ARP table of routers/firewalls (SNMP)
   // Nightly light scan: only finds devices (ARP/ping/NetBIOS), takes over new IPs, reports unknown devices
   'lightscan.enabled': true,
   'lightscan.time': '02:30',      // local time (TZ), runs within 4 hours after it

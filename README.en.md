@@ -22,7 +22,7 @@ WhatsOnMyNet scans your network, recognises manufacturer and device type by itse
 - **Purchase, warranty, maintenance** – optional fields, with a notice on the overview when a warranty ends soon.
 - **Deep check** – for single unclear devices, started by hand: about 120 ports and all web interfaces.
 - **Locations** – group subnets. Before a scan you just tick them; devices found get their location automatically.
-- **Users and roles** – administrator, editor, read only. Active Directory follows in a later version.
+- **Users and roles** – administrator, editor, read only; sign-in with Active Directory too, rights can be limited to locations (from 0.3).
 - **HTTPS from the first start** – generated certificate, own certificate (PEM or PFX) uploadable in the interface, HTTP always redirects to HTTPS.
 - **German and English**, light and dark, usable on a phone.
 
@@ -110,6 +110,12 @@ Devices of type *Switch* and *NAS* are queried regularly (default every 15 minut
 
 Settings under *Settings → Switches & NAS*. Simple switches without SNMP (e.g. TP-Link "Easy Smart") give no data; on LANCOM, HP/Aruba, Cisco, Netgear Smart and others SNMP v1/v2c has to be enabled read-only.
 
+## Network map (from version 0.3)
+
+The *Network map* shows from the MAC tables and LLDP data of the switches which device hangs at which port and how the switches are connected – as a tree starting at the switch with the router. Devices without a place (no MAC address, WiFi, switch without SNMP) are listed below.
+
+**Remote subnets**: behind a router the scan sees no MAC addresses. If SNMP is on at your routers/firewalls (in the inventory with type *Router* or *Firewall*), the scan reads their ARP table – so the MAC address stays the identity of a device in remote subnets too (can be switched off under *Settings → Scan*).
+
 ### Ping
 
 WhatsOnMyNet runs without root. Ping then only works if the host allows ICMP for normal users (`net.ipv4.ping_group_range`, default on Debian, Ubuntu and Proxmox). Without ping the scan still finds local devices via ARP and remote ones via TCP; the program shows a notice.
@@ -180,7 +186,7 @@ docker compose exec whatsonmynet womn-admin create <user>   # new administrator
 | --- | --- |
 | 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), ~~nightly light scan with notice of unknown devices~~, ~~printer data via SNMP~~, ~~Docker and database monitoring~~ (from 0.3) |
 | 3 | ~~Active Directory (LDAPS)~~, ~~rights per location~~ (from 0.3) |
-| later | Scan agent for branch offices, topology via LLDP/CDP, MAC addresses of remote subnets via SNMP from the router |
+| later | Scan agent for branch offices, ~~topology via LLDP~~, ~~MAC addresses of remote subnets via SNMP from the router~~ (from 0.3) |
 
 ## License
 

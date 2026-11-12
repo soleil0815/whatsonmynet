@@ -9,6 +9,7 @@ import { renderInventory } from './views/inventory.js';
 import { renderDevice } from './views/device.js';
 import { renderScan } from './views/scan.js';
 import { renderLocations } from './views/locations.js';
+import { renderTopology } from './views/topology.js';
 import { renderSettings } from './views/settings.js';
 import { renderAccount } from './views/account.js';
 import { renderMonitoring } from './views/monitoring.js';
@@ -47,6 +48,7 @@ const ROUTES = [
   [/^\/monitoring(?:\/(\d+))?$/, renderMonitoring, 'monitoring'],
   [/^\/monitoring\/(maintenance)$/, (main, sub) => renderMonitoring(main, null, sub), 'monitoring'],
   [/^\/locations$/, renderLocations, 'locations'],
+  [/^\/topology$/, renderTopology, 'topology'],
   [/^\/settings(?:\/([a-z]+))?$/, renderSettings, 'settings'],
   [/^\/account$/, renderAccount, 'account'],
 ];
@@ -62,6 +64,7 @@ function sidebar(active) {
       link('/inventory', 'inventory', 'inventory'),
       link('/scan', 'scan', 'radar', state.waiting ? h('span', { class: 'badge badge-new', title: t('dash.waiting') }, state.waiting) : null),
       link('/monitoring', 'monitoring', 'pulse', state.down ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.down) : null),
+      link('/topology', 'topology', 'switch'),
       link('/locations', 'locations', 'location'),
       u.isAdmin ? link('/settings', 'settings', 'settings') : null,
     ),
