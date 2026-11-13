@@ -43,6 +43,8 @@ export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'nodeTemp', 
 export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service', 'upsPower', 'upsCharge', 'upsRuntime', 'upsLoad',
   'hostPdHealth', 'hostPdTemp', 'hostPdWear', 'hostUpdates', 'hostUpdatesSec', 'hostReboot', 'hostAv', 'hostFirewall', 'hostEvCritical', 'hostEvErrors', 'hostCert', 'hostTemp', 'hostTempMax'];
 const DB_TYPES = ['mysql', 'postgres', 'redis'];
+const CONNECT_TYPES = ['http', 'tcp', 'ping'];
+const VALUE_TYPES = ['sensor', 'snmp', 'proxmox'];
 
 /** A stored password only stays with the address it was entered for: whoever moves the monitor to another host or port
  *  must type it again - otherwise an editor could have it sent to a machine of his own */
@@ -443,13 +445,13 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
 
   /** keep(m): optional filter (location limit of the user) */
   function summary(keep = null) {
-    const rows = db.prepare('SELECT id, name, status, status_since, last_message, enabled, cert_valid_to, device_id FROM monitors').all().filter((m) => !keep || keep(m));
+    const rows = db.prepare('SELECT id, name, type, status, status_since, last_message, enabled, cert_valid_to, device_id FROM monitors').all().filter((m) => !keep || keep(m));
     const soon = rows.filter((m) => m.cert_valid_to && (Date.parse(m.cert_valid_to) - now().getTime()) / 86400000 <= 30)
       .map((m) => ({ id: m.id, name: m.name, cert_valid_to: m.cert_valid_to }));
     return {
       total: rows.length,
       up: rows.filter((m) => m.status === 'up').length,
-      down: rows.filter((m) => m.status === 'down').map((m) => ({ id: m.id, name: m.name, since: m.status_since, message: m.last_message })),
+      down: rows.filter((m) => m.status === 'down').map((m) => ({ id: m.id, name: m.name, type: m.type, since: m.status_since, message: m.last_message })),
       unreachable: rows.filter((m) => m.status === 'unreachable').length,
       pending: rows.filter((m) => m.status === 'pending' && m.enabled).length,
       paused: rows.filter((m) => !m.enabled).length,
@@ -598,7 +600,11 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const keys = Object.keys(set);
     db.prepare(`UPDATE monitors SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`).run(...keys.map((k) => set[k]), m.id);
 
-    const mon = { id: m.id, name: m.name, target: m.type === 'tcp' ? `${m.target}:${m.port}` : m.target, channels: m.channels };
+    const mon = { id: m.id, name: m.name, type: m.type, label: parse(m.options, {}).label || '', target: m.type === 'tcp' ? `${m.target}:${m.port}` : m.target, channels: m.channels };
+    // For the words of the alarm: connection (http, tcp, ping) - measured value over its limit - state - no values at all
+    const family = CONNECT_TYPES.includes(m.type) ? 'reach' : res.data && res.data.v !== undefined && res.data.op ? 'value'
+      : VALUE_TYPES.includes(m.type) && !res.data ? 'nodata' : 'state';
+    for (const ev of [notifyEv, escEv]) if (ev) ev.family = family;
     if (escEv) {
       const reached = await channels.notifyIds(esc.ids, { ...escEv, monitor: mon, at: iso(at) });
       event(m, 'escalated', String(escEv.downMin), reached);
