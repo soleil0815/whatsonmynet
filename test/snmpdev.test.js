@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { memoryDb } from './helpers.js';
-import { startAgent, addSwitch, addNas } from './fixtures/switch-agent.js';
+import { startAgent, addSwitch, addNas, addUpsCard } from './fixtures/switch-agent.js';
 import { readSwitch, macFromOid, parseFdb, parseLldp } from '../src/scan/switch.js';
-import { readNas, parseStorage, nasProblems } from '../src/scan/nas.js';
+import { readNas, parseStorage, nasProblems, readUpsDevice } from '../src/scan/nas.js';
+import { statusOf } from '../src/scan/ups.js';
+import { metricsFor, sensorCheck } from '../src/monitor/sensors.js';
 import { createSnmpDevices } from '../src/snmpdevices.js';
 import { createSettings } from '../src/settings.js';
 import { eventText } from '../src/monitor/notify.js';
@@ -169,4 +171,49 @@ test('values polled before the update are taken over at start', () => {
   assert.equal(syncStoredFacts(db), 1);
   assert.deepEqual(db.prepare('SELECT serial, model FROM devices WHERE id=?').get(prn), { serial: 'E78123', model: 'Brother HL-L2350DW series' });
   assert.equal(syncStoredFacts(db), 0, 'nothing twice');
+});
+
+test('UPS: on a Synology NAS, on its own network card (UPS-MIB, APC), as sensors', async () => {
+  const nas = startAgent(16171);
+  addNas(nas.mib, { volumes: [{ name: '/volume1', sizeBlocks: 1000000, usedBlocks: 100000 }], disks: [], raids: [],
+    ups: { model: 'Back-UPS ES 700G', vendor: 'American Power Conversion', status: 'OL CHRG', load: 9, charge: 96, runtime: 2610 } });
+  const std = startAgent(16172); addUpsCard(std.mib, 'std');
+  const apc = startAgent(16173); addUpsCard(apc.mib, 'apc');
+  const plain = startAgent(16174); addNas(plain.mib, { volumes: [{ name: '/volume1', sizeBlocks: 1000000, usedBlocks: 100000 }], disks: [], raids: [] });
+  try {
+    const n = await readNas('127.0.0.1', ['public'], { port: 16171 });
+    assert.deepEqual(n.ups, { source: 'synology', vendor: 'American Power Conversion', model: 'Back-UPS ES 700G', serial: '', firmware: '', status: 'online', low: false, replace: false, charge: 96, runtime: 2610, load: 9 });
+    assert.equal((await readNas('127.0.0.1', ['public'], { port: 16174 })).ups, null, 'no UPS on this NAS');
+    const e = await readUpsDevice('127.0.0.1', ['public'], { port: 16172 });
+    assert.deepEqual([e.ups.source, e.ups.status, e.ups.low, e.ups.charge, e.ups.runtime, e.ups.load, e.model, e.vendor, e.firmware], ['ups-mib', 'battery', true, 18, 420, 42, '9PX 2200', 'EATON', 'INV: 01.14.0026']);
+    const a = await readUpsDevice('127.0.0.1', ['public'], { port: 16173 });
+    assert.deepEqual([a.ups.source, a.ups.status, a.ups.replace, a.ups.charge, a.ups.runtime, a.ups.load, a.serial], ['apc', 'online', true, 100, 3840, 31, 'AS1234567890']);
+    await assert.rejects(readUpsDevice('127.0.0.1', ['public'], { port: 16174 }), /noUpsMib/);
+  } finally { nas.close(); std.close(); apc.close(); plain.close(); }
+
+  assert.deepEqual(statusOf('OB DISCHRG LB'), { status: 'battery', low: true, replace: false });
+  assert.deepEqual(statusOf('ONBATT'), { status: 'battery', low: false, replace: false });
+  assert.deepEqual(statusOf('OL RB'), { status: 'online', low: false, replace: true });
+
+  // Poller for a UPS device, sensors on its values, device details from the card
+  const db = memoryDb();
+  const settings = createSettings(db);
+  const svc = createSnmpDevices({ db, settings, channels: { notifyIds: async () => [] } });
+  const inv = createInventory(db);
+  const d = inv.create({ name: 'USV Serverraum', ip: '10.0.0.40', type: 'ups' });
+  let ups = { source: 'ups-mib', vendor: 'EATON', model: '9PX 2200', serial: '', firmware: 'INV 1.14', status: 'online', low: false, replace: false, charge: 100, runtime: 1800, load: 40 };
+  svc.setReaderForTests('ups', async () => ({ ups, model: ups.model, serial: 'G123', firmware: ups.firmware, vendor: ups.vendor }));
+  await svc.poll(d.id);
+  const dev = db.prepare('SELECT model, vendor, serial FROM devices WHERE id=?').get(d.id);
+  assert.deepEqual(dev, { model: '9PX 2200', vendor: 'EATON', serial: 'G123' });
+  assert.deepEqual(metricsFor(db, d.id).map((x) => [x.metric, x.value]), [['upsPower', 'mains'], ['upsCharge', 100], ['upsRuntime', 30], ['upsLoad', 40]]);
+  const mon = (metric, extra = {}) => ({ device_id: d.id, options: JSON.stringify({ metric, label: metric, ...extra }) });
+  assert.equal(sensorCheck(db, mon('upsPower')).ok, true);
+  ups = { ...ups, status: 'battery', charge: 55, runtime: 480 };
+  await svc.poll(d.id);
+  const p = sensorCheck(db, mon('upsPower'));
+  assert.equal(p.ok, false);
+  assert.match(p.message, /on battery \(55 %, 8 min\)/);
+  assert.equal(sensorCheck(db, mon('upsRuntime', { op: 'le', threshold: 10 })).ok, false);
+  assert.equal(sensorCheck(db, mon('upsCharge', { op: 'le', threshold: 50 })).ok, true);
 });

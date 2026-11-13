@@ -101,6 +101,43 @@ export function nasPanel(device) {
         s.power ? [h('dt', {}, t('nas.power')), h('dd', {}, okBadge(s.power))] : null,
         s.fan ? [h('dt', {}, t('nas.fan')), h('dd', {}, okBadge(s.fan))] : null,
         s.serial ? [h('dt', {}, t('f.serial')), h('dd', { class: 'mono' }, s.serial)] : null),
+      s.ups ? [h('h3', { class: 'sub-title' }, t('ups.title')), upsBlock(s.ups)] : null,
+      checked(s));
+  }
+  draw(device.snmp);
+  return box;
+}
+
+/** The values of a UPS: on mains or battery, charge, how long it lasts, load - the same on NAS, UPS card and machine */
+export function upsBlock(u) {
+  const st = u.status === 'battery' ? ['badge-bad', t('ups.battery')] : u.status === 'online' ? ['badge-ok', t('ups.mains')] : ['', t('ups.unknown')];
+  const mins = u.runtime !== null && u.runtime !== undefined ? Math.round(u.runtime / 60) : null;
+  return h('div', { class: 'ups-block' },
+    h('p', { class: 'ups-state' }, h('span', { class: `badge ${st[0]}` }, st[1]),
+      u.low ? h('span', { class: 'badge badge-bad' }, t('ups.low')) : null,
+      u.replace ? h('span', { class: 'badge badge-new' }, t('ups.replace')) : null,
+      [u.vendor, u.model].filter(Boolean).length ? h('span', { class: 'muted small' }, [u.vendor, u.model].filter(Boolean).join(' ')) : null),
+    h('div', { class: 'supplies' },
+      u.charge !== null && u.charge !== undefined ? upsMeter(t('ups.charge'), u.charge, `${u.charge} %`, u.charge <= 30) : null,
+      u.load !== null && u.load !== undefined ? upsMeter(t('ups.load'), u.load, `${u.load} %`, u.load >= 80) : null),
+    mins !== null ? h('dl', { class: 'kv', style: { marginTop: '8px' } }, h('dt', {}, t('ups.runtime')), h('dd', {}, t('ups.minutes', { n: mins }))) : null);
+}
+function upsMeter(name, pct, label, warn) {
+  return h('div', { class: `supply${warn ? ' low' : ''}`, 'data-color': 'other' },
+    h('div', { class: 'supply-head' }, h('span', { class: 'supply-name' }, name), h('span', { class: 'supply-val mono' }, label)),
+    h('div', { class: 'supply-track', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': pct, 'aria-label': name }, h('i', { style: { width: `${pct}%` } })));
+}
+
+/** Device of type UPS with its own network card: the values over SNMP */
+export function upsPanel(device) {
+  const box = h('section', { class: 'panel panel-pad' });
+  function draw(s) {
+    if (!s) { mount(box, head(t('ups.title'), device, draw), h('p', { class: 'muted', style: { margin: 0 } }, t('ups.none'))); return; }
+    mount(box, head(t('ups.title'), device, draw), errNote(s),
+      s.ups ? upsBlock(s.ups) : null,
+      h('dl', { class: 'kv', style: { marginTop: '12px' } },
+        s.firmware ? [h('dt', {}, t('nas.version')), h('dd', {}, s.firmware)] : null,
+        s.serial ? [h('dt', {}, t('f.serial')), h('dd', { class: 'mono' }, s.serial)] : null),
       checked(s));
   }
   draw(device.snmp);

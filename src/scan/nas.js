@@ -1,6 +1,7 @@
 // NAS via SNMP (read-only): volumes from HOST-RESOURCES-MIB (any NAS/Linux with SNMP), plus health, temperature,
 // disks and RAID from the Synology MIB and the QNAP MIB where available.
 import { openSnmp, walk, getValues, text } from './snmpwalk.js';
+import { readUpsValues } from './ups.js';
 
 const HR_STORAGE = '1.3.6.1.2.1.25.2.3.1';        // .2 type, .3 descr, .4 allocation unit, .5 size, .6 used
 const FIXED_DISK = '1.3.6.1.2.1.25.2.1.4';
@@ -90,19 +91,21 @@ export async function readNas(ip, communities, { port = 161 } = {}) {
   const s = await openSnmp(ip, communities, { port });
   if (!s) throw new Error('snmp');
   try {
-    const [storage, syn, synDisks, synRaids, qnap, qnapDisks] = await Promise.all([
+    const [storage, syn, synDisks, synRaids, qnap, qnapDisks, ups] = await Promise.all([
       walk(s, HR_STORAGE, { max: 600 }),
       getValues(s, Object.values(SYN)),
       walk(s, SYN_DISK, { max: 400 }),
       walk(s, SYN_RAID, { max: 200 }),
       getValues(s, Object.values(QNAP)),
       walk(s, QNAP_DISK, { max: 400 }),
+      // UPS on the NAS (Synology UPS server) or a UPS-MIB the NAS passes on
+      readUpsValues(s).catch(() => null),
     ]);
     const volumes = parseStorage(storage);
     const isSyn = SYN.model in syn || synDisks.size > 0;
     const isQnap = !isSyn && (QNAP.model in qnap || qnapDisks.size > 0);
     if (!volumes.length && !isSyn && !isQnap) throw new Error('noNasMib');
-    const out = { vendor: isSyn ? 'synology' : isQnap ? 'qnap' : 'generic', volumes, disks: [], raids: [], snmp: s.version };
+    const out = { vendor: isSyn ? 'synology' : isQnap ? 'qnap' : 'generic', volumes, disks: [], raids: [], snmp: s.version, ups: ups || null };
     if (isSyn) {
       out.model = text(syn[SYN.model], 60);
       out.serial = text(syn[SYN.serial], 60);
@@ -136,4 +139,15 @@ export function nasProblems(d, usageThreshold = 90) {
   for (const x of d.disks || []) if (x.bad) p.push({ key: `disk:${x.name}`, kind: 'disk', name: x.name, status: x.status });
   for (const v of d.volumes || []) if (v.pct >= usageThreshold) p.push({ key: `vol:${v.name}`, kind: 'volume', name: v.name, pct: v.pct });
   return p;
+}
+
+/** A UPS with its own network card: only the UPS values (read only) */
+export async function readUpsDevice(ip, communities, { port = 161 } = {}) {
+  const s = await openSnmp(ip, communities, { port });
+  if (!s) throw new Error('snmp');
+  try {
+    const ups = await readUpsValues(s);
+    if (!ups) throw new Error('noUpsMib');
+    return { ups, model: ups.model, serial: ups.serial, firmware: ups.firmware, vendor: ups.vendor, snmp: s.version };
+  } finally { s.close(); }
 }

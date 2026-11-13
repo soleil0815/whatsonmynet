@@ -104,6 +104,17 @@ Devices of type *Printer*, *Switch* and *NAS* are queried via SNMP (read-only). 
 
 ![NAS](img/nas-en.png)
 
+### UPS (uninterruptible power supply)
+
+WhatsOnMyNet reads UPS values along the way, without anything to set up. The values are always the same: **on mains or battery**, **battery charge**, **how long the battery lasts** and **load**. With **Add sensor** you pick e.g. "UPS: mains or battery" (alarm as soon as it runs on battery) or "UPS runtime left (min)".
+
+- **UPS at a Synology** (USB or network): when the UPS service of the Synology is on, the NAS area shows a *UPS* section. It is read over the same SNMP as the NAS. You do not have to add WhatsOnMyNet as a trusted device in the UPS server.
+- **UPS with its own network card:** APC, or any card with the standard UPS-MIB, e.g. Eaton, CyberPower or Riello. Set the device in the inventory to type *UPS*, then it is read by SNMP like switches and NAS. Serial number, model and firmware go into the inventory.
+- **UPS at a Linux machine:** when NUT (`upsc`) or apcupsd (`apcaccess`) already runs there, the machine script reads the values locally.
+- **UPS on USB at a Windows machine:** Windows sees it like a battery, and the machine script sends the values along. On laptops this is the built-in battery, so the section is called *UPS or battery* there.
+
+A UPS at a **QNAP** does not give its values over SNMP, so WhatsOnMyNet shows no UPS there. Shutting down and control stay with the UPS software; WhatsOnMyNet only reads.
+
 ### Network map
 
 The *Network map* shows from MAC tables and LLDP which device hangs at which port and how the switches are connected. Simple switches without SNMP show up as a branch behind the port they are plugged into. Behind routers the scan reads the ARP table of the routers via SNMP, so the MAC address stays the identity there too.
@@ -245,7 +256,7 @@ The **scan** now also recognises these devices better by their model names: UniF
 
 ## Windows and Linux machines by script (without agent)
 
-Servers and PCs can be monitored without an agent: a small script on the machine reports **CPU, RAM, drives, uptime and services** every 5 minutes. It installs nothing, loads nothing, opens no port and needs no account - it only talks to WhatsOnMyNet. On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
+Servers and PCs can be monitored without an agent: a small script on the machine reports **CPU, RAM, drives, uptime and services** every 5 minutes, plus a connected **UPS** (see above). It installs nothing, loads nothing, opens no port and needs no account - it only talks to WhatsOnMyNet. On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
 
 **A single machine:** *Monitoring* → **Add monitor** → **Machine by script (Windows/Linux)** → choose the machine. On the device page the same works with **Monitor** (kind of check *Machine by script*) or *More* → **Monitor with script**. Then Windows or Linux → **Create script**.
 
@@ -258,6 +269,8 @@ Servers and PCs can be monitored without an agent: a small script on the machine
 **Many machines at once:** *Settings → Machine scripts* → **Shared script**. You roll out this one script by software distribution, a startup script by group policy or Ansible. Each report is matched to its device in the inventory (MAC address, machine name, IP). Machines that are not in the inventory yet show up there under *Unknown machines* - nothing is created on its own.
 
 **Failed services:** Windows - services that start automatically and stopped with an error code (trigger-start services that stopped normally do not count); Linux - systemd services in the state *failed*.
+
+**New version of the script:** when an update brings new values (e.g. the UPS), create the current script under *Settings → Machine scripts* in the row of the existing entry with **New script** and simply run or roll it out again. It overwrites the old copy and the scheduled task. The old key is blocked from then on, so roll it out right away.
 
 **Removing again:** every script comes with an **uninstall script** (in the script dialog under *Remove again* and under *Settings → Machine scripts*). It removes the scheduled task or cron entry and the script - run or distribute it the same way. Afterwards the machine is as before. Deleting or recreating a script under *Settings → Machine scripts* locks the old key.
 
