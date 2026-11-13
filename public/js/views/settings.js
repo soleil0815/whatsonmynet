@@ -383,13 +383,17 @@ function proxmoxDetail(x) {
   const head = h('div', { class: 'actions', style: { marginBottom: '10px' } },
     !x.last_ok ? h('span', { class: 'note warn', style: { margin: 0 } }, x.last_error) : h('span', { class: 'muted small' }, `${t('prn.checked')}: ${fmtDate(x.last_at, getLang())}`),
     btn(t('sens.add'), { class: 'btn btn-sm', onclick: sensor }, 'plus'));
+  // Token without read rights: Proxmox shows almost nothing instead of refusing – say what is missing and how to fix it
+  const rights = x.last_ok && (d.missing || []).length ? h('div', { class: 'note warn' }, h('div', {},
+    h('strong', {}, t('px.missing', { privs: d.missing.join(', ') })), h('br'),
+    t(d.kind === 'pbs' ? 'px.missingPbs' : 'px.missingPve', { token: x.token_id, user: String(x.token_id || '').split('!')[0] }))) : null;
   if (d.kind === 'pve') {
     const running = (d.guests || []).filter((g) => g.status === 'running').length;
-    return h('div', {}, head,
+    return h('div', {}, head, rights,
       h('h3', { class: 'sub-title' }, t('px.nodes')),
       h('ul', { class: 'port-macs' }, (d.nodes || []).map((n) => h('li', {}, h('strong', {}, n.name),
         h('span', { class: `badge ${n.online ? 'badge-ok' : 'badge-bad'}` }, n.online ? 'online' : 'offline'),
-        n.online ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu} % · RAM ${n.mem} %`) : null))),
+        n.online && (n.cpu !== null || n.mem !== null) ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu ?? '–'} % · RAM ${n.mem ?? '–'} %`) : null))),
       h('h3', { class: 'sub-title' }, t('px.storages')),
       h('div', { class: 'supplies' }, (d.storages || []).filter((s) => s.total).map((s) => meter(`${s.name} · ${s.node}`, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
       h('h3', { class: 'sub-title' }, t('px.guests', { running, n: (d.guests || []).length })),
@@ -399,7 +403,7 @@ function proxmoxDetail(x) {
         h('span', { class: `badge ${b.ok ? 'badge-ok' : b.end ? 'badge-bad' : ''}` }, b.ok ? 'OK' : b.status), h('span', { class: 'mono small' }, b.vmid ? `VM ${b.vmid}` : t('px.allGuests')),
         h('span', { class: 'muted small' }, `${b.node} · ${fmtDate(new Date(b.start * 1000).toISOString(), getLang())}`)))) : h('p', { class: 'muted small' }, t('px.noBackups')));
   }
-  return h('div', {}, head,
+  return h('div', {}, head, rights,
     h('h3', { class: 'sub-title' }, t('px.datastores')),
     h('div', { class: 'supplies' }, (d.datastores || []).map((s) => meter(s.name, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
     h('h3', { class: 'sub-title' }, t('px.groups', { n: (d.groups || []).length })),
@@ -417,14 +421,18 @@ async function proxmox(body, _s, reload) {
   const edit = (x) => {
     const kind = select('kind', [['pve', 'Proxmox VE'], ['pbs', 'Proxmox Backup Server']], x?.kind || 'pve');
     const url = input('url', x?.url || '', { required: true, class: 'mono', placeholder: 'https://pve01.firma.local:8006' });
-    kind.addEventListener('change', () => { url.placeholder = kind.value === 'pbs' ? 'https://pbs01.firma.local:8007' : 'https://pve01.firma.local:8006'; });
+    const tokenId = input('token_id', x?.token_id || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: (x?.kind || 'pve') === 'pbs' ? 'whatsonmynet@pbs!womn' : 'whatsonmynet@pve!womn' });
+    kind.addEventListener('change', () => {
+      url.placeholder = kind.value === 'pbs' ? 'https://pbs01.firma.local:8007' : 'https://pve01.firma.local:8006';
+      tokenId.placeholder = kind.value === 'pbs' ? 'whatsonmynet@pbs!womn' : 'whatsonmynet@pve!womn';
+    });
     const form = h('form', { class: 'form' },
       h('div', { class: 'form-grid' },
         field(t('px.name'), input('name', x?.name || '', { required: true, maxlength: 80, placeholder: 'pve01' })),
         field(t('px.kind'), kind)),
       field(t('px.url'), url),
       h('div', { class: 'form-grid' },
-        field(t('px.tokenId'), input('token_id', x?.token_id || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: 'monitor@pve!womn' })),
+        field(t('px.tokenId'), tokenId),
         field(t('px.secret'), input('secret', '', { type: 'password', autocomplete: 'new-password', required: !x?.has_secret, placeholder: x?.has_secret ? '••••••' : '' }), x?.has_secret ? t('set.smtpPasswordSet') : null)),
       h('p', { class: 'muted small', style: { margin: 0 } }, t('px.tokenHint')),
       field(t('px.ca'), h('textarea', { name: 'ca', rows: 3, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false' }, x?.ca || ''), t('px.caHint')),

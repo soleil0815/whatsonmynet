@@ -109,8 +109,14 @@ The check runs over SMB 2/3: sign in, read the share (or the folder or file), as
 
 Under *Settings → Proxmox* WhatsOnMyNet reads Proxmox through its API – nothing is installed there.
 
-1. In Proxmox VE: *Datacenter → Permissions → API Tokens*, "Privilege Separation" on, give the token the role **PVEAuditor** on `/`. On the Backup Server: *Configuration → Access Control → API Token*, role **Audit**.
-2. In WhatsOnMyNet enter the address (`https://pve01:8006` or `:8007`), token ID (`monitor@pve!womn`) and secret.
+1. In Proxmox VE under *Datacenter → Permissions*:
+   - Add a **user**: `whatsonmynet`, realm *Proxmox VE authentication server* (it needs no password).
+   - Add an **API token**: user `whatsonmynet@pve`, token ID **only** `womn`, "Privilege Separation" on. Copy the secret right away – it is shown only once.
+   - **Permissions**: role **PVEAuditor** on the path `/` (propagate on) – **twice**: as user permission for `whatsonmynet@pve` and as token permission for `whatsonmynet@pve!womn`. With separated privileges only what user *and* token have counts.
+   - Or in the shell of a node:
+     `pveum user add whatsonmynet@pve` · `pveum acl modify / --users whatsonmynet@pve --roles PVEAuditor` · `pveum user token add whatsonmynet@pve womn --privsep 1` · `pveum acl modify / --tokens 'whatsonmynet@pve!womn' --roles PVEAuditor`
+   - Backup Server: the same under *Configuration → Access Control* with the role **Audit** (user `whatsonmynet@pbs`).
+2. In WhatsOnMyNet enter the address (`https://pve01:8006` or `:8007`), the **full** token ID (`whatsonmynet@pve!womn`) and the secret. If the token lacks rights, the detail view says which.
 3. For the self-signed certificate paste the content of `/etc/pve/pve-root-ca.pem` (VE) or `/etc/proxmox-backup/proxy.pem` (Backup Server).
 
 Nodes, storage, VMs and containers, backups, datastores and failed tasks are shown. "Add sensor" watches e.g. "VM 101 running" or "last backup older than 26 hours".

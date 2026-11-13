@@ -109,8 +109,14 @@ Geprüft wird über SMB 2/3: anmelden, die Freigabe (oder den Ordner bzw. die Da
 
 Unter *Einstellungen → Proxmox* liest WhatsOnMyNet Proxmox über dessen API – dort wird nichts installiert.
 
-1. In Proxmox VE: *Rechenzentrum → Berechtigungen → API-Token* anlegen, „Privilegien trennen“ an, dem Token die Rolle **PVEAuditor** auf `/` geben. Beim Backup Server: *Konfiguration → Zugriffskontrolle → API-Token*, Rolle **Audit**.
-2. In WhatsOnMyNet Adresse (`https://pve01:8006` bzw. `:8007`), Token-ID (`monitor@pve!womn`) und Geheimnis eintragen.
+1. In Proxmox VE unter *Rechenzentrum → Berechtigungen*:
+   - **Benutzer** anlegen: `whatsonmynet`, Realm *Proxmox VE authentication server* (ein Passwort braucht er nicht).
+   - **API-Token** anlegen: Benutzer `whatsonmynet@pve`, Token-ID **nur** `womn`, „Privilegien trennen“ an. Das Geheimnis sofort kopieren – es wird nur einmal angezeigt.
+   - **Berechtigungen**: Rolle **PVEAuditor** auf den Pfad `/` (Propagate an) – **zweimal**: als Benutzer-Berechtigung für `whatsonmynet@pve` und als Token-Berechtigung für `whatsonmynet@pve!womn`. Mit getrennten Privilegien gilt nur, was Benutzer *und* Token haben.
+   - Oder in der Shell eines Knotens:
+     `pveum user add whatsonmynet@pve` · `pveum acl modify / --users whatsonmynet@pve --roles PVEAuditor` · `pveum user token add whatsonmynet@pve womn --privsep 1` · `pveum acl modify / --tokens 'whatsonmynet@pve!womn' --roles PVEAuditor`
+   - Backup Server: dasselbe unter *Konfiguration → Zugriffskontrolle* mit der Rolle **Audit** (Benutzer `whatsonmynet@pbs`).
+2. In WhatsOnMyNet Adresse (`https://pve01:8006` bzw. `:8007`), die **vollständige** Token-ID (`whatsonmynet@pve!womn`) und das Geheimnis eintragen. Fehlen dem Token Rechte, sagt die Detailansicht, welche.
 3. Für das selbstsignierte Zertifikat den Inhalt von `/etc/pve/pve-root-ca.pem` (VE) bzw. `/etc/proxmox-backup/proxy.pem` (Backup Server) einfügen.
 
 Angezeigt werden Knoten, Speicher, VMs und Container, Sicherungen, Datastores und fehlgeschlagene Aufgaben. „Sensor anlegen“ überwacht z. B. „VM 101 läuft“ oder „letzte Sicherung älter als 26 Stunden“.

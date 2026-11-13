@@ -60,11 +60,27 @@ export function apiGet(host, path, timeoutMs = 15000) {
 }
 
 /** Reads a PVE cluster/node */
+// Read rights a monitoring token needs (roles PVEAuditor / Audit). Proxmox does not refuse a token without them – it
+// just shows almost nothing (nodes without values, no VMs, no storage) – so the missing ones are named in the interface.
+const NEEDED = { pve: ['Sys.Audit', 'VM.Audit', 'Datastore.Audit'], pbs: ['Sys.Audit', 'Datastore.Audit'] };
+
+/** Effective rights of the token (GET /access/permissions) → missing ones, or null if they cannot be read */
+export async function missingRights(host, kind) {
+  try {
+    const perms = await apiGet(host, '/access/permissions');
+    const have = new Set();
+    for (const privs of Object.values(perms || {})) for (const [k, v] of Object.entries(privs || {})) if (v) have.add(k);
+    return NEEDED[kind].filter((p) => !have.has(p));
+  } catch {
+    return null;
+  }
+}
+
 export async function readPve(host) {
   const res = await apiGet(host, '/cluster/resources');
   const nodes = []; const storages = []; const guests = [];
   for (const r of res || []) {
-    if (r.type === 'node') nodes.push({ name: r.node, online: r.status === 'online', cpu: Math.round((r.cpu || 0) * 100), mem: pct(r.mem, r.maxmem), disk: pct(r.disk, r.maxdisk), uptime: r.uptime || 0 });
+    if (r.type === 'node') nodes.push({ name: r.node, online: r.status === 'online', cpu: typeof r.cpu === 'number' ? Math.round(r.cpu * 100) : null, mem: pct(r.mem, r.maxmem), disk: pct(r.disk, r.maxdisk), uptime: r.uptime || 0 });
     else if (r.type === 'storage') storages.push({ name: r.storage, node: r.node, active: r.status === 'available', used: r.disk || 0, total: r.maxdisk || 0, pct: pct(r.disk, r.maxdisk) });
     else if (r.type === 'qemu' || r.type === 'lxc') guests.push({ vmid: r.vmid, name: r.name || String(r.vmid), kind: r.type, node: r.node, status: r.status, template: !!r.template, cpu: Math.round((r.cpu || 0) * 100), mem: pct(r.mem, r.maxmem) });
   }
@@ -78,7 +94,7 @@ export async function readPve(host) {
     } catch (e) { log.debug(`Proxmox ${host.name}: tasks of ${n.name}: ${e.message}`); }
   }
   backups.sort((a, b) => b.start - a.start);
-  return { kind: 'pve', nodes, storages: storages.sort((a, b) => a.name.localeCompare(b.name)), guests: guests.filter((g) => !g.template).sort((a, b) => a.vmid - b.vmid), backups: backups.slice(0, 100) };
+  return { kind: 'pve', missing: await missingRights(host, 'pve'), nodes, storages: storages.sort((a, b) => a.name.localeCompare(b.name)), guests: guests.filter((g) => !g.template).sort((a, b) => a.vmid - b.vmid), backups: backups.slice(0, 100) };
 }
 
 /** Reads a Proxmox Backup Server */
@@ -99,7 +115,7 @@ export async function readPbs(host) {
     failed = ((await apiGet(host, `/nodes/localhost/tasks?errors=true&limit=100&since=${since}`)) || [])
       .filter((t) => t.status && t.status !== 'OK').map((t) => ({ type: t.worker_type, id: t.worker_id || '', start: t.starttime, status: String(t.status).slice(0, 200) }));
   } catch (e) { log.debug(`PBS ${host.name}: tasks: ${e.message}`); }
-  return { kind: 'pbs', datastores, groups: groups.sort((a, b) => `${a.store}/${a.type}/${a.id}`.localeCompare(`${b.store}/${b.type}/${b.id}`, undefined, { numeric: true })), failed };
+  return { kind: 'pbs', missing: await missingRights(host, 'pbs'), datastores, groups: groups.sort((a, b) => `${a.store}/${a.type}/${a.id}`.localeCompare(`${b.store}/${b.type}/${b.id}`, undefined, { numeric: true })), failed };
 }
 
 /** Everything a Proxmox sensor can watch: [{ metric, key, name, value, unit, kind, op, threshold }] */
