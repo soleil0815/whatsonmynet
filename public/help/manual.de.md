@@ -226,7 +226,7 @@ Auch der **Scan** erkennt diese Geräte jetzt besser an ihren Modellnamen: UniFi
 
 Server und PCs lassen sich ohne Agent überwachen: Ein kleines Skript auf dem Rechner meldet alle 5 Minuten **CPU, RAM, Laufwerke, Laufzeit und Dienste**. Es installiert nichts, lädt nichts nach, öffnet keinen Port und braucht kein Konto - es spricht nur mit WhatsOnMyNet. Unter Windows ist es ein PowerShell-Skript (läuft als SYSTEM), unter Linux ein POSIX-sh-Skript (braucht `sh`, `awk` und `curl`, root ist nicht nötig).
 
-**Ein einzelner Rechner:** Geräteseite → *Mehr* → **Per Skript überwachen** → Windows oder Linux → **Skript erzeugen**.
+**Ein einzelner Rechner:** *Monitoring* → **Monitor anlegen** → **Rechner per Skript (Windows/Linux)** → Rechner wählen. Auf der Geräteseite geht es genauso über **Überwachen** (Art der Prüfung *Rechner per Skript*) oder *Mehr* → **Per Skript überwachen**. Dann Windows oder Linux → **Skript erzeugen**.
 
 1. **Skript herunterladen** (es enthält Adresse und Schlüssel - nur dieses eine Mal angezeigt).
 2. Einmal ausführen - es richtet sich selbst ein:

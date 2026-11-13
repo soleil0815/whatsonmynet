@@ -226,7 +226,7 @@ The **scan** now also recognises these devices better by their model names: UniF
 
 Servers and PCs can be monitored without an agent: a small script on the machine reports **CPU, RAM, drives, uptime and services** every 5 minutes. It installs nothing, loads nothing, opens no port and needs no account - it only talks to WhatsOnMyNet. On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
 
-**A single machine:** device page → *More* → **Monitor with script** → Windows or Linux → **Create script**.
+**A single machine:** *Monitoring* → **Add monitor** → **Machine by script (Windows/Linux)** → choose the machine. On the device page the same works with **Monitor** (kind of check *Machine by script*) or *More* → **Monitor with script**. Then Windows or Linux → **Create script**.
 
 1. **Download script** (it holds the address and the key - shown only this once).
 2. Run it once - it sets itself up:
