@@ -530,13 +530,12 @@ export function createApi(ctx) {
     res.json(adPublic());
   });
   // Test: service account + search; with a password also the user's own sign-in. Shows groups and the resulting role.
+  // Test with the values of the form (also unsaved): every step with its result
   r.post('/settings/ad/test', admin, async (req, res) => {
     const username = line(req.body.username, 120);
-    if (!username) throw new HttpError(400, 'err.username');
-    const password = str(req.body.password, 1024);
-    const info = await ctx.directory.verify(username, password, { checkPassword: !!password });
-    audit(req, 'settings.ad.test', username);
-    res.json({ dn: info.dn, username: info.username, display_name: info.display_name, email: info.email, role: info.role, groups: info.groups.slice(0, 200), passwordChecked: !!password });
+    const out = await ctx.directory.test(req.body.settings || {}, username, str(req.body.password, 1024));
+    audit(req, 'settings.ad.test', username || '-');
+    res.json(out);
   });
   const adPublic = () => {
     const { bindPassword, ca, ...cfg } = ctx.directory.config();
