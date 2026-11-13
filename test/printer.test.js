@@ -44,6 +44,8 @@ test('reads a printer via SNMP (fake agent)', async () => {
     assert.deepEqual(r.supplies.map((s) => [s.color, s.pct]), [['black', 12], ['cyan', 75], ['', 80]]);
     assert.equal(r.supplies[2].receptacle, true);
     assert.deepEqual(r.display, ['Bereit']);
+    assert.equal(r.serial, 'E12345A6N789012');
+    assert.equal(r.model, 'Fake Laser 4000 series');
   } finally { agent.close(); }
 });
 

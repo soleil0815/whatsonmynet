@@ -3,7 +3,7 @@ import snmp from 'net-snmp';
 const RO = snmp.MaxAccess['read-only'];
 const I = snmp.ObjectType.Integer, S = snmp.ObjectType.OctetString;
 
-export function startPrinterAgent(port, { supplies = [], pages = 12345, errBytes = [0x00, 0x00], status = 3, display = 'Bereit' } = {}) {
+export function startPrinterAgent(port, { supplies = [], pages = 12345, errBytes = [0x00, 0x00], status = 3, display = 'Bereit', model = 'Fake Laser 4000 series', serial = 'E12345A6N789012' } = {}) {
   const agent = snmp.createAgent({ port, address: '127.0.0.1' }, () => {});
   agent.getAuthorizer().addCommunity('public');
   const mib = agent.getMib();
@@ -27,5 +27,12 @@ export function startPrinterAgent(port, { supplies = [], pages = 12345, errBytes
   mib.addTableRow('hrPrinter', [1, status, Buffer.from(errBytes)]);
   table('display', '1.3.6.1.2.1.43.16.5.1', [[3, 'dDev', I], [1, 'dIdx', I], [2, 'dText', S]]);
   mib.addTableRow('display', [1, 1, display]);
+  // hrDeviceDescr (model) and prtGeneralSerialNumber, both for device index 1
+  mib.registerProvider({ name: 'hrDevice', type: snmp.MibProviderType.Table, oid: '1.3.6.1.2.1.25.3.2.1', maxAccess: snmp.MaxAccess['not-accessible'],
+    tableColumns: [{ number: 1, name: 'hdIdx', type: I, maxAccess: RO }, { number: 3, name: 'hdDescr', type: S, maxAccess: RO }], tableIndex: [{ columnName: 'hdIdx' }] });
+  mib.addTableRow('hrDevice', [1, model]);
+  mib.registerProvider({ name: 'prtGeneral', type: snmp.MibProviderType.Table, oid: '1.3.6.1.2.1.43.5.1.1', maxAccess: snmp.MaxAccess['not-accessible'],
+    tableColumns: [{ number: 30, name: 'gIdx', type: I, maxAccess: RO }, { number: 17, name: 'gSerial', type: S, maxAccess: RO }], tableIndex: [{ columnName: 'gIdx' }] });
+  mib.addTableRow('prtGeneral', [1, serial]);
   return { close: () => agent.close(), mib };
 }
