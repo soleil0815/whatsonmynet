@@ -84,7 +84,7 @@ export async function readPve(host) {
   const res = await apiGet(host, '/cluster/resources');
   const nodes = []; const storages = []; const guests = [];
   for (const r of res || []) {
-    if (r.type === 'node') nodes.push({ name: r.node, online: r.status === 'online', cpu: typeof r.cpu === 'number' ? Math.round(r.cpu * 100) : null, mem: pct(r.mem, r.maxmem), disk: pct(r.disk, r.maxdisk), uptime: r.uptime || 0 });
+    if (r.type === 'node') nodes.push({ name: r.node, online: r.status === 'online', cpu: typeof r.cpu === 'number' ? Math.round(r.cpu * 100) : null, mem: pct(r.mem, r.maxmem), memUsed: r.mem || 0, memTotal: r.maxmem || 0, disk: pct(r.disk, r.maxdisk), uptime: r.uptime || 0 });
     else if (r.type === 'storage') storages.push({ name: r.storage, node: r.node, active: r.status === 'available', used: r.disk || 0, total: r.maxdisk || 0, pct: pct(r.disk, r.maxdisk) });
     else if (r.type === 'qemu' || r.type === 'lxc') guests.push({ vmid: r.vmid, name: r.name || String(r.vmid), kind: r.type, node: r.node, status: r.status, template: !!r.template, cpu: Math.round((r.cpu || 0) * 100), mem: pct(r.mem, r.maxmem) });
   }
@@ -128,18 +128,18 @@ export function proxmoxMetrics(data) {
   if (!data) return out;
   if (data.kind === 'pve') {
     for (const n of data.nodes || []) {
-      out.push({ metric: 'nodeOnline', key: n.name, name: n.name, value: n.online ? 'online' : 'offline', kind: 'state' });
+      out.push({ metric: 'nodeOnline', key: n.name, name: n.name, value: n.online ? 'online' : 'offline', kind: 'state', uptime: n.uptime || 0, cpu: n.cpu, mem: n.mem });
       out.push({ metric: 'nodeCpu', key: n.name, name: n.name, value: n.cpu, unit: '%', kind: 'number', op: 'ge', threshold: 90 });
-      out.push({ metric: 'nodeMem', key: n.name, name: n.name, value: n.mem, unit: '%', kind: 'number', op: 'ge', threshold: 90 });
+      out.push({ metric: 'nodeMem', key: n.name, name: n.name, value: n.mem, unit: '%', kind: 'number', op: 'ge', threshold: 90, used: n.memUsed, total: n.memTotal });
     }
-    for (const s of data.storages || []) out.push({ metric: 'storage', key: `${s.node}/${s.name}`, name: `${s.name} (${s.node})`, value: s.pct, unit: '%', kind: 'number', op: 'ge', threshold: 85 });
+    for (const s of data.storages || []) out.push({ metric: 'storage', key: `${s.node}/${s.name}`, name: `${s.name} (${s.node})`, value: s.pct, unit: '%', kind: 'number', op: 'ge', threshold: 85, used: s.used, total: s.total });
     for (const g of data.guests || []) {
-      out.push({ metric: 'guestRunning', key: String(g.vmid), name: `${g.vmid} ${g.name}`, value: g.status, kind: 'state' });
+      out.push({ metric: 'guestRunning', key: String(g.vmid), name: `${g.vmid} ${g.name}`, value: g.status, kind: 'state', node: g.node, cpu: g.cpu, mem: g.mem });
       out.push({ metric: 'backupAge', key: String(g.vmid), name: `${g.vmid} ${g.name}`, value: backupAgeHours(data, g.vmid), unit: 'h', kind: 'number', op: 'gt', threshold: 26 });
     }
     out.push({ metric: 'backupFailed', key: '', name: '', value: (data.backups || []).filter((b) => !b.ok && b.end && Date.now() / 1000 - b.start < 86400).length, kind: 'number', op: 'gt', threshold: 0 });
   } else {
-    for (const d of data.datastores || []) out.push({ metric: 'datastore', key: d.name, name: d.name, value: d.pct, unit: '%', kind: 'number', op: 'ge', threshold: 85 });
+    for (const d of data.datastores || []) out.push({ metric: 'datastore', key: d.name, name: d.name, value: d.pct, unit: '%', kind: 'number', op: 'ge', threshold: 85, used: d.used, total: d.total });
     for (const g of data.groups || []) {
       out.push({ metric: 'groupAge', key: `${g.store}/${g.type}/${g.id}`, name: `${g.type}/${g.id}${g.comment ? ` (${g.comment})` : ''} - ${g.store}`,
         value: g.last ? Math.round((Date.now() / 1000 - g.last) / 3600) : null, unit: 'h', kind: 'number', op: 'gt', threshold: 26 });
