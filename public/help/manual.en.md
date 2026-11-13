@@ -1,6 +1,6 @@
 # WhatsOnMyNet - Manual
 
-WhatsOnMyNet finds what runs on your network and keeps only what you adopt in the inventory. It also monitors devices, services and websites, reads printers, switches, NAS and Proxmox, and reports by e-mail, messenger, push to the phone or webhook when something is wrong.
+WhatsOnMyNet finds what runs on your network and keeps only what you adopt in the inventory. It also monitors devices, services and websites, reads printers, switches, NAS and hypervisors (Proxmox, VMware, Hyper-V …), and reports by e-mail, messenger, push to the phone or webhook when something is wrong.
 
 ![Overview](img/dashboard-en.png)
 
@@ -52,7 +52,7 @@ A monitor checks regularly (20 seconds to 24 hours) and reports only after sever
 - **Docker container** (through a socket proxy, *Settings → Docker*): running, restarting all the time, health check "unhealthy"
 - **Databases**: MariaDB/MySQL, PostgreSQL, Redis/Valkey - sign-in and one harmless query
 - **Network drive (SMB)**: Windows shares and NAS - see below
-- **Sensor (device value)**, **SNMP value (OID)** and **Proxmox** - see below
+- **Sensor (device value)**, **SNMP value (OID)** and **Virtualization** (Proxmox, VMware, Hyper-V …) - see below
 
 On the device page "Monitor" creates a fitting monitor. If the IP of a device changes, its monitors follow. If you rename the device, its monitors and sensors take the new name too, so an alarm names it as it is called now (a monitor with a name of your own without the device name stays as it is).
 
@@ -116,7 +116,7 @@ The check runs over SMB 2/3: sign in, read the share (or the folder or file), as
 
 ![Proxmox](img/proxmox-en.png)
 
-WhatsOnMyNet reads Proxmox VE and the Proxmox Backup Server through their built-in interface (API). Nothing is installed on Proxmox. WhatsOnMyNet gets a user of its own there that may **only read**, and a key for it (API token). The dialog *Monitoring → Proxmox → Add Proxmox server* shows the same steps, with a button to copy.
+WhatsOnMyNet reads Proxmox VE and the Proxmox Backup Server through their built-in interface (API). Nothing is installed on Proxmox. WhatsOnMyNet gets a user of its own there that may **only read**, and a key for it (API token). The dialog *Monitoring → Virtualization → Add host → Proxmox VE* shows the same steps, with a button to copy.
 
 ### Step 1: prepare Proxmox (once)
 
@@ -158,8 +158,8 @@ On the Backup Server it works the same under *Configuration → Access Control*:
 
 ### Step 2: enter it in WhatsOnMyNet
 
-1. *Monitoring → Proxmox* → **Add Proxmox server**.
-2. Give it a name and choose the kind (Proxmox VE or Backup Server).
+1. *Monitoring → Virtualization* → **Add host** → *Proxmox VE* or *Proxmox Backup Server*.
+2. Give it a name.
 3. Enter the **address** the way you open Proxmox in the browser, e.g. `https://192.168.1.10:8006` (Backup Server: port `8007`).
 4. Click **Fetch certificate**. WhatsOnMyNet shows the fingerprint of the Proxmox certificate. Compare it - Proxmox VE: click the node → *System → Certificates* → row `pve-ssl.pem`; Backup Server: *Dashboard* → *Show Fingerprint*. If it matches, **Fingerprint matches - trust**.
 5. The **token ID** is already filled in (`whatsonmynet@pve!womn` or `whatsonmynet@pbs!womn`). Paste the copied secret into **Token secret**.
@@ -175,6 +175,31 @@ In the detail view **Add sensor** - e.g. "VM 101 running", "storage local-lvm be
 - **"sign-in refused (401)"**: token ID or secret are wrong. Delete the token in Proxmox, add it again and enter the new secret.
 - **Notice "The token lacks read rights"**: usually *Privilege Separation* stayed ticked on the token. The notice shows two commands - paste them into the Proxmox shell, Enter, then **Query now**.
 - **"certificate changed"**: Proxmox got a new certificate. *Edit* → **Fetch certificate** → confirm.
+
+## More hypervisors: VMware, XCP-ng, Hyper-V, Nutanix, oVirt, KVM
+
+Under *Monitoring → Virtualization → Add host* further hypervisors are offered beside Proxmox. All appear the same way: hosts with CPU and RAM, storage, VMs - and sensors can be added from everything ("host online", "CPU esx01", "storage vsan", "VM dc01 running"). It only reads.
+
+**Asked through their interface** - an account that may only read is enough; enter the address, **Fetch certificate**, compare the fingerprint, enter the account:
+
+| Hypervisor | Account with read rights | Address |
+|---|---|---|
+| **VMware ESXi / vCenter** | user with role *Read-only*, given at the top of the inventory, "propagate to children" | vCenter or ESXi, e.g. `https://vcenter.firma.local` |
+| **XCP-ng / XenServer** | with AD: role *read-only*; without AD there is only `root` | pool master, e.g. `https://xcp01.firma.local` |
+| **Nutanix AHV** | Prism user with role *Viewer* | Prism with port, e.g. `https://prism.firma.local:9440` |
+| **oVirt / RHV / OLVM** | `whatsonmynet@internal` with role *ReadOnlyAdmin* (commands are in the dialog) | engine, e.g. `https://engine.firma.local` |
+
+**Hyper-V and KVM/libvirt report on their own.** Neither has an interface to ask. Instead a small script on the host sends load, volumes or storage pools and VMs every 5 minutes. It only reads and needs no open port on the host.
+
+1. *Add host* → **Microsoft Hyper-V** or **KVM / libvirt**, give a name, save.
+2. The dialog shows the script with a key of its own (only this once) - **Download script**.
+3. **Hyper-V:** on the host open *PowerShell as administrator* and run the lines shown. They put the script into `C:\ProgramData\WhatsOnMyNet` and add a scheduled task that starts it every 5 minutes as SYSTEM. In a cluster on every node - all nodes land in the same entry.
+   **KVM:** copy the script onto the host and run the lines shown as root (installs it and adds a cron entry). It needs `virsh`, `awk` and `curl`; it reads with `virsh -r`.
+4. After a few seconds the host appears. If it does not report for more than 15 minutes it counts as offline - a sensor "host online" then raises the alarm.
+
+If the key is lost or should be renewed: **New script** - the old one stops working then.
+
+With the self-signed certificate of WhatsOnMyNet the script trusts exactly this certificate (built in); with a certificate of a real CA it checks as usual.
 
 ## Reports
 
