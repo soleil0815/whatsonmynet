@@ -11,7 +11,7 @@ import { renderScan } from './views/scan.js';
 import { renderLocations } from './views/locations.js';
 import { renderTopology } from './views/topology.js';
 import { renderHelp } from './views/help.js';
-import { renderSettings } from './views/settings.js';
+import { renderSettings, renderProxmox, renderReports } from './views/settings.js';
 import { renderAccount } from './views/account.js';
 import { renderMonitoring } from './views/monitoring.js';
 
@@ -50,6 +50,8 @@ const ROUTES = [
   [/^\/monitoring(?:\/(\d+))?$/, renderMonitoring, 'monitoring'],
   [/^\/monitoring\/(maintenance)$/, (main, sub) => renderMonitoring(main, null, sub), 'monitoring'],
   [/^\/locations$/, renderLocations, 'locations'],
+  [/^\/proxmox$/, renderProxmox, 'proxmox'],
+  [/^\/reports$/, renderReports, 'reports'],
   [/^\/topology$/, renderTopology, 'topology'],
   [/^\/help$/, renderHelp, 'help'],
   [/^\/settings(?:\/([a-z]+))?$/, renderSettings, 'settings'],
@@ -62,19 +64,25 @@ function sidebar(active) {
     'aria-current': active === key ? 'page' : null }, h('span', { html: icon(ico) }), t(`nav.${key}`), extra);
   return h('aside', { class: 'side', id: 'side' },
     h('a', { class: 'brand', href: '/', 'data-link': true, 'aria-label': 'WhatsOnMyNet' }, h('span', { html: LOGO_MARK }), wordmark()),
+    // Grouped: what you look at (network) and what watches for you (monitoring); settings and help at the bottom
     h('nav', { class: 'nav', 'aria-label': t('nav.menu') },
       link('/', 'dashboard', 'dashboard'),
+      h('div', { class: 'nav-group' }, t('nav.groupNetwork')),
       link('/inventory', 'inventory', 'inventory'),
       link('/scan', 'scan', 'radar', state.waiting ? h('span', { class: 'badge badge-new', title: t('dash.waiting') }, state.waiting) : null),
-      link('/monitoring', 'monitoring', 'pulse', state.down ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.down) : null),
       link('/topology', 'topology', 'switch'),
       link('/locations', 'locations', 'location'),
-      u.isAdmin ? link('/settings', 'settings', 'settings') : null,
+      h('div', { class: 'nav-group' }, t('nav.groupWatch')),
+      link('/monitoring', 'monitoring', 'pulse', state.down ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.down) : null),
+      u.canEdit ? link('/proxmox', 'proxmox', 'hypervisor') : null,
+      u.isAdmin ? link('/reports', 'reports', 'mail') : null,
     ),
     h('div', { class: 'side-foot' },
+      h('nav', { class: 'nav' },
+        u.isAdmin ? link('/settings', 'settings', 'settings') : null,
+        link('/help', 'help', 'help')),
       h('div', { class: 'who' }, h('strong', {}, u.display_name || u.username), t(`role.${u.role}`)),
       h('nav', { class: 'nav' },
-        link('/help', 'help', 'help'),
         link('/account', 'account', 'user'),
         h('a', { href: '#', onclick: async (e) => { e.preventDefault(); await post('/logout').catch(() => {}); state.user = null; navigate('/login'); } },
           h('span', { html: icon('logout') }), t('nav.logout'))),

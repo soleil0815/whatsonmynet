@@ -29,7 +29,7 @@ export function addSwitch(mib, { ports, fdb }) {
     mib.addTableRow('ifXTable', [p.idx, p.name, p.speed || 1000, p.alias || '']);
     mib.addTableRow('basePort', [p.idx, p.idx]);
   }
-  mib.addTableRow('ifTable', [1000, 'CPU', 24, 1, 1]); // loopback – must be ignored
+  mib.addTableRow('ifTable', [1000, 'CPU', 24, 1, 1]); // loopback - must be ignored
   table(mib, 'qfdb', '1.3.6.1.2.1.17.7.1.2.2.1', [[101, 'fid'], [102, 'm1'], [103, 'm2'], [104, 'm3'], [105, 'm4'], [106, 'm5'], [107, 'm6']], [[2, 'qPort', I]]);
   for (const f of fdb) mib.addTableRow('qfdb', [f.vlan, ...f.mac.split(':').map((x) => parseInt(x, 16)), f.port]);
 }

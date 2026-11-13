@@ -10,7 +10,7 @@ const REARM = 10; // a supply is "replaced" when it rises this many points above
 
 /**
  * Decides which supplies to report. alerts: { supplyKey: 'low' | 'empty' } of earlier reports.
- * Returns { events, alerts } – events: [{ supply, empty }]
+ * Returns { events, alerts } - events: [{ supply, empty }]
  */
 export function supplyAlerts(supplies, previous, threshold) {
   const alerts = { ...previous };
@@ -51,7 +51,7 @@ export function createPrinters({ db, settings, channels }) {
     return { at: row.at, ok: !!row.ok, error: row.error, ...data, pages30: pagesSince(row.device_id, 30) };
   }
 
-  /** Pages printed in the last `days` days (from the daily counter) – null if not known yet */
+  /** Pages printed in the last `days` days (from the daily counter) - null if not known yet */
   function pagesSince(deviceId, days) {
     const rows = db.prepare('SELECT day, count FROM printer_pages WHERE device_id=? ORDER BY day DESC LIMIT ?').all(deviceId, days + 1);
     if (rows.length < 2) return null;

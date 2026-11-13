@@ -1,7 +1,7 @@
 // Nightly light scan and the notice about unknown devices.
 //
 // Once a night (setting "lightscan.time", local time) all subnets of all locations are scanned lightly: only ARP,
-// NetBIOS and ping – no ports, no SNMP. Known devices get their new IP. Devices seen for the very first time are
+// NetBIOS and ping - no ports, no SNMP. Known devices get their new IP. Devices seen for the very first time are
 // reported once through the notification channels; after that they wait in the scan result (adopt or ignore).
 import { log } from '../lib/log.js';
 
@@ -53,13 +53,13 @@ export function createNightly({ db, settings, scanner, channels }) {
 
   /**
    * After every network or light scan: remember all devices that are not in the inventory. Those seen for the first
-   * time ever are reported (only after light scans – a manual scan shows them on screen anyway).
+   * time ever are reported (only after light scans - a manual scan shows them on screen anyway).
    */
   async function afterScan({ id, kind, status }) {
     if (!['network', 'light'].includes(kind) || status === 'failed') return [];
     const rows = db.prepare("SELECT ip, mac, vendor, hostname FROM scan_results WHERE scan_id=? AND status='new'").all(id);
     const ts = new Date().toISOString();
-    // The very first scan after the update only learns what is already there – no flood of "new" devices
+    // The very first scan after the update only learns what is already there - no flood of "new" devices
     const baseline = !settings.get('lightscan.baseline');
     if (baseline) settings.set('lightscan.baseline', true);
     const fresh = [];

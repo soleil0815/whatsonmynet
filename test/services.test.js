@@ -107,7 +107,7 @@ test('database checks report refused connections cleanly', async () => {
   assert.match((await postgresCheck({ host: '127.0.0.1', port: 1 }, 3)).message, /connection refused/);
 });
 
-// Real servers – only where the CI provides them (WOMN_TEST_MYSQL=host:port:user:password etc.)
+// Real servers - only where the CI provides them (WOMN_TEST_MYSQL=host:port:user:password etc.)
 const real = (name) => { const v = process.env[name]; if (!v) return null; const [host, port, user, password] = v.split(':'); return { host, port: Number(port), user, password }; };
 test('real MariaDB', { skip: !real('WOMN_TEST_MYSQL') }, async () => {
   const c = real('WOMN_TEST_MYSQL');

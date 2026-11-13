@@ -26,7 +26,7 @@ export function agentConfig(env = process.env) {
   const server = String(env.WOMN_AGENT_SERVER || '').trim().replace(/\/+$/, '');
   const token = String(env.WOMN_AGENT_TOKEN || '').trim();
   if (!/^https:\/\/[^\s/]+(:\d+)?$/i.test(server)) throw new Error('WOMN_AGENT_SERVER must be https://<central server>[:port]');
-  if (!/^[A-Za-z0-9_-]{20,200}$/.test(token)) throw new Error('WOMN_AGENT_TOKEN is missing or invalid – create one under Settings → Scan agents');
+  if (!/^[A-Za-z0-9_-]{20,200}$/.test(token)) throw new Error('WOMN_AGENT_TOKEN is missing or invalid - create one under Settings → Scan agents');
   let ca = '';
   let fingerprint = '';
   const raw = String(env.WOMN_AGENT_CA || '').trim();
@@ -34,16 +34,16 @@ export function agentConfig(env = process.env) {
     try {
       ca = raw.startsWith('-----BEGIN') ? raw : Buffer.from(raw, 'base64').toString('utf8');
       fingerprint = new crypto.X509Certificate(ca).fingerprint256;
-    } catch { throw new Error('WOMN_AGENT_CA is not a certificate – copy it again from the central server (Settings → Scan agents)'); }
+    } catch { throw new Error('WOMN_AGENT_CA is not a certificate - copy it again from the central server (Settings → Scan agents)'); }
   }
   return { server, token, ca, fingerprint, interval: Math.max(15, Math.min(3600, Number(env.WOMN_AGENT_INTERVAL) || 60)) };
 }
 
 /**
  * HTTPS agent. With WOMN_AGENT_CA the central certificate is the only trusted one (pinned): the chain is checked
- * against it and the server must present exactly this certificate – then the name in it does not matter (the agent
+ * against it and the server must present exactly this certificate - then the name in it does not matter (the agent
  * may use an IP address). Without, the normal check against public CAs applies. The TLS check always happens
- * before anything – the token included – is sent.
+ * before anything - the token included - is sent.
  */
 export function makeHttpsAgent(cfg) {
   if (!cfg.ca) return new https.Agent({ keepAlive: false });
@@ -114,15 +114,15 @@ async function main() {
   let state = {};
   try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { /* first start */ }
   const save = () => { try { fs.mkdirSync(config.dataDir, { recursive: true }); fs.writeFileSync(stateFile, JSON.stringify(state), { mode: 0o600 }); } catch (e) { log.warn(`State file: ${e.message}`); } };
-  log.info(`WhatsOnMyNet scan agent ${config.version} – server ${cfg.server}${cfg.ca ? ' (certificate pinned)' : ''}`);
+  log.info(`WhatsOnMyNet scan agent ${config.version} - server ${cfg.server}${cfg.ca ? ' (certificate pinned)' : ''}`);
 
   let busy = false;
   const run = async (kind, info, jobId = null) => {
-    if (!info.subnets.length) { log.warn('No subnets at the location of this agent – add them in the central server under Locations.'); return; }
+    if (!info.subnets.length) { log.warn('No subnets at the location of this agent - add them in the central server under Locations.'); return; }
     log.info(`${kind === 'light' ? 'Light scan' : 'Scan'} of ${info.subnets.join(', ')} ...`);
     const out = await scanLocally(kind, info.subnets, info.scan);
     const r = await client.report({ ...out, jobId });
-    log.info(`Sent ${out.results.length} device(s) – accepted ${r.accepted}${r.rejected ? `, refused ${r.rejected}` : ''}`);
+    log.info(`Sent ${out.results.length} device(s) - accepted ${r.accepted}${r.rejected ? `, refused ${r.rejected}` : ''}`);
   };
   const tick = async () => {
     if (busy) return;
@@ -137,7 +137,7 @@ async function main() {
         await run('light', info);
       }
     } catch (e) {
-      log.warn(`Server ${cfg.server}: ${e.message}${e.status === 401 ? ' – is the token right and the agent switched on?' : ''}`);
+      log.warn(`Server ${cfg.server}: ${e.message}${e.status === 401 ? ' - is the token right and the agent switched on?' : ''}`);
     } finally { busy = false; }
   };
   await tick();

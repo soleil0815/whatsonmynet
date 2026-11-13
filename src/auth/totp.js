@@ -1,5 +1,5 @@
 // Two-factor sign-in with an authenticator app (TOTP, RFC 6238: SHA-1, 6 digits, 30 seconds) plus one-time
-// recovery codes. Only for local accounts – Active Directory accounts use the protection of the directory.
+// recovery codes. Only for local accounts - Active Directory accounts use the protection of the directory.
 import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 
@@ -38,7 +38,7 @@ export function totpAt(secret, step) {
 }
 
 /**
- * Checks a code (the step before and after count too – clocks drift). Returns the step that matched, or null.
+ * Checks a code (the step before and after count too - clocks drift). Returns the step that matched, or null.
  * lastStep: steps up to this one were already used (a code works only once).
  */
 export function verifyTotp(secret, code, { now = Date.now(), lastStep = 0 } = {}) {

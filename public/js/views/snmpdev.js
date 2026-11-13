@@ -13,7 +13,7 @@ const fmtBytes = (n) => {
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
   return `${v.toLocaleString(getLang() === 'en' ? 'en-GB' : 'de-DE', { maximumFractionDigits: v < 10 ? 1 : 0 })} ${u[i]}`;
 };
-const stText = (v) => (t(`nas.st.${v}`) !== `nas.st.${v}` ? t(`nas.st.${v}`) : v);
+export const stText = (v) => (t(`nas.st.${v}`) !== `nas.st.${v}` ? t(`nas.st.${v}`) : v);
 const portLabel = (name) => (/^\d/.test(name) ? `${t('sw.port')} ${name}` : name);
 const fmtSpeed = (mbit) => (!mbit ? '' : mbit >= 1000 ? `${mbit / 1000} G` : `${mbit} M`);
 
@@ -54,7 +54,7 @@ export function switchPanel(device) {
     const up = ports.filter((p) => p.status === 'up').length;
     const grid = h('div', { class: 'ports-grid', role: 'list' }, ports.filter((p) => !p.lag).map((p) => h('button', {
       type: 'button', role: 'listitem', class: `port-sq ${p.status === 'up' ? 'up' : p.admin === 'down' ? 'off' : 'down'}${p.macs.length ? ' has' : ''}`,
-      title: `${p.name}${p.alias ? ` – ${p.alias}` : ''}: ${p.status}${p.macs.length ? ` · ${p.macs.length} MAC` : ''}`,
+      title: `${p.name}${p.alias ? ` - ${p.alias}` : ''}: ${p.status}${p.macs.length ? ` · ${p.macs.length} MAC` : ''}`,
       'aria-label': `${p.name}: ${p.status}`,
       onclick: (e) => { box.querySelectorAll('.port-sq.sel').forEach((x) => x.classList.remove('sel')); e.currentTarget.classList.add('sel'); showPort(p); },
     }, h('span', { class: 'num' }, p.name.replace(/^.*?(\d+(?:\/\d+)*)$/, '$1').slice(-5)), p.macs.length ? h('i', {}, p.macs.length) : null)));

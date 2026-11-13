@@ -9,7 +9,7 @@ import { log } from './lib/log.js';
 export class DatabaseTooNewError extends Error {}
 export class WrongKeyError extends Error {}
 
-// Each entry raises user_version by one. Never change an entry once released – only append.
+// Each entry raises user_version by one. Never change an entry once released - only append.
 export const MIGRATIONS = [
   // 1: first version
   `
@@ -243,7 +243,7 @@ export const MIGRATIONS = [
     PRIMARY KEY (device_id, day)
   );
   `,
-  // 4: Docker hosts; monitors get the types docker/mysql/postgres/redis (table rebuilt – SQLite cannot change a CHECK)
+  // 4: Docker hosts; monitors get the types docker/mysql/postgres/redis (table rebuilt - SQLite cannot change a CHECK)
   { foreignKeysOff: true, sql: `
   CREATE TABLE docker_hosts (
     id INTEGER PRIMARY KEY,
@@ -295,7 +295,7 @@ export const MIGRATIONS = [
   ALTER TABLE monitors_new RENAME TO monitors;
   CREATE INDEX monitors_device ON monitors(device_id);
   ` },
-  // 5: switches and NAS via SNMP – latest status, MAC table of the switches (where is a device plugged in?)
+  // 5: switches and NAS via SNMP - latest status, MAC table of the switches (where is a device plugged in?)
   `
   CREATE TABLE snmp_status (
     device_id INTEGER PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
@@ -355,7 +355,7 @@ export const MIGRATIONS = [
   );
   CREATE INDEX agent_jobs_agent ON agent_jobs(agent_id, done_at);
   `,
-  // 9: planned reports by e-mail (e.g. weekly printer supplies for the office) – neutral, without a link to here
+  // 9: planned reports by e-mail (e.g. weekly printer supplies for the office) - neutral, without a link to here
   `
   CREATE TABLE reports (
     id INTEGER PRIMARY KEY,

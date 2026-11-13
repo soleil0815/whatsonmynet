@@ -14,7 +14,7 @@ const TLS_OPTIONS = { minVersion: 'TLSv1.2' };
 
 function listen(server, port, label) {
   return new Promise((resolve, reject) => {
-    server.once('error', (e) => reject(new Error(`${label} port ${port}: ${e.code === 'EADDRINUSE' ? 'already in use – choose another port in .env' : e.message}`)));
+    server.once('error', (e) => reject(new Error(`${label} port ${port}: ${e.code === 'EADDRINUSE' ? 'already in use - choose another port in .env' : e.message}`)));
     server.listen(port, config.bind, () => resolve());
   });
 }
@@ -23,7 +23,7 @@ async function main() {
   log.info(`WhatsOnMyNet ${config.version} starting (data: ${config.dataDir})`);
   if (config.baseUrlInvalid) log.warn('WOMN_BASE_URL is ignored: it has to start with https:// (e.g. https://womn.firma.local:8743).');
   if (config.composeVersion && config.composeVersion < COMPOSE_VERSION) {
-    log.warn('docker-compose.yml is outdated – take the current one from the release (or from /app/deploy in the image).');
+    log.warn('docker-compose.yml is outdated - take the current one from the release (or from /app/deploy in the image).');
   }
   fs.mkdirSync(config.dataDir, { recursive: true });
   initMasterKey();
@@ -51,7 +51,7 @@ async function main() {
     log.info('New certificate is active');
   };
   await listen(httpsServer, config.httpsPort, 'HTTPS');
-  log.info(`HTTPS on port ${config.httpsPort}${config.baseUrl ? ` – ${config.baseUrl}` : ''}`);
+  log.info(`HTTPS on port ${config.httpsPort}${config.baseUrl ? ` - ${config.baseUrl}` : ''}`);
 
   let httpServer = null;
   if (config.httpPort) {

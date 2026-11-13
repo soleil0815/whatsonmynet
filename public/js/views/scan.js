@@ -233,7 +233,7 @@ async function renderResult(main, id) {
         h('th', { class: 'hide-sm' }, t('col.vendor')), h('th', { class: 'hide-sm' }, t('col.ports')))),
       h('tbody', {}, open.map((r) => {
         const o = overrides[r.id] || (overrides[r.id] = {});
-        // The name shown is the name used – also when the user does not touch it
+        // The name shown is the name used - also when the user does not touch it
         if (o.name === undefined) o.name = suggest(r);
         const cb = h('input', { type: 'checkbox', checked: selected.has(r.id), 'aria-label': r.ip, onchange: (e) => { if (e.target.checked) selected.add(r.id); else selected.delete(r.id); renderTabs(); } });
         const typeSel = select('type', typeOptions(types), o.type || r.detected_type, { class: 'inline', 'aria-label': t('col.type'), onchange: (e) => { o.type = e.target.value; } });

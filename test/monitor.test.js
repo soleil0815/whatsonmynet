@@ -197,7 +197,7 @@ test('maintenance windows', () => {
 });
 
 test('notification texts and webhook template', () => {
-  assert.equal(eventText({ kind: 'down', monitor: { name: 'pve1' }, message: 'timeout (10 s)' }, 'de'), '🔴 pve1 ist nicht erreichbar – timeout (10 s)');
+  assert.equal(eventText({ kind: 'down', monitor: { name: 'pve1' }, message: 'timeout (10 s)' }, 'de'), '🔴 pve1 ist nicht erreichbar - timeout (10 s)');
   assert.equal(eventText({ kind: 'up', monitor: { name: 'pve1' }, downtimeMin: 5 }, 'en'), '🟢 pve1 is up again (down for 5 min)');
   const body = renderTemplate('{"chat":"x","text":"{{text}}","n":"{{name}}"}', { text: 'a "quoted"\nline', name: 'NAS' });
   assert.deepEqual(JSON.parse(body), { chat: 'x', text: 'a "quoted"\nline', n: 'NAS' });

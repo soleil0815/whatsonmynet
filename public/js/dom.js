@@ -1,4 +1,4 @@
-// Small DOM helpers. Text is always set as text (never as HTML) – only the fixed icons are SVG markup.
+// Small DOM helpers. Text is always set as text (never as HTML) - only the fixed icons are SVG markup.
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {

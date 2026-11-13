@@ -4,8 +4,7 @@ import { get, post } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
-import { monitorDot } from './monitoring.js';
-import { pageHead, typeChip, presenceDot, select, input, field, typeOptions, formData, btn, suggestionLists, wireModelAutofill } from './common.js';
+import { pageHead, select, input, field, typeOptions, formData, btn, suggestionLists, wireModelAutofill } from './common.js';
 
 const VIEW_KEY = 'womn-inv-view';
 
@@ -20,6 +19,10 @@ export async function renderInventory(main) {
   try { view = localStorage.getItem(VIEW_KEY) || 'list'; } catch { /* storage blocked */ }
 
   const q = input('q', params.get('q') || '', { type: 'search', placeholder: t('inv.search'), 'aria-label': t('inv.search') });
+  // Quick filters as chips: all, with problems, the most common kinds (the type list stays for everything else)
+  let quick = params.get('filter') === 'problems' ? 'problems' : '';
+  const chips = h('div', { class: 'inv-chips', role: 'group', 'aria-label': t('inv.filterType') });
+  let counts = null;
   const typeSel = select('type', [['', `${t('inv.filterType')}: ${t('all')}`], ['telematik', t('type.telematik')], ...typeOptions(types)], params.get('type') || '', { 'aria-label': t('inv.filterType') });
   const locSel = select('location', [['', `${t('inv.filterLocation')}: ${t('all')}`], ['none', t('inv.noLocation')], ...locations.map((l) => [String(l.id), l.name])], params.get('location') || '', { 'aria-label': t('inv.filterLocation') });
   const count = h('span', { class: 'count' });
@@ -31,15 +34,36 @@ export async function renderInventory(main) {
     t(`inv.view.${v}`))));
 
   const exportQuery = () => new URLSearchParams(Object.entries({ q: q.value.trim(), type: typeSel.value, location: locSel.value }).filter(([, v]) => v)).toString();
-  const csvLink = h('a', { class: 'btn', href: '#', download: true }, h('span', { html: icon('download') }), t('inv.exportCsv'));
-  const jsonLink = h('a', { class: 'btn btn-ghost', href: '/api/devices/export.json', download: true }, t('inv.exportJson'));
+  const csvLink = h('a', { href: '#', download: true }, t('inv.exportCsv'));
+  const jsonLink = h('a', { href: '/api/devices/export.json', download: true }, t('inv.exportJson'));
+  const exportMenu = h('details', { class: 'menu' }, h('summary', { class: 'btn' }, h('span', { html: icon('download') }), t('inv.export')), h('div', { class: 'menu-list' }, csvLink, jsonLink));
+
+  const problem = (d) => d.monitor === 'down' || d.presence === 'missing';
+  function renderChips() {
+    if (!counts) return;
+    const chip = (key, label, n, onclick, on, dot) => h('button', { type: 'button', class: `fchip${on ? ' on' : ''}`, 'aria-pressed': String(on), onclick },
+      dot ? h('span', { class: `dot ${dot}` }) : null, label, h('span', { class: 'chip-n' }, n));
+    const top = Object.entries(counts.byType).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    mount(chips,
+      chip('all', t('all'), counts.all, () => { quick = ''; typeSel.value = ''; load(); }, !quick && !typeSel.value),
+      counts.problems ? chip('problems', t('inv.problems'), counts.problems, () => { quick = quick === 'problems' ? '' : 'problems'; load(); }, quick === 'problems', 'missing') : null,
+      top.map(([type, n]) => chip(type, t(`type.${type}`), n, () => { typeSel.value = typeSel.value === type ? '' : type; load(); }, typeSel.value === type)));
+  }
 
   async function load() {
     const qs = exportQuery();
-    history.replaceState({}, '', `/inventory${qs ? `?${qs}` : ''}`);
+    const urlQs = [qs, quick ? `filter=${quick}` : ''].filter(Boolean).join('&');
+    history.replaceState({}, '', `/inventory${urlQs ? `?${urlQs}` : ''}`);
     csvLink.href = `/api/devices/export.csv?${qs}`;
     let list;
     try { list = await get(`/devices?${qs}`); } catch (e) { fail(e); return; }
+    // the chip numbers count the whole inventory (with the search and location applied, not the kind)
+    if (!typeSel.value) {
+      counts = { all: list.length, problems: list.filter(problem).length, byType: {} };
+      for (const d of list) counts.byType[d.type] = (counts.byType[d.type] || 0) + 1;
+    }
+    if (quick === 'problems') list = list.filter(problem);
+    renderChips();
     count.textContent = t('inv.count', { n: list.length });
     shown = list;
     for (const id of [...selected]) if (!list.some((d) => d.id === id)) selected.delete(id);
@@ -61,14 +85,14 @@ export async function renderInventory(main) {
     if (view === 'type') keys.sort((a, b) => a.localeCompare(b));
     const rows = [];
     for (const k of keys) {
-      if (view !== 'list') rows.push(h('tr', { class: 'group' }, h('td', { colspan: edit ? 9 : 8 }, `${k} · ${groups.get(k).length}`)));
+      if (view !== 'list') rows.push(h('tr', { class: 'group' }, h('td', { colspan: edit ? 7 : 6 }, `${k} · ${groups.get(k).length}`)));
       for (const d of groups.get(k)) rows.push(row(d));
     }
     mount(body, h('table', { class: 'data' },
       h('thead', {}, h('tr', {},
         edit ? h('th', { class: 'min' }, allBox) : null,
-        h('th', {}, h('span', { class: 'sr' }, t('col.status'))), h('th', {}, t('col.name')), h('th', {}, t('col.type')), h('th', {}, t('col.ip')),
-        h('th', { class: 'hide-sm' }, t('col.mac')), h('th', { class: 'hide-sm' }, t('col.vendor')), h('th', { class: 'hide-sm' }, t('col.lastSeen')), h('th', {}, h('span', { class: 'sr' }, t('open.web'))))),
+        h('th', {}, t('inv.col.device')), h('th', {}, t('col.ip')), h('th', { class: 'hide-sm' }, t('f.location')),
+        h('th', {}, t('col.status')), h('th', { class: 'hide-sm' }, t('col.lastSeen')), h('th', {}, h('span', { class: 'sr' }, t('open.web'))))),
       h('tbody', {}, rows)));
   }
 
@@ -76,17 +100,19 @@ export async function renderInventory(main) {
     const open = () => navigate(`/devices/${d.id}`);
     const box = edit ? h('input', { type: 'checkbox', checked: selected.has(d.id), 'aria-label': `${t('inv.select')}: ${d.name}`,
       onchange: (e) => { if (e.target.checked) selected.add(d.id); else selected.delete(d.id); e.target.closest('tr').classList.toggle('sel', e.target.checked); renderBulk(); } }) : null;
+    // State in words: what a person wants to know at a glance
+    const st = d.monitor === 'down' ? ['bad', t('inv.st.monitorDown')] : d.presence === 'missing' ? ['bad', t('inv.st.missing')]
+      : d.monitor === 'paused' ? ['muted', t('mon.status.paused')] : d.presence === 'online' || d.monitor === 'up' ? ['ok', t('inv.st.ok')] : ['muted', t(`presence.${d.presence}`)];
+    const sub = [t(`type.${d.type}`), d.model && d.model !== d.name ? d.model : d.vendor && d.vendor !== d.name ? d.vendor : ''].filter(Boolean).join(' · ');
     return h('tr', { class: `click${selected.has(d.id) ? ' sel' : ''}`, onclick: (e) => { if (!e.target.closest('a,input,label')) open(); } },
       edit ? h('td', { class: 'min' }, box) : null,
-      h('td', { class: 'min' }, d.monitor ? monitorDot(d.monitor) : presenceDot(d.presence)),
-      h('td', {}, h('a', { href: `/devices/${d.id}`, 'data-link': true, class: 'name', style: { color: 'inherit', textDecoration: 'none' } }, d.name),
-        d.hostname && d.hostname.split('.')[0].toLowerCase() !== d.name.toLowerCase() ? h('div', { class: 'sub' }, d.hostname) : null,
-        d.location_name ? h('div', { class: 'sub' }, d.location_name) : null),
-      h('td', {}, typeChip(d.type)),
-      h('td', { class: 'mono' }, d.ip || '–'),
-      h('td', { class: 'mono hide-sm' }, d.mac || '–'),
-      h('td', { class: 'hide-sm' }, d.vendor || (d.model ? null : h('span', { class: 'muted' }, '–')), d.model ? h('div', { class: d.vendor ? 'sub' : '' }, d.model) : null),
-      h('td', { class: 'hide-sm', title: d.last_seen ? fmtDate(d.last_seen, getLang()) : '' }, fmtAgo(d.last_seen, t)),
+      h('td', {}, h('div', { class: 'inv-dev' }, h('span', { class: `inv-ico${d.telematik ? ' ti' : ''}`, html: icon(d.type) }),
+        h('div', { style: { minWidth: 0 } }, h('a', { href: `/devices/${d.id}`, 'data-link': true, class: 'name', style: { color: 'inherit', textDecoration: 'none' } }, d.name),
+          h('div', { class: 'sub' }, sub)))),
+      h('td', { class: 'mono', title: d.mac || '' }, d.ip || '–'),
+      h('td', { class: 'hide-sm' }, d.location_name || h('span', { class: 'muted' }, '–')),
+      h('td', {}, h('span', { class: `inv-st tone-${st[0]}` }, st[1])),
+      h('td', { class: 'hide-sm muted', title: d.last_seen ? fmtDate(d.last_seen, getLang()) : '' }, fmtAgo(d.last_seen, t)),
       h('td', { class: 'min' }, d.web_url ? h('a', { class: 'icon-btn', href: d.web_url, target: '_blank', rel: 'noopener noreferrer', title: t('open.web'), 'aria-label': `${t('open.web')}: ${d.name}`, html: icon('open') }) : null));
   }
 
@@ -123,11 +149,11 @@ export async function renderInventory(main) {
   locSel.addEventListener('change', load);
 
   mount(main, h('div', { class: 'page' },
-    pageHead(t('inv.title'), null,
-      edit ? btn(t('inv.add'), { onclick: () => addDevice(locations, types, sugg) }, 'plus') : null,
-      csvLink, jsonLink),
+    pageHead(t('inv.title'), null, exportMenu,
+      edit ? btn(t('inv.add'), { class: 'btn btn-primary', onclick: () => addDevice(locations, types, sugg) }, 'plus') : null),
+    h('div', { class: 'inv-filter' }, h('div', { class: 'search' }, h('span', { html: icon('search') }), q), chips),
     h('section', { class: 'panel' },
-      h('div', { class: 'toolbar' }, h('div', { class: 'search' }, h('span', { html: icon('search') }), q), typeSel, locSel, seg, count),
+      h('div', { class: 'toolbar' }, typeSel, locations.length > 1 ? locSel : null, seg, count),
       bulk,
       body)));
   clear(body).append(h('div', { class: 'empty' }, t('loading')));
