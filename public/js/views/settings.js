@@ -7,6 +7,7 @@ import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
 import { openMonitorForm } from './monitoring.js';
 import { scriptDialog, hostScriptsSettings } from './hostscripts.js';
+import { aboutContent } from './about.js';
 
 // Grouped so that related settings stand together; Proxmox and reports have their own pages under "Monitoring"
 const GROUPS = [
@@ -1082,13 +1083,7 @@ async function audit(body) {
 }
 
 async function about(body) {
-  mount(body, panel(t('set.about'),
-    h('img', { src: document.documentElement.dataset.theme === 'dark' ? '/logo-dark.svg' : '/logo.svg', alt: 'WhatsOnMyNet', style: { height: '48px', marginBottom: '14px' } }),
-    h('p', {}, t('about.text')),
-    h('dl', { class: 'kv' },
-      h('dt', {}, t('about.version')), h('dd', {}, state.boot.version),
-      h('dt', {}, t('about.license')), h('dd', {}, 'AGPL-3.0-or-later'),
-      h('dt', {}, t('about.source')), h('dd', {}, h('a', { href: state.boot.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, state.boot.sourceUrl)))));
+  mount(body, panel(t('set.about'), aboutContent()));
 }
 
 // Notification services: grouped for the picker, with the fields each one needs
