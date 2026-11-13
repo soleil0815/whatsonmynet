@@ -328,7 +328,7 @@ const de = {
   'ign.lead': 'Diese Geräte tauchen bei Scans nicht mehr als „neu“ auf.', 'ign.empty': 'Keine ignorierten Geräte.', 'ign.remove': 'Nicht mehr ignorieren',
   'audit.empty': 'Noch keine Einträge.', 'about.version': 'Version', 'about.license': 'Lizenz', 'about.source': 'Quellcode',
   'about.title': 'Über WhatsOnMyNet', 'about.website': 'Website', 'about.whatsNew': 'Was ist neu', 'about.versionN': 'Version {v}', 'about.upcoming': 'In Arbeit (nächste Version)',
-  'about.older': 'Ältere Versionen', 'about.thanks': 'Gefällt dir WhatsOnMyNet? Über einen Kaffee freue ich mich.', 'about.coffee': 'Einen Kaffee spendieren',
+  'about.older': 'Ältere Versionen', 'about.thanks': 'Gefällt dir WhatsOnMyNet? Über einen Kaffee freue ich mich.', 'about.coffee': 'Einen Kaffee spendieren', 'about.coffeeShort': 'Kaffee spendieren',
   'about.text': 'WhatsOnMyNet ist Open Source unter der GNU Affero General Public License 3.0. Gebaut für den eigenen Einsatz - Nutzung auf eigene Verantwortung.',
   // account
   'acc.title': 'Mein Konto', 'acc.profile': 'Profil', 'acc.password': 'Passwort ändern', 'acc.current': 'Aktuelles Passwort', 'acc.new': 'Neues Passwort',
@@ -916,7 +916,7 @@ const en = {
   'ign.lead': 'These devices no longer appear as “new” in scans.', 'ign.empty': 'No ignored devices.', 'ign.remove': 'Stop ignoring',
   'audit.empty': 'No entries yet.', 'about.version': 'Version', 'about.license': 'License', 'about.source': 'Source code',
   'about.title': 'About WhatsOnMyNet', 'about.website': 'Website', 'about.whatsNew': "What's new", 'about.versionN': 'Version {v}', 'about.upcoming': 'In the works (next version)',
-  'about.older': 'Older versions', 'about.thanks': 'Do you like WhatsOnMyNet? I am happy about a coffee.', 'about.coffee': 'Buy me a coffee',
+  'about.older': 'Older versions', 'about.thanks': 'Do you like WhatsOnMyNet? I am happy about a coffee.', 'about.coffee': 'Buy me a coffee', 'about.coffeeShort': 'Buy me a coffee',
   'about.text': 'WhatsOnMyNet is open source under the GNU Affero General Public License 3.0. Built for own use - use at your own risk.',
   'acc.title': 'My account', 'acc.profile': 'Profile', 'acc.password': 'Change password', 'acc.current': 'Current password', 'acc.new': 'New password',
   'acc.changed': 'Password changed. Other sessions were signed out.',
