@@ -96,3 +96,30 @@ test('a user limited to locations: only devices of his locations, no hypervisors
   const r = await call('PUT', `/api/monitors/${mon.id}`, { type: 'sensor', device_id: pve2, options: { metric: 'hostTempMax', key: '' } }, { who: 'seg' });
   assert.equal(r.status, 403);
 });
+
+test('after the update: sensors are named after their value once (the old "Temperatur pve2" says what it watches)', async () => {
+  const { nameSensorsByValue, nameSensorsOnce } = await import('../src/monitor/sensornames.js');
+  const at = new Date().toISOString();
+  const ins = db.prepare('INSERT INTO monitors(name,type,target,device_id,interval_s,timeout_s,fail_threshold,options,status,created_at,updated_at) VALUES(?,?,?,?,300,10,1,?,?,?,?)');
+  // value changed earlier, name kept: device sensor on the NVMe, still called after the hottest of the node
+  const a = ins.run('Temperatur pve2', 'sensor', 'Temperatur', pve2, JSON.stringify({ metric: 'hostTemp', key: 'nvme/nvme0/Sensor 2', op: 'ge', threshold: 70, label: 'Temperatur' }), 'up', at, at).lastInsertRowid;
+  const b = ins.run('Knoten', 'proxmox', 'x', null, JSON.stringify({ host, metric: 'nodeCpu', key: 'pve1', op: 'ge', threshold: 90, label: 'CPU pve1' }), 'down', at, at).lastInsertRowid;
+  // a value that is gone and has no label: stays as it is
+  const c = ins.run('Mein Name', 'sensor', '', pve2, JSON.stringify({ metric: 'hostTemp', key: 'weg', op: 'ge', threshold: 70 }), 'up', at, at).lastInsertRowid;
+  const s = ctx.settings;
+  s.set('sensors.namedByValue', false);
+  const before = nameSensorsOnce(db, s);
+  assert.ok(before >= 2);
+  const row = (id) => db.prepare('SELECT name, target, status, options FROM monitors WHERE id=?').get(id);
+  assert.equal(row(a).name, 'pve2: Temperatur: NVMe nvme0 Sensor 2');
+  assert.equal(JSON.parse(row(a).options).label, 'Temperatur: NVMe nvme0 Sensor 2');
+  assert.equal(row(a).status, 'up');
+  assert.equal(row(b).name, 'CPU pve1');
+  assert.equal(row(b).status, 'down');
+  assert.equal(row(c).name, 'Mein Name');
+  // once only: a name typed afterwards stays
+  db.prepare("UPDATE monitors SET name='Eigener Name' WHERE id=?").run(a);
+  assert.equal(nameSensorsOnce(db, s), 0);
+  assert.equal(row(a).name, 'Eigener Name');
+  assert.equal(nameSensorsByValue(db) >= 1, true);
+});

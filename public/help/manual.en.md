@@ -145,7 +145,7 @@ Every value a device delivers can become a monitor of its own - with history, al
 
 **Proxmox nodes:** a node that is also in the inventory (same name, e.g. `pve2` or `pve2.firma.local`) has one common list - whether opened from the device or from the host under Virtualization: "Node pve2 online" from Proxmox and, if the Linux script runs there, every temperature, CPU, RAM, drives and services from the script. What both deliver (CPU, RAM, the highest temperature) is listed only once. Under Virtualization the list is grouped by node. Likewise a server with a management chip (Redfish) shows its hardware values and a Proxmox Backup Server its datastores and backups at the device.
 
-When editing, an existing sensor can be switched to any other value of this list, for example from "Temperature pve2" to "Temperature: NVMe nvme0 Sensor 2".
+When editing, an existing sensor can be switched to any other value of this list, for example from "Temperature pve2" to "Temperature: NVMe nvme0 Sensor 2". The name follows ("pve2: Temperature: NVMe nvme0 Sensor 2") - unless it is changed by hand in the same dialog.
 
 The kind **SNMP value (OID)** reads any SNMP value (e.g. runtime left of a UPS) and compares with less, greater, equal or "contains text".
 
