@@ -138,3 +138,32 @@ export function cleanCerts(raw) {
 /** CN of a subject ("CN=rdg.firma.de, O=…" → "rdg.firma.de") */
 export const certName = (c) => /CN=([^,]+)/i.exec(c.subject || '')?.[1]?.trim() || c.name || c.subject || c.thumb;
 export const daysLeft = (iso, now = Date.now()) => Math.floor((Date.parse(iso) - now) / 86400000);
+
+// Names of the temperature chips in words (hwmon "name"); anything else keeps its own name
+const CHIPS = { coretemp: 'CPU', k10temp: 'CPU', zenpower: 'CPU', cpu_thermal: 'CPU', nvme: 'NVMe', drivetemp: 'Disk', amdgpu: 'GPU', nouveau: 'GPU', radeon: 'GPU',
+  acpitz: 'ACPI', pch_cannonlake: 'Chipset', pch_skylake: 'Chipset', pch_cometlake: 'Chipset', pch_lewisburg: 'Chipset', thermal: 'Zone' };
+const chipName = (chip) => CHIPS[chip] || (/^(nct|it8|w83|f71|asus|gigabyte|dell_smm)/i.test(chip) ? 'Board' : /^pch_/.test(chip) ? 'Chipset' : chip);
+/** A limit in °C that makes sense (some chips report 0, -273 or 255 as "none") */
+const limit = (mC) => { const c = num(mC) === null ? null : Math.round(num(mC) / 100) / 10; return c !== null && c >= 30 && c <= 130 ? c : null; };
+
+/**
+ * Temperatures (Linux: hwmon / thermal zones, values in thousandths of a degree) →
+ * [{ key, name, c, warn }] - key stays the same over restarts, warn = the chip's own high limit or 80 °C
+ */
+export function cleanTemps(raw) {
+  const seen = new Set();
+  return list(raw, 64).map((t) => {
+    const x = obj(t);
+    if (!x) return null;
+    const c = num(x.mC) === null ? null : Math.round(num(x.mC) / 100) / 10;
+    if (c === null || c < -40 || c > 150) return null;
+    const chip = clip(x.chip, 40); const dev = clip(x.dev, 60); const label = clip(x.name, 60);
+    const key = `${chip}/${dev}/${label}`;
+    if (!chip || seen.has(key)) return null;
+    seen.add(key);
+    // NVMe: which drive (nvme0 …) - otherwise two of them look the same
+    const nvme = chip === 'nvme' && /^nvme\d+$/.test(dev) ? ` ${dev}` : '';
+    const max = limit(x.maxMC); const crit = limit(x.critMC);
+    return { key, name: `${chipName(chip)}${nvme} ${label}`.trim(), c, warn: max ?? (crit !== null ? Math.max(40, crit - 10) : 80), crit };
+  }).filter(Boolean);
+}
