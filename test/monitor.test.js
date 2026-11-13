@@ -358,8 +358,68 @@ test('migration 20 fills the long history from the stored checks', () => {
   db.prepare("INSERT INTO monitor_hourly(monitor_id,hour,ok,total,ms_sum) VALUES(1,'2026-11-12T10:00',2,3,12),(1,'2026-11-01T08:00',2,2,50)").run();
   db.prepare('UPDATE monitor_hourly SET v_n=0, v_sum=0, v_min=NULL, v_max=NULL').run();
   // Run the backfill part of the migration again on these rows
-  const sql = MIGRATIONS[MIGRATIONS.length - 1].split('\n').filter((l) => !/ALTER TABLE/.test(l)).join('\n');
+  const sql = MIGRATIONS.find((x) => typeof x === 'string' && x.includes('ADD COLUMN v_n')).split('\n').filter((l) => !/ALTER TABLE/.test(l)).join('\n');
   db.exec(sql);
   const rows = db.prepare('SELECT hour, v_n, v_sum, v_min, v_max FROM monitor_hourly ORDER BY hour').all();
   assert.deepEqual(rows.map((r) => [r.hour, r.v_n, r.v_sum, r.v_min, r.v_max]), [['2026-11-01T08:00', 2, 50, null, null], ['2026-11-12T10:00', 2, 12, 4, 8]]);
+});
+
+test('escalation: still down after the set time - once to further channels, all clear also there', async () => {
+  const db = memoryDb();
+  const sent = [];
+  const channels = {
+    notify: async (m, ev) => { sent.push(['normal', ev.kind]); return ['Telegram']; },
+    notifyIds: async (ids, ev) => { sent.push([`ids:${ids.join(',')}`, ev.kind, ev.downMin]); return ['Chef']; },
+  };
+  const store = { 'escalate.min': 30, 'escalate.channels': [7] };
+  const settings = { get: (k) => store[k] };
+  const clock = { t: new Date('2026-11-12T10:00:00Z') };
+  const mon = createMonitoring({ db, channels, maintenance: createMaintenance(db), settings, now: () => clock.t });
+  db.prepare("INSERT INTO channels(id,name,type,config,is_default,enabled,language,created_at) VALUES(3,'Telegram','telegram','{}',1,1,'de','x'),(7,'Chef','email','{}',0,1,'de','x')").run();
+  const m = await mon.create({ name: 'Firewall', type: 'tcp', target: '10.0.0.1', port: 443, fail_threshold: 1 });
+  await mon.record(m, { ok: false, message: 'timeout' });
+  assert.deepEqual(sent, [['normal', 'down']]);
+  tick(clock, 29 * 60);
+  await mon.record(m, { ok: false, message: 'timeout' });
+  assert.equal(sent.length, 1, 'not yet');
+  tick(clock, 60);
+  await mon.record(m, { ok: false, message: 'timeout' });
+  assert.deepEqual(sent[1], ['ids:7', 'escalate', 30]);
+  tick(clock, 600);
+  await mon.record(m, { ok: false, message: 'timeout' });
+  assert.equal(sent.length, 2, 'only once per outage');
+  assert.equal(db.prepare("SELECT notified FROM monitor_events WHERE monitor_id=? AND kind='escalated'").get(m.id).notified, 'Chef');
+  // Back: normal channels and the escalation channel that did not get the normal message
+  tick(clock, 60);
+  await mon.record(m, { ok: true, ms: 2, message: 'open' });
+  assert.deepEqual(sent.slice(2).map((x) => x.slice(0, 2)), [['ids:7', 'up'], ['normal', 'up']]);
+  assert.equal(mon.get(m.id).escalated_at, null);
+
+  // A new outage escalates again; own setting of the monitor wins, 0 = never
+  await mon.update(m.id, { escalate_min: 5, escalate_channels: [3] });
+  sent.length = 0;
+  await mon.record(m, { ok: false, message: 'timeout' });
+  tick(clock, 5 * 60);
+  await mon.record(m, { ok: false, message: 'timeout' });
+  assert.deepEqual(sent.map((x) => x.slice(0, 2)), [['normal', 'down'], ['ids:3', 'escalate']]);
+  tick(clock, 60);
+  await mon.record(m, { ok: true, ms: 2, message: 'open' });
+  assert.deepEqual(sent.slice(2).map((x) => x.slice(0, 2)), [['normal', 'up']], 'channel 3 got the normal message already');
+  await mon.update(m.id, { escalate_min: 0 });
+  sent.length = 0;
+  await mon.record(m, { ok: false, message: 'timeout' });
+  tick(clock, 120 * 60);
+  await mon.record(m, { ok: false, message: 'timeout' });
+  assert.deepEqual(sent.map((x) => x[1]), ['down']);
+  // Empty field = back to the setting for all monitors
+  await mon.update(m.id, { escalate_min: '', escalate_channels: [] });
+  assert.equal(mon.get(m.id).escalate_min, null);
+  tick(clock, 60);
+  await mon.record(m, { ok: false, message: 'timeout' });
+  assert.deepEqual(sent.map((x) => x[1]), ['down', 'escalate']);
+});
+
+test('escalation text', () => {
+  assert.equal(eventText({ kind: 'escalate', downMin: 30, message: 'timeout', monitor: { name: 'Firewall' } }), '🚨 Eskalation: Firewall ist seit 30 Min. nicht erreichbar - timeout');
+  assert.equal(eventText({ kind: 'escalate', downMin: 30, message: 'timeout', monitor: { name: 'Firewall' } }, 'en'), '🚨 Escalation: Firewall has been down for 30 min - timeout');
 });
