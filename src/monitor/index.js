@@ -37,7 +37,7 @@ export function certStep(days, thresholds) {
 }
 
 export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb'];
-export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed'];
+export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed', 'netOnline', 'netClients', 'netCpu', 'netMem', 'clientsTotal', 'netUpdates'];
 export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service'];
 const DB_TYPES = ['mysql', 'postgres', 'redis'];
 const SECRET_TYPES = [...DB_TYPES, 'smb'];
@@ -107,7 +107,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       if (!host || !db.prepare('SELECT 1 FROM proxmox_hosts WHERE id=?').get(host)) throw new HttpError(400, 'err.proxmoxHost');
       const metric = o.metric ?? prev.metric;
       if (!PROXMOX_METRICS.includes(metric)) throw new HttpError(400, 'err.sensorMetric');
-      const base = ['nodeOnline', 'guestRunning'].includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'proxmox' ? old : null);
+      const base = ['nodeOnline', 'guestRunning', 'netOnline'].includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'proxmox' ? old : null);
       v.options = JSON.stringify({ host, metric, key: line(o.key ?? prev.key ?? '', 200), ...base });
       v.target = (base.label || metric).slice(0, 200);
       v.port = null;

@@ -10,9 +10,10 @@
 //   the new one instead of reporting a "new device", and the history says so (purchase date/warranty may be old).
 // Every change is in the device history.
 import { line } from './lib/http.js';
+import { TYPES } from './scan/classify.js';
 
-const FIELDS = ['serial', 'model', 'vendor', 'os', 'hostname'];
-const HARDWARE = ['serial', 'model', 'vendor', 'os'];
+const FIELDS = ['serial', 'model', 'vendor', 'os', 'hostname', 'type'];
+const HARDWARE = ['serial', 'model', 'vendor', 'os', 'type'];
 // Host names also come from the scan (DNS) - they are only filled in, never kept "up to date" against it
 const FILL_ONLY = ['hostname'];
 // Placeholders some devices answer instead of a value
@@ -31,6 +32,7 @@ export function fillDevice(db, deviceId, facts, source = 'SNMP') {
   const got = {};
   for (const k of FIELDS) {
     const v = line(facts?.[k], k === 'os' ? 120 : 100).trim();
+    if (k === 'type' && !TYPES.includes(v)) continue;
     if (v && !JUNK.test(v)) got[k] = v;
   }
   // Another serial number than the one in the inventory: other hardware at this address
@@ -41,7 +43,8 @@ export function fillDevice(db, deviceId, facts, source = 'SNMP') {
   for (const k of FIELDS) {
     const v = got[k];
     if (!v) continue;
-    const cur = String(d[k] ?? '').trim();
+    // "unknown" is no real type - like an empty field
+    const cur = k === 'type' && d[k] === 'unknown' ? '' : String(d[k] ?? '').trim();
     if (same(cur, v)) { nextAuto[k] = cur; continue; }
     const followsDevice = !cur || (!FILL_ONLY.includes(k) && auto[k] !== undefined && same(auto[k], cur)) || (replaced && HARDWARE.includes(k));
     if (!followsDevice) continue;
@@ -53,7 +56,7 @@ export function fillDevice(db, deviceId, facts, source = 'SNMP') {
   const autoChanged = JSON.stringify(nextAuto) !== JSON.stringify(auto);
   if (!changes.length && !autoChanged && !set.mac) return { fields: [], replaced: false };
   const at = new Date().toISOString();
-  const who = source === 'script' ? 'Skript' : 'SNMP';
+  const who = { script: 'Skript', controller: 'Controller' }[source] || 'SNMP';
   db.transaction(() => {
     const cols = { ...set, auto_fields: JSON.stringify(nextAuto) };
     if (changes.length || replaced) cols.updated_at = at;

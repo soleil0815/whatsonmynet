@@ -238,7 +238,7 @@ export function createInventory(db) {
         }, user);
         db.prepare("UPDATE scan_results SET device_id=?, handled='adopted', status='known' WHERE id=?").run(d.id, rid);
         // What the scan guessed (model, OS, manufacturer from the MAC) may be replaced by what the device itself reports
-        const guessed = Object.fromEntries(['vendor', 'model', 'os'].filter((k) => d[k]).map((k) => [k, d[k]]));
+        const guessed = Object.fromEntries(['vendor', 'model', 'os', 'type'].filter((k) => d[k]).map((k) => [k, d[k]]));
         if (Object.keys(guessed).length) db.prepare('UPDATE devices SET auto_fields=? WHERE id=?').run(JSON.stringify(guessed), d.id);
         // Remove the device from the ignore list if it was there
         if (mac) db.prepare('DELETE FROM ignored WHERE mac=?').run(mac);
