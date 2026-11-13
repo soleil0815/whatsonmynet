@@ -22,23 +22,39 @@ export const MAX_TOTAL_HOSTS = 16384;
 const MAX_WEB_PROBES = 4;
 const ARP_SETTLE_MS = 9000;
 
-/** Checks scan targets: [{ cidr, locationId }] → normalised list or HttpError. */
+/**
+ * Checks scan targets: [{ cidr, locationId }] → normalised list or HttpError.
+ * A subnet whose addresses are all part of another target (192.168.1.0/24 inside 192.168.0.0/22) is dropped: it would
+ * be scanned twice, stored twice and counted twice against the host limit. The larger subnet keeps its location.
+ */
 export function validateTargets(targets, maxTotal = MAX_TOTAL_HOSTS) {
   const seen = new Set();
-  const out = [];
-  let total = 0;
+  const list = [];
   for (const t of targets) {
     const c = parseCidr(t.cidr);
     if (!c) throw new HttpError(400, 'err.cidr', String(t.cidr).slice(0, 40));
     if (c.hosts > MAX_PREFIX_HOSTS) throw new HttpError(400, 'err.cidrTooLarge', c.cidr);
     if (seen.has(c.cidr)) continue;
     seen.add(c.cidr);
-    total += c.hosts;
-    out.push({ cidr: c.cidr, locationId: t.locationId || null });
+    list.push({ c, locationId: t.locationId || null });
+  }
+  const covered = (a) => list.some((b) => b !== a && b.c.prefix < a.c.prefix && b.c.first <= a.c.first && b.c.last >= a.c.last);
+  const out = [];
+  let total = 0;
+  for (const t of list) {
+    if (covered(t)) continue;
+    total += t.c.hosts;
+    out.push({ cidr: t.c.cidr, locationId: t.locationId });
   }
   if (!out.length) throw new HttpError(400, 'err.noTargets');
   if (total > maxTotal) throw new HttpError(400, 'err.tooManyHosts', String(maxTotal));
   return out;
+}
+
+/** Adds the hosts of one target to the list - an address already found through an earlier (overlapping) target is skipped */
+function addHosts(all, hosts, target) {
+  const have = new Set(all.map((h) => h.ip));
+  for (const h of hosts) if (!have.has(h.ip)) { have.add(h.ip); all.push({ ...h, target }); }
 }
 
 /** Preferred address of the device's web interface (quick access button) */
@@ -72,14 +88,16 @@ export function createScanner({ db, settings, inventory }) {
    * Routed subnets have no ARP here - ask the routers/firewalls of the inventory for their ARP table instead.
    * Returns Map ip → mac (empty if switched off, no router or no SNMP).
    */
-  async function routerArp(targets) {
-    if (!settings.get('scan.routerArp') || !settings.get('scan.snmp')) return new Map();
+  async function routerArp(targets, stopped = () => false) {
+    if (stopped() || !settings.get('scan.routerArp') || !settings.get('scan.snmp')) return new Map();
     const ifaces = localInterfaces();
     const routed = targets.filter((t) => !ifaces.some((i) => cidrContains(i.cidr, t.cidr.split('/')[0])));
     if (!routed.length) return new Map();
     const routers = db.prepare("SELECT ip FROM devices WHERE type IN ('router','firewall') AND ip IS NOT NULL AND ip<>'' LIMIT 10").all();
     const out = new Map();
     for (const r of routers) {
+      // Cancelled: each router may take many seconds (SNMP time-outs) and a new scan waits for this one
+      if (stopped()) break;
       try { for (const [ip, mac] of await readRouterArp(r.ip, communities())) if (!out.has(ip)) out.set(ip, mac); } catch (e) { log.debug(`Router ARP ${r.ip}: ${e.message}`); }
     }
     if (out.size) log.info(`Router ARP: ${out.size} MAC address(es) from ${routers.length} router(s)`);
@@ -198,9 +216,9 @@ export function createScanner({ db, settings, inventory }) {
     for (const t of targets) {
       if (ctx.stopped()) break;
       const { hosts } = await discover(t, ctx);
-      for (const h of hosts) all.push({ ...h, target: t });
+      addHosts(all, hosts, t);
     }
-    const rarp = await routerArp(targets);
+    const rarp = await routerArp(targets, ctx.stopped);
     for (const h of all) if (!h.mac && rarp.has(h.ip)) { h.mac = rarp.get(h.ip); h.viaRouter = true; }
     ctx.progress.phase = 'probe';
     ctx.progress.hosts = all.length;
@@ -241,9 +259,9 @@ export function createScanner({ db, settings, inventory }) {
     for (const t of targets) {
       if (ctx.stopped()) break;
       const { hosts } = await discover(t, ctx);
-      for (const h of hosts) all.push({ ...h, target: t });
+      addHosts(all, hosts, t);
     }
-    const rarp = await routerArp(targets);
+    const rarp = await routerArp(targets, ctx.stopped);
     for (const h of all) if (!h.mac && rarp.has(h.ip)) { h.mac = rarp.get(h.ip); h.viaRouter = true; }
     ctx.progress.phase = 'probe';
     ctx.progress.hosts = all.length;

@@ -103,7 +103,11 @@ export async function readOmada(host) {
     throw new Error(`${what}: ${clip(r.json?.msg || `HTTP ${r.status}`, 160)}`);
   };
   const login = ok(await s.call('POST', `/${id}/api/v2/login`, { body: { username: host.token_id, password: host.secretPlain } }), 'sign-in');
-  if (login?.token) s.extra['Csrf-Token'] = login.token;
+  // The token goes back as a header: a controller answer with characters a header cannot carry is refused here
+  if (login?.token) {
+    if (typeof login.token !== 'string' || !/^[\x21-\x7e]{1,512}$/.test(login.token)) throw new Error('sign-in: the controller sent an unusable session token');
+    s.extra['Csrf-Token'] = login.token;
+  }
   try {
     const sites = ok(await s.call('GET', `/${id}/api/v2/sites?currentPage=1&currentPageSize=100`), 'sites')?.data || [];
     const devices = [];

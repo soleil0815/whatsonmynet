@@ -5,7 +5,12 @@
 //   It is renewed automatically 30 days before it expires (and when WOMN_BASE_URL names a new host).
 // * The admin can upload an own certificate (PEM with chain + key, or a PKCS#12/.pfx file) in the web interface.
 //   It is checked before it is used (key matches, not expired, usable by Node) and applied without restart.
-// * Files in <data>/tls: cert.pem, key.pem (0600), meta.json (source: self-signed | custom).
+// * Files in <data>/tls: cert.pem, key.pem (0600), meta.json (names, time of installing).
+// * Self-signed or uploaded is read from the certificate itself (the generated one carries the mark
+//   "O=WhatsOnMyNet (self-signed)"), never from meta.json alone: a missing or stale meta.json (crash, restored folder)
+//   must never let an uploaded certificate be replaced. Anything not provably generated here counts as uploaded.
+// * ensure, installCustom and resetToSelfSigned run one after the other (the daily ensure() waits for OpenSSL for up
+//   to 30 s - an upload finishing meanwhile must not be overwritten).
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -21,6 +26,7 @@ import { log } from './lib/log.js';
 const run = promisify(execFile);
 const RENEW_DAYS = 30;
 const SELF_SIGNED_DAYS = 825;
+const AUTO_ORG = 'O=WhatsOnMyNet (self-signed)';
 const DNS_NAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 
 export function createTls(dir = paths.tlsDir) {
@@ -29,15 +35,30 @@ export function createTls(dir = paths.tlsDir) {
   const metaFile = path.join(dir, 'meta.json');
 
   const readMeta = () => { try { return JSON.parse(fs.readFileSync(metaFile, 'utf8')); } catch { return {}; } };
+  let cached;            // describe() result; undefined = read again
+  let queue = Promise.resolve();
+  /** Runs fn after everything that changes the certificate before it has finished */
+  const serial = (fn) => { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; };
 
   function writeFiles(certPem, keyPem, meta) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    // Write next to the files and rename: never a half-written certificate
-    for (const [file, data, mode] of [[keyFile, keyPem, 0o600], [certFile, certPem, 0o644], [metaFile, JSON.stringify(meta, null, 2), 0o644]]) {
-      const tmp = `${file}.tmp`;
-      fs.writeFileSync(tmp, data, { mode });
-      fs.renameSync(tmp, file);
-    }
+    // Write everything next to the files first, then rename: never a half-written certificate, and the window in
+    // which key and certificate do not fit together is as short as it gets
+    const files = [[keyFile, keyPem, 0o600], [certFile, certPem, 0o644], [metaFile, JSON.stringify(meta, null, 2), 0o644]];
+    try {
+      for (const [file, data, mode] of files) fs.writeFileSync(`${file}.tmp`, data, { mode });
+      for (const [file] of files) fs.renameSync(`${file}.tmp`, file);
+    } finally { cached = undefined; }
+  }
+
+  /** Keeps the current files as *.<time>.bak (an uploaded certificate is never just thrown away) */
+  function backup() {
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').replace(/\..*$/, '');
+    try {
+      fs.copyFileSync(certFile, `${certFile}.${stamp}.bak`);
+      fs.copyFileSync(keyFile, `${keyFile}.${stamp}.bak`); fs.chmodSync(`${keyFile}.${stamp}.bak`, 0o600);
+    } catch { /* best effort */ }
+    return stamp;
   }
 
   /** Names for the self-signed certificate */
@@ -88,42 +109,44 @@ export function createTls(dir = paths.tlsDir) {
   }
 
   /** Creates or renews the self-signed certificate when needed. Returns true if it changed. */
-  async function ensure() {
+  const ensure = () => serial(async () => {
+    cached = undefined; // the files may have been changed from outside (restore)
     const cur = current();
     if (cur) {
+      const source = sourceOf(cur.cert);
       try {
         const info = describePem(cur.cert);
         tls.createSecureContext({ cert: cur.cert, key: cur.key });
         const daysLeft = (Date.parse(info.validTo) - Date.now()) / 86400000;
-        if (cur.meta.source === 'custom') {
+        if (source === 'custom') {
           if (daysLeft < 0) log.warn('The uploaded certificate has expired - upload a new one under Settings → HTTPS.');
           return false;
         }
         // Self-signed: renew before it expires or when the base address names a host that is missing
         const want = wantedNames();
-        const have = new Set([...(cur.meta.names?.dns || []), ...(cur.meta.names?.ips || [])]);
+        const have = new Set(info.names);
         const missing = [...want.dns, ...want.ips].filter((n) => !have.has(n));
         if (daysLeft > RENEW_DAYS && !missing.length) return false;
         log.info(daysLeft <= RENEW_DAYS ? 'Self-signed certificate expires soon - renewing' : `Self-signed certificate is missing ${missing.join(', ')} - renewing`);
         try { await generateSelfSigned(cur.key); return true; } catch (e) { log.warn(`Renewing with the same key failed (${e.message}) - a new key is made; host scripts and scan agents then need a new script / setting`); }
       } catch (e) {
-        if (cur.meta.source === 'custom') {
+        if (source === 'custom') {
           // Kept, not lost: an uploaded certificate that a newer OpenSSL refuses may still be wanted (or fixed)
-          const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
-          try { fs.copyFileSync(certFile, `${certFile}.${stamp}.bak`); fs.copyFileSync(keyFile, `${keyFile}.${stamp}.bak`); fs.chmodSync(`${keyFile}.${stamp}.bak`, 0o600); } catch { /* best effort */ }
+          const stamp = backup();
           log.error(`Uploaded certificate cannot be used (${e.message}) - falling back to a self-signed one; the old files are kept as *.${stamp}.bak`);
         }
       }
     }
     await generateSelfSigned();
     return true;
-  }
+  });
 
   /**
    * Checks an uploaded certificate and installs it. Either PEM (certificate incl. chain + private key, key may be
    * encrypted with `passphrase`) or a PKCS#12 file (`pfx` as Buffer + `passphrase`).
    */
-  async function installCustom({ certPem, keyPem, pfx, passphrase = '' }) {
+  const installCustom = (input) => serial(() => install(input));
+  async function install({ certPem, keyPem, pfx, passphrase = '' }) {
     let cert = String(certPem || '');
     let key = String(keyPem || '');
     if (pfx && pfx.length) ({ cert, key } = await pfxToPem(pfx, passphrase));
@@ -150,21 +173,38 @@ export function createTls(dir = paths.tlsDir) {
     return describe();
   }
 
-  async function resetToSelfSigned() {
+  const resetToSelfSigned = () => serial(async () => {
+    // Replacing an uploaded certificate: keep it (the admin may want it back)
+    const cur = current();
+    if (cur && sourceOf(cur.cert) === 'custom') backup();
     await generateSelfSigned();
     return describe();
-  }
+  });
 
+  /** What the certificate is; cached (HSTS asks on every request) and refreshed whenever the files are written */
   function describe() {
+    if (cached !== undefined) return cached;
     const cur = current();
-    if (!cur) return null;
+    if (!cur) return null; // not cached: the first ensure() creates the files
     try {
-      return { ...describePem(cur.cert), source: cur.meta.source || 'self-signed', installedAt: cur.meta.installedAt || null,
+      cached = { ...describePem(cur.cert), source: sourceOf(cur.cert), installedAt: cur.meta.installedAt || null,
         chain: splitPem(cur.cert).length };
-    } catch { return { source: cur.meta.source, error: true }; }
+    } catch { cached = { source: 'custom', error: true }; }
+    return cached;
   }
 
   return { ensure, current, installCustom, resetToSelfSigned, describe };
+}
+
+/**
+ * 'self-signed' only for a certificate provably generated here (self-issued with the WhatsOnMyNet mark), 'custom' for
+ * everything else - also for one that cannot be read (it is kept and backed up, never silently replaced).
+ */
+export function sourceOf(pem) {
+  try {
+    const c = new crypto.X509Certificate(splitPem(pem)[0] || pem);
+    return c.subject === c.issuer && c.subject.split('\n').includes(AUTO_ORG) ? 'self-signed' : 'custom';
+  } catch { return 'custom'; }
 }
 
 export function splitPem(text) {
