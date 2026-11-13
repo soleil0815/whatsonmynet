@@ -181,14 +181,15 @@ export async function renderDevice(main, id) {
     if (!TABS.some(([k]) => k === tab)) tab = 'state';
     history.replaceState({}, '', `${location.pathname}${tab === 'state' ? '' : `#${tab}`}`);
     mount(tabBar, TABS.map(([k, label]) => h('button', { type: 'button', role: 'tab', class: k === tab ? 'on' : '', 'aria-selected': String(k === tab), onclick: () => show(k) }, label)));
-    const views = {
-      state: () => h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || facts), h('div', { class: 'stack' }, monPanel, netShort)),
-      details: () => detailsPanel(editing),
-      monitors: () => monPanel,
-      network: () => h('div', { class: 'stack' }, detection, meta),
-      history: () => hist,
-    };
-    mount(content, views[tab]());
+    let view;
+    switch (tab) {
+      case 'details': view = detailsPanel(editing); break;
+      case 'monitors': view = monPanel; break;
+      case 'network': view = h('div', { class: 'stack' }, detection, meta); break;
+      case 'history': view = hist; break;
+      default: view = h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || facts), h('div', { class: 'stack' }, monPanel, netShort));
+    }
+    mount(content, view);
   }
 
   const more = edit ? h('details', { class: 'menu' }, h('summary', { class: 'btn', 'aria-label': t('dev.more') }, t('dev.more')),
