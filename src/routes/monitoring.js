@@ -91,6 +91,7 @@ export function createMonitoringApi(ctx) {
   r.post('/proxmox', admin, async (req, res) => { const h = ctx.proxmox.create(req.body); audit(req, 'proxmox.create', `${h.name} (${h.url})`); res.status(201).json(await ctx.proxmox.poll(h.id)); });
   r.put('/proxmox/:id', admin, async (req, res) => { const h = ctx.proxmox.update(idParam(req), req.body); audit(req, 'proxmox.update', h.name); res.json(await ctx.proxmox.poll(h.id)); });
   r.delete('/proxmox/:id', admin, (req, res) => { ctx.proxmox.remove(idParam(req)); audit(req, 'proxmox.delete', req.params.id); res.json({ ok: true }); });
+  r.post('/proxmox/cert', admin, async (req, res) => res.json(await ctx.proxmox.fetchCert(req.body?.url)));
   r.post('/proxmox/:id/poll', admin, async (req, res) => res.json(await ctx.proxmox.poll(idParam(req))));
   r.get('/proxmox/:id/metrics', editor, unscoped, (req, res) => res.json(ctx.proxmox.metrics(idParam(req))));
 

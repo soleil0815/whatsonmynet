@@ -189,3 +189,11 @@ test('a pinned certificate or CA is enough, a foreign one is refused', async () 
   assert.equal(await hs(await optsFor(read('inter') + read('root'))), 'ok', 'renewed DC certificate: the CA is enough');
   assert.notEqual(await hs(await optsFor(read('evil'))), 'ok', 'foreign CA is refused');
 });
+
+test('a self-signed certificate is never "publicly trusted"', async () => {
+  const { publiclyTrusted } = await import('../src/auth/dccert.js');
+  assert.equal(publiclyTrusted([rootC]), false);
+  assert.equal(publiclyTrusted([dcC, interC, rootC]), false);
+  const sys = new X509Certificate(tls.rootCertificates[0]);
+  assert.equal(publiclyTrusted([sys]), true);
+});
