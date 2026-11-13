@@ -37,7 +37,11 @@ function stateOf(db, deviceId) {
     return r ? { kind: 'printer', at: r.at, ok: !!r.ok, data: parse(r.data, {}) } : { kind: 'printer', data: null };
   }
   const r = db.prepare('SELECT * FROM snmp_status WHERE device_id=?').get(deviceId);
-  if (d.type === 'nas' || d.type === 'switch') return r ? { kind: r.kind, at: r.at, ok: !!r.ok, data: parse(r.data, {}) } : { kind: d.type, data: null };
+  if ((d.type === 'nas' || d.type === 'switch') && r) return { kind: r.kind, at: r.at, ok: !!r.ok, data: parse(r.data, {}) };
+  // Windows/Linux machine with the host script
+  const h = db.prepare('SELECT at, data FROM host_reports WHERE device_id=?').get(deviceId);
+  if (h) return { kind: 'host', at: h.at, ok: true, data: parse(h.data, {}) };
+  if (d.type === 'nas' || d.type === 'switch') return { kind: d.type, data: null };
   return null;
 }
 
@@ -64,6 +68,14 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
     }
     for (const r of s.data.raids || []) out.push({ metric: 'raid', key: r.name, name: r.name, value: r.status, unit: '', kind: 'state' });
     if (s.data.system) out.push({ metric: 'health', key: '', name: '', value: [s.data.system, s.data.fan, s.data.power].includes('failed') ? 'failed' : 'normal', unit: '', kind: 'state' });
+  } else if (s.kind === 'host') {
+    const x = s.data;
+    out.push({ metric: 'hostOnline', key: '', name: x.hostname || '', value: 'online', unit: '', kind: 'state' });
+    out.push({ metric: 'hostCpu', key: '', name: '', value: x.cpu, unit: '%', kind: 'number', op: 'ge', threshold: 90 });
+    out.push({ metric: 'hostMem', key: '', name: '', value: x.mem, unit: '%', kind: 'number', op: 'ge', threshold: 90 });
+    for (const dk of x.disks || []) out.push({ metric: 'hostDisk', key: dk.name, name: dk.name, value: dk.pct, unit: '%', kind: 'number', op: 'ge', threshold: nasThreshold });
+    out.push({ metric: 'servicesFailed', key: '', name: '', value: (x.services || []).filter((v) => v.failed).length, unit: '', kind: 'number', op: 'gt', threshold: 0 });
+    for (const v of x.services || []) out.push({ metric: 'service', key: v.name, name: v.display && v.display !== v.name && !v.display.includes(`(${v.name})`) ? `${v.display} (${v.name})` : v.display || v.name, value: v.state, unit: '', kind: 'state' });
   } else if (s.kind === 'switch') {
     for (const p of (s.data.ports || []).filter((x) => !x.lag)) {
       out.push({ metric: 'port', key: String(p.ifIndex), name: `${p.name}${p.alias ? ` (${p.alias})` : ''}`, value: p.status, unit: '', kind: 'state' });
@@ -85,7 +97,12 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
   if (!s) return { ok: false, ms: null, message: 'device missing' };
   if (!s.data || !s.at) return { ok: false, ms: null, message: 'no data yet' };
   if (!s.ok) return { ok: false, ms: null, message: 'device does not answer SNMP' };
-  if (Date.now() - Date.parse(s.at) > staleMin * 60 * 1000) return { ok: false, ms: null, message: 'no current data' };
+  // A host script reports every 5 minutes: 15 minutes of silence = the machine (or its scheduled task) is down
+  if (s.kind === 'host') staleMin = 15;
+  if (Date.now() - Date.parse(s.at) > staleMin * 60 * 1000) {
+    if (s.kind === 'host') return { ok: false, ms: null, message: `no report for ${Math.round((Date.now() - Date.parse(s.at)) / 60000)} min`, data: o.metric === 'hostOnline' ? { state: 'offline' } : undefined };
+    return { ok: false, ms: null, message: 'no current data' };
+  }
   const label = o.label || o.metric;
   const num = (v, unit = '', extra = {}) => ({ v, unit, extra, text: `${v}${unit ? ` ${unit}` : ''}` });
   let val = null;
@@ -107,6 +124,13 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
       return bad.length ? { ok: false, ms: null, message: `failed: ${bad.join(', ')}` } : { ok: true, ms: null, message: 'system, fans, power supply normal' }; }
     case 'port': { const p = (s.data.ports || []).find((y) => String(y.ifIndex) === String(o.key)); if (!p) return { ok: false, ms: null, message: `${label}: not found` };
       return p.status === 'up' ? { ok: true, ms: p.speed || null, message: `${label}: up${p.speed ? ` · ${p.speed} Mbit/s` : ''}` } : { ok: false, ms: null, message: `${label}: ${p.status}` }; }
+    case 'hostOnline': { const x = s.data; return { ok: true, ms: null, message: `${label}: online`, data: { state: 'online', uptime: x.uptime || 0, cpu: x.cpu ?? null, mem: x.mem ?? null } }; }
+    case 'hostCpu': val = num(s.data.cpu, '%'); break;
+    case 'hostMem': { const x = s.data; val = num(x.mem, '%', x.memTotal ? { used: x.memUsed, total: x.memTotal } : {}); break; }
+    case 'hostDisk': { const dk = (s.data.disks || []).find((y) => y.name === o.key); if (!dk) return { ok: false, ms: null, message: `${label}: not found` }; val = num(dk.pct, '%', { used: dk.used, total: dk.total }); break; }
+    case 'servicesFailed': { const f = (s.data.services || []).filter((v) => v.failed); val = num(f.length); if (f.length && compare(o.op, f.length, o.threshold)) return { ok: false, ms: f.length, message: `${label}: ${f.map((v) => v.display || v.name).slice(0, 5).join(', ')}`, data: valueData(f.length, '', o) }; break; }
+    case 'service': { const v = (s.data.services || []).find((y) => y.name === o.key); if (!v) return { ok: false, ms: null, message: `${label}: not found` };
+      return v.state === 'running' ? { ok: true, ms: null, message: `${label}: running`, data: { state: 'running' } } : { ok: false, ms: null, message: `${label}: ${v.state}`, data: { state: v.state === 'failed' ? 'failed' : 'stopped' } }; }
     case 'portErrors': { const p = (s.data.ports || []).find((y) => String(y.ifIndex) === String(o.key)); if (!p) return { ok: false, ms: null, message: `${label}: not found` }; val = num(p.inErrors); break; }
     default: return { ok: false, ms: null, message: 'unknown sensor' };
   }

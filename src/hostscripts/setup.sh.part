@@ -1,0 +1,20 @@
+# First call (by hand, ssh or Ansible): copy this script to /usr/local/sbin (root) or ~/.local/bin (any other user),
+# readable only for its owner (the key is in it), and run it every 5 minutes by cron. cron then calls the copy with
+# --run - it only reports. root is not needed for the values; a normal user is fine.
+FILE=@FILE@
+CRON=@CRON@
+if [ "$(id -u)" = 0 ]; then DEST=/usr/local/sbin/$FILE; else DEST=$HOME/.local/bin/$FILE; fi
+if [ "${1:-}" != "--run" ]; then
+  mkdir -p "$(dirname "$DEST")"
+  [ "$0" = "$DEST" ] || cp "$0" "$DEST"
+  chmod 700 "$DEST"
+  if [ "$(id -u)" = 0 ] && [ -d /etc/cron.d ]; then
+    printf '%s\n' "*/5 * * * * root $DEST --run >/dev/null 2>&1" > "/etc/cron.d/$CRON"
+    chmod 644 "/etc/cron.d/$CRON"
+  else
+    { crontab -l 2>/dev/null | grep -v "$DEST"; printf '%s\n' "*/5 * * * * $DEST --run >/dev/null 2>&1"; } | crontab -
+  fi
+  # The setup of version 0.6.0 used another cron file - remove it, so the host does not report twice
+  for old in @OLD@; do if [ "$(id -u)" = 0 ] && [ -f "/etc/cron.d/$old" ]; then rm -f "/etc/cron.d/$old"; fi; done
+  echo "WhatsOnMyNet: set up ($DEST, every 5 minutes)"
+fi

@@ -176,6 +176,8 @@ Unter *Überwachung → Virtualisierung* liest WhatsOnMyNet Proxmox VE und Proxm
 
 Weitere Hypervisoren auf derselben Seite: **VMware ESXi/vCenter** (vSphere-API), **XCP-ng/XenServer** (XAPI), **Nutanix AHV** (Prism-API v2) und **oVirt/RHV/OLVM** (REST-API) werden mit einem Konto abgefragt, das nur lesen darf. **Hyper-V** und **KVM/libvirt** melden sich selbst: ein kleines Skript (PowerShell bzw. POSIX sh mit `virsh -r`) schickt alle 5 Minuten Hosts, Speicher und VMs - mit eigenem Schlüssel, ohne offenen Port auf dem Host. Alle erscheinen gleich und liefern dieselben Sensoren.
 
+**Windows- und Linux-Rechner ohne Agent:** Ein kleines Skript (PowerShell bzw. POSIX sh) meldet alle 5 Minuten CPU, RAM, Laufwerke, Laufzeit und Dienste - kein Agent, kein offener Port, kein Konto, nichts installiert. Beim ersten Aufruf richtet es sich selbst ein (geplante Aufgabe bzw. cron), ein Deinstallationsskript entfernt es wieder. Pro Gerät (*Geräteseite → Mehr → Per Skript überwachen*) oder gemeinsam für viele Rechner zum Verteilen (*Einstellungen → Rechner-Skripte*); Meldungen werden dem Inventar über MAC, Rechnername oder IP zugeordnet.
+
 - **VE**: Knoten (online, CPU, RAM), Speicher mit Belegung, VMs und Container (läuft/gestoppt), die letzten Sicherungen (vzdump) mit Fehlern
 - **Backup Server**: Datastores mit Belegung, Sicherungsgruppen mit dem Alter der letzten Sicherung, fehlgeschlagene Aufgaben (Verify, GC …)
 - **Sensoren** wie „Knoten online“, „Speicher local-zfs über 85 %“, „VM 101 läuft“, „letzte Sicherung von VM 101 älter als 26 Stunden“, „Datastore über 85 %“ oder „fehlgeschlagene Aufgaben“
