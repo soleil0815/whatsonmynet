@@ -11,13 +11,16 @@ export const TYPES = [
 export const TELEMATIK_TYPES = new Set(['ti_connector', 'ti_terminal']);
 export const isTelematik = (type) => TELEMATIK_TYPES.has(type);
 
-const PRINTER_VENDORS = /^(HP|Brother|Kyocera|Canon|Epson|Ricoh|Xerox|Lexmark|Konica Minolta|Sharp|Oki|OKI|Toshiba TEC|Utax|Triumph-Adler|Develop|Olivetti|Zebra)/i;
+// HP(?!E): Hewlett Packard Enterprise (iLO, Aruba, ProCurve) makes no printers
+const PRINTER_VENDORS = /^(HP(?!E)|Brother|Kyocera|Canon|Epson|Ricoh|Xerox|Lexmark|Konica Minolta|Sharp|Oki|OKI|Toshiba TEC|Utax|Triumph-Adler|Develop|Olivetti|Zebra)/i;
 const NETWORK_VENDORS = /^(TP-Link|Netgear|Cisco|LANCOM|Zyxel|D-Link|MikroTik|Ubiquiti|Juniper|Aruba|HPE|Extreme|Allied Telesis|Edgecore|Hirschmann|Moxa|Mellanox)/i;
 const FIREWALL_VENDORS = /^(Fortinet|Sophos|Palo Alto|WatchGuard|SonicWall|Barracuda|Stormshield|Securepoint|Check Point|genua)/i;
 const PHONE_VENDORS = /^(Yealink|Snom|Gigaset|Polycom|Grandstream|Unify|Mitel|Auerswald|Fanvil|Avaya|Alcatel-Lucent Enterprise)/i;
-const CAMERA_VENDORS = /^(Hikvision|Axis|Dahua|Reolink|Mobotix|Hanwha|Uniview|Vivotek|Ezviz)/i;
+const CAMERA_VENDORS = /^(Hikvision|Axis|(Zhejiang )?Dahua|Reolink|Mobotix|Hanwha|Samsung Techwin|(Zhejiang )?Uniview|Vivotek|Ezviz)/i;
 const IOT_VENDORS = /^(Espressif|Shelly|Tuya|Philips Lighting|Signify|tado|Nuki|Bosch Thermotechnik|Fibaro|Sonoff|ITEAD|Murata|Particle)/i;
-const MEDIA_VENDORS = /^(Sonos|Roku|Google|Amazon|LG Electronics|Sony|Panasonic|Denon|Bose|Yamaha|Samsung Electronics)/i;
+// The OUI names are shortened (oui.js): "LG Electronics" → "LG", "Samsung Electronics" → "Samsung". LG and Samsung only as the
+// whole name - LG Innotek, LG Display, LGS Innovations, Samsung Techwin are not TVs.
+const MEDIA_VENDORS = /^(Sonos|Roku|Google|Amazon|(LG|LGE|LG Electronics|Samsung|Samsung Electronics)$|Sony|Panasonic|Denon|Bose|Yamaha)/i;
 const UPS_VENDORS = /^(APC|Eaton|Riello|Socomec|CyberPower|Legrand|Vertiv|Liebert|Online USV)/i;
 const NAS_VENDORS = /^(Synology|QNAP|Asustor|TerraMaster|Western Digital|Buffalo|Netgear ReadyNAS)/i;
 const TI_CONNECTOR_VENDORS = /^(secunet|Research Industrial Systems|RISE|CompuGroup|KoCo Connector|Telekom Healthcare)/i;
