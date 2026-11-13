@@ -37,11 +37,11 @@ function stateOf(db, deviceId) {
     return r ? { kind: 'printer', at: r.at, ok: !!r.ok, data: parse(r.data, {}) } : { kind: 'printer', data: null };
   }
   const r = db.prepare('SELECT * FROM snmp_status WHERE device_id=?').get(deviceId);
-  if ((d.type === 'nas' || d.type === 'switch') && r) return { kind: r.kind, at: r.at, ok: !!r.ok, data: parse(r.data, {}) };
+  if ((d.type === 'nas' || d.type === 'switch' || d.type === 'ups') && r) return { kind: r.kind, at: r.at, ok: !!r.ok, data: parse(r.data, {}) };
   // Windows/Linux machine with the host script
   const h = db.prepare('SELECT at, data FROM host_reports WHERE device_id=?').get(deviceId);
   if (h) return { kind: 'host', at: h.at, ok: true, data: parse(h.data, {}) };
-  if (d.type === 'nas' || d.type === 'switch') return { kind: d.type, data: null };
+  if (d.type === 'nas' || d.type === 'switch' || d.type === 'ups') return { kind: d.type, data: null };
   return null;
 }
 
@@ -83,6 +83,14 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
     for (const p of (s.data.ports || []).filter((x) => x.inErrors > 0)) {
       out.push({ metric: 'portErrors', key: String(p.ifIndex), name: p.name, value: p.inErrors, unit: '', kind: 'number', op: 'gt', threshold: p.inErrors + 1000 });
     }
+  }
+  // UPS: on the NAS, the UPS device itself or seen by a host script - always the same four values
+  const u = s.data.ups;
+  if (u) {
+    out.push({ metric: 'upsPower', key: '', name: u.model || '', value: u.status === 'battery' ? 'battery' : u.status === 'online' ? 'mains' : 'unknown', unit: '', kind: 'state' });
+    if (u.charge !== null) out.push({ metric: 'upsCharge', key: '', name: '', value: u.charge, unit: '%', kind: 'number', op: 'le', threshold: 50 });
+    if (u.runtime !== null) out.push({ metric: 'upsRuntime', key: '', name: '', value: Math.round(u.runtime / 60), unit: 'min', kind: 'number', op: 'le', threshold: 10 });
+    if (u.load !== null) out.push({ metric: 'upsLoad', key: '', name: '', value: u.load, unit: '%', kind: 'number', op: 'ge', threshold: 80 });
   }
   return out;
 }
@@ -132,6 +140,15 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
     case 'service': { const v = (s.data.services || []).find((y) => y.name === o.key); if (!v) return { ok: false, ms: null, message: `${label}: not found` };
       return v.state === 'running' ? { ok: true, ms: null, message: `${label}: running`, data: { state: 'running' } } : { ok: false, ms: null, message: `${label}: ${v.state}`, data: { state: v.state === 'failed' ? 'failed' : 'stopped' } }; }
     case 'portErrors': { const p = (s.data.ports || []).find((y) => String(y.ifIndex) === String(o.key)); if (!p) return { ok: false, ms: null, message: `${label}: not found` }; val = num(p.inErrors); break; }
+    case 'upsPower': { const u = s.data.ups; if (!u) return { ok: false, ms: null, message: `${label}: no UPS` };
+      const extra = [u.charge !== null ? `${u.charge} %` : '', u.runtime !== null ? `${Math.round(u.runtime / 60)} min` : ''].filter(Boolean).join(', ');
+      const info = { charge: u.charge, runtime: u.runtime };
+      if (u.status === 'battery') return { ok: false, ms: u.charge, message: `${label}: on battery${extra ? ` (${extra})` : ''}${u.low ? ', battery low' : ''}`, data: { state: 'battery', ...info } };
+      if (u.replace) return { ok: false, ms: u.charge, message: `${label}: replace battery`, data: { state: 'replace', ...info } };
+      return { ok: true, ms: u.charge, message: `${label}: ${u.status === 'online' ? 'on mains' : 'state unknown'}${extra ? ` (${extra})` : ''}`, data: { state: u.status === 'online' ? 'mains' : 'unknown', ...info } }; }
+    case 'upsCharge': val = num(s.data.ups?.charge ?? null, '%'); break;
+    case 'upsRuntime': { const r = s.data.ups?.runtime; val = num(r === null || r === undefined ? null : Math.round(r / 60), 'min'); break; }
+    case 'upsLoad': val = num(s.data.ups?.load ?? null, '%'); break;
     default: return { ok: false, ms: null, message: 'unknown sensor' };
   }
   if (val.v === null || val.v === undefined) return { ok: false, ms: null, message: `${label}: no value` };

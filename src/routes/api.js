@@ -273,7 +273,7 @@ export function createApi(ctx) {
     const monitors = db.prepare('SELECT id FROM monitors WHERE device_id=? ORDER BY name').all(d.id).map((m) => ctx.monitoring.get(m.id));
     res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null, host: ctx.hosts.report(d.id),
       hostScript: req.user.role === 'admin' ? ctx.hosts.list().find((t) => t.device_id === d.id) || null : undefined,
-      snmp: ['switch', 'nas'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: d.mac ? ctx.snmpDevices.locate(d.mac) : null, history: inventory.historyOf(d.id) });
+      snmp: ['switch', 'nas', 'ups'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: d.mac ? ctx.snmpDevices.locate(d.mac) : null, history: inventory.historyOf(d.id) });
   });
   r.post('/devices', editor, (req, res) => {
     if (req.scope && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');

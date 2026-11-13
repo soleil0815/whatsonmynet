@@ -38,7 +38,7 @@ export function certStep(days, thresholds) {
 
 export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb'];
 export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed', 'netOnline', 'netClients', 'netCpu', 'netMem', 'clientsTotal', 'netUpdates'];
-export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service'];
+export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service', 'upsPower', 'upsCharge', 'upsRuntime', 'upsLoad'];
 const DB_TYPES = ['mysql', 'postgres', 'redis'];
 const SECRET_TYPES = [...DB_TYPES, 'smb'];
 // Monitors that say whether a device is reachable at all - only these make sense as "everything behind it" parent
@@ -175,7 +175,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       if (!SENSOR_METRICS.includes(metric)) throw new HttpError(400, 'err.sensorMetric');
       const deviceId = old ? old.device_id : Number(input.device_id);
       if (!deviceId || !db.prepare('SELECT 1 FROM devices WHERE id=?').get(deviceId)) throw new HttpError(400, 'err.sensorDevice');
-      const base = ['printerErrors', 'health', 'disk', 'raid', 'port', 'hostOnline', 'service'].includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'sensor' ? old : null);
+      const base = ['printerErrors', 'health', 'disk', 'raid', 'port', 'hostOnline', 'service', 'upsPower'].includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'sensor' ? old : null);
       v.options = JSON.stringify({ metric, key: line(o.key ?? prev.key ?? '', 120), ...base });
       v.target = (base.label || metric).slice(0, 200);
       v.port = null;
