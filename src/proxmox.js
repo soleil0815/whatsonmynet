@@ -9,10 +9,14 @@ import { HttpError, line, str } from './lib/http.js';
 import { encrypt, decrypt } from './lib/crypto.js';
 import { log } from './lib/log.js';
 import { fetchTlsChain, describe, publiclyTrusted, toPem } from './auth/dccert.js';
+import { NET_KINDS, NET_READERS } from './netctl.js';
+import { fillDevice } from './devicefill.js';
 import { READERS, API_KINDS, PUSH_KINDS, newPushToken, pushTokenOk, cleanPush, mergePush, markStale, pushScript } from './virt.js';
 
 /** Every kind of host on the page: Proxmox, hypervisors asked through their API, hypervisors that send on their own */
-export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS];
+export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS, ...NET_KINDS];
+// Asked with user and password (everything but Proxmox and the hosts that send on their own)
+const ACCOUNT_KINDS = [...API_KINDS, ...NET_KINDS];
 
 const URL_RE = /^https:\/\/[a-z0-9.\-[\]:]+(:\d{1,5})?$/i;
 const PVE_TOKEN = /^[\w.@-]+![\w.-]+$/;   // user@realm!tokenid
@@ -141,6 +145,19 @@ export async function readPbs(host) {
 export function proxmoxMetrics(data) {
   const out = [];
   if (!data) return out;
+  if (data.netdevices) {
+    // Network controller: per device online, clients, load; all clients together
+    for (const x of data.netdevices) {
+      const name = x.name || x.mac;
+      out.push({ metric: 'netOnline', key: x.mac, name, value: x.online ? 'online' : 'offline', kind: 'state', uptime: x.uptime, cpu: x.cpu, mem: x.mem });
+      if (x.clients !== null && x.clients !== undefined) out.push({ metric: 'netClients', key: x.mac, name, value: x.clients, unit: '', kind: 'number', op: 'ge', threshold: 60 });
+      if (x.cpu !== null && x.cpu !== undefined) out.push({ metric: 'netCpu', key: x.mac, name, value: x.cpu, unit: '%', kind: 'number', op: 'ge', threshold: 90 });
+      if (x.mem !== null && x.mem !== undefined) out.push({ metric: 'netMem', key: x.mac, name, value: x.mem, unit: '%', kind: 'number', op: 'ge', threshold: 90 });
+    }
+    if (data.kind !== 'mikrotik') out.push({ metric: 'clientsTotal', key: '', name: '', value: data.clients ?? 0, unit: '', kind: 'number', op: 'lt', threshold: 1 });
+    out.push({ metric: 'netUpdates', key: '', name: '', value: data.netdevices.filter((x) => x.update).length, unit: '', kind: 'number', op: 'gt', threshold: 0 });
+    return out;
+  }
   if (data.kind !== 'pbs') {
     for (const n of data.nodes || []) {
       out.push({ metric: 'nodeOnline', key: n.name, name: n.name, value: n.online ? 'online' : 'offline', kind: 'state', uptime: n.uptime || 0, cpu: n.cpu, mem: n.mem });
@@ -189,12 +206,12 @@ export function createProxmox({ db, settings }) {
     if (!URL_RE.test(url)) throw new HttpError(400, 'err.proxmoxUrl');
     const tokenId = line(input.token_id, 200);
     // Proxmox: token ID user@realm!name; other hypervisors: the user name of a read-only account (DOMAIN\\user, user@domain …)
-    if (API_KINDS.includes(kind) ? !tokenId || /[\x00-\x1f]/.test(tokenId) : !PVE_TOKEN.test(tokenId)) throw new HttpError(400, API_KINDS.includes(kind) ? 'err.virtUser' : 'err.proxmoxToken');
+    if (ACCOUNT_KINDS.includes(kind) ? !tokenId || /[\x00-\x1f]/.test(tokenId) : !PVE_TOKEN.test(tokenId)) throw new HttpError(400, ACCOUNT_KINDS.includes(kind) ? 'err.virtUser' : 'err.proxmoxToken');
     const ca = str(input.ca, 20000).trim();
     if (ca) { try { new crypto.X509Certificate(ca); } catch { throw new HttpError(400, 'err.adCa'); } }
     let secret = old?.secret || '';
     if (typeof input.secret === 'string' && input.secret.trim()) secret = encrypt(input.secret.trim().slice(0, 200));
-    if (!secret) throw new HttpError(400, API_KINDS.includes(kind) ? 'err.virtUser' : 'err.proxmoxToken');
+    if (!secret) throw new HttpError(400, ACCOUNT_KINDS.includes(kind) ? 'err.virtUser' : 'err.proxmoxToken');
     return { name, kind, url, token_id: tokenId, secret, verify: input.verify === false ? 0 : 1, ca };
   }
 
@@ -205,12 +222,28 @@ export function createProxmox({ db, settings }) {
     // A host that sends on its own is not asked: only check whether its nodes still report
     if (PUSH_KINDS.includes(h.kind)) return checkPush(h);
     try {
-      const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : READERS[h.kind] ? await READERS[h.kind](withSecret(h)) : await readPve(withSecret(h));
+      const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : NET_READERS[h.kind] ? await NET_READERS[h.kind](withSecret(h))
+        : READERS[h.kind] ? await READERS[h.kind](withSecret(h)) : await readPve(withSecret(h));
+      if (data.netdevices) syncNetDevices(data);
       db.prepare("UPDATE proxmox_hosts SET last_at=?, last_ok=1, last_error='', data=? WHERE id=?").run(at, JSON.stringify(data), id);
     } catch (e) {
       db.prepare('UPDATE proxmox_hosts SET last_at=?, last_ok=0, last_error=? WHERE id=?').run(at, String(e.message).slice(0, 300), id);
     }
     return shape(rowOf(id));
+  }
+
+  /**
+   * Devices of a network controller → inventory (by MAC): model, serial number, firmware, manufacturer and type from
+   * the controller - the same rules as for SNMP (empty or still as reported → filled/kept current; exchanged → new).
+   * Marks each controller device with its inventory id, so the page shows what is not in the inventory yet.
+   */
+  function syncNetDevices(data) {
+    const vendor = { unifi: 'Ubiquiti', omada: 'TP-Link', mikrotik: 'MikroTik' }[data.kind];
+    for (const x of data.netdevices) {
+      const dev = x.mac ? db.prepare('SELECT id FROM devices WHERE mac=?').get(x.mac) : null;
+      x.deviceId = dev?.id || null;
+      if (dev) fillDevice(db, dev.id, { serial: x.serial, model: x.model, os: x.firmware, vendor, type: x.type }, 'controller');
+    }
   }
 
   /** Push hosts: nodes silent for 15 minutes count as offline; without any node that reports the host has an error */

@@ -204,6 +204,24 @@ If the key is lost or should be renewed: **New script** - the old one stops work
 
 With the self-signed certificate of WhatsOnMyNet the script trusts exactly this certificate (built in); with a certificate of a real CA it checks as usual.
 
+## Network controllers: UniFi, Omada, MikroTik
+
+Under *Monitoring → Network controllers → Add controller* WhatsOnMyNet reads the widespread network systems - with an account that may **only read**; enter the address, **Fetch certificate**, compare the fingerprint, enter the account. The dialog shows the steps for each system.
+
+| System | Account | Address |
+|---|---|---|
+| **UniFi Network** - UniFi OS consoles (UDM, UCG, Cloud Key Gen2+) or the installed Network app | local account (without two-factor) with role *View only*/*Site Viewer* | console, or `https://server:8443` |
+| **TP-Link Omada** - software controller, OC200/OC300 | account with role *Viewer* | usually `https://server:8043` |
+| **MikroTik RouterOS 7** - every router/switch on its own | user in a group with `read,api,rest-api` | router with service *www-ssl* |
+
+The page shows all access points, switches and gateways of each controller with model, IP, firmware (with "Update" when a new one is ready), clients and state.
+
+**Matched with the inventory:** every device that is in the inventory by its MAC address gets model, serial number, firmware, manufacturer and the right **type** from the controller - by the same rules as for SNMP (empty or still device-reported details are filled or kept current, your own different entries stay, an exchange is recognised). Devices that are not in the inventory yet carry the note *not in the inventory* - adopt them by scan.
+
+**Sensors:** "AP hall online", "Clients on AP hall", "CPU …", "RAM …", "Clients in total" and "Devices with firmware update".
+
+The **scan** now also recognises these devices better by their model names: UniFi (USW = switch, UAP/U6/U7 = access point, UDM/UCG/USG = gateway, Network app = server), Omada (EAP = access point, ER = gateway, OC200/OC300 = controller), MikroTik (CRS = switch, cAP/wAP = access point) and Aruba Instant On.
+
 ## Windows and Linux machines by script (without agent)
 
 Servers and PCs can be monitored without an agent: a small script on the machine reports **CPU, RAM, drives, uptime and services** every 5 minutes. It installs nothing, loads nothing, opens no port and needs no account - it only talks to WhatsOnMyNet. On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
