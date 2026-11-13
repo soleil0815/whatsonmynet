@@ -108,7 +108,7 @@ input.mono { font-family: var(--mono); }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
 .form-grid .full { grid-column: 1 / -1; }
 .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--r-s); overflow: hidden; }
-.seg button { border: 0; background: transparent; color: var(--ink-2); font: inherit; padding: 6px 12px; cursor: pointer; }
+.seg button { border: 0; background: transparent; color: var(--ink-2); font: inherit; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
 .seg button + button { border-left: 1px solid var(--line-2); }
 .seg button.on { background: var(--ink); color: var(--panel); font-weight: 600; }
 
@@ -116,7 +116,8 @@ input.mono { font-family: var(--mono); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-m); }
 .panel-pad { padding: 18px 20px; }
 .panel > h2:not(.section-title), .panel-head { padding: 16px 20px 0; }
-.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 560px) { .panel-head .seg { width: 100%; } .panel-head .seg button { flex: 1; padding: 6px 4px; } }
 .badge { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border-radius: 2px; font-size: 12px; font-weight: 600; background: var(--bg-2); color: var(--ink-2); white-space: nowrap; }
 .badge-new { background: var(--new-fill); color: #2A2100; }
 .badge-bad { background: var(--bad-soft); color: var(--bad); }
@@ -396,6 +397,10 @@ dialog.modal footer { display: flex; justify-content: flex-end; gap: 8px; paddin
 .page-tabs { margin-bottom: 16px; padding: 0; }
 .tabs a { color: var(--muted); padding: 11px 12px 9px; border-bottom: 3px solid transparent; margin-bottom: -1px; font: 600 15px var(--display); letter-spacing: .01em; text-decoration: none; white-space: nowrap; }
 .tabs a.on { color: var(--ink); border-bottom-color: var(--accent); }
+.mon-chart .band { fill: var(--accent); opacity: .12; stroke: none; }
+.mon-chart .avail { fill: var(--ok); opacity: .55; }
+.mon-chart .avail.warn { fill: var(--new-fill); opacity: .95; }
+.mon-chart .avail.bad { fill: var(--bad); opacity: .9; }
 .mon-chart { width: 100%; height: auto; display: block; }
 .mon-chart .line { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; }
 .mon-chart .grid { stroke: var(--line); stroke-dasharray: 3 4; }

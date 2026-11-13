@@ -67,6 +67,16 @@ On the device page "Monitor" creates a fitting monitor. If the IP of a device ch
 
 Tokens, keys and webhook addresses are stored encrypted and never shown again. Outages arrive with high priority on push services. **Maintenance windows** (once or weekly) suppress alarms.
 
+### History over months
+
+On the page of a monitor you choose the range: **24 h, 3 d, 7 d** show every single check, **30 d, 90 d, 1 y** the summary.
+
+- **Line:** the average, per 6 hours for 30 days, otherwise per day. Depending on the monitor this is the response time or the measured value, such as CPU or how full a drive is.
+- **Area:** the range from the lowest to the highest value.
+- **Strip below:** shows the availability. Green means always up or fine, yellow briefly down, red down for longer. Pointing the mouse at a section shows the date, percentage and values.
+
+Single checks are kept for 7 days, the hourly summary for a good year. For the first months after the update to 0.9: older hours only know the average, so the area appears only for new data.
+
 ### Dependencies: no alarm flood
 
 When a switch fails, every device behind it is unreachable too. So that twenty messages do not arrive at once, every monitor can **depend on** another one (form → *Depends on*, e.g. the ping of the switch or the internet router).

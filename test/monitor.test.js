@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { memoryDb, tmp } from './helpers.js';
+import { MIGRATIONS } from '../src/db.js';
 import { httpCheck, tcpCheck, statusMatcher, validStatusSpec } from '../src/monitor/checks.js';
 import { createMonitoring, certStep, parseCertDays } from '../src/monitor/index.js';
 import { createMaintenance, windowActive } from '../src/monitor/maintenance.js';
@@ -317,4 +318,48 @@ test('dependencies: the switch a device is plugged in at is suggested and can ta
   assert.equal(mon.adoptChildren(swMon.id), 2);
   assert.equal(mon.detail(swMon.id).candidates, 0);
   assert.deepEqual(mon.detail(swMon.id).dependents.map((x) => x.name), ['Kamera', 'NAS']);
+});
+
+test('long history: hourly values with lowest/highest, grouped per day for a year, raw checks only up to 7 days', async () => {
+  const { db, mon, clock } = setup({ at: new Date('2026-01-01T00:30:00Z') });
+  const m = await mon.create({ name: 'Disk C', type: 'tcp', target: '10.0.0.5', port: 22 });
+  // Three days, four checks a day: values 10/20/30 and one failed check without value on day 2
+  for (let d = 0; d < 3; d++) {
+    for (const [ok, ms] of [[true, 10], [true, 20], [true, 30], [d !== 1, d === 1 ? null : 15]]) {
+      await mon.record(m, { ok, ms, message: ok ? 'ok' : 'timeout' });
+      tick(clock, 6 * 3600);
+    }
+  }
+  const h = db.prepare('SELECT * FROM monitor_hourly WHERE monitor_id=? ORDER BY hour LIMIT 1').get(m.id);
+  assert.deepEqual([h.v_n, h.v_sum, h.v_min, h.v_max], [1, 10, 10, 10]);
+  const year = mon.detail(m.id, 8784);
+  assert.equal(year.checks.length, 0);
+  assert.equal(year.bucketHours, 24);
+  assert.equal(year.history.length, 3);
+  assert.deepEqual(year.history.map((b) => [b.ok, b.total, b.min, b.max, b.avg]), [[4, 4, 10, 30, 18.75], [3, 4, 10, 30, 20], [4, 4, 10, 30, 18.75]]);
+  assert.equal(year.uptime.span.pct, 91.67);
+  const month = mon.detail(m.id, 720);
+  assert.equal(month.bucketHours, 6);
+  assert.equal(month.history.length, 12);
+  // Up to 7 days the single checks as before
+  const week = mon.detail(m.id, 168);
+  assert.equal(week.history, undefined);
+  assert.equal(week.checks.length, 12);
+  // More than a year is cut to a year
+  assert.equal(mon.detail(m.id, 99999).history.length, 3);
+});
+
+test('migration 20 fills the long history from the stored checks', () => {
+  const db = memoryDb();
+  db.prepare("INSERT INTO monitors(id,name,type,target,created_at,updated_at) VALUES(1,'x','tcp','h',?,?)").run('2026-01-01', '2026-01-01');
+  const add = db.prepare('INSERT INTO checks(monitor_id,at,ok,ms) VALUES(1,?,?,?)');
+  add.run('2026-11-12T10:05:00.000Z', 1, 4); add.run('2026-11-12T10:35:00.000Z', 1, 8); add.run('2026-11-12T10:59:59.000Z', 0, null);
+  add.run('2026-11-12T11:00:00.000Z', 1, 100);
+  db.prepare("INSERT INTO monitor_hourly(monitor_id,hour,ok,total,ms_sum) VALUES(1,'2026-11-12T10:00',2,3,12),(1,'2026-11-01T08:00',2,2,50)").run();
+  db.prepare('UPDATE monitor_hourly SET v_n=0, v_sum=0, v_min=NULL, v_max=NULL').run();
+  // Run the backfill part of the migration again on these rows
+  const sql = MIGRATIONS[MIGRATIONS.length - 1].split('\n').filter((l) => !/ALTER TABLE/.test(l)).join('\n');
+  db.exec(sql);
+  const rows = db.prepare('SELECT hour, v_n, v_sum, v_min, v_max FROM monitor_hourly ORDER BY hour').all();
+  assert.deepEqual(rows.map((r) => [r.hour, r.v_n, r.v_sum, r.v_min, r.v_max]), [['2026-11-01T08:00', 2, 50, null, null], ['2026-11-12T10:00', 2, 12, 4, 8]]);
 });
