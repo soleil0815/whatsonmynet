@@ -61,7 +61,7 @@ const de = {
   'open.web': 'Weboberfläche öffnen',
   // device
   'dev.tab.state': 'Zustand', 'dev.tab.details': 'Angaben', 'dev.tab.monitors': 'Überwachung', 'dev.tab.network': 'Netzwerk', 'dev.tab.history': 'Verlauf',
-  'dev.facts': 'Kurz und knapp', 'dev.net': 'Im Netz', 'dev.more': 'Mehr',
+  'dev.facts': 'Kurz und knapp', 'dev.net': 'Im Netz', 'dev.savedRenamed': 'Gespeichert - {n} Überwachung(en) heißen jetzt auch so.', 'dev.more': 'Mehr',
   'dev.overview': 'Übersicht', 'dev.details': 'Angaben', 'dev.detection': 'Erkennung', 'dev.history': 'Verlauf', 'dev.purchase': 'Kauf und Garantie',
   'f.name': 'Name', 'f.type': 'Gerätetyp', 'f.vendor': 'Hersteller', 'f.model': 'Modell', 'f.ip': 'IP-Adresse', 'f.mac': 'MAC-Adresse',
   'f.hostname': 'Hostname', 'f.os': 'Betriebssystem', 'f.location': 'Standort', 'f.owner': 'Verantwortlich', 'f.tags': 'Schlagwörter',
@@ -496,7 +496,7 @@ const en = {
   'presence.online': 'Seen in the last scan', 'presence.missing': 'Not seen in the last scan', 'presence.unknown': 'Not scanned yet',
   'open.web': 'Open web interface',
   'dev.tab.state': 'State', 'dev.tab.details': 'Details', 'dev.tab.monitors': 'Monitoring', 'dev.tab.network': 'Network', 'dev.tab.history': 'History',
-  'dev.facts': 'At a glance', 'dev.net': 'On the network', 'dev.more': 'More',
+  'dev.facts': 'At a glance', 'dev.net': 'On the network', 'dev.savedRenamed': 'Saved - {n} monitor(s) now carry the new name too.', 'dev.more': 'More',
   'dev.overview': 'Overview', 'dev.details': 'Details', 'dev.detection': 'Detection', 'dev.history': 'History', 'dev.purchase': 'Purchase and warranty',
   'f.name': 'Name', 'f.type': 'Device type', 'f.vendor': 'Manufacturer', 'f.model': 'Model', 'f.ip': 'IP address', 'f.mac': 'MAC address',
   'f.hostname': 'Host name', 'f.os': 'Operating system', 'f.location': 'Location', 'f.owner': 'Responsible', 'f.tags': 'Tags',

@@ -61,8 +61,8 @@ export async function renderDevice(main, id) {
   async function save() {
     if (!form.reportValidity()) return;
     try {
-      await patch(`/devices/${d.id}`, formData(form));
-      toast(t('saved'));
+      const r = await patch(`/devices/${d.id}`, formData(form));
+      toast(r?.renamedMonitors ? t('dev.savedRenamed', { n: r.renamedMonitors }) : t('saved'));
       renderDevice(main, id);
     } catch (e) { fail(e); }
   }

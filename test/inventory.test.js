@@ -140,3 +140,20 @@ test('bulk edit: only chosen fields change, tags are added/removed, history per 
   assert.equal(inv.bulkRemove([a.id, b.id]), 2);
   assert.equal(inv.list().length, 0);
 });
+
+test('renaming a device renames its monitors and sensors that carry the old name', () => {
+  const db = memoryDb();
+  const inv = createInventory(db);
+  const d = inv.create({ name: 'Drucker EG', ip: '192.168.1.40', type: 'printer' }, 'michael');
+  const ts = new Date().toISOString();
+  const mk = (name, deviceId) => db.prepare("INSERT INTO monitors(name,type,target,device_id,created_at,updated_at) VALUES(?,'ping','192.168.1.40',?,?,?)").run(name, deviceId, ts, ts).lastInsertRowid;
+  const a = mk('Drucker EG', d.id);
+  const b = mk('Drucker EG - Sensor: Toner Schwarz', d.id);
+  const c = mk('Mein eigener Name', d.id);
+  const other = mk('Drucker EG', null);
+  const r = inv.update(d.id, { name: 'Drucker Empfang' }, 'michael');
+  assert.equal(r.renamedMonitors, 2);
+  const name = (id) => db.prepare('SELECT name FROM monitors WHERE id=?').get(id).name;
+  assert.deepEqual([name(a), name(b), name(c), name(other)], ['Drucker Empfang', 'Drucker Empfang - Sensor: Toner Schwarz', 'Mein eigener Name', 'Drucker EG']);
+  assert.equal(inv.update(d.id, { notes: 'x' }).renamedMonitors, undefined, 'no rename without a new name');
+});
