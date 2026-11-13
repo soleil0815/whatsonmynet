@@ -44,7 +44,7 @@ export function modal(title, body, { actions = [], wide = false, onClose } = {})
   dlg.append(
     h('header', {}, h('h2', {}, title), h('button', { class: 'icon-btn', type: 'button', 'aria-label': '×', onclick: close }, '×')),
     h('div', { class: 'modal-body' }, body),
-    actions.length ? h('footer', {}, actions) : null,
+    ...(actions.length ? [h('footer', {}, actions)] : []), // a dialog without buttons must not show the text "null"
   );
   document.body.append(dlg);
   dlg.showModal();

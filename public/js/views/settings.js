@@ -976,6 +976,44 @@ async function about(body) {
       h('dt', {}, t('about.source')), h('dd', {}, h('a', { href: state.boot.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, state.boot.sourceUrl)))));
 }
 
+// Notification services: grouped for the picker, with the fields each one needs
+const CH_GROUPS = [
+  ['common', 'mail', ['email', 'telegram', 'webhook']],
+  ['chat', 'chat', ['discord', 'slack', 'teams', 'googlechat', 'mattermost', 'rocketchat', 'matrix', 'signal', 'whatsapp']],
+  ['push', 'mobile', ['ntfy', 'gotify', 'pushover', 'pushbullet', 'homeassistant']],
+  ['bridge', 'link', ['apprise']],
+];
+const CH_FIELDS = {
+  discord: [['url', { secret: true, ph: 'https://discord.com/api/webhooks/…' }]],
+  slack: [['url', { secret: true, ph: 'https://hooks.slack.com/services/…' }]],
+  teams: [['url', { secret: true, ph: 'https://…/workflows/…' }]],
+  googlechat: [['url', { secret: true, ph: 'https://chat.googleapis.com/v1/spaces/…' }]],
+  mattermost: [['url', { secret: true, ph: 'https://chat.firma.local/hooks/…' }]],
+  rocketchat: [['url', { secret: true, ph: 'https://chat.firma.local/hooks/…' }]],
+  matrix: [['server', { ph: 'https://matrix.org' }], ['room', { ph: '!abc123:matrix.org' }], ['token', { secret: true }]],
+  signal: [['server', { ph: 'http://signal-api:8080' }], ['number', { ph: '+4917612345678' }], ['recipients', { ph: '+4915112345678, group.…' }]],
+  whatsapp: [['phone', { ph: '+4917612345678' }], ['apikey', { secret: true }]],
+  ntfy: [['server', { ph: 'https://ntfy.sh' }], ['topic', { ph: 'womn-buero-7f3k' }], ['token', { secret: true, optional: true }]],
+  gotify: [['server', { ph: 'https://gotify.firma.local' }], ['token', { secret: true }]],
+  pushover: [['user', {}], ['token', { secret: true }]],
+  pushbullet: [['token', { secret: true }]],
+  homeassistant: [['server', { ph: 'http://homeassistant.local:8123' }], ['service', { ph: 'mobile_app_michaels_iphone' }], ['token', { secret: true }]],
+  apprise: [['url', { ph: 'http://apprise:8000/notify/womn' }], ['urls', { secret: true, optional: true, ph: 'tgram://…, mailto://…' }]],
+};
+/** Label of a field: a service-specific one if there is one ("App-Token" for Gotify), otherwise the general one */
+const chLabel = (type, k) => { const key = `ch.f.${type}.${k}`; const s = t(key); return s === key ? t(`ch.f.${k}`) : s; };
+
+/** Step 1 of a new channel: choose the service */
+function pickChannel(edit) {
+  const dlg = modal(t('ch.add'), h('div', {},
+    CH_GROUPS.map(([g, ico, types]) => h('div', { class: 'ch-group' },
+      h('h3', { class: 'sub-title' }, t(`ch.group.${g}`)),
+      h('div', { class: 'pick-grid' }, types.map((ty) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); edit(null, ty); } },
+        h('span', { class: 'pick-ico', html: icon(ty === 'email' ? 'mail' : ty === 'webhook' ? 'link' : ico) }),
+        h('span', { class: 'pick-title' }, t(`ch.type.${ty}`)),
+        h('span', { class: 'pick-text' }, t(`ch.what.${ty}`)))))))), { wide: true });
+}
+
 async function notify(body, _s, reload) {
   const list = await get('/channels');
   const edit = (c, type) => {
@@ -995,8 +1033,15 @@ async function notify(body, _s, reload) {
           field(t('ch.headerName'), input('headerName', cfg.headerName || '', { class: 'mono', placeholder: 'Authorization' })),
           field(t('ch.headerValue'), input('headerValue', '', { type: 'password', autocomplete: 'off', placeholder: cfg.headerValue?.set ? '••••••' : '' }), cfg.headerValue?.set ? t('ch.headerSet') : null)),
       ],
-    }[ty];
+    }[ty] || (CH_FIELDS[ty] || []).map(([k, f]) => {
+      const set = f.secret && cfg[k]?.set;
+      const el = input(k, f.secret ? '' : (cfg[k] || ''), { class: 'mono', autocomplete: 'off', placeholder: set ? '••••••' : (f.ph || ''),
+        ...(f.secret ? { type: 'password' } : {}), required: !f.optional && !set });
+      return field(chLabel(ty, k), el, set ? t('ch.secretSet') : f.secret ? t('ch.secretHint') : null);
+    });
+    const help = t(`ch.help.${ty}`) !== `ch.help.${ty}` ? h('div', { class: 'note' }, h('div', {}, rich(t(`ch.help.${ty}`)))) : null;
     const form = h('form', { class: 'form' },
+      help,
       field(t('ch.name'), input('name', c?.name || t(`ch.type.${ty}`), { required: true, maxlength: 80 })),
       fields,
       field(t('ch.language'), select('language', [['de', 'Deutsch'], ['en', 'English']], c?.language || getLang())),
@@ -1015,8 +1060,7 @@ async function notify(body, _s, reload) {
         } catch (ex) { fail(ex); }
       } }, t('save'))] });
   };
-  const chooser = h('div', { class: 'actions' }, ['email', 'telegram', 'webhook'].map((ty) =>
-    btn(t(`ch.type.${ty}`), { class: 'btn btn-sm', onclick: () => edit(null, ty) }, 'plus')));
+  const chooser = h('div', { class: 'actions' }, btn(t('ch.add'), { class: 'btn btn-primary', onclick: () => pickChannel(edit) }, 'plus'));
   mount(body, h('section', { class: 'panel' },
     h('div', { class: 'panel-head', style: { paddingBottom: '12px', flexWrap: 'wrap' } }, h('h2', {}, t('set.notify')), chooser),
     h('p', { class: 'muted', style: { padding: '0 20px' } }, t('ch.lead')),

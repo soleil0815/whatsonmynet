@@ -491,6 +491,23 @@ export const MIGRATIONS = [
   // 14: reports for chosen devices only (empty = all devices of the chosen kinds)
   `ALTER TABLE reports ADD COLUMN device_ids TEXT NOT NULL DEFAULT '[]';
    ALTER TABLE reports ADD COLUMN monitor_ids TEXT NOT NULL DEFAULT '[]';`,
+  // 15: more notification services (Discord, Slack, Teams, ntfy …). The kind is checked by the program, so new services
+  // need no table rebuild
+  { foreignKeysOff: true, sql: `
+  CREATE TABLE channels_new (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '',
+    language TEXT NOT NULL DEFAULT 'de',
+    is_default INTEGER NOT NULL DEFAULT 1,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+  INSERT INTO channels_new(id,name,type,config,language,is_default,enabled,created_at) SELECT id,name,type,config,language,is_default,enabled,created_at FROM channels;
+  DROP TABLE channels;
+  ALTER TABLE channels_new RENAME TO channels;
+  ` },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
