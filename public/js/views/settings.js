@@ -680,20 +680,137 @@ async function proxmox(body, _s, reload, scope = 'virt') {
   const admin = state.user.isAdmin;
   const add = () => pickVirt((kind) => (kind === 'pve' || kind === 'pbs' ? edit(null, kind) : editVirt(null, kind, reload)), kinds);
   const p = { net: 'net', hw: 'hw' }[scope] || 'virt';
-  mount(body, pageHead(t(`${p}.title`), t(`${p}.lead`), admin ? btn(t(`${p}.add`), { class: 'btn btn-primary', onclick: add }, 'plus') : null),
-  !list.length ? h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, admin ? t(p === 'virt' ? 'px.none' : `${p}.none`) : t('px.noHosts'))) : null,
-  list.map((x) => h('section', { class: 'panel panel-pad' },
-    h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '6px' } },
-      h('div', {}, h('h2', { class: 'section-title', style: { margin: 0 } }, x.name), h('div', { class: 'muted small mono' }, [t(`virt.k.${x.kind}`), x.url].filter(Boolean).join(' · '))),
-      !admin ? null : h('div', { class: 'actions' },
-        PUSH.includes(x.kind) ? null : btn(t('prn.refresh'), { class: 'btn btn-sm', onclick: async (e) => { e.currentTarget.disabled = true; try { await post(`/proxmox/${x.id}/poll`, {}); reload(); } catch (ex) { fail(ex); } } }, 'refresh'),
-        PUSH.includes(x.kind) ? btn(t('virt.newScript'), { class: 'btn btn-sm btn-ghost', onclick: () => showScript(x, reload) }) : null,
-        btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => (x.kind === 'pve' || x.kind === 'pbs' ? edit(x) : editVirt(x, x.kind, reload)) }),
-        h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${x.name}`, html: icon('trash'), onclick: async () => {
-          if (!await confirmDialog(t('delete'), t('px.deleteConfirm', { name: x.name }), t('delete'), t('cancel'), { danger: true })) return;
-          try { await del(`/proxmox/${x.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
-        } }))),
-    proxmoxDetail(x))));
+  const actions = (x) => (!admin ? null : h('div', { class: 'actions' },
+    PUSH.includes(x.kind) ? null : btn(t('prn.refresh'), { class: 'btn btn-sm', onclick: async (e) => { e.currentTarget.disabled = true; try { await post(`/proxmox/${x.id}/poll`, {}); reload(); } catch (ex) { fail(ex); } } }, 'refresh'),
+    PUSH.includes(x.kind) ? btn(t('virt.newScript'), { class: 'btn btn-sm btn-ghost', onclick: () => showScript(x, reload) }) : null,
+    btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => (x.kind === 'pve' || x.kind === 'pbs' ? edit(x) : editVirt(x, x.kind, reload)) }),
+    h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${x.name}`, html: icon('trash'), onclick: async () => {
+      if (!await confirmDialog(t('delete'), t('px.deleteConfirm', { name: x.name }), t('delete'), t('cancel'), { danger: true })) return;
+      try { await del(`/proxmox/${x.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
+    } })));
+  const head = pageHead(t(`${p}.title`), t(`${p}.lead`), admin ? btn(t(`${p}.add`), { class: 'btn btn-primary', onclick: add }, 'plus') : null);
+  if (!list.length) {
+    mount(body, head, h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, admin ? t(p === 'virt' ? 'px.none' : `${p}.none`) : t('px.noHosts'))));
+    return;
+  }
+  // Few hosts: as before, everything open. Many: one line each, problems first, details on click
+  const rows = list.map((x) => ({ x, s: hostSummary(x) }));
+  const ORDER = { bad: 0, warn: 1, wait: 2, ok: 3 };
+  rows.sort((a, b) => ORDER[a.s.state] - ORDER[b.s.state] || a.x.name.localeCompare(b.x.name, undefined, { numeric: true }));
+  const KEY = `womn.virt.open.${scope}`;
+  let open;
+  try { open = new Set(JSON.parse(sessionStorage.getItem(KEY) || '[]')); } catch { open = new Set(); }
+  const remember = () => { try { sessionStorage.setItem(KEY, JSON.stringify([...open])); } catch { /* not allowed */ } };
+  const compact = list.length > 3;
+  let filter = 'all';
+  const q = h('input', { type: 'search', placeholder: t('vo.search'), 'aria-label': t('vo.search') });
+  const qBox = h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q);
+  const kindsHere = [...new Set(list.map((x) => x.kind))];
+  const problems = rows.filter((r) => r.s.state === 'bad' || r.s.state === 'warn').length;
+  const chip = (key, label, n) => h('button', { type: 'button', class: `fchip${filter === key ? ' on' : ''}`, 'aria-pressed': String(filter === key), onclick: () => { filter = key; draw(); } }, label, h('span', { class: 'chip-n' }, n));
+  const chips = h('div', { class: 'inv-chips', role: 'group' });
+  const listBox = h('div', { class: 'host-list' });
+  const matches = (r, needle) => !needle || r.s.text.includes(needle);
+  function draw() {
+    const needle = q.value.trim().toLowerCase();
+    mount(chips, chip('all', t('all'), rows.length), problems ? chip('problems', t('vo.problems'), problems) : null,
+      kindsHere.length > 1 ? kindsHere.map((k) => chip(k, t(`vo.k.${k}`) === `vo.k.${k}` ? t(`virt.k.${k}`) : t(`vo.k.${k}`), list.filter((x) => x.kind === k).length)) : null);
+    const shown = rows.filter((r) => (filter === 'all' || (filter === 'problems' ? r.s.state === 'bad' || r.s.state === 'warn' : r.x.kind === filter)) && matches(r, needle));
+    mount(listBox, shown.length ? shown.map((r) => hostRow(r, compact ? open.has(r.x.id) || (needle && r.s.deep.includes(needle) && shown.length <= 3) : true)) : h('p', { class: 'muted panel panel-pad', style: { margin: 0 } }, t('vo.noMatch')));
+  }
+  function hostRow({ x, s }, isOpen) {
+    const det = h('details', { class: `host-row panel hs-${s.state}` });
+    det.open = !!isOpen;
+    det.addEventListener('toggle', () => {
+      if (det.open) open.add(x.id); else open.delete(x.id);
+      remember();
+      if (det.open && !det.dataset.filled) { det.dataset.filled = '1'; det.append(h('div', { class: 'host-body' }, actions(x), proxmoxDetail(x))); }
+    });
+    det.append(h('summary', {},
+      h('span', { class: `dot ${s.state === 'bad' ? 'dot-bad' : s.state === 'warn' ? 'dot-new' : s.state === 'wait' ? '' : 'dot-ok'}`, 'aria-hidden': 'true' }),
+      h('span', { class: 'host-name' }, h('strong', {}, x.name), h('span', { class: 'muted small mono' }, [t(`virt.k.${x.kind}`), x.url.replace(/^https:\/\//, '')].filter(Boolean).join(' · '))),
+      h('span', { class: 'host-figs' }, s.figures.map((f) => h('span', { class: 'fig' }, f))),
+      h('span', { class: 'host-issues' }, s.issues.slice(0, 2).map((i) => h('span', { class: `badge ${i.tone === 'bad' ? 'badge-bad' : 'badge-new'}`, title: i.text }, i.text.length > 48 ? `${i.text.slice(0, 46)}…` : i.text)),
+        s.issues.length > 2 ? h('span', { class: 'muted small' }, t('vo.more', { n: s.issues.length - 2 })) : null)));
+    if (isOpen) { det.dataset.filled = '1'; det.append(h('div', { class: 'host-body' }, actions(x), proxmoxDetail(x))); }
+    return det;
+  }
+  q.addEventListener('input', draw);
+  // The whole picture in four numbers (only where it means something)
+  const all = rows.map((r) => r.s);
+  const sum = (k) => all.reduce((a, b) => a + (b.n[k] || 0), 0);
+  const tiles = [
+    [t('vo.hosts'), rows.length, problems ? t('vo.withProblems', { n: problems }) : t('vo.allFine'), problems ? 'bad' : 'ok'],
+    sum('nodes') ? [t('vo.nodes'), `${sum('nodesOn')}/${sum('nodes')}`, t('vo.online'), sum('nodesOn') < sum('nodes') ? 'bad' : 'ok'] : null,
+    sum('guests') ? [t('vo.guests'), `${sum('guestsOn')}/${sum('guests')}`, t('vo.running'), ''] : null,
+    sum('stores') ? [t('vo.storage'), sum('storesFull'), t('vo.over85'), sum('storesFull') ? 'warn' : 'ok'] : null,
+    sum('backupIssues') || sum('backupHosts') ? [t('vo.backups'), sum('backupIssues'), t('vo.backupIssues'), sum('backupIssues') ? 'bad' : 'ok'] : null,
+  ].filter(Boolean);
+  mount(body, head,
+    compact ? h('div', { class: 'vo-tiles' }, tiles.map(([label, big, small, tone]) => h('div', { class: `vo-tile vt-${tone}` }, h('span', { class: 'muted small' }, label), h('b', {}, big), h('span', { class: 'small' }, small)))) : null,
+    compact ? h('div', { class: 'vo-toolbar' }, qBox, chips) : null,
+    listBox);
+  draw();
+}
+
+/** One line per host: state (bad / warn / ok / wait), the key figures and what is wrong - also the text to search in */
+function hostSummary(x) {
+  const d = x.data || {};
+  // "1 Sicherung" instead of "1 Sicherungen": a key with 1 at the end for exactly one
+  const tn = (key, vars) => (vars.n === 1 && t(`${key}1`) !== `${key}1` ? t(`${key}1`, vars) : t(key, vars));
+  const issues = []; const figures = []; const n = {};
+  const bad = (text) => issues.push({ tone: 'bad', text });
+  const warn = (text) => issues.push({ tone: 'warn', text });
+  const deep = [];
+  if (!x.last_at) figures.push(PUSH.includes(x.kind) ? t('virt.waiting') : t('prn.none'));
+  else if (!x.last_ok) bad(x.last_error || t('vo.error'));
+  if (x.last_ok && (d.missing || []).length) warn(t('vo.rights'));
+  if (d.netdevices) {
+    const off = d.netdevices.filter((y) => !y.online).length;
+    if (off) bad(t('vo.devOffline', { n: off }));
+    const upd = d.netdevices.filter((y) => y.update).length;
+    if (upd) warn(tn('vo.updates', { n: upd }));
+    figures.push(t('vo.fig.devices', { on: d.netdevices.length - off, n: d.netdevices.length }));
+    if (d.clients !== undefined && d.kind !== 'mikrotik') figures.push(t('vo.fig.clients', { n: d.clients ?? 0 }));
+    deep.push(...d.netdevices.map((y) => `${y.name} ${y.ip || ''} ${y.model || ''}`));
+  } else if (d.kind === 'redfish') {
+    if (d.health === 'critical') bad(t('vo.hwCritical')); else if (d.health === 'warning') warn(t('vo.hwWarning'));
+    if (d.power === 'off') bad(t('hw.powerOff'));
+    figures.push([d.vendor, d.model].filter(Boolean).join(' '));
+    if (d.watts) figures.push(`${d.watts} W`);
+    deep.push(d.serial || '', d.sku || '');
+  } else if (d.kind === 'pbs') {
+    const full = (d.datastores || []).filter((y) => y.pct >= 85);
+    if (full.length) (full.some((y) => y.pct >= 95) ? bad : warn)(tn('vo.storeFull', { n: full.length }));
+    const old = (d.groups || []).filter((g) => !g.last || Date.now() / 1000 - g.last > 26 * 3600).length;
+    if (old) warn(tn('vo.groupsOld', { n: old }));
+    if ((d.failed || []).length) bad(tn('vo.tasksFailed', { n: d.failed.length }));
+    const maxPct = Math.max(0, ...(d.datastores || []).map((y) => y.pct || 0));
+    figures.push(t('vo.fig.stores', { n: (d.datastores || []).length, pct: maxPct }), t('vo.fig.groups', { n: (d.groups || []).length }));
+    n.stores = (d.datastores || []).length; n.storesFull = full.length; n.backupHosts = 1; n.backupIssues = old + (d.failed || []).length;
+    deep.push(...(d.datastores || []).map((y) => y.name), ...(d.groups || []).map((g) => `${g.type}/${g.id} ${g.comment || ''}`));
+  } else if (d.kind) {
+    const nodes = d.nodes || []; const guests = d.guests || []; const stores = (d.storages || []).filter((y) => y.total);
+    const offN = nodes.filter((y) => !y.online).length;
+    if (offN) bad(tn('vo.nodesOff', { n: offN }));
+    const full = stores.filter((y) => y.pct >= 85);
+    if (full.length) (full.some((y) => y.pct >= 95) ? bad : warn)(tn('vo.storeFull', { n: full.length }));
+    let backupIssues = 0;
+    if (d.kind === 'pve') {
+      const failed = (d.backups || []).filter((b) => !b.ok && b.end && Date.now() / 1000 - b.start < 86400).length;
+      if (failed) bad(tn('vo.backupsFailed', { n: failed }));
+      backupIssues = failed;
+      n.backupHosts = 1;
+    }
+    const on = guests.filter((g) => g.status === 'running').length;
+    figures.push(t('vo.fig.nodes', { on: nodes.length - offN, n: nodes.length }), t('vo.fig.guests', { on, n: guests.length }));
+    if (stores.length) figures.push(t('vo.fig.storage', { pct: Math.max(...stores.map((y) => y.pct || 0)) }));
+    Object.assign(n, { nodes: nodes.length, nodesOn: nodes.length - offN, guests: guests.length, guestsOn: on, stores: stores.length, storesFull: full.length, backupIssues });
+    deep.push(...nodes.map((y) => y.name), ...guests.map((g) => `${g.vmid ?? ''} ${g.name}`), ...stores.map((y) => y.name));
+  }
+  const state = !x.last_at ? 'wait' : issues.some((i) => i.tone === 'bad') ? 'bad' : issues.length ? 'warn' : 'ok';
+  const deepText = deep.join(' ').toLowerCase();
+  return { state, issues, figures: figures.filter(Boolean), n, deep: deepText, text: `${x.name} ${x.url} ${t(`virt.k.${x.kind}`)} ${deepText}`.toLowerCase() };
 }
 
 /** After a restore the server restarts: wait until it answers again, then load the page anew */
