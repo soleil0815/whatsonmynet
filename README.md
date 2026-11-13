@@ -44,7 +44,7 @@ WhatsOnMyNet überwacht Geräte, Dienste und Webseiten und ersetzt damit Uptime 
 - **Prüfungen**: Web (HTTP/HTTPS mit gültigen Statuscodes und optionalem Stichwort), TCP-Port oder Ping, alle 20 Sekunden bis 24 Stunden.
 - **Ohne Fehlalarme**: Ein Alarm kommt erst nach mehreren Fehlversuchen hintereinander (Standard 3), eine Entwarnung mit der Dauer des Ausfalls. Optional wiederholt sich der Alarm, solange die Störung anhält.
 - **Zertifikate**: Bei HTTPS wird das Ablaufdatum gelesen, gewarnt wird z. B. 30, 14 und 7 Tage vorher, jede Stufe einmal. Die Prüfung von Kette und Name ist für Internetseiten einschaltbar; LAN-Geräte mit selbstsigniertem Zertifikat funktionieren ohne.
-- **Benachrichtigungen** unter *Einstellungen → Benachrichtigungen*: E-Mail (über den SMTP-Server), Telegram-Bot (Token von @BotFather, Chat-ID) und Webhook mit eigener JSON-Vorlage (`{{text}}`, `{{name}}`, `{{status}}`, `{{message}}`, `{{target}}`, `{{time}}`) und optionalem Header für einen Schlüssel. Token und Header werden verschlüsselt gespeichert. Jeder Kanal hat eine Testnachricht.
+- **Benachrichtigungen** unter *Einstellungen → Benachrichtigungen*: Discord, Slack, Microsoft Teams, Google Chat, Mattermost, Rocket.Chat, Matrix, Signal, WhatsApp (CallMeBot), ntfy, Gotify, Pushover, Pushbullet, Home Assistant und Apprise (über 100 weitere Dienste), jeweils mit kurzer Anleitung im Formular; außerdem E-Mail (über den SMTP-Server), Telegram-Bot (Token von @BotFather, Chat-ID) und Webhook mit eigener JSON-Vorlage (`{{text}}`, `{{name}}`, `{{status}}`, `{{message}}`, `{{target}}`, `{{time}}`) und optionalem Header für einen Schlüssel. Token und Header werden verschlüsselt gespeichert. Jeder Kanal hat eine Testnachricht.
 - **Wartungsfenster** einmalig oder wöchentlich (auch über Mitternacht), für alle oder ausgewählte Monitore - währenddessen keine Alarme.
 - **Verfügbarkeit** über 24 Stunden, 7 und 30 Tage, Antwortzeit als Diagramm, Ereignisse mit Hinweis, an wen gemeldet wurde.
 - **Geräte**: Auf der Seite eines Geräts legt „Überwachen“ einen passenden Monitor an (Weboberfläche, sonst Ping oder ein offener Port). Ändert der Scan die IP-Adresse eines Geräts, ziehen seine Monitore mit.
@@ -106,7 +106,7 @@ Einmal pro Nacht (Standard 02:30 Uhr Ortszeit, `TZ` in der `.env`) sucht WhatsOn
 
 - Bekannte Geräte bekommen ihre neue IP-Adresse automatisch (die MAC-Adresse ist die Identität), ihre Monitore ziehen mit.
 - Unbekannte Geräte landen im Scan-Ergebnis zum Übernehmen oder Ignorieren; die Übersicht zeigt, wie viele warten.
-- **Neue Geräte melden**: Ein Gerät, das zum allerersten Mal auftaucht, wird einmal über die Benachrichtigungskanäle gemeldet (E-Mail, Telegram, Webhook). Der erste Scan nach dem Update lernt nur, was schon da ist - keine Flut an Meldungen.
+- **Neue Geräte melden**: Ein Gerät, das zum allerersten Mal auftaucht, wird einmal über die Benachrichtigungskanäle gemeldet. Der erste Scan nach dem Update lernt nur, was schon da ist - keine Flut an Meldungen.
 - Uhrzeit, Kanäle und „Jetzt ausführen“ unter *Einstellungen → Scan*. Nach einem Neustart holt WhatsOnMyNet den Scan bis zu 4 Stunden später nach.
 
 ## Drucker per SNMP (ab Version 0.3)
