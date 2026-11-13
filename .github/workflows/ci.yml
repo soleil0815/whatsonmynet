@@ -165,7 +165,8 @@ jobs:
           # Only a tag WITHOUT a published release is an unfinished reservation: an earlier, completed release
           # of the same commit is never taken over (404 = no release; any other API error stops)
           if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
-            mine="$(git tag -l 'v*.*.*' --points-at "$GITHUB_SHA" | sort -V | tail -n 1)"
+            # only plain release tags vX.Y.Z (a security tag vX.Y.Z-sN on the same commit is no release of this button)
+            mine="$(git tag -l 'v*.*.*' --points-at "$GITHUB_SHA" | grep -E '^v[0-9]+[.][0-9]+[.][0-9]+$' | sort -V | tail -n 1)"
             if [ -n "$mine" ]; then
               if rel="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$mine" --jq .id 2>&1)"; then
                 echo "Version $mine is already released (release $rel) – not reused"

@@ -9,6 +9,7 @@ import { initMasterKey } from './lib/crypto.js';
 import { createApp } from './app.js';
 import { createTls } from './tls.js';
 import { log } from './lib/log.js';
+import { recheckDirectoryUsers, RECHECK_MIN } from './auth/adrecheck.js';
 
 const TLS_OPTIONS = { minVersion: 'TLSv1.2' };
 
@@ -66,6 +67,8 @@ async function main() {
   ctx.snmpDevices.start();
   ctx.reports.start();
   ctx.proxmox.start();
+  // Signed-in AD users: still allowed? (disabled in AD or out of the group → signed out, new group → new role)
+  setInterval(() => recheckDirectoryUsers(ctx).catch((e) => log.warn(`Directory check: ${e.message}`)), RECHECK_MIN * 60 * 1000).unref();
 
   // Daily: sessions, old check results, backup, renew the self-signed certificate if needed
   const daily = async () => {
@@ -90,6 +93,8 @@ async function main() {
     httpsServer.close(() => { db.close(); process.exit(0); });
     setTimeout(() => process.exit(0), 5000).unref();
   };
+  // Safety net: a promise of some check that fails without a handler is logged, not the end of the whole program
+  process.on('unhandledRejection', (e) => log.error(`Unhandled error: ${e?.stack || e}`));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 }

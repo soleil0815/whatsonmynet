@@ -29,14 +29,17 @@ export function agentConfig(env = process.env) {
   if (!/^[A-Za-z0-9_-]{20,200}$/.test(token)) throw new Error('WOMN_AGENT_TOKEN is missing or invalid - create one under Settings → Scan agents');
   let ca = '';
   let fingerprint = '';
+  let isCa = false;
   const raw = String(env.WOMN_AGENT_CA || '').trim();
   if (raw) {
     try {
       ca = raw.startsWith('-----BEGIN') ? raw : Buffer.from(raw, 'base64').toString('utf8');
-      fingerprint = new crypto.X509Certificate(ca).fingerprint256;
+      const x = new crypto.X509Certificate(ca);
+      fingerprint = x.fingerprint256;
+      isCa = x.ca;
     } catch { throw new Error('WOMN_AGENT_CA is not a certificate - copy it again from the central server (Settings → Scan agents)'); }
   }
-  return { server, token, ca, fingerprint, interval: Math.max(15, Math.min(3600, Number(env.WOMN_AGENT_INTERVAL) || 60)) };
+  return { server, token, ca, fingerprint, isCa, interval: Math.max(15, Math.min(3600, Number(env.WOMN_AGENT_INTERVAL) || 60)) };
 }
 
 /**
@@ -47,6 +50,9 @@ export function agentConfig(env = process.env) {
  */
 export function makeHttpsAgent(cfg) {
   if (!cfg.ca) return new https.Agent({ keepAlive: false });
+  // The root certificate of a company CA (the central server has a certificate of the own CA): checked against it
+  // in the normal way, the name included - the agent then has to use the name in the certificate
+  if (cfg.isCa) return new https.Agent({ keepAlive: false, ca: [cfg.ca] });
   return new https.Agent({
     keepAlive: false,
     ca: [cfg.ca],

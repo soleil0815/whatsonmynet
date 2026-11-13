@@ -186,7 +186,8 @@ test('sign-in through the directory', async () => {
     assert.equal(ok.data.user.canEdit, true);
     assert.equal((await call('POST', '/api/me/password', { current: 'x', password: 'Neues-Passwort-1' }, { who: 'ad' })).status, 400);
     assert.equal((await call('POST', '/api/login', { username: 'erika', password: 'falsch' }, { who: 'ad2' })).status, 401);
-    assert.equal((await call('POST', '/api/login', { username: 'ohnegruppe', password: 'Richtig-1234' }, { who: 'ad3' })).status, 403);
+    // right password but in no group: answered like a wrong password (the page must not tell whether an AD password is right)
+    assert.equal((await call('POST', '/api/login', { username: 'ohnegruppe', password: 'Richtig-1234' }, { who: 'ad3' })).status, 401);
     // a local account is never checked against the directory
     let asked = false;
     app.ctx.directory.verify = async () => { asked = true; throw Object.assign(new Error('x'), { status: 401 }); };

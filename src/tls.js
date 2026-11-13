@@ -54,15 +54,18 @@ export function createTls(dir = paths.tlsDir) {
     return { dns: [...dns], ips: [...ips] };
   }
 
-  async function generateSelfSigned() {
+  async function generateSelfSigned(keepKey = null) {
     const { dns, ips } = wantedNames();
     const san = [...dns.map((d) => `DNS:${d}`), ...ips.map((i) => `IP:${i}`)].join(',');
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'womn-tls-'));
     try {
       const k = path.join(tmp, 'key.pem');
       const c = path.join(tmp, 'cert.pem');
-      await run('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes',
-        '-keyout', k, '-out', c, '-days', String(SELF_SIGNED_DAYS),
+      // Renewing: the same key again - the host scripts and scan agents pin the key, so they go on working
+      if (keepKey) fs.writeFileSync(k, keepKey, { mode: 0o600 });
+      const keyArgs = keepKey ? ['-key', k] : ['-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-keyout', k];
+      await run('openssl', ['req', '-x509', ...keyArgs, '-nodes',
+        '-out', c, '-days', String(SELF_SIGNED_DAYS),
         '-subj', `/CN=${(dns[1] || 'WhatsOnMyNet').slice(0, 60)}/O=WhatsOnMyNet (self-signed)`,
         '-addext', `subjectAltName=${san}`,
         '-addext', 'basicConstraints=critical,CA:FALSE',
@@ -102,8 +105,14 @@ export function createTls(dir = paths.tlsDir) {
         const missing = [...want.dns, ...want.ips].filter((n) => !have.has(n));
         if (daysLeft > RENEW_DAYS && !missing.length) return false;
         log.info(daysLeft <= RENEW_DAYS ? 'Self-signed certificate expires soon - renewing' : `Self-signed certificate is missing ${missing.join(', ')} - renewing`);
+        try { await generateSelfSigned(cur.key); return true; } catch (e) { log.warn(`Renewing with the same key failed (${e.message}) - a new key is made; host scripts and scan agents then need a new script / setting`); }
       } catch (e) {
-        if (cur.meta.source === 'custom') { log.error(`Uploaded certificate cannot be used (${e.message}) - falling back to a self-signed one`); }
+        if (cur.meta.source === 'custom') {
+          // Kept, not lost: an uploaded certificate that a newer OpenSSL refuses may still be wanted (or fixed)
+          const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+          try { fs.copyFileSync(certFile, `${certFile}.${stamp}.bak`); fs.copyFileSync(keyFile, `${keyFile}.${stamp}.bak`); fs.chmodSync(`${keyFile}.${stamp}.bak`, 0o600); } catch { /* best effort */ }
+          log.error(`Uploaded certificate cannot be used (${e.message}) - falling back to a self-signed one; the old files are kept as *.${stamp}.bak`);
+        }
       }
     }
     await generateSelfSigned();
@@ -202,4 +211,20 @@ async function pfxToPem(pfx, passphrase) {
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+/**
+ * Pin of a public key as Windows sees it (X509Certificate.GetPublicKey(): for EC the point 04|x|y, for RSA the
+ * PKCS#1 key), SHA-256 in hex. The Windows scripts compare this - it stays the same when the self-signed
+ * certificate is renewed with the same key.
+ */
+export function keyPin(publicKey) {
+  let raw;
+  if (publicKey.asymmetricKeyType === 'ec') {
+    const j = publicKey.export({ format: 'jwk' });
+    raw = Buffer.concat([Buffer.from([4]), Buffer.from(j.x, 'base64url'), Buffer.from(j.y, 'base64url')]);
+  } else if (publicKey.asymmetricKeyType === 'rsa') {
+    raw = publicKey.export({ type: 'pkcs1', format: 'der' });
+  } else return '';
+  return crypto.createHash('sha256').update(raw).digest('hex').toUpperCase();
 }

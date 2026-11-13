@@ -5,16 +5,21 @@ $ErrorActionPreference = 'Stop'
 $Url = @URL@
 $Token = @TOKEN@
 $Thumb = @THUMB@
+$KeyPin = @KEYPIN@
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-if ($Thumb) {
-  # Self-signed certificate of WhatsOnMyNet: trust exactly this one
+if ($Thumb -or $KeyPin) {
+  # Self-signed certificate of WhatsOnMyNet: trust exactly its key (it stays the same when the certificate is renewed),
+  # or this one certificate
   Add-Type -TypeDefinition @"
-using System.Net; using System.Net.Security; using System.Security.Cryptography.X509Certificates;
-public static class WomnPin { static string Thumb;
-  static bool Check(object s, X509Certificate c, X509Chain ch, SslPolicyErrors e) { return c != null && c.GetCertHashString() == Thumb; }
-  public static void Enable(string t) { Thumb = t; ServicePointManager.ServerCertificateValidationCallback = Check; } }
+using System; using System.Net; using System.Net.Security; using System.Security.Cryptography; using System.Security.Cryptography.X509Certificates;
+public static class WomnPin { static string Thumb; static string Key;
+  static bool Check(object s, X509Certificate c, X509Chain ch, SslPolicyErrors e) {
+    if (c == null) return false;
+    if (Thumb.Length > 0 && c.GetCertHashString() == Thumb) return true;
+    using (SHA256 h = SHA256.Create()) { return Key.Length > 0 && BitConverter.ToString(h.ComputeHash(c.GetPublicKey())).Replace("-", "") == Key; } }
+  public static void Enable(string t, string k) { Thumb = t; Key = k; ServicePointManager.ServerCertificateValidationCallback = Check; } }
 "@
-  [WomnPin]::Enable($Thumb.Replace(':', '').ToUpper())
+  [WomnPin]::Enable($Thumb.Replace(':', '').ToUpper(), $KeyPin.ToUpper())
 }
 @SETUP@
 $name = $env:COMPUTERNAME

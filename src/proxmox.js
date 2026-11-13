@@ -5,12 +5,14 @@
 // PBS: datastores (usage), backup groups (age of the last backup), failed tasks.
 import crypto from 'node:crypto';
 import https from 'node:https';
+import tls from 'node:tls';
 import { HttpError, line, str } from './lib/http.js';
 import { encrypt, decrypt } from './lib/crypto.js';
 import { log } from './lib/log.js';
 import { fetchTlsChain, describe, publiclyTrusted, toPem } from './auth/dccert.js';
 import { NET_KINDS, NET_READERS } from './netctl.js';
 import { fillDevice } from './devicefill.js';
+import { serverBase } from './hosts.js';
 import { readRedfish, redfishMetrics, labelSerial } from './redfish.js';
 import { READERS, API_KINDS, PUSH_KINDS, newPushToken, pushTokenOk, cleanPush, mergePush, markStale, pushScript } from './virt.js';
 
@@ -38,9 +40,15 @@ function chainFingerprints(cert) {
 /** TLS options for a host: the pasted certificate pinned (name does not matter then), else the normal check or none */
 export function tlsOptions(host) {
   if (host.ca) {
-    const pinned = new crypto.X509Certificate(host.ca).fingerprint256;
-    // allowPartialTrustChain: the pinned certificate may also be the server's own (not only a CA)
-    return { ca: [host.ca], allowPartialTrustChain: true, checkServerIdentity: (_h, cert) => (chainFingerprints(cert).includes(pinned) ? undefined : new Error('certificate is not the pasted one')) };
+    const x = new crypto.X509Certificate(host.ca);
+    const pinned = x.fingerprint256;
+    // allowPartialTrustChain: the pinned certificate may also be the server's own (not only a CA).
+    // The server's own certificate pinned: the name does not matter. A CA pinned (fetched from a server with a company
+    // CA): the name must still fit - otherwise any certificate of that CA (a printer's) would pass as this host.
+    return { ca: [host.ca], allowPartialTrustChain: true, checkServerIdentity: (name, cert) => {
+      if (!chainFingerprints(cert).includes(pinned)) return new Error('certificate is not the pasted one');
+      return x.ca && cert.fingerprint256 !== pinned ? tls.checkServerIdentity(name, cert) : undefined;
+    } };
   }
   return { rejectUnauthorized: !!host.verify };
 }
@@ -61,14 +69,17 @@ export function tlsRequest(host, method, path, { body = null, headers = {}, time
   return new Promise((resolve, reject) => {
     const u = new URL(path, host.url);
     const data = body === null ? null : Buffer.from(body);
+    // timeout = silence on the socket; the whole request gets a deadline too (an answer trickling in byte by byte
+    // would otherwise hold the polling of all hosts)
+    const deadline = setTimeout(() => req.destroy(new Error('timeout')), timeoutMs * 4);
     const req = https.request(u, { method, timeout: timeoutMs, agent: false, headers: { ...(data ? { 'Content-Length': data.length } : {}), ...headers }, ...tlsOptions(host) }, (res) => {
       const chunks = []; let size = 0;
       res.on('data', (d) => { size += d.length; if (size < maxBytes) chunks.push(d); else res.destroy(new Error('answer too large')); });
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(chunks).toString('utf8') }));
-      res.on('error', (e) => reject(netError(e)));
+      res.on('end', () => { clearTimeout(deadline); resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(chunks).toString('utf8') }); });
+      res.on('error', (e) => { clearTimeout(deadline); reject(netError(e)); });
     });
     req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', (e) => reject(netError(e)));
+    req.on('error', (e) => { clearTimeout(deadline); reject(netError(e)); });
     req.end(data || undefined);
   });
 }
@@ -199,6 +210,7 @@ export function createProxmox({ db, settings }) {
   const shape = (h) => (h ? { id: h.id, name: h.name, kind: h.kind, url: h.url, token_id: h.token_id, has_secret: !!h.secret, verify: !!h.verify, ca: h.ca, ca_info: caInfo(h.ca),
     created_at: h.created_at, last_at: h.last_at, last_ok: !!h.last_ok, last_error: h.last_error, data: parse(h.data, {}) } : null);
 
+  const hostPort = (u) => { try { const x = new URL(u); return `${x.hostname.toLowerCase()}:${x.port || (x.protocol === 'http:' ? 80 : 443)}`; } catch { return String(u); } };
   function clean(input, old = null) {
     const name = line(input.name, 80);
     if (!name) throw new HttpError(400, 'err.nameRequired');
@@ -214,6 +226,8 @@ export function createProxmox({ db, settings }) {
     if (ca) { try { new crypto.X509Certificate(ca); } catch { throw new HttpError(400, 'err.adCa'); } }
     let secret = old?.secret || '';
     if (typeof input.secret === 'string' && input.secret.trim()) secret = encrypt(input.secret.trim().slice(0, 200));
+    // The stored token or password only goes to the address it was entered for (see keepSecret in monitor/index.js)
+    else if (secret && old && hostPort(old.url) !== hostPort(url)) throw new HttpError(400, 'err.passwordAgain');
     if (!secret) throw new HttpError(400, ACCOUNT_KINDS.includes(kind) ? 'err.virtUser' : 'err.proxmoxToken');
     return { name, kind, url, token_id: tokenId, secret, verify: input.verify === false ? 0 : 1, ca };
   }
@@ -295,10 +309,10 @@ export function createProxmox({ db, settings }) {
   function newToken(id, { server, pin }) {
     const h = rowOf(id);
     if (!h || !PUSH_KINDS.includes(h.kind)) throw new HttpError(404, 'err.notFound');
-    if (!/^https?:\/\/[^\s/"'<>]+$/i.test(String(server || ''))) throw new HttpError(400, 'err.badRequest');
+    const base = serverBase(server);
     const t = newPushToken();
     db.prepare('UPDATE proxmox_hosts SET secret=? WHERE id=?').run(t.stored, id);
-    return { token: t.token, ...pushScript(h.kind, { server, id, token: t.token, pin }) };
+    return { token: t.token, ...pushScript(h.kind, { server: base, id, token: t.token, pin }) };
   }
 
   async function pollAll() {
@@ -307,7 +321,9 @@ export function createProxmox({ db, settings }) {
     try {
       const every = Math.max(1, Number(settings.get('proxmox.interval')) || 5) * 60 * 1000;
       for (const h of db.prepare('SELECT id, kind, last_at FROM proxmox_hosts').all()) {
-        if (!PUSH_KINDS.includes(h.kind) && h.last_at && Date.now() - Date.parse(h.last_at) < every) continue;
+        // A negative age means the clock was set back: then it is due, not hours later
+        const age = h.last_at ? Date.now() - Date.parse(h.last_at) : Infinity;
+        if (!PUSH_KINDS.includes(h.kind) && age >= 0 && age < every) continue;
         await poll(h.id).catch((e) => log.warn(`Proxmox ${h.id}: ${e.message}`));
       }
     } finally { polling = false; }

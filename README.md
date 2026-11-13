@@ -29,7 +29,7 @@ WhatsOnMyNet scannt dein Netzwerk, erkennt Hersteller und Gerätetyp selbst (Swi
 - **Inventar** - Suche über alles, Filter nach Typ und Standort, Ansicht als Liste, nach Subnetz oder nach Typ, Status „beim letzten Scan gesehen“, Export als CSV (Excel) und JSON.
 - **Schnellzugriff** - ein Klick öffnet die Weboberfläche des Geräts (Proxmox auf 8006, Synology auf 5001, Drucker …). Die Adresse schlägt der Scan vor.
 - **Kauf, Garantie, Wartung** - optionale Felder mit Hinweis auf der Übersicht, wenn die Garantie bald endet.
-- **Tiefenprüfung** - für einzelne unklare Geräte, von Hand gestartet: rund 120 Ports und alle Weboberflächen.
+- **Tiefenprüfung** - für einzelne unklare Geräte, von Hand gestartet: rund 110 Ports und alle Weboberflächen.
 - **Standorte** - fassen Subnetze zusammen. Vor dem Scan nur noch Häkchen setzen, gefundene Geräte bekommen ihren Standort automatisch.
 - **Benutzer und Rollen** - Administrator, Bearbeiter, Nur lesen; Anmeldung auch über Active Directory, Rechte auf Standorte beschränkbar (ab 0.3).
 - **HTTPS ab dem ersten Start** - selbst erzeugtes Zertifikat, eigenes Zertifikat (PEM oder PFX) in der Oberfläche hochladbar, HTTP leitet immer auf HTTPS um.
@@ -54,7 +54,7 @@ Prüfergebnisse bleiben 7 Tage im Detail und stundenweise über ein Jahr gespeic
 ### Docker-Container und Datenbanken (ab Version 0.3)
 
 - **Docker**: Unter *Einstellungen → Docker* trägst du deine Docker-Hosts ein. Ein Monitor vom Typ *Docker-Container* meldet, wenn ein Container nicht läuft, ständig neu startet oder sein Healthcheck „unhealthy“ meldet. „Alle laufenden überwachen“ legt mit einem Klick für jeden Container einen Monitor an.
-  Empfohlen ist ein **Socket-Proxy** auf dem Docker-Host, der nur lesende Container-Abfragen erlaubt (z. B. `tecnativa/docker-socket-proxy` mit `CONTAINERS=1`, `POST=0`; Adresse dann `http://<host>:2375`). Die Vorlage steht in den Einstellungen. Den Docker-Socket direkt durchzureichen geht auch (`unix:///var/run/docker.sock`, in der `docker-compose.yml` als `:ro` einbinden und mit `group_add` die Gruppen-ID von `docker` ergänzen) - das gibt aber mehr Rechte als nötig.
+  Empfohlen ist ein **Socket-Proxy** auf dem Docker-Host, der nur lesende Container-Abfragen erlaubt (z. B. `tecnativa/docker-socket-proxy` mit `CONTAINERS=1`, `POST=0`; Adresse dann `http://<host>:2375`). Die Vorlage steht in den Einstellungen. Den Docker-Socket direkt in den Container einzubinden ist nicht vorgesehen: WhatsOnMyNet läuft dort als normaler Benutzer ohne die Gruppe `docker` (und der Socket gäbe mehr Rechte als nötig) - nimm den Socket-Proxy.
 - **Datenbanken**: MariaDB/MySQL, PostgreSQL und Redis/Valkey. Geprüft wird: anmelden und eine harmlose Abfrage (Version bzw. `PING`), auf Wunsch über TLS. Lege dafür am besten einen eigenen Benutzer nur mit Login-Recht an. Das Passwort wird verschlüsselt gespeichert und nie an den Browser zurückgegeben.
 
 ### Sensoren (ab Version 0.4)
@@ -172,7 +172,7 @@ Der Agent hat keine Weboberfläche und öffnet keinen Port. Er fragt die Zentral
 
 ## Proxmox VE und Backup Server (ab Version 0.4)
 
-Unter *Überwachung → Virtualisierung* liest WhatsOnMyNet Proxmox VE und Proxmox Backup Server über ihre eingebaute API - dort wird nichts installiert. Ein eigener Benutzer mit einem API-Token, der nur lesen darf, genügt (VE: Rolle *PVEAuditor* auf `/`, Backup Server: Rolle *Audit*). Der Dialog *Host hinzufügen → Proxmox VE* führt in zwei Schritten durch: die drei Befehle zum Kopieren (oder die Klicks in der Proxmox-Oberfläche), dann Adresse, **Zertifikat abrufen** mit Fingerabdruck-Vergleich und das Geheimnis. Fehlen dem Token Rechte, nennt die Detailansicht sie samt Befehl zum Beheben; das Geheimnis wird verschlüsselt gespeichert.
+Unter *Überwachung → Virtualisierung* liest WhatsOnMyNet Proxmox VE und Proxmox Backup Server über ihre eingebaute API - dort wird nichts installiert. Ein eigener Benutzer mit einem API-Token, der nur lesen darf, genügt (VE: Rolle *PVEAuditor* auf `/`, Backup Server: Rolle *Audit*). Der Dialog *Host hinzufügen → Proxmox VE* führt in zwei Schritten durch: die Befehle zum Kopieren (oder die Klicks in der Proxmox-Oberfläche), dann Adresse, **Zertifikat abrufen** mit Fingerabdruck-Vergleich und das Geheimnis. Fehlen dem Token Rechte, nennt die Detailansicht sie samt Befehl zum Beheben; das Geheimnis wird verschlüsselt gespeichert.
 
 Weitere Hypervisoren auf derselben Seite: **VMware ESXi/vCenter** (vSphere-API), **XCP-ng/XenServer** (XAPI), **Nutanix AHV** (Prism-API v2) und **oVirt/RHV/OLVM** (REST-API) werden mit einem Konto abgefragt, das nur lesen darf. **Hyper-V** und **KVM/libvirt** melden sich selbst: ein kleines Skript (PowerShell bzw. POSIX sh mit `virsh -r`) schickt alle 5 Minuten Hosts, Speicher und VMs - mit eigenem Schlüssel, ohne offenen Port auf dem Host. Alle erscheinen gleich und liefern dieselben Sensoren.
 

@@ -103,13 +103,13 @@ export const dockerError = (e) => netMessage(e);
 
 const shortVersion = (s) => String(s || '').split(/[\s,(]/).slice(0, 2).join(' ').slice(0, 60);
 
-export async function mysqlCheck({ host, port, user, password, database, tls: useTls }, timeoutS = 10) {
+export async function mysqlCheck({ host, port, user, password, database, tls: useTls, verify = false }, timeoutS = 10) {
   const { default: mysql } = await import('mysql2/promise');
   const t0 = Date.now();
   let conn;
   try {
     conn = await withTimeout(mysql.createConnection({ host, port, user: user || undefined, password: password || undefined, database: database || undefined,
-      connectTimeout: timeoutS * 1000, ssl: useTls ? { rejectUnauthorized: false } : undefined, multipleStatements: false }), timeoutS * 1000);
+      connectTimeout: timeoutS * 1000, ssl: useTls ? { rejectUnauthorized: !!verify } : undefined, multipleStatements: false }), timeoutS * 1000);
     const [rows] = await withTimeout(conn.query('SELECT VERSION() AS v'), timeoutS * 1000);
     const ms = Date.now() - t0;
     const v = String(rows?.[0]?.v || '');
@@ -121,11 +121,11 @@ export async function mysqlCheck({ host, port, user, password, database, tls: us
   }
 }
 
-export async function postgresCheck({ host, port, user, password, database, tls: useTls }, timeoutS = 10) {
+export async function postgresCheck({ host, port, user, password, database, tls: useTls, verify = false }, timeoutS = 10) {
   const { default: pg } = await import('pg');
   const t0 = Date.now();
   const client = new pg.Client({ host, port, user: user || 'postgres', password: password || undefined, database: database || 'postgres',
-    connectionTimeoutMillis: timeoutS * 1000, query_timeout: timeoutS * 1000, ssl: useTls ? { rejectUnauthorized: false } : false,
+    connectionTimeoutMillis: timeoutS * 1000, query_timeout: timeoutS * 1000, ssl: useTls ? { rejectUnauthorized: !!verify } : false,
     application_name: 'WhatsOnMyNet' });
   client.on('error', () => {});
   try {
@@ -140,15 +140,17 @@ export async function postgresCheck({ host, port, user, password, database, tls:
 }
 
 /** Redis/Valkey: (AUTH) + PING over the plain RESP protocol */
-export function redisCheck({ host, port, user, password, tls: useTls }, timeoutS = 10) {
+export function redisCheck({ host, port, user, password, tls: useTls, verify = false }, timeoutS = 10) {
   return new Promise((resolve) => {
     const t0 = Date.now();
     const enc = (...args) => `*${args.length}\r\n${args.map((a) => `$${Buffer.byteLength(String(a))}\r\n${a}\r\n`).join('')}`;
-    const sock = useTls ? tls.connect({ host, port, servername: net.isIP(host) ? undefined : host, rejectUnauthorized: false }) : net.connect({ host, port });
+    const sock = useTls ? tls.connect({ host, port, servername: net.isIP(host) ? undefined : host, rejectUnauthorized: !!verify }) : net.connect({ host, port });
     sock.setTimeout(timeoutS * 1000);
     let buf = '';
     let done = false;
-    const end = (r) => { if (!done) { done = true; sock.destroy(); resolve(r); } };
+    // A deadline for the whole check, not only for silence on the line
+    const deadline = setTimeout(() => end({ ok: false, ms: null, message: `timeout (${timeoutS} s)` }), timeoutS * 1000 + 500);
+    const end = (r) => { if (!done) { done = true; clearTimeout(deadline); sock.destroy(); resolve(r); } };
     const steps = [];
     if (password) steps.push(user ? enc('AUTH', user, password) : enc('AUTH', password));
     steps.push(enc('PING'));
@@ -156,6 +158,8 @@ export function redisCheck({ host, port, user, password, tls: useTls }, timeoutS
     sock.once(useTls ? 'secureConnect' : 'connect', () => sock.write(steps.join('')));
     sock.on('data', (d) => {
       buf += d.toString('utf8');
+      // The answers we wait for are a few bytes: a server sending on and on without a line end is not Redis
+      if (buf.length > 8192) return end({ ok: false, ms: null, message: 'unexpected answer (no Redis server?)' });
       let i;
       while ((i = buf.indexOf('\r\n')) >= 0) {
         const lineStr = buf.slice(0, i);

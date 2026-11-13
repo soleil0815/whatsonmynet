@@ -51,6 +51,10 @@ code { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 9pt; backgr
 pre { background: #f4f7f9; border: 0.2mm solid #d3dde5; border-radius: 1.5mm; padding: 2.5mm 3mm; margin: 2mm 0 3.5mm; white-space: pre-wrap; break-inside: avoid; }
 pre code { background: none; padding: 0; font-size: 8pt; }
 figure { margin: 4mm 0 6mm; page-break-inside: avoid; }
+table { border-collapse: collapse; width: 100%; font-size: 8.5pt; margin: 2mm 0 4mm; }
+th, td { text-align: left; vertical-align: top; padding: 1.2mm 2mm; border-bottom: 0.2mm solid #d3dde5; }
+th { font-weight: 600; border-bottom-width: 0.4mm; }
+tr { break-inside: avoid; }
 img { width: 100%; border: 0.5pt solid #cfd6de; border-radius: 2mm; display: block; }
 figcaption { font-size: 8.5pt; color: #6b7684; margin-top: 1.5mm; }
 `;

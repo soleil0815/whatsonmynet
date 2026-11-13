@@ -5,6 +5,7 @@ FILE=@FILE@
 CRON=@CRON@
 if [ "$(id -u)" = 0 ]; then DEST=/usr/local/sbin/$FILE; else DEST=$HOME/.local/bin/$FILE; fi
 if [ "${1:-}" != "--run" ]; then
+  umask 077 # the copy holds the key: never readable for others, not even for a moment
   mkdir -p "$(dirname "$DEST")"
   [ "$0" = "$DEST" ] || cp "$0" "$DEST"
   chmod 700 "$DEST"

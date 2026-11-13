@@ -278,14 +278,26 @@ export function mergePush(kind, old, incoming, at = new Date().toISOString()) {
   const names = new Set(incoming.nodes.map((n) => n.name));
   const keep = (x) => !names.has(x.node ?? x.name);
   const prev = old && typeof old === 'object' ? old : {};
+  // A node that has not sent for 30 days is gone (host removed) - with its guests and storages
+  const gone = new Set((prev.nodes || []).filter((n) => !names.has(n.name) && Date.parse(at) - Date.parse(n.seen || 0) > 30 * 86400000).map((n) => n.name));
+  const nodes = [...(prev.nodes || []).filter((n) => !names.has(n.name) && !gone.has(n.name)), ...incoming.nodes.map((n) => ({ ...n, seen: at }))].slice(-MAX_NODES);
+  const known = new Set(nodes.map((n) => n.name));
+  // What a script sends belongs to the nodes it names: a guest "of" another node would otherwise never be replaced
+  // and the data would grow with every push
+  const only = names.size === 1 ? [...names][0] : null;
+  const own = (x) => (names.has(x.node) ? x : only !== null ? { ...x, node: only } : null);
   const shared = new Set(incoming.storages.filter((x) => x.node === '').map((x) => x.name));
   return {
     kind,
-    nodes: [...(prev.nodes || []).filter((n) => !names.has(n.name)), ...incoming.nodes.map((n) => ({ ...n, seen: at }))].sort((a, b) => a.name.localeCompare(b.name)),
-    storages: [...(prev.storages || []).filter((x) => keep(x) && !(x.node === '' && shared.has(x.name))), ...incoming.storages].sort((a, b) => `${a.name}${a.node}`.localeCompare(`${b.name}${b.node}`)),
-    guests: [...(prev.guests || []).filter(keep), ...incoming.guests].sort((a, b) => a.name.localeCompare(b.name)),
+    nodes: nodes.sort((a, b) => a.name.localeCompare(b.name)),
+    storages: [...(prev.storages || []).filter((x) => keep(x) && !(x.node === '' && shared.has(x.name)) && (x.node === '' || known.has(x.node))),
+      ...incoming.storages.map((x) => (x.node === '' ? x : own(x))).filter(Boolean)].slice(0, MAX_STORAGES).sort((a, b) => `${a.name}${a.node}`.localeCompare(`${b.name}${b.node}`)),
+    guests: [...(prev.guests || []).filter((x) => keep(x) && known.has(x.node)), ...incoming.guests.map(own).filter(Boolean)].slice(0, MAX_GUESTS).sort((a, b) => a.name.localeCompare(b.name)),
   };
 }
+const MAX_NODES = 64;
+const MAX_GUESTS = 5000;
+const MAX_STORAGES = 1000;
 
 /** Nodes that have not sent for `staleMin` minutes are offline (script stopped, host down); their values are old */
 export function markStale(data, staleMin = 15, now = Date.now()) {

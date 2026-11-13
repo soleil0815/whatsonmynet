@@ -537,6 +537,7 @@ export async function openMonitorForm(m, done, preset = null) {
     field(t('mon.f.dbPassword'), pw, v.has_password ? t('mon.f.dbPasswordSet') : null),
     dbName,
     field(t('mon.f.dbTls'), h('input', { type: 'checkbox', name: 'db_tls', checked: !!o.tls })),
+    field(t('mon.f.dbVerify'), h('input', { type: 'checkbox', name: 'db_verify', checked: !!o.verify }), t('mon.f.dbVerifyHint')),
     h('p', { class: 'full muted small', style: { margin: 0 } }, t('mon.f.dbHint')));
   // Network drive (SMB): share, optional folder/file, read-only account, warning below free space
   const smbShare = input('smb_share', o.share || '', { maxlength: 80, class: 'mono', placeholder: t('smb.sharePh') });
@@ -804,7 +805,7 @@ export async function openMonitorForm(m, done, preset = null) {
       if (d.smb_password) body.password = d.smb_password;
     }
     if (DBT.includes(d.type)) {
-      body.options = { user: d.db_user, database: d.database, tls: d.db_tls };
+      body.options = { user: d.db_user, database: d.database, tls: d.db_tls, verify: d.db_verify };
       if (d.password) body.password = d.password;
     }
     if (!m && preset?.device_id) body.device_id = preset.device_id;
