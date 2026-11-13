@@ -181,7 +181,7 @@ Under *Settings → Proxmox* WhatsOnMyNet reads Proxmox VE and Proxmox Backup Se
 
 Under *Settings → Reports* WhatsOnMyNet sends reports by e-mail at set times – e.g. the toner levels of all printers to the office every Monday at 8:00, or the state of the NAS once a month.
 
-- **Content**: printers (toner per colour, drum, waste toner, page counter, faults), NAS (usage, disks, temperature), switches and network drives (free space); can be limited to locations, optionally only devices that need action. What should be ordered soon is marked red.
+- **Content**: printers (toner per colour, drum, waste toner, page counter, faults), NAS (usage, disks, temperature), switches and network drives (free space); can be limited to locations or **single devices** (e.g. a report just for the printer in the front office), optionally only devices that need action. Printers show the pages printed in total and in the report period. What should be ordered soon is marked red.
 - **Neutral**: the mail has no link and no program name – only your sender name, subject (`{week}`, `{date}`), introduction, the devices and your closing, e.g. "Your IT team".
 - Schedule daily, weekly or monthly; preview, "Test to me" and "Send now" right in the settings.
 
