@@ -563,6 +563,15 @@ export const MIGRATIONS = [
   // that one is down; its status is then 'unreachable' (follow-up outage)
   `ALTER TABLE monitors ADD COLUMN parent_id INTEGER REFERENCES monitors(id) ON DELETE SET NULL;
    CREATE INDEX monitors_parent ON monitors(parent_id);`,
+  // 20: long history - per hour also the measured value (response time or sensor value): count, sum, lowest, highest.
+  // Filled from the raw checks of the last 7 days; older hours only have the average of the successful checks.
+  `ALTER TABLE monitor_hourly ADD COLUMN v_n INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE monitor_hourly ADD COLUMN v_sum REAL NOT NULL DEFAULT 0;
+   ALTER TABLE monitor_hourly ADD COLUMN v_min REAL;
+   ALTER TABLE monitor_hourly ADD COLUMN v_max REAL;
+   UPDATE monitor_hourly SET (v_n, v_sum, v_min, v_max) = (SELECT COUNT(c.ms), COALESCE(SUM(c.ms), 0), MIN(c.ms), MAX(c.ms) FROM checks c
+     WHERE c.monitor_id = monitor_hourly.monitor_id AND c.at >= monitor_hourly.hour AND c.at < substr(monitor_hourly.hour, 1, 13) || ':99' AND c.ms IS NOT NULL);
+   UPDATE monitor_hourly SET v_n = ok, v_sum = ms_sum WHERE v_n = 0 AND ok > 0 AND ms_sum > 0;`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

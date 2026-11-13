@@ -341,6 +341,25 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     return r.total ? { pct: Math.round((r.ok / r.total) * 10000) / 100, avgMs: r.ok ? Math.round(r.ms / r.ok) : null, checks: r.total } : { pct: null, avgMs: null, checks: 0 };
   }
 
+  // Long ranges from the hourly table, grouped into buckets so that a year stays a readable chart
+  const MAX_HOURS = 24 * 366;
+  const bucketHours = (span) => (span <= 24 * 31 ? 6 : 24);
+  /** [{ at, ok, total, avg, min, max }] per bucket, oldest first; empty buckets are left out */
+  function history(id, span) {
+    const size = bucketHours(span) * 3600 * 1000;
+    const since = hourOf(new Date(now().getTime() - span * 3600 * 1000));
+    const out = new Map();
+    for (const r of db.prepare('SELECT hour, ok, total, v_n, v_sum, v_min, v_max FROM monitor_hourly WHERE monitor_id=? AND hour>=? ORDER BY hour').iterate(id, since)) {
+      const t0 = Math.floor(Date.parse(`${r.hour}:00Z`) / size) * size;
+      let b = out.get(t0);
+      if (!b) out.set(t0, (b = { at: new Date(t0).toISOString(), ok: 0, total: 0, n: 0, sum: 0, min: null, max: null }));
+      b.ok += r.ok; b.total += r.total; b.n += r.v_n; b.sum += r.v_sum;
+      if (r.v_min !== null && (b.min === null || r.v_min < b.min)) b.min = r.v_min;
+      if (r.v_max !== null && (b.max === null || r.v_max > b.max)) b.max = r.v_max;
+    }
+    return [...out.values()].map(({ n, sum, ...b }) => ({ ...b, avg: n ? Math.round((sum / n) * 100) / 100 : null }));
+  }
+
   function shape(m) {
     if (!m) return null;
     const certDays = m.cert_valid_to ? Math.floor((Date.parse(m.cert_valid_to) - now().getTime()) / 86400000) : null;
@@ -365,14 +384,17 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   function detail(id, hours = 24) {
     const m = get(id);
     if (!m) throw new HttpError(404, 'err.notFound');
-    const span = Math.min(24 * 7, Math.max(1, Number(hours) || 24));
-    const checks = db.prepare('SELECT at, ok, ms, message FROM checks WHERE monitor_id=? AND at>=? ORDER BY at')
+    const span = Math.min(MAX_HOURS, Math.max(1, Number(hours) || 24));
+    // Up to 7 days every single check, beyond that the hourly summary (raw checks are kept 7 days)
+    const long = span > KEEP_CHECKS_DAYS * 24;
+    const checks = long ? [] : db.prepare('SELECT at, ok, ms, message FROM checks WHERE monitor_id=? AND at>=? ORDER BY at')
       .all(id, iso(new Date(now().getTime() - span * 3600 * 1000))).map((c) => ({ ...c, ok: !!c.ok }));
     const device = m.device_id ? db.prepare('SELECT id, name, type FROM devices WHERE id=?').get(m.device_id) : null;
     return {
       ...m, device,
-      uptime: { h24: uptime(id, 24), d7: uptime(id, 24 * 7), d30: uptime(id, 24 * 30) },
+      uptime: { h24: uptime(id, 24), d7: uptime(id, 24 * 7), d30: uptime(id, 24 * 30), ...(long ? { span: uptime(id, span) } : {}) },
       checks,
+      ...(long ? { history: history(id, span), bucketHours: bucketHours(span) } : {}),
       events: db.prepare('SELECT * FROM monitor_events WHERE monitor_id=? ORDER BY id DESC LIMIT 100').all(id),
       parent: m.parent_id ? db.prepare('SELECT id, name, status FROM monitors WHERE id=?').get(m.parent_id) || null : null,
       dependents: db.prepare('SELECT id, name, status FROM monitors WHERE parent_id=? ORDER BY name').all(id),
@@ -442,8 +464,14 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const msg = String(res.message || '').slice(0, 300);
     db.transaction(() => {
       db.prepare('INSERT INTO checks(monitor_id,at,ok,ms,message) VALUES(?,?,?,?,?)').run(m.id, iso(at), ok, res.ms ?? null, msg);
-      db.prepare(`INSERT INTO monitor_hourly(monitor_id,hour,ok,total,ms_sum) VALUES(?,?,?,1,?)
-        ON CONFLICT(monitor_id,hour) DO UPDATE SET ok=ok+excluded.ok, total=total+1, ms_sum=ms_sum+excluded.ms_sum`).run(m.id, hourOf(at), ok, ok ? (res.ms || 0) : 0);
+      // v_*: every measured value (response time, sensor value - also while the alarm is on) for the long history
+      const v = Number.isFinite(res.ms) ? res.ms : null;
+      db.prepare(`INSERT INTO monitor_hourly(monitor_id,hour,ok,total,ms_sum,v_n,v_sum,v_min,v_max) VALUES(?,?,?,1,?,?,?,?,?)
+        ON CONFLICT(monitor_id,hour) DO UPDATE SET ok=ok+excluded.ok, total=total+1, ms_sum=ms_sum+excluded.ms_sum,
+          v_n=v_n+excluded.v_n, v_sum=v_sum+excluded.v_sum,
+          v_min=CASE WHEN excluded.v_min IS NULL THEN v_min WHEN v_min IS NULL OR excluded.v_min<v_min THEN excluded.v_min ELSE v_min END,
+          v_max=CASE WHEN excluded.v_max IS NULL THEN v_max WHEN v_max IS NULL OR excluded.v_max>v_max THEN excluded.v_max ELSE v_max END`)
+        .run(m.id, hourOf(at), ok, ok ? (res.ms || 0) : 0, v === null ? 0 : 1, v ?? 0, v, v);
     })();
 
     const inMaintenance = !!maintenance.activeFor(m.id, at);
