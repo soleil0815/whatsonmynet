@@ -8,6 +8,7 @@ import https from 'node:https';
 import { HttpError, line, str } from './lib/http.js';
 import { encrypt, decrypt } from './lib/crypto.js';
 import { log } from './lib/log.js';
+import { fetchTlsChain, describe, publiclyTrusted, toPem } from './auth/dccert.js';
 
 const URL_RE = /^https:\/\/[a-z0-9.\-[\]:]+(:\d{1,5})?$/i;
 const PVE_TOKEN = /^[\w.@-]+![\w.-]+$/;   // user@realm!tokenid
@@ -37,7 +38,8 @@ export function apiGet(host, path, timeoutMs = 15000) {
     const opts = { method: 'GET', timeout: timeoutMs, headers: { Authorization: auth, Accept: 'application/json' }, agent: false };
     if (host.ca) {
       const pinned = new crypto.X509Certificate(host.ca).fingerprint256;
-      Object.assign(opts, { ca: [host.ca], checkServerIdentity: (_h, cert) => (chainFingerprints(cert).includes(pinned) ? undefined : new Error('certificate is not the pasted one')) });
+      // allowPartialTrustChain: the pinned certificate may also be the server's own (not only a CA)
+      Object.assign(opts, { ca: [host.ca], allowPartialTrustChain: true, checkServerIdentity: (_h, cert) => (chainFingerprints(cert).includes(pinned) ? undefined : new Error('certificate is not the pasted one')) });
     } else {
       opts.rejectUnauthorized = !!host.verify;
     }
@@ -46,15 +48,17 @@ export function apiGet(host, path, timeoutMs = 15000) {
       res.on('data', (d) => { size += d.length; if (size < 8 * 1024 * 1024) chunks.push(d); else res.destroy(); });
       res.on('end', () => {
         const body = parse(Buffer.concat(chunks).toString('utf8'), null);
-        if (res.statusCode === 401 || res.statusCode === 403) return reject(Object.assign(new Error(`access denied (${res.statusCode}) – token or its rights`), { status: res.statusCode }));
+        if (res.statusCode === 401) return reject(Object.assign(new Error('sign-in refused (401) – token ID or secret wrong'), { status: 401 }));
+        if (res.statusCode === 403) return reject(Object.assign(new Error('access denied (403) – the token lacks the role PVEAuditor/Audit'), { status: 403 }));
         if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
         resolve(body?.data);
       });
     });
     req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', (e) => reject(new Error({ DEPTH_ZERO_SELF_SIGNED_CERT: 'self-signed certificate – paste it or switch the check off',
+    req.on('error', (e) => reject(new Error({ DEPTH_ZERO_SELF_SIGNED_CERT: 'self-signed certificate – Edit → Fetch certificate',
       SELF_SIGNED_CERT_IN_CHAIN: 'certificate of an unknown CA – paste the Proxmox CA', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate cannot be verified – paste the CA',
-      ECONNREFUSED: 'connection refused', ENOTFOUND: 'name not found (DNS)', EHOSTUNREACH: 'host unreachable' }[e.code] || e.message)));
+      ECONNREFUSED: 'connection refused', ENOTFOUND: 'name not found (DNS)', EHOSTUNREACH: 'host unreachable' }[e.code]
+      || (/not the pasted one/.test(e.message) ? 'certificate changed – fetch it again (Edit → Fetch certificate)' : e.message))));
     req.end();
   });
 }
@@ -156,7 +160,8 @@ export function createProxmox({ db, settings }) {
   let polling = false;
   const rowOf = (id) => db.prepare('SELECT * FROM proxmox_hosts WHERE id=?').get(id);
   const withSecret = (h) => { let s = ''; try { s = h.secret ? decrypt(h.secret) : ''; } catch { s = ''; } return { ...h, secretPlain: s }; };
-  const shape = (h) => (h ? { id: h.id, name: h.name, kind: h.kind, url: h.url, token_id: h.token_id, has_secret: !!h.secret, verify: !!h.verify, ca: h.ca,
+  const caInfo = (pem) => { try { return pem ? describe(new crypto.X509Certificate(pem)) : null; } catch { return null; } };
+  const shape = (h) => (h ? { id: h.id, name: h.name, kind: h.kind, url: h.url, token_id: h.token_id, has_secret: !!h.secret, verify: !!h.verify, ca: h.ca, ca_info: caInfo(h.ca),
     created_at: h.created_at, last_at: h.last_at, last_ok: !!h.last_ok, last_error: h.last_error, data: parse(h.data, {}) } : null);
 
   function clean(input, old = null) {
@@ -200,7 +205,29 @@ export function createProxmox({ db, settings }) {
     } finally { polling = false; }
   }
 
+  /**
+   * Certificate of the server for the admin to confirm: { certs, publicTrust, pem }. pem is what gets pinned – the
+   * top of the chain the server sends (its own CA if it sends it, otherwise its own certificate); '' if a public CA
+   * (e.g. Let's Encrypt via ACME) vouches for it anyway.
+   */
+  async function fetchCert(rawUrl) {
+    const url = line(rawUrl, 300).replace(/\/+$/, '');
+    if (!URL_RE.test(url)) throw new HttpError(400, 'err.proxmoxUrl');
+    const u = new URL(url);
+    let got;
+    try {
+      got = await fetchTlsChain({ host: u.hostname.replace(/^\[|\]$/g, ''), port: Number(u.port) || 443 });
+    } catch (e) {
+      if (e.code) throw new HttpError(400, 'err.proxmoxUrl');
+      throw new HttpError(502, 'err.proxmoxFetch', e.message.slice(0, 200));
+    }
+    const publicTrust = publiclyTrusted(got.certs);
+    const top = got.certs[got.certs.length - 1];
+    return { certs: got.certs.map((c, i) => describe(c, { role: i === 0 && !c.ca ? 'server' : null })), publicTrust, pem: publicTrust ? '' : toPem([top]) };
+  }
+
   return {
+    fetchCert,
     list: () => db.prepare('SELECT * FROM proxmox_hosts ORDER BY name').all().map(shape),
     get: (id) => shape(rowOf(id)),
     create(input) {
