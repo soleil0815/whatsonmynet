@@ -7,6 +7,7 @@
 //    (Configuration partition, Public Key Services) – this connection already trusts the confirmed certificate.
 // Every added CA must really have signed the certificate below it (signature check), otherwise it is ignored.
 import net from 'node:net';
+import tls from 'node:tls';
 import { execFile } from 'node:child_process';
 import { X509Certificate } from 'node:crypto';
 
@@ -106,14 +107,20 @@ function opensslError(out) {
  * fingerprint and confirms; all real connections afterwards verify against the confirmed certificate.
  * Returns { certs (leaf first), nameOk, host }.
  */
-export function fetchChain({ url, startTls = false, timeoutMs = 8000, openssl = process.env.WOMN_OPENSSL || 'openssl' }) {
-  const u = parseLdapUrl(url);
-  if (!u || !(net.isIP(u.host) || HOSTNAME.test(u.host))) return Promise.reject(Object.assign(new Error('invalid url'), { code: 'err.adUrl' }));
-  if (!u.ldaps && !startTls) return Promise.reject(Object.assign(new Error('no TLS'), { code: 'err.adPlain' }));
-  const target = net.isIPv6(u.host) ? `[${u.host}]:${u.port}` : `${u.host}:${u.port}`;
+/**
+ * Asks a TLS server for its certificates – "openssl s_client -showcerts", the usual tool to look at a server's
+ * certificate (optionally after "-starttls ldap"). Nothing is sent and nothing is trusted here: the admin compares the
+ * fingerprint and confirms; all real connections afterwards verify against the confirmed certificate.
+ * Returns { certs (leaf first), nameOk, host }.
+ */
+export function fetchTlsChain({ host, port, starttls = null, timeoutMs = 8000, openssl = process.env.WOMN_OPENSSL || 'openssl' }) {
+  if (!(net.isIP(host) || HOSTNAME.test(String(host || ''))) || !(Number(port) > 0 && Number(port) < 65536)) {
+    return Promise.reject(Object.assign(new Error('invalid address'), { code: 'err.adUrl' }));
+  }
+  const target = net.isIPv6(host) ? `[${host}]:${port}` : `${host}:${port}`;
   const args = ['s_client', '-connect', target, '-showcerts', '-verify_quiet'];
-  if (!net.isIP(u.host)) args.push('-servername', u.host);
-  if (!u.ldaps) args.push('-starttls', 'ldap');
+  if (!net.isIP(host)) args.push('-servername', host);
+  if (starttls === 'ldap') args.push('-starttls', 'ldap');
   return new Promise((resolve, reject) => {
     const child = execFile(openssl, args, { timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024, env: { PATH: process.env.PATH } }, (err, stdout, stderr) => {
       let certs = [];
@@ -122,10 +129,31 @@ export function fetchChain({ url, startTls = false, timeoutMs = 8000, openssl = 
         if (err && err.killed) return reject(new Error(`timeout (${Math.round(timeoutMs / 1000)} s)`));
         return reject(new Error(opensslError(`${stderr}\n${stdout}`)));
       }
-      resolve({ certs: orderChain(certs), nameOk: nameFits(certs[0], u.host), host: u.host });
+      resolve({ certs: orderChain(certs), nameOk: nameFits(certs[0], host), host });
     });
     child.stdin.end(); // send nothing: openssl closes the connection right after the handshake
   });
+}
+
+/** Certificate chain of a domain controller (LDAPS, or LDAP + StartTLS) */
+export function fetchChain({ url, startTls = false, ...opts }) {
+  const u = parseLdapUrl(url);
+  if (!u) return Promise.reject(Object.assign(new Error('invalid url'), { code: 'err.adUrl' }));
+  if (!u.ldaps && !startTls) return Promise.reject(Object.assign(new Error('no TLS'), { code: 'err.adPlain' }));
+  return fetchTlsChain({ host: u.host, port: u.port, starttls: u.ldaps ? null : 'ldap', ...opts });
+}
+
+let systemRoots = null;
+/** Is the chain trusted by the usual public CAs anyway (e.g. Let's Encrypt via ACME)? */
+export function publiclyTrusted(chain) {
+  if (!systemRoots) {
+    systemRoots = [];
+    for (const pem of tls.rootCertificates) { try { systemRoots.push(new X509Certificate(pem)); } catch { /* skip */ } }
+  }
+  // the chain has to end in one of the system's root CAs – a self-signed certificate of its own does not count
+  const full = completeFrom(chain, systemRoots).chain;
+  const top = full[full.length - 1];
+  return !!top && complete(full) && systemRoots.some((r) => r.fingerprint256 === top.fingerprint256);
 }
 
 /** Reads a downloaded certificate: DER or PEM (one or more) */
