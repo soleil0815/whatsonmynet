@@ -6,12 +6,13 @@ import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
 import { openMonitorForm } from './monitoring.js';
+import { scriptDialog, hostScriptsSettings } from './hostscripts.js';
 
 // Grouped so that related settings stand together; Proxmox and reports have their own pages under "Monitoring"
 const GROUPS = [
   ['access', [['general', 'settings'], ['users', 'users'], ['ad', 'user']]],
   ['scan', [['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['agents', 'location'], ['ignored', 'eyeoff']]],
-  ['connect', [['docker', 'server'], ['notify', 'bell'], ['smtp', 'mail']]],
+  ['connect', [['docker', 'server'], ['hostscripts', 'computer'], ['notify', 'bell'], ['smtp', 'mail']]],
   ['system', [['https', 'lock'], ['backup', 'download'], ['audit', 'history'], ['about', 'shield']]],
 ];
 const SECTIONS = GROUPS.flatMap(([, list]) => list);
@@ -30,7 +31,7 @@ export async function renderSettings(main, section = 'general') {
           class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))])),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, ad, agents, backup, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), ad, agents, backup, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
@@ -577,26 +578,7 @@ async function showScript(x, reload) {
   if (x.has_secret && !await confirmDialog(t('virt.newScript'), t('virt.newScriptConfirm'), t('virt.newScript'), t('cancel'))) return;
   let r;
   try { r = await post(`/proxmox/${x.id}/token`, { server: location.origin }); } catch (ex) { fail(ex); return; }
-  const download = () => {
-    const a = h('a', { href: URL.createObjectURL(new Blob([r.text.replace(/\n/g, x.kind === 'hyperv' ? '\r\n' : '\n')], { type: 'text/plain' })), download: r.file });
-    document.body.append(a); a.click(); a.remove();
-  };
-  const install = x.kind === 'hyperv'
-    ? ['New-Item -ItemType Directory -Force C:\\ProgramData\\WhatsOnMyNet | Out-Null',
-      `Move-Item -Force "$env:USERPROFILE\\Downloads\\${r.file}" C:\\ProgramData\\WhatsOnMyNet\\`,
-      `schtasks /Create /F /TN WhatsOnMyNet /SC MINUTE /MO 5 /RU SYSTEM /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\ProgramData\\WhatsOnMyNet\\${r.file}"`,
-      'schtasks /Run /TN WhatsOnMyNet']
-    : [`install -m 700 -o root ${r.file} /usr/local/sbin/${r.file}`,
-      `echo '*/5 * * * * root /usr/local/sbin/${r.file}' > /etc/cron.d/whatsonmynet`,
-      `/usr/local/sbin/${r.file} && echo OK`];
-  const m = modal(`${t('virt.scriptTitle')}: ${x.name}`, h('div', { class: 'form' },
-    h('p', { class: 'note warn', style: { margin: 0 } }, t('virt.scriptOnce')),
-    h('ol', { class: 'px-steps' },
-      h('li', {}, rich(t(`virt.${x.kind}.run1`)), h('div', { class: 'actions', style: { marginTop: '6px' } }, btn(t('virt.download'), { class: 'btn btn-sm btn-primary', onclick: download }, 'download'), copyBtn(() => r.text))),
-      h('li', {}, rich(t(`virt.${x.kind}.run2`)), cmdBox(install)),
-      h('li', {}, rich(t('virt.run3')))),
-    h('details', { class: 'cert-manual' }, h('summary', {}, t('virt.showScript')), h('pre', { class: 'code wrap', style: { maxHeight: '260px', overflow: 'auto' } }, r.text))),
-  { wide: true, onClose: reload, actions: [h('button', { class: 'btn btn-primary', type: 'button', onclick: () => m.close() }, t('virt.done'))] });
+  scriptDialog(`${t('virt.scriptTitle')}: ${x.name}`, { script: { file: r.file, text: r.text }, uninstall: r.uninstall }, { where: x.kind, onClose: reload });
 }
 
 async function proxmox(body, _s, reload) {

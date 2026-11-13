@@ -530,6 +530,33 @@ export const MIGRATIONS = [
   DROP TABLE proxmox_hosts;
   ALTER TABLE proxmox_hosts_new RENAME TO proxmox_hosts;
   ` },
+  // 17: Windows/Linux machines that report by a small script (no agent): keys (hash only, per device or shared),
+  // the last report per device, and machines that reported but are not in the inventory
+  `
+  CREATE TABLE host_tokens (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    os TEXT NOT NULL CHECK (os IN ('windows','linux')),
+    device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    last_used TEXT,
+    reports INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX host_tokens_hash ON host_tokens(token_hash);
+  CREATE TABLE host_reports (
+    device_id INTEGER PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+    at TEXT NOT NULL,
+    data TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE TABLE host_unmatched (
+    hostname TEXT PRIMARY KEY,
+    ip TEXT NOT NULL DEFAULT '',
+    os TEXT NOT NULL DEFAULT '',
+    token_id INTEGER,
+    at TEXT NOT NULL
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

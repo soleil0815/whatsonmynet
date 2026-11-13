@@ -217,11 +217,27 @@ esac
 `, { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'curl'), `#!/bin/sh\nprintf '%s\\n' "$*" > "${dir}/args"\ncat > "${dir}/body"\n`, { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'hostname'), '#!/bin/sh\necho kvm-host\n', { mode: 0o755 });
+  // no root here, and cron is a stand-in too: the setup on the first call must not touch the real machine
+  fs.writeFileSync(path.join(bin, 'id'), '#!/bin/sh\necho 1000\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'crontab'), `#!/bin/sh\nif [ "$1" = -l ]; then cat "${dir}/crontab" 2>/dev/null; else cat > "${dir}/crontab"; fi\n`, { mode: 0o755 });
   const s = pushScript('libvirt', { server: 'https://womn:8443/', id: 7, token: "tok'en", pin: { spki: 'AAAA=' } });
   const file = path.join(dir, s.file);
   fs.writeFileSync(file, s.text);
   execFileSync('sh', ['-n', file]);
-  execFileSync('sh', [file], { env: { PATH: `${bin}:/usr/bin:/bin` }, timeout: 15000 });
+  execFileSync('sh', [file], { env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir }, timeout: 15000 });
+  // first call: copied to ~/.local/bin (only for its owner, the key is in it) and every 5 minutes in cron with --run
+  const dest = path.join(dir, '.local/bin/womn-libvirt.sh');
+  assert.equal(fs.statSync(dest).mode & 0o777, 0o700);
+  assert.equal(fs.readFileSync(path.join(dir, 'crontab'), 'utf8'), `*/5 * * * * ${dest} --run >/dev/null 2>&1\n`);
+  // second setup does not add a second line
+  execFileSync('sh', [file], { env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir }, timeout: 15000 });
+  assert.equal(fs.readFileSync(path.join(dir, 'crontab'), 'utf8').split('\n').filter(Boolean).length, 1);
+  // the uninstall script removes both again
+  const un = path.join(dir, s.uninstall.file);
+  fs.writeFileSync(un, s.uninstall.text);
+  execFileSync('sh', [un], { env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir } });
+  assert.ok(!fs.existsSync(dest));
+  assert.equal(fs.readFileSync(path.join(dir, 'crontab'), 'utf8'), '');
   const args = fs.readFileSync(path.join(dir, 'args'), 'utf8');
   assert.match(args, /-k --pinnedpubkey sha256\/\/AAAA=/);
   assert.match(args, /Authorization: Bearer tok'en/);

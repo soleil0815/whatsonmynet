@@ -194,13 +194,34 @@ Under *Monitoring → Virtualization → Add host* further hypervisors are offer
 
 1. *Add host* → **Microsoft Hyper-V** or **KVM / libvirt**, give a name, save.
 2. The dialog shows the script with a key of its own (only this once) - **Download script**.
-3. **Hyper-V:** on the host open *PowerShell as administrator* and run the lines shown. They put the script into `C:\ProgramData\WhatsOnMyNet` and add a scheduled task that starts it every 5 minutes as SYSTEM. In a cluster on every node - all nodes land in the same entry.
-   **KVM:** copy the script onto the host and run the lines shown as root (installs it and adds a cron entry). It needs `virsh`, `awk` and `curl`; it reads with `virsh -r`.
+3. Run it once, it sets itself up. **Hyper-V** as administrator: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\womn-hyperv.ps1` (scheduled task *WhatsOnMyNet-HyperV*, every 5 minutes as SYSTEM). In a cluster on every node - all nodes land in the same entry.
+   **KVM:** `sh womn-libvirt.sh` (cron entry, every 5 minutes). It needs `virsh`, `awk` and `curl`; it reads with `virsh -r`.
+   Removing again: the **uninstall script** from the dialog or *Settings → Machine scripts* - it also removes the setup of version 0.6.0.
 4. After a few seconds the host appears. If it does not report for more than 15 minutes it counts as offline - a sensor "host online" then raises the alarm.
 
 If the key is lost or should be renewed: **New script** - the old one stops working then.
 
 With the self-signed certificate of WhatsOnMyNet the script trusts exactly this certificate (built in); with a certificate of a real CA it checks as usual.
+
+## Windows and Linux machines by script (without agent)
+
+Servers and PCs can be monitored without an agent: a small script on the machine reports **CPU, RAM, drives, uptime and services** every 5 minutes. It installs nothing, loads nothing, opens no port and needs no account - it only talks to WhatsOnMyNet. On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
+
+**A single machine:** device page → *More* → **Monitor with script** → Windows or Linux → **Create script**.
+
+1. **Download script** (it holds the address and the key - shown only this once).
+2. Run it once - it sets itself up:
+   - **Windows** as administrator: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\womn-host.ps1` - it puts itself into `C:\ProgramData\WhatsOnMyNet` (readable only for SYSTEM and administrators) and adds the scheduled task *WhatsOnMyNet-Host*.
+   - **Linux**: `sh womn-host.sh` - as root into `/usr/local/sbin` with `/etc/cron.d/whatsonmynet-host`, otherwise into `~/.local/bin` with an entry in the own crontab.
+3. After a few seconds the device page shows the section **System**. **Add sensor** turns it into monitors with alarms: "Machine reports", "CPU load", "Memory", "Drive C:", "Failed services" or "Service … running".
+
+**Many machines at once:** *Settings → Machine scripts* → **Shared script**. You roll out this one script by software distribution, a startup script by group policy or Ansible. Each report is matched to its device in the inventory (MAC address, machine name, IP). Machines that are not in the inventory yet show up there under *Unknown machines* - nothing is created on its own.
+
+**Failed services:** Windows - services that start automatically and stopped with an error code (trigger-start services that stopped normally do not count); Linux - systemd services in the state *failed*.
+
+**Removing again:** every script comes with an **uninstall script** (in the script dialog under *Remove again* and under *Settings → Machine scripts*). It removes the scheduled task or cron entry and the script - run or distribute it the same way. Afterwards the machine is as before. Deleting or recreating a script under *Settings → Machine scripts* locks the old key.
+
+If a machine does not report for 15 minutes it counts as offline - the sensor "Machine reports" then raises the alarm.
 
 ## Reports
 
