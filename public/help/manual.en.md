@@ -21,7 +21,7 @@ The interface always runs over HTTPS. On first start WhatsOnMyNet creates a self
 
 1. **Add a location** (*Locations*): name and subnets, e.g. "Main building" with `192.168.10.0/24`.
 2. **Scan the network** (*Scan network*): tick the location, "Start scan". The radar shows the devices found; the scan is gentle (ARP, about 25 typical ports, SNMP read-only).
-3. **Adopt**: in the result under "New" check type and name, tick devices, "Adopt into inventory". What you do not want in the inventory, "Ignore".
+3. **Adopt**: in the result under "New" check type and name, tick devices, "Adopt into inventory". What you do not want in the inventory, "Ignore". Ignored by mistake? Tick it in the "Ignored" tab and choose "Stop ignoring" (it is listed under "New" again) or "Adopt into inventory" right away. The full list is under *Settings → Ignored devices*.
 
 ![Scan with radar](img/scan-en.png)
 
