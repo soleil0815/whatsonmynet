@@ -8,7 +8,7 @@ import { config } from '../config.js';
 import { HttpError, line, str, int, ids, oneOf } from '../lib/http.js';
 import { safeEqual } from '../lib/crypto.js';
 import { requireAuth, requireRole, can } from '../auth/session.js';
-import { localInterfaces, defaultGateways, parseCidr } from '../lib/net.js';
+import { localInterfaces, defaultGateways, parseCidr, cidrContains } from '../lib/net.js';
 import { pingAvailable } from '../scan/probes.js';
 import { TYPES } from '../scan/classify.js';
 import { validTime } from '../scan/nightly.js';
@@ -93,7 +93,7 @@ export function createApi(ctx) {
           throw new HttpError(401, 'err.login');
         }
         u = users.upsertDirectory(info);
-        if (u) db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), u.username, 'login.ad', `role ${info.role}`);
+        if (u) db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), u.username, 'login.ad', `role ${u.role}`);
       } catch (e) {
         // 401 = unknown user or wrong password → normal failed sign-in below; other errors without details
         // (addresses, certificate texts of the domain controller are for the log, not for whoever opens the page)
@@ -416,7 +416,14 @@ export function createApi(ctx) {
     res.json({ unignored: n });
   });
 
-  r.get('/ignored', (_req, res) => res.json(db.prepare('SELECT * FROM ignored ORDER BY created_at DESC').all()));
+  // A user limited to locations only sees entries in the subnets of his locations (the list carries addresses and
+  // names of devices of every location)
+  r.get('/ignored', (req, res) => {
+    const rows = db.prepare('SELECT * FROM ignored ORDER BY created_at DESC').all();
+    if (!req.scope) return res.json(rows);
+    const nets = db.prepare('SELECT cidr, location_id FROM subnets').all().filter((s) => inScope(req.scope, s.location_id)).map((s) => parseCidr(s.cidr)).filter(Boolean);
+    res.json(rows.filter((x) => x.ip && nets.some((c) => cidrContains(c, x.ip))));
+  });
   r.delete('/ignored/:id', editor, (req, res) => {
     requireUnscoped(req);
     if (!db.prepare('DELETE FROM ignored WHERE id=?').run(idParam(req)).changes) throw new HttpError(404, 'err.notFound');

@@ -25,7 +25,9 @@ export async function recheckDirectoryUsers({ db, directory, users }) {
       signedOut++;
     } else if (info.role !== u.role) {
       users.upsertDirectory(info);
-      log.info(`Directory user "${u.username}": role now ${info.role} (was ${u.role})`);
+      // The last active admin keeps the role (upsertDirectory warns) - only a real change is logged
+      const now = db.prepare('SELECT role FROM users WHERE id=?').get(u.id)?.role;
+      if (now !== u.role) log.info(`Directory user "${u.username}": role now ${now} (was ${u.role})`);
     }
   }
   return { checked: rows.length, signedOut };
