@@ -4,6 +4,7 @@
 import { openSnmp, getValues, text } from '../scan/snmpwalk.js';
 import { nasProblems } from '../scan/nas.js';
 import { proxmoxMetrics } from '../proxmox.js';
+import { nodeTempsInto } from '../hosts.js';
 import { certName, daysLeft } from '../hostfacts.js';
 import { RF_STATE } from '../redfish.js';
 
@@ -253,7 +254,9 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
   if (!h.last_ok) return { ok: false, ms: null, message: `${h.name}: ${h.last_error}` };
   if (Date.now() - Date.parse(h.last_at) > staleMin * 60 * 1000) return { ok: false, ms: null, message: 'no current data' };
   const label = o.label || o.metric;
-  const x = proxmoxMetrics(parse(h.data, {})).find((y) => y.metric === o.metric && String(y.key) === String(o.key || ''));
+  const x = proxmoxMetrics(nodeTempsInto(db, parse(h.data, {}))).find((y) => y.metric === o.metric && String(y.key) === String(o.key || ''));
+  // The temperature of a node comes from the Linux script on it - without a current report there is none
+  if (!x && o.metric === 'nodeTemp') return { ok: false, ms: null, message: `${label}: no current temperature - the Linux script on the node has not reported for 15 minutes` };
   if (!x) return { ok: false, ms: null, message: `${label}: not found` };
   if (o.metric === 'netOnline') {
     const data = { state: x.value, uptime: x.uptime || 0, cpu: x.cpu ?? null, mem: x.mem ?? null };
@@ -277,7 +280,7 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
     return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found' : 'no value - the account probably lacks read rights (Monitoring → Virtualization)'}` };
   }
   const alarm = compare(o.op, x.value, o.threshold);
-  const extra = x.total ? { used: x.used, total: x.total } : {};
-  return { ok: !alarm, ms: Math.round(Number(x.value)), message: `${label}: ${x.value}${x.unit ? ` ${x.unit}` : ''}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}`,
+  const extra = x.total ? { used: x.used, total: x.total } : x.sensor ? { name: x.sensor } : {};
+  return { ok: !alarm, ms: Math.round(Number(x.value)), message: `${label}: ${x.value}${x.unit ? ` ${x.unit}` : ''}${x.sensor ? ` (${x.sensor})` : ''}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}`,
     data: valueData(x.value, x.unit, o, extra) };
 }
