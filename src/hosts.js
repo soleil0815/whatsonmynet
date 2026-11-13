@@ -180,3 +180,11 @@ export function hostTempsByName(db) {
   }
   return out;
 }
+
+/** Node list of a hypervisor with the temperature of each node that runs the Linux script (current reports only) */
+export function nodeTempsInto(db, data) {
+  if (!Array.isArray(data?.nodes) || !data.nodes.length) return data;
+  const temps = hostTempsByName(db);
+  if (!temps.size) return data;
+  return { ...data, nodes: data.nodes.map((n) => { const x = temps.get(String(n.name || '').toLowerCase().split('.')[0]); return x && !x.stale ? { ...n, temp: x } : n; }) };
+}
