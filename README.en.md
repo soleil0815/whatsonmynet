@@ -176,6 +176,8 @@ Under *Monitoring → Virtualization* WhatsOnMyNet reads Proxmox VE and Proxmox 
 
 More hypervisors on the same page: **VMware ESXi/vCenter** (vSphere API), **XCP-ng/XenServer** (XAPI), **Nutanix AHV** (Prism API v2) and **oVirt/RHV/OLVM** (REST API) are asked with an account that may only read. **Hyper-V** and **KVM/libvirt** report on their own: a small script (PowerShell or POSIX sh with `virsh -r`) sends hosts, storage and VMs every 5 minutes - with a key of its own, without an open port on the host. All appear the same way and offer the same sensors.
 
+**Network controllers:** UniFi Network (UniFi OS and Network app), TP-Link Omada and MikroTik RouterOS 7 are asked with a read-only account (*Monitoring → Network controllers*): access points, switches and gateways with model, firmware (and pending update), clients and state. Model, serial number, firmware and type go into the inventory by MAC; sensors for online state, clients, CPU/RAM and firmware updates. The scan recognises UniFi, Omada, MikroTik and Aruba Instant On by their model names.
+
 **Windows and Linux machines without agent:** a small script (PowerShell or POSIX sh) reports CPU, RAM, drives, uptime and services every 5 minutes - no agent, no open port, no account, nothing installed. On its first call it sets itself up (scheduled task or cron), an uninstall script removes it again. Per device (*device page → More → Monitor with script*) or shared by many machines to roll out (*Settings → Machine scripts*); reports are matched to the inventory by MAC, machine name or IP.
 
 - **VE**: nodes (online, CPU, RAM), storage with usage, VMs and containers (running/stopped), the latest backups (vzdump) with errors

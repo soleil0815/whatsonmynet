@@ -72,3 +72,19 @@ test('suggested names', () => {
   assert.equal(suggestName({ hostname: '', facts: {}, ip: '10.0.0.7', vendor: 'Brother' }), 'Brother .7');
   assert.equal(suggestName({ hostname: '', facts: {}, ip: '10.0.0.8', vendor: 'Brother', model: 'HL-L2350DW' }), 'HL-L2350DW');
 });
+
+test('UniFi, Omada, MikroTik, Aruba Instant On: the model name decides', () => {
+  const ubnt = (hostname, extra = {}) => classify({ ports: [22, 443], vendor: 'Ubiquiti', hostname, ...extra });
+  assert.equal(ubnt('USW-Lite-8-PoE').type, 'switch');
+  assert.equal(ubnt('USW-Lite-8-PoE').model, 'USW-Lite-8-PoE');
+  assert.equal(ubnt('U6-Pro').type, 'accesspoint');
+  assert.equal(ubnt('UAP-AC-Lite').type, 'accesspoint');
+  assert.equal(ubnt('UDM-Pro').type, 'router');
+  assert.equal(ubnt('', { ports: [8443], http: [{ port: 8443, title: 'UniFi Network' }] }).type, 'server', 'controller');
+  assert.equal(classify({ ports: [80, 443], vendor: 'TP-Link', hostname: 'EAP245' }).type, 'accesspoint');
+  assert.equal(classify({ ports: [80, 443], vendor: 'TP-Link', http: [{ port: 443, title: 'ER605' }] }).type, 'router');
+  assert.equal(classify({ ports: [443, 8043], vendor: 'TP-Link', http: [{ port: 8043, title: 'Omada Controller' }] }).type, 'server');
+  assert.equal(classify({ ports: [22, 80, 8291], vendor: 'MikroTik', hostname: 'CRS326-24G-2S+' }).type, 'switch');
+  assert.equal(classify({ ports: [22, 80, 8291], vendor: 'MikroTik', hostname: 'hAP-ax3' }).type, 'router');
+  assert.equal(classify({ ports: [80, 443], vendor: 'HPE', http: [{ port: 443, title: 'Instant On AP22' }] }).type, 'accesspoint');
+});

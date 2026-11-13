@@ -175,6 +175,10 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
   const label = o.label || o.metric;
   const x = proxmoxMetrics(parse(h.data, {})).find((y) => y.metric === o.metric && String(y.key) === String(o.key || ''));
   if (!x) return { ok: false, ms: null, message: `${label}: not found` };
+  if (o.metric === 'netOnline') {
+    const data = { state: x.value, uptime: x.uptime || 0, cpu: x.cpu ?? null, mem: x.mem ?? null };
+    return x.value === 'online' ? { ok: true, ms: null, message: `${label}: online`, data } : { ok: false, ms: null, message: `${label}: offline`, data: { state: 'offline' } };
+  }
   if (o.metric === 'nodeOnline') {
     const data = { state: x.value, uptime: x.uptime || 0, cpu: x.cpu ?? null, mem: x.mem ?? null };
     return x.value === 'online' ? { ok: true, ms: null, message: `${label}: online`, data } : { ok: false, ms: null, message: `${label}: offline`, data: { state: x.value } };
