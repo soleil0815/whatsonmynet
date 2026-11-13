@@ -68,7 +68,7 @@ export const LOGO_MARK = `<svg class="logo-mark" viewBox="0 0 64 64" aria-hidden
   <path d="M32 32 L52.5 11.5 A29 29 0 0 1 61 32 Z" fill="currentColor" fill-opacity=".22"/>
   <path d="M32 32 L52.5 11.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
   <circle cx="32" cy="32" r="3" fill="currentColor"/>
-  <circle cx="47" cy="25" r="3.4" fill="var(--ok, #4CC77F)"/>
+  <circle cx="47" cy="25" r="3.4" fill="var(--ok, #3FBF83)"/>
   <circle cx="19" cy="20" r="2.6" fill="currentColor" fill-opacity=".85"/>
   <circle cx="22" cy="46" r="2.6" fill="currentColor" fill-opacity=".85"/>
 </svg>`;
