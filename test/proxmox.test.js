@@ -25,6 +25,7 @@ function fakeProxmox(dir, name) {
       { type: 'lxc', vmid: 200, name: 'pihole', node: 'pve1', status: 'stopped' },
       { type: 'qemu', vmid: 9000, name: 'tmpl', node: 'pve1', status: 'stopped', template: 1 },
     ],
+    '/api2/json/access/permissions': { '/': { 'Sys.Audit': 1, 'VM.Audit': 1, 'Datastore.Audit': 1 } },
     '/api2/json/status/datastore-usage': [{ store: 'backup', used: 600, total: 1000 }],
     '/api2/json/admin/datastore/backup/groups': [{ 'backup-type': 'vm', 'backup-id': 101, 'last-backup': now - 3600, 'backup-count': 12 }, { 'backup-type': 'ct', 'backup-id': 200, 'last-backup': now - 5 * 86400, 'backup-count': 3 }],
   };
@@ -38,7 +39,7 @@ function fakeProxmox(dir, name) {
     if (routes[p]) return res.end(JSON.stringify({ data: routes[p] }));
     res.statusCode = 404; res.end('{}');
   });
-  return { srv, seen, ca: fs.readFileSync(path.join(dir, `${name}-c.pem`), 'utf8') };
+  return { srv, seen, routes, ca: fs.readFileSync(path.join(dir, `${name}-c.pem`), 'utf8') };
 }
 
 test('Proxmox VE and Backup Server: read, metrics, sensors, pinned certificate', async () => {
@@ -65,6 +66,17 @@ test('Proxmox VE and Backup Server: read, metrics, sensors, pinned certificate',
     assert.deepEqual(r.data.nodes.map((n) => [n.name, n.online]), [['pve1', true], ['pve2', false]]);
     assert.equal(r.data.storages[0].pct, 87);
     assert.deepEqual(r.data.guests.map((g) => g.vmid), [101, 200], 'templates left out');
+    assert.deepEqual(r.data.missing, [], 'all read rights there');
+    // Token without rights: Proxmox answers, but shows almost nothing – the missing rights are named
+    const full = fake.routes['/api2/json/cluster/resources'];
+    fake.routes['/api2/json/access/permissions'] = { '/': {}, '/vms': { 'VM.Audit': 0 } };
+    fake.routes['/api2/json/cluster/resources'] = [{ type: 'node', node: 'pve1', status: 'online' }];
+    const bare = await px.poll(strict.id);
+    assert.deepEqual(bare.data.missing, ['Sys.Audit', 'VM.Audit', 'Datastore.Audit']);
+    assert.deepEqual([bare.data.nodes[0].cpu, bare.data.nodes[0].mem], [null, null], 'no made-up values');
+    fake.routes['/api2/json/cluster/resources'] = full;
+    fake.routes['/api2/json/access/permissions'] = { '/': { 'Sys.Audit': 1, 'VM.Audit': 1, 'Datastore.Audit': 1 } };
+    r = await px.poll(strict.id);
     const metrics = proxmoxMetrics(r.data);
     assert.equal(metrics.find((x) => x.metric === 'backupAge' && x.key === '101').value, 2);
     assert.equal(metrics.find((x) => x.metric === 'backupAge' && x.key === '200').value, null, 'failed backup does not count');

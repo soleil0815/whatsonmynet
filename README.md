@@ -171,7 +171,7 @@ Der Agent hat keine Weboberfläche und öffnet keinen Port. Er fragt die Zentral
 
 ## Proxmox VE und Backup Server (ab Version 0.4)
 
-Unter *Einstellungen → Proxmox* liest WhatsOnMyNet Proxmox VE und Proxmox Backup Server über ihre eingebaute API – dort wird nichts installiert. Ein API-Token mit Leserechten genügt (VE: Rolle *PVEAuditor* auf `/`, Backup Server: Rolle *Audit*); das Geheimnis wird verschlüsselt gespeichert. Für das selbstsignierte Zertifikat trägst du `/etc/pve/pve-root-ca.pem` bzw. `/etc/proxmox-backup/proxy.pem` ein, dann wird genau diesem Zertifikat vertraut.
+Unter *Einstellungen → Proxmox* liest WhatsOnMyNet Proxmox VE und Proxmox Backup Server über ihre eingebaute API – dort wird nichts installiert. Ein eigener Benutzer mit einem API-Token, der nur lesen darf, genügt (VE: Rolle *PVEAuditor* auf `/`, Backup Server: Rolle *Audit*). Der Dialog *Proxmox-Server hinzufügen* führt in zwei Schritten durch: die drei Befehle zum Kopieren (oder die Klicks in der Proxmox-Oberfläche), dann Adresse, **Zertifikat abrufen** mit Fingerabdruck-Vergleich und das Geheimnis. Fehlen dem Token Rechte, nennt die Detailansicht sie samt Befehl zum Beheben; das Geheimnis wird verschlüsselt gespeichert.
 
 - **VE**: Knoten (online, CPU, RAM), Speicher mit Belegung, VMs und Container (läuft/gestoppt), die letzten Sicherungen (vzdump) mit Fehlern
 - **Backup Server**: Datastores mit Belegung, Sicherungsgruppen mit dem Alter der letzten Sicherung, fehlgeschlagene Aufgaben (Verify, GC …)

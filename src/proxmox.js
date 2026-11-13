@@ -8,6 +8,7 @@ import https from 'node:https';
 import { HttpError, line, str } from './lib/http.js';
 import { encrypt, decrypt } from './lib/crypto.js';
 import { log } from './lib/log.js';
+import { fetchTlsChain, describe, publiclyTrusted, toPem } from './auth/dccert.js';
 
 const URL_RE = /^https:\/\/[a-z0-9.\-[\]:]+(:\d{1,5})?$/i;
 const PVE_TOKEN = /^[\w.@-]+![\w.-]+$/;   // user@realm!tokenid
@@ -37,7 +38,8 @@ export function apiGet(host, path, timeoutMs = 15000) {
     const opts = { method: 'GET', timeout: timeoutMs, headers: { Authorization: auth, Accept: 'application/json' }, agent: false };
     if (host.ca) {
       const pinned = new crypto.X509Certificate(host.ca).fingerprint256;
-      Object.assign(opts, { ca: [host.ca], checkServerIdentity: (_h, cert) => (chainFingerprints(cert).includes(pinned) ? undefined : new Error('certificate is not the pasted one')) });
+      // allowPartialTrustChain: the pinned certificate may also be the server's own (not only a CA)
+      Object.assign(opts, { ca: [host.ca], allowPartialTrustChain: true, checkServerIdentity: (_h, cert) => (chainFingerprints(cert).includes(pinned) ? undefined : new Error('certificate is not the pasted one')) });
     } else {
       opts.rejectUnauthorized = !!host.verify;
     }
@@ -46,25 +48,43 @@ export function apiGet(host, path, timeoutMs = 15000) {
       res.on('data', (d) => { size += d.length; if (size < 8 * 1024 * 1024) chunks.push(d); else res.destroy(); });
       res.on('end', () => {
         const body = parse(Buffer.concat(chunks).toString('utf8'), null);
-        if (res.statusCode === 401 || res.statusCode === 403) return reject(Object.assign(new Error(`access denied (${res.statusCode}) – token or its rights`), { status: res.statusCode }));
+        if (res.statusCode === 401) return reject(Object.assign(new Error('sign-in refused (401) – token ID or secret wrong'), { status: 401 }));
+        if (res.statusCode === 403) return reject(Object.assign(new Error('access denied (403) – the token lacks the role PVEAuditor/Audit'), { status: 403 }));
         if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
         resolve(body?.data);
       });
     });
     req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', (e) => reject(new Error({ DEPTH_ZERO_SELF_SIGNED_CERT: 'self-signed certificate – paste it or switch the check off',
+    req.on('error', (e) => reject(new Error({ DEPTH_ZERO_SELF_SIGNED_CERT: 'self-signed certificate – Edit → Fetch certificate',
       SELF_SIGNED_CERT_IN_CHAIN: 'certificate of an unknown CA – paste the Proxmox CA', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate cannot be verified – paste the CA',
-      ECONNREFUSED: 'connection refused', ENOTFOUND: 'name not found (DNS)', EHOSTUNREACH: 'host unreachable' }[e.code] || e.message)));
+      ECONNREFUSED: 'connection refused', ENOTFOUND: 'name not found (DNS)', EHOSTUNREACH: 'host unreachable' }[e.code]
+      || (/not the pasted one/.test(e.message) ? 'certificate changed – fetch it again (Edit → Fetch certificate)' : e.message))));
     req.end();
   });
 }
 
 /** Reads a PVE cluster/node */
+// Read rights a monitoring token needs (roles PVEAuditor / Audit). Proxmox does not refuse a token without them – it
+// just shows almost nothing (nodes without values, no VMs, no storage) – so the missing ones are named in the interface.
+const NEEDED = { pve: ['Sys.Audit', 'VM.Audit', 'Datastore.Audit'], pbs: ['Sys.Audit', 'Datastore.Audit'] };
+
+/** Effective rights of the token (GET /access/permissions) → missing ones, or null if they cannot be read */
+export async function missingRights(host, kind) {
+  try {
+    const perms = await apiGet(host, '/access/permissions');
+    const have = new Set();
+    for (const privs of Object.values(perms || {})) for (const [k, v] of Object.entries(privs || {})) if (v) have.add(k);
+    return NEEDED[kind].filter((p) => !have.has(p));
+  } catch {
+    return null;
+  }
+}
+
 export async function readPve(host) {
   const res = await apiGet(host, '/cluster/resources');
   const nodes = []; const storages = []; const guests = [];
   for (const r of res || []) {
-    if (r.type === 'node') nodes.push({ name: r.node, online: r.status === 'online', cpu: Math.round((r.cpu || 0) * 100), mem: pct(r.mem, r.maxmem), disk: pct(r.disk, r.maxdisk), uptime: r.uptime || 0 });
+    if (r.type === 'node') nodes.push({ name: r.node, online: r.status === 'online', cpu: typeof r.cpu === 'number' ? Math.round(r.cpu * 100) : null, mem: pct(r.mem, r.maxmem), disk: pct(r.disk, r.maxdisk), uptime: r.uptime || 0 });
     else if (r.type === 'storage') storages.push({ name: r.storage, node: r.node, active: r.status === 'available', used: r.disk || 0, total: r.maxdisk || 0, pct: pct(r.disk, r.maxdisk) });
     else if (r.type === 'qemu' || r.type === 'lxc') guests.push({ vmid: r.vmid, name: r.name || String(r.vmid), kind: r.type, node: r.node, status: r.status, template: !!r.template, cpu: Math.round((r.cpu || 0) * 100), mem: pct(r.mem, r.maxmem) });
   }
@@ -78,7 +98,7 @@ export async function readPve(host) {
     } catch (e) { log.debug(`Proxmox ${host.name}: tasks of ${n.name}: ${e.message}`); }
   }
   backups.sort((a, b) => b.start - a.start);
-  return { kind: 'pve', nodes, storages: storages.sort((a, b) => a.name.localeCompare(b.name)), guests: guests.filter((g) => !g.template).sort((a, b) => a.vmid - b.vmid), backups: backups.slice(0, 100) };
+  return { kind: 'pve', missing: await missingRights(host, 'pve'), nodes, storages: storages.sort((a, b) => a.name.localeCompare(b.name)), guests: guests.filter((g) => !g.template).sort((a, b) => a.vmid - b.vmid), backups: backups.slice(0, 100) };
 }
 
 /** Reads a Proxmox Backup Server */
@@ -99,7 +119,7 @@ export async function readPbs(host) {
     failed = ((await apiGet(host, `/nodes/localhost/tasks?errors=true&limit=100&since=${since}`)) || [])
       .filter((t) => t.status && t.status !== 'OK').map((t) => ({ type: t.worker_type, id: t.worker_id || '', start: t.starttime, status: String(t.status).slice(0, 200) }));
   } catch (e) { log.debug(`PBS ${host.name}: tasks: ${e.message}`); }
-  return { kind: 'pbs', datastores, groups: groups.sort((a, b) => `${a.store}/${a.type}/${a.id}`.localeCompare(`${b.store}/${b.type}/${b.id}`, undefined, { numeric: true })), failed };
+  return { kind: 'pbs', missing: await missingRights(host, 'pbs'), datastores, groups: groups.sort((a, b) => `${a.store}/${a.type}/${a.id}`.localeCompare(`${b.store}/${b.type}/${b.id}`, undefined, { numeric: true })), failed };
 }
 
 /** Everything a Proxmox sensor can watch: [{ metric, key, name, value, unit, kind, op, threshold }] */
@@ -140,7 +160,8 @@ export function createProxmox({ db, settings }) {
   let polling = false;
   const rowOf = (id) => db.prepare('SELECT * FROM proxmox_hosts WHERE id=?').get(id);
   const withSecret = (h) => { let s = ''; try { s = h.secret ? decrypt(h.secret) : ''; } catch { s = ''; } return { ...h, secretPlain: s }; };
-  const shape = (h) => (h ? { id: h.id, name: h.name, kind: h.kind, url: h.url, token_id: h.token_id, has_secret: !!h.secret, verify: !!h.verify, ca: h.ca,
+  const caInfo = (pem) => { try { return pem ? describe(new crypto.X509Certificate(pem)) : null; } catch { return null; } };
+  const shape = (h) => (h ? { id: h.id, name: h.name, kind: h.kind, url: h.url, token_id: h.token_id, has_secret: !!h.secret, verify: !!h.verify, ca: h.ca, ca_info: caInfo(h.ca),
     created_at: h.created_at, last_at: h.last_at, last_ok: !!h.last_ok, last_error: h.last_error, data: parse(h.data, {}) } : null);
 
   function clean(input, old = null) {
@@ -184,7 +205,29 @@ export function createProxmox({ db, settings }) {
     } finally { polling = false; }
   }
 
+  /**
+   * Certificate of the server for the admin to confirm: { certs, publicTrust, pem }. pem is what gets pinned – the
+   * top of the chain the server sends (its own CA if it sends it, otherwise its own certificate); '' if a public CA
+   * (e.g. Let's Encrypt via ACME) vouches for it anyway.
+   */
+  async function fetchCert(rawUrl) {
+    const url = line(rawUrl, 300).replace(/\/+$/, '');
+    if (!URL_RE.test(url)) throw new HttpError(400, 'err.proxmoxUrl');
+    const u = new URL(url);
+    let got;
+    try {
+      got = await fetchTlsChain({ host: u.hostname.replace(/^\[|\]$/g, ''), port: Number(u.port) || 443 });
+    } catch (e) {
+      if (e.code) throw new HttpError(400, 'err.proxmoxUrl');
+      throw new HttpError(502, 'err.proxmoxFetch', e.message.slice(0, 200));
+    }
+    const publicTrust = publiclyTrusted(got.certs);
+    const top = got.certs[got.certs.length - 1];
+    return { certs: got.certs.map((c, i) => describe(c, { role: i === 0 && !c.ca ? 'server' : null })), publicTrust, pem: publicTrust ? '' : toPem([top]) };
+  }
+
   return {
+    fetchCert,
     list: () => db.prepare('SELECT * FROM proxmox_hosts ORDER BY name').all().map(shape),
     get: (id) => shape(rowOf(id)),
     create(input) {

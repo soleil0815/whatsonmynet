@@ -48,6 +48,8 @@ h3 { font-size: 12pt; margin: 6mm 0 2mm; page-break-after: avoid; }
 p, ul, ol { margin: 0 0 3mm; }
 li { margin: 0.8mm 0; }
 code { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 9pt; background: #eef3f5; padding: 0.3mm 1.2mm; border-radius: 1mm; }
+pre { background: #f4f7f9; border: 0.2mm solid #d3dde5; border-radius: 1.5mm; padding: 2.5mm 3mm; margin: 2mm 0 3.5mm; white-space: pre-wrap; break-inside: avoid; }
+pre code { background: none; padding: 0; font-size: 8pt; }
 figure { margin: 4mm 0 6mm; page-break-inside: avoid; }
 img { width: 100%; border: 0.5pt solid #cfd6de; border-radius: 2mm; display: block; }
 figcaption { font-size: 8.5pt; color: #6b7684; margin-top: 1.5mm; }

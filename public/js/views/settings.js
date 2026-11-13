@@ -379,17 +379,26 @@ const ago = (sec) => { if (!sec) return '–'; const hrs = Math.round((Date.now(
 function proxmoxDetail(x) {
   const d = x.data || {};
   if (!x.last_at) return h('p', { class: 'muted' }, t('prn.none'));
+  // never reached yet: only the error and what to do, no empty sections
   const sensor = () => openMonitorForm(null, () => {}, { type: 'proxmox', name: `${x.name} – Sensor`, interval_s: 300, fail_threshold: 1, options: { host: x.id } });
   const head = h('div', { class: 'actions', style: { marginBottom: '10px' } },
     !x.last_ok ? h('span', { class: 'note warn', style: { margin: 0 } }, x.last_error) : h('span', { class: 'muted small' }, `${t('prn.checked')}: ${fmtDate(x.last_at, getLang())}`),
     btn(t('sens.add'), { class: 'btn btn-sm', onclick: sensor }, 'plus'));
+  // Token without read rights: Proxmox shows almost nothing instead of refusing – say what is missing and how to fix it
+  const user = String(x.token_id || '').split('!')[0];
+  const rights = x.last_ok && (d.missing || []).length ? h('div', { class: 'note warn' }, h('div', { style: { minWidth: 0, flex: 1 } },
+    h('strong', {}, t('px.missing', { privs: d.missing.join(', ') })),
+    h('p', { style: { margin: '4px 0 6px' } }, rich(t(d.kind === 'pbs' ? 'px.missingPbs' : 'px.missingPve'))),
+    cmdBox(PX_FIX[d.kind === 'pbs' ? 'pbs' : 'pve'](user, x.token_id)),
+    h('p', { class: 'small', style: { margin: '6px 0 0' } }, t('px.missingThen')))) : null;
+  if (!d.kind) return head;
   if (d.kind === 'pve') {
     const running = (d.guests || []).filter((g) => g.status === 'running').length;
-    return h('div', {}, head,
+    return h('div', {}, head, rights,
       h('h3', { class: 'sub-title' }, t('px.nodes')),
       h('ul', { class: 'port-macs' }, (d.nodes || []).map((n) => h('li', {}, h('strong', {}, n.name),
         h('span', { class: `badge ${n.online ? 'badge-ok' : 'badge-bad'}` }, n.online ? 'online' : 'offline'),
-        n.online ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu} % · RAM ${n.mem} %`) : null))),
+        n.online && (n.cpu !== null || n.mem !== null) ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu ?? '–'} % · RAM ${n.mem ?? '–'} %`) : null))),
       h('h3', { class: 'sub-title' }, t('px.storages')),
       h('div', { class: 'supplies' }, (d.storages || []).filter((s) => s.total).map((s) => meter(`${s.name} · ${s.node}`, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
       h('h3', { class: 'sub-title' }, t('px.guests', { running, n: (d.guests || []).length })),
@@ -399,7 +408,7 @@ function proxmoxDetail(x) {
         h('span', { class: `badge ${b.ok ? 'badge-ok' : b.end ? 'badge-bad' : ''}` }, b.ok ? 'OK' : b.status), h('span', { class: 'mono small' }, b.vmid ? `VM ${b.vmid}` : t('px.allGuests')),
         h('span', { class: 'muted small' }, `${b.node} · ${fmtDate(new Date(b.start * 1000).toISOString(), getLang())}`)))) : h('p', { class: 'muted small' }, t('px.noBackups')));
   }
-  return h('div', {}, head,
+  return h('div', {}, head, rights,
     h('h3', { class: 'sub-title' }, t('px.datastores')),
     h('div', { class: 'supplies' }, (d.datastores || []).map((s) => meter(s.name, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
     h('h3', { class: 'sub-title' }, t('px.groups', { n: (d.groups || []).length })),
@@ -412,23 +421,104 @@ function proxmoxDetail(x) {
       h('span', { class: 'badge badge-bad' }, f.type), h('span', { class: 'small' }, f.status), h('span', { class: 'muted small' }, fmtDate(new Date(f.start * 1000).toISOString(), getLang())))))] : null);
 }
 
+// Text with `code` parts → nodes (no HTML from translations)
+const rich = (text) => String(text).split('`').flatMap((part, i) => (i % 2 ? [h('code', {}, part)]
+  : part.split('**').map((x, j) => (j % 2 ? h('strong', {}, x) : x))));
+const copyBtn = (getText) => btn(t('agent.copy'), { class: 'btn btn-sm', onclick: async () => {
+  try { await navigator.clipboard.writeText(getText()); toast(t('agent.copied')); } catch { /* not allowed */ }
+} });
+
+// Commands that prepare Proxmox: a user with read rights only and a token that inherits exactly these rights
+const PX_CMDS = {
+  pve: ['pveum user add whatsonmynet@pve --comment "WhatsOnMyNet (read only)"',
+    'pveum acl modify / --users whatsonmynet@pve --roles PVEAuditor',
+    'pveum user token add whatsonmynet@pve womn --privsep 0'],
+  pbs: ['proxmox-backup-manager user create whatsonmynet@pbs --comment "WhatsOnMyNet (read only)"',
+    'proxmox-backup-manager acl update / Audit --auth-id whatsonmynet@pbs',
+    'proxmox-backup-manager user generate-token whatsonmynet@pbs womn',
+    "proxmox-backup-manager acl update / Audit --auth-id 'whatsonmynet@pbs!womn'"],
+};
+const PX_FIX = {
+  pve: (user, token) => [`pveum acl modify / --users ${user} --roles PVEAuditor`, `pveum acl modify / --tokens '${token}' --roles PVEAuditor`],
+  pbs: (user, token) => [`proxmox-backup-manager acl update / Audit --auth-id ${user}`, `proxmox-backup-manager acl update / Audit --auth-id '${token}'`],
+};
+const cmdBox = (lines) => h('div', { class: 'cmd-box' }, h('pre', { class: 'mono' }, lines.join('\n')), copyBtn(() => lines.join('\n')));
+
+/** Step 1 of the dialog: prepare Proxmox – with commands (recommended) or by clicking through the interface */
+function proxmoxSetup(kindSel) {
+  const box = h('div', { class: 'px-setup' });
+  let mode = 'cmd';
+  const render = () => {
+    const k = kindSel.value === 'pbs' ? 'pbs' : 'pve';
+    const tabs = h('div', { class: 'seg' }, [['cmd', t('pxs.tabCmd')], ['gui', t('pxs.tabGui')]].map(([m, label]) => h('button', {
+      type: 'button', class: mode === m ? 'on' : '', onclick: () => { mode = m; render(); } }, label)));
+    const steps = mode === 'cmd'
+      ? [rich(t(`pxs.${k}.cmd1`)), [rich(t('pxs.cmd2')), cmdBox(PX_CMDS[k])], rich(t(`pxs.${k}.cmd3`))]
+      : [1, 2, 3, 4].map((n) => rich(t(`pxs.${k}.gui${n}`)));
+    mount(box, h('h3', { class: 'px-step' }, t('pxs.step1')), h('p', { class: 'muted small', style: { margin: '0 0 8px' } }, t('pxs.why')), tabs,
+      h('ol', { class: 'px-steps' }, steps.map((x) => h('li', {}, x))));
+  };
+  kindSel.addEventListener('change', render);
+  render();
+  return box;
+}
+
+/** Shows the server certificate for confirming (fingerprint), returns the chosen PEM ('' = public CA) or null */
+function confirmServerCert(r, kind) {
+  return new Promise((resolve) => {
+    let result = null;
+    const ok = h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { result = r.pem; m.close(); } }, t('adc.trust'));
+    const m = modal(t('adc.checkTitle'), h('div', {},
+      h('p', { style: { marginTop: 0 } }, rich(t(kind === 'pbs' ? 'pxs.compare.pbs' : 'pxs.compare.pve'))),
+      h('div', { class: 'cert-list' }, r.certs.map((c) => certRow(c, { full: true }))),
+      h('div', { class: 'note', style: { marginTop: '14px', marginBottom: 0 } }, r.publicTrust ? t('pxs.public') : t('pxs.pinned'))),
+    { wide: true, onClose: () => resolve(result), actions: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, t('cancel')), ok] });
+  });
+}
+
 async function proxmox(body, _s, reload) {
   const list = await get('/proxmox');
   const edit = (x) => {
     const kind = select('kind', [['pve', 'Proxmox VE'], ['pbs', 'Proxmox Backup Server']], x?.kind || 'pve');
-    const url = input('url', x?.url || '', { required: true, class: 'mono', placeholder: 'https://pve01.firma.local:8006' });
-    kind.addEventListener('change', () => { url.placeholder = kind.value === 'pbs' ? 'https://pbs01.firma.local:8007' : 'https://pve01.firma.local:8006'; });
+    const url = input('url', x?.url || '', { required: true, class: 'mono', placeholder: 'https://192.168.1.10:8006' });
+    const defToken = (k) => (k === 'pbs' ? 'whatsonmynet@pbs!womn' : 'whatsonmynet@pve!womn');
+    const tokenId = input('token_id', x?.token_id || defToken(x?.kind || 'pve'), { required: true, class: 'mono', autocomplete: 'off', placeholder: defToken(x?.kind || 'pve') });
+    const ca = h('textarea', { name: 'ca', rows: 3, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false' }, x?.ca || '');
+    const verify = h('input', { type: 'checkbox', name: 'verify', checked: x ? x.verify : true });
+    kind.addEventListener('change', () => {
+      url.placeholder = kind.value === 'pbs' ? 'https://192.168.1.20:8007' : 'https://192.168.1.10:8006';
+      if (!x && /^whatsonmynet@pb?v?e?s?!womn$/.test(tokenId.value)) tokenId.value = defToken(kind.value);
+      tokenId.placeholder = defToken(kind.value);
+    });
+    // Certificate: fetch from the server and confirm the fingerprint – no file to look for
+    const certState = h('div', { class: 'px-cert-state' });
+    const showCert = (info, publicTrust = false) => mount(certState, publicTrust ? h('span', { class: 'badge badge-ok' }, t('pxs.publicShort'))
+      : info ? h('div', { class: 'cert-list', style: { margin: 0 } }, certRow(info)) : h('span', { class: 'muted small' }, t('pxs.noCert')));
+    showCert(x?.ca_info || null);
+    const fetchBtn = h('button', { class: 'btn', type: 'button', html: `${icon('download')}<span>${t('pxs.fetch')}</span>`, onclick: async () => {
+      if (!url.value.trim()) { url.reportValidity(); return; }
+      fetchBtn.disabled = true;
+      try {
+        const r = await post('/proxmox/cert', { url: url.value });
+        const pem = await confirmServerCert(r, kind.value);
+        if (pem !== null) { ca.value = pem; verify.checked = true; showCert(r.certs[r.certs.length - 1], r.publicTrust); }
+      } catch (ex) { fail(ex); }
+      fetchBtn.disabled = false;
+    } });
     const form = h('form', { class: 'form' },
+      x ? null : proxmoxSetup(kind),
+      h('h3', { class: 'px-step' }, x ? t('pxs.connection') : t('pxs.step2')),
       h('div', { class: 'form-grid' },
         field(t('px.name'), input('name', x?.name || '', { required: true, maxlength: 80, placeholder: 'pve01' })),
         field(t('px.kind'), kind)),
-      field(t('px.url'), url),
+      field(t('px.url'), url, t('pxs.urlHint')),
+      h('div', { class: 'field' }, h('span', {}, t('px.ca')), h('div', { class: 'actions' }, fetchBtn), certState, h('span', { class: 'hint' }, t('pxs.certHint'))),
       h('div', { class: 'form-grid' },
-        field(t('px.tokenId'), input('token_id', x?.token_id || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: 'monitor@pve!womn' })),
-        field(t('px.secret'), input('secret', '', { type: 'password', autocomplete: 'new-password', required: !x?.has_secret, placeholder: x?.has_secret ? '••••••' : '' }), x?.has_secret ? t('set.smtpPasswordSet') : null)),
-      h('p', { class: 'muted small', style: { margin: 0 } }, t('px.tokenHint')),
-      field(t('px.ca'), h('textarea', { name: 'ca', rows: 3, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false' }, x?.ca || ''), t('px.caHint')),
-      field(t('px.verify'), h('input', { type: 'checkbox', name: 'verify', checked: x ? x.verify : true }), t('px.verifyHint')));
+        field(t('px.tokenId'), tokenId, t('pxs.tokenIdHint')),
+        field(t('px.secret'), input('secret', '', { type: 'password', autocomplete: 'new-password', required: !x?.has_secret, placeholder: x?.has_secret ? '••••••' : '' }), x?.has_secret ? t('set.smtpPasswordSet') : t('pxs.secretHint'))),
+      h('details', { class: 'cert-manual' }, h('summary', {}, t('pxs.expert')),
+        field(t('px.ca'), ca, t('px.caHint')),
+        field(t('px.verify'), verify, t('px.verifyHint'))));
     const m = modal(x ? x.name : t('px.add'), form, { wide: true, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
       h('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
@@ -437,7 +527,7 @@ async function proxmox(body, _s, reload) {
         const d = formData(form);
         if (!d.secret) delete d.secret;
         try { const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d); m.close(); toast(r.last_ok ? t('px.connected') : r.last_error, r.last_ok ? undefined : 'error'); reload(); } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
-      } }, t('save'))] });
+      } }, t('pxs.save'))] });
   };
   mount(body, h('section', { class: 'panel' },
     h('div', { class: 'panel-head', style: { paddingBottom: '12px', flexWrap: 'wrap' } }, h('h2', {}, 'Proxmox'), btn(t('px.add'), { class: 'btn btn-sm', onclick: () => edit(null) }, 'plus')),

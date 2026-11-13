@@ -107,13 +107,65 @@ The check runs over SMB 2/3: sign in, read the share (or the folder or file), as
 
 ![Proxmox](img/proxmox-en.png)
 
-Under *Settings → Proxmox* WhatsOnMyNet reads Proxmox through its API – nothing is installed there.
+WhatsOnMyNet reads Proxmox VE and the Proxmox Backup Server through their built-in interface (API). Nothing is installed on Proxmox. WhatsOnMyNet gets a user of its own there that may **only read**, and a key for it (API token). The dialog *Settings → Proxmox → Add Proxmox server* shows the same steps, with a button to copy.
 
-1. In Proxmox VE: *Datacenter → Permissions → API Tokens*, "Privilege Separation" on, give the token the role **PVEAuditor** on `/`. On the Backup Server: *Configuration → Access Control → API Token*, role **Audit**.
-2. In WhatsOnMyNet enter the address (`https://pve01:8006` or `:8007`), token ID (`monitor@pve!womn`) and secret.
-3. For the self-signed certificate paste the content of `/etc/pve/pve-root-ca.pem` (VE) or `/etc/proxmox-backup/proxy.pem` (Backup Server).
+### Step 1: prepare Proxmox (once)
 
-Nodes, storage, VMs and containers, backups, datastores and failed tasks are shown. "Add sensor" watches e.g. "VM 101 running" or "last backup older than 26 hours".
+**With commands (recommended) – Proxmox VE**
+
+1. In Proxmox click a node on the left and open **>_ Shell** at the top. One node is enough – in a cluster it applies to all.
+2. Copy these three lines, paste them into the shell and press Enter:
+
+```
+pveum user add whatsonmynet@pve --comment "WhatsOnMyNet (read only)"
+pveum acl modify / --users whatsonmynet@pve --roles PVEAuditor
+pveum user token add whatsonmynet@pve womn --privsep 0
+```
+
+3. The output shows a table. The row `value` holds the **secret** (a long string with dashes). Copy and keep it – Proxmox shows it only this once.
+
+**With commands – Proxmox Backup Server**
+
+1. In the Backup Server open *Administration → Shell* on the left.
+2. Paste these four lines and press Enter:
+
+```
+proxmox-backup-manager user create whatsonmynet@pbs --comment "WhatsOnMyNet (read only)"
+proxmox-backup-manager acl update / Audit --auth-id whatsonmynet@pbs
+proxmox-backup-manager user generate-token whatsonmynet@pbs womn
+proxmox-backup-manager acl update / Audit --auth-id 'whatsonmynet@pbs!womn'
+```
+
+3. After the third command `"value"` holds the **secret**. Copy it – it is shown only once.
+
+**By clicking – Proxmox VE**
+
+1. *Datacenter → Permissions → Users* → *Add*: user name `whatsonmynet`, realm *Proxmox VE authentication server*, any password → *Add*.
+2. *Datacenter → Permissions* → *Add* → *User Permission*: path `/`, user `whatsonmynet@pve`, role `PVEAuditor` → *Add*.
+3. *Datacenter → Permissions → API Tokens* → *Add*: user `whatsonmynet@pve`, token ID **only** `womn` (no @ or !), **untick** *Privilege Separation* → *Add*.
+4. Proxmox now shows the *Secret* – only this once. Copy and keep it.
+
+On the Backup Server it works the same under *Configuration → Access Control*: user `whatsonmynet` (realm *Proxmox Backup authentication server*), tab *API Token* with token name `womn`, then under *Permissions* the role `Audit` on the path `/` twice – once for the user `whatsonmynet@pbs`, once for the token `whatsonmynet@pbs!womn`.
+
+### Step 2: enter it in WhatsOnMyNet
+
+1. *Settings → Proxmox* → **Add Proxmox server**.
+2. Give it a name and choose the kind (Proxmox VE or Backup Server).
+3. Enter the **address** the way you open Proxmox in the browser, e.g. `https://192.168.1.10:8006` (Backup Server: port `8007`).
+4. Click **Fetch certificate**. WhatsOnMyNet shows the fingerprint of the Proxmox certificate. Compare it – Proxmox VE: click the node → *System → Certificates* → row `pve-ssl.pem`; Backup Server: *Dashboard* → *Show Fingerprint*. If it matches, **Fingerprint matches – trust**.
+5. The **token ID** is already filled in (`whatsonmynet@pve!womn` or `whatsonmynet@pbs!womn`). Paste the copied secret into **Token secret**.
+6. **Save and connect.** After a few seconds nodes, storage, VMs and containers and the backups appear.
+
+### Adding sensors
+
+In the detail view **Add sensor** – e.g. "VM 101 running", "storage local-lvm below 85 %" or "last backup older than 26 hours". Every sensor is a monitor with history and notification.
+
+### If something does not work
+
+- **"tokenid: value does not match the regex pattern" in Proxmox**: when adding the token enter only `womn` – without user, @ and !.
+- **"sign-in refused (401)"**: token ID or secret are wrong. Delete the token in Proxmox, add it again and enter the new secret.
+- **Notice "The token lacks read rights"**: usually *Privilege Separation* stayed ticked on the token. The notice shows two commands – paste them into the Proxmox shell, Enter, then **Query now**.
+- **"certificate changed"**: Proxmox got a new certificate. *Edit* → **Fetch certificate** → confirm.
 
 ## Reports
 

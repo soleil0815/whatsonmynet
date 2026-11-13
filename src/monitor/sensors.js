@@ -146,7 +146,9 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
   if (!x) return { ok: false, ms: null, message: `${label}: not found` };
   if (o.metric === 'nodeOnline') return x.value === 'online' ? { ok: true, ms: null, message: `${label}: online` } : { ok: false, ms: null, message: `${label}: offline` };
   if (o.metric === 'guestRunning') return x.value === 'running' ? { ok: true, ms: null, message: `${label}: running` } : { ok: false, ms: null, message: `${label}: ${x.value}` };
-  if (x.value === null || x.value === undefined) return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found' : 'no value'}` };
+  if (x.value === null || x.value === undefined) {
+    return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found' : 'no value – the token probably lacks read rights (Settings → Proxmox)'}` };
+  }
   const alarm = compare(o.op, x.value, o.threshold);
   return { ok: !alarm, ms: Math.round(Number(x.value)), message: `${label}: ${x.value}${x.unit ? ` ${x.unit}` : ''}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}` };
 }
