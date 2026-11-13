@@ -613,10 +613,12 @@ export async function openMonitorForm(m, done, preset = null) {
   });
   // Sensor: a value a device already delivers (printer supplies, NAS volumes, switch ports …)
   const so = v.options || {};
-  // A new sensor is named after what it watches until the name is typed by hand
+  // A sensor is named after what it watches: a new one right away, an existing one as soon as another value is chosen -
+  // unless the name is typed by hand in this dialog
   const nameIn = input('name', v.name || '', { required: true, maxlength: 120 });
   nameIn.addEventListener('input', () => { nameIn.dataset.touched = '1'; });
-  const autoName = (text) => { if (!m && text && !nameIn.dataset.touched) nameIn.value = text; };
+  let picked = false;
+  const autoName = (text) => { if ((!m || picked) && text && !nameIn.dataset.touched) nameIn.value = text; };
   // Sensor: one list of values, the same whether opened from a device or from a host under Virtualization.
   // A Proxmox node shows the values of Proxmox and of the Linux script on it together; the source decides nothing.
   let sources = { devices: [], hosts: [] };
@@ -648,11 +650,14 @@ export async function openMonitorForm(m, done, preset = null) {
       : t('sens.now', { value: st || `${x.value}${x.unit ? ` ${x.unit}` : ''}` });
     if (!m && x.kind === 'number' && !thr.dataset.touched) { opSel.value = x.op; thr.value = x.threshold; }
     if (typeSel.value !== 'sensor') return;
-    const owner = x.src === 'device' ? deviceName(x.device) || (x.group || '').replace(/^node:/, '') : sources.hosts.length > 1 ? x.hostName : '';
-    autoName(`${owner ? `${owner}: ` : ''}${choiceLabel(x)}`);
+    const owner = x.src === 'device' ? deviceName(x.device) || (x.group || '').replace(/^node:/, '')
+      : sources.hosts.length > 1 && !/^node/.test(x.metric) && x.metric !== 'storage' ? x.hostName : '';
+    // "pve2: Temperatur: CPU Core 0" - no prefix when the value already names it ("CPU pve01", not "pve01: CPU pve01")
+    const label = choiceLabel(x);
+    autoName(owner && !label.toLowerCase().includes(owner.toLowerCase()) ? `${owner}: ${label}` : label);
   };
   thr.addEventListener('input', () => { thr.dataset.touched = '1'; });
-  metricSel.addEventListener('change', syncMetric);
+  metricSel.addEventListener('change', () => { picked = true; syncMetric(); });
   // The value this sensor watches now - also when the list no longer offers it (e.g. the temperature of a node at the
   // hypervisor, which the script of the node now delivers itself)
   const isCurrent = (x) => !!m && srcOf(m) === srcSel.value && x.metric === so.metric && String(x.key ?? '') === String(so.key ?? '');
@@ -671,7 +676,7 @@ export async function openMonitorForm(m, done, preset = null) {
     if (cur >= 0) metricSel.value = String(cur);
     syncMetric();
   }
-  srcSel.addEventListener('change', loadMetrics);
+  srcSel.addEventListener('change', () => { picked = true; loadMetrics(); });
   const sensorBox = h('div', { class: 'form-grid full' },
     sources.devices.length || sources.hosts.length || startSrc ? field(t('sens.source'), srcSel, t('sens.sourceHint')) : h('p', { class: 'full muted small' }, t('sens.noSources')),
     h('div', {}, h('label', { class: 'field' }, t('sens.metric'), metricSel, metricHint)));

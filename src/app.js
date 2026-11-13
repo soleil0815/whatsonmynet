@@ -33,6 +33,7 @@ import { t, langFromHeader, normalizeLang, hasKey } from './i18n.js';
 import { log } from './lib/log.js';
 import { httpPortMiddleware, proxyHttpsMiddleware, directHstsMiddleware, createHttpsHosts } from './https.js';
 import { createSensorChoices } from './monitor/choices.js';
+import { nameSensorsOnce } from './monitor/sensornames.js';
 
 /**
  * WOMN_TRUST_PROXY: addresses/networks of the reverse proxy. Empty = no proxy (nothing is trusted).
@@ -79,6 +80,8 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   const hosts = createHosts({ db });
   // Serial numbers etc. already polled before this version knew how to take them over
   try { const n = syncStoredFacts(db); if (n) log.info(`Device details taken over from earlier polls: ${n} device(s)`); } catch (e) { log.warn(`Device details: ${e.message}`); }
+  // Sensors named after their value (once, after the update that brought it)
+  try { const n = nameSensorsOnce(db, settings); if (n) log.info(`Sensors named after their value: ${n}`); } catch (e) { log.warn(`Sensor names: ${e.message}`); }
   const directory = createDirectory(settings);
   const agents = createAgents({ db, settings, inventory, scanner });
   const reports = createReports({ db, settings, mailer });
