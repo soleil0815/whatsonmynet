@@ -65,7 +65,11 @@ On the device page "Monitor" creates a fitting monitor. If the IP of a device ch
 - **Push to the phone:** ntfy, Gotify, Pushover, Pushbullet, Home Assistant (companion app)
 - **Everything else:** Apprise - a bridge to more than 100 further services (SMS, Threema …)
 
-Tokens, keys and webhook addresses are stored encrypted and never shown again. Outages arrive with high priority on push services. **Maintenance windows** (once or weekly) suppress alarms.
+Tokens, keys and webhook addresses are stored encrypted and never shown again. Outages arrive with high priority on push services.
+
+**Maintenance windows** (*Monitoring → Monitoring → Maintenance windows*): once or on certain weekdays from-to (also over midnight). A window is for the ticked monitors and sensors - the choice is grouped by device or hypervisor, with search, a tick at the device takes all of it. Nothing ticked = everything. Quicker for a single one: on the page of the monitor or sensor under *Times without alarm* → **Time window without alarm** (preset: daily 20-23 h, e.g. for the time of the backup in which an SSD gets warm). Checks and history go on in a maintenance window, only the messages are silent.
+
+**What an alarm says:** web page, port and ping report "is down". A measured value reports "limit exceeded - 83.9 °C (≥ 80)" and later "back in the normal range", a state (service, VM, disk, container …) "fault" and "fine again", a sensor without current values "no current values".
 
 ### Escalation
 
@@ -132,7 +136,7 @@ The *Network map* shows from MAC tables and LLDP which device hangs at which por
 
 ## Sensors
 
-Every value a device delivers can become a monitor of its own - with history, alarm and maintenance windows. On the device page "Add sensor", then choose value and condition, e.g.:
+Every value a device delivers can become a monitor of its own - with history, alarm and maintenance windows. All sensors are listed under *Monitoring → Sensors*. On the device page "Add sensor", then choose value and condition, e.g.:
 
 - "toner cyan less than or equal 10 %"
 - "usage /volume1 greater than or equal 85 %"

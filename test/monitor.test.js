@@ -198,7 +198,7 @@ test('maintenance windows', () => {
 });
 
 test('notification texts and webhook template', () => {
-  assert.equal(eventText({ kind: 'down', monitor: { name: 'pve1' }, message: 'timeout (10 s)' }, 'de'), '🔴 pve1 ist nicht erreichbar - timeout (10 s)');
+  assert.equal(eventText({ kind: 'down', monitor: { name: 'pve1' }, message: 'timeout (10 s)' }, 'de'), '🔴 pve1 ist nicht erreichbar - Zeitüberschreitung (10 s)');
   assert.equal(eventText({ kind: 'up', monitor: { name: 'pve1' }, downtimeMin: 5 }, 'en'), '🟢 pve1 is up again (down for 5 min)');
   const body = renderTemplate('{"chat":"x","text":"{{text}}","n":"{{name}}"}', { text: 'a "quoted"\nline', name: 'NAS' });
   assert.deepEqual(JSON.parse(body), { chat: 'x', text: 'a "quoted"\nline', n: 'NAS' });
@@ -420,6 +420,51 @@ test('escalation: still down after the set time - once to further channels, all 
 });
 
 test('escalation text', () => {
-  assert.equal(eventText({ kind: 'escalate', downMin: 30, message: 'timeout', monitor: { name: 'Firewall' } }), '🚨 Eskalation: Firewall ist seit 30 Min. nicht erreichbar - timeout');
+  assert.equal(eventText({ kind: 'escalate', downMin: 30, message: 'timeout', monitor: { name: 'Firewall' } }), '🚨 Eskalation: Firewall ist seit 30 Min. nicht erreichbar - Zeitüberschreitung');
   assert.equal(eventText({ kind: 'escalate', downMin: 30, message: 'timeout', monitor: { name: 'Firewall' } }, 'en'), '🚨 Escalation: Firewall has been down for 30 min - timeout');
+});
+
+test('alarm words fit what failed: connection, measured value, state, no values (German and English)', () => {
+  const mon = { name: 'Temperatur pve2', label: 'Temperatur pve2' };
+  const v = { kind: 'down', family: 'value', monitor: mon, message: 'Temperatur pve2: 83.9 °C (≥ 80)' };
+  assert.equal(eventText(v, 'de'), '🔴 Temperatur pve2: Grenzwert überschritten - 83,9 °C (≥ 80)');
+  assert.equal(eventText(v, 'en'), '🔴 Temperatur pve2: limit exceeded - 83.9 °C (≥ 80)');
+  assert.equal(eventText({ kind: 'up', family: 'value', monitor: mon, message: 'Temperatur pve2: 61.2 °C', downtimeMin: 40 }, 'de'),
+    '🟢 Temperatur pve2: wieder im normalen Bereich - 61,2 °C (Ausfall 40 Min.)');
+  const s = { kind: 'down', family: 'state', monitor: { name: 'VM dc01', label: 'VM dc01' }, message: 'VM dc01: stopped' };
+  assert.equal(eventText(s, 'de'), '🔴 VM dc01: Störung - gestoppt');
+  assert.equal(eventText({ ...s, kind: 'up' }, 'en'), '🟢 VM dc01: fine again');
+  const n = { kind: 'down', family: 'nodata', monitor: { name: 'pve2 Host', label: 'Host' }, message: 'no report for 20 min' };
+  assert.equal(eventText(n, 'de'), '🔴 pve2 Host: keine aktuellen Werte - seit 20 Min. keine Meldung');
+  assert.equal(eventText({ kind: 'escalate', family: 'value', monitor: mon, downMin: 30, message: 'Temperatur pve2: 85 °C (≥ 80)' }, 'de'),
+    '🚨 Eskalation: Temperatur pve2 seit 30 Min. über dem Grenzwert - 85 °C (≥ 80)');
+  // a web page: still "not reachable"
+  assert.equal(eventText({ kind: 'down', family: 'reach', monitor: { name: 'Intranet' }, message: 'connection refused' }, 'de'), '🔴 Intranet ist nicht erreichbar - Verbindung abgelehnt');
+});
+
+test('the family of an alarm comes from the monitor and the check result', async () => {
+  const db = memoryDb();
+  const sent = [];
+  const mon = createMonitoring({ db, channels: { notify: async (_m, ev) => { sent.push(ev.family); return []; } }, maintenance: createMaintenance(db) });
+  const t = await mon.create({ name: 'Web', type: 'tcp', target: '10.0.0.1', port: 80, fail_threshold: 1 });
+  await mon.record(t, { ok: false, message: 'connection refused' });
+  const dev = db.prepare("INSERT INTO devices(name,created_at,updated_at) VALUES('pve2','x','x')").run().lastInsertRowid;
+  const s = await mon.create({ name: 'Temp', type: 'sensor', device_id: dev, options: { metric: 'hostTempMax', op: 'ge', threshold: 80 }, fail_threshold: 1 });
+  await mon.record(s, { ok: false, message: 'x: 83 °C (≥ 80)', data: { v: 83, unit: '°C', op: 'ge', threshold: 80 } });
+  const s2 = await mon.create({ name: 'Temp2', type: 'sensor', device_id: dev, options: { metric: 'hostTempMax', op: 'ge', threshold: 80 }, fail_threshold: 1 });
+  await mon.record(s2, { ok: false, message: 'no report for 20 min' });
+  assert.deepEqual(sent, ['reach', 'value', 'nodata']);
+});
+
+test('check results in German for the page and German alarms; English stays as it is', async () => {
+  const { checkText } = await import('../public/js/checktext.js');
+  const de = (s) => checkText(s, 'de');
+  assert.equal(de('timeout (10 s)'), 'Zeitüberschreitung (10 s)');
+  assert.equal(de('pve01: connection refused'), 'pve01: Verbindung abgelehnt');
+  assert.equal(de('running · healthy'), 'läuft · in Ordnung');
+  assert.equal(de('no report for 20 min'), 'seit 20 Min. keine Meldung');
+  assert.equal(de('Temperatur pve2: 83.9 °C (≥ 80)'), 'Temperatur pve2: 83,9 °C (≥ 80)');
+  assert.equal(de('10.0.0.1 version 1.2.3'), '10.0.0.1 version 1.2.3', 'addresses and versions untouched');
+  assert.equal(de('etwas Unbekanntes'), 'etwas Unbekanntes');
+  assert.equal(checkText('timeout (10 s)', 'en'), 'timeout (10 s)');
 });

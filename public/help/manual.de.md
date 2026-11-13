@@ -65,7 +65,11 @@ Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert 
 - **Push aufs Handy:** ntfy, Gotify, Pushover, Pushbullet, Home Assistant (Companion-App)
 - **Alles andere:** Apprise - eine Brücke zu über 100 weiteren Diensten (SMS, Threema …)
 
-Tokens, Schlüssel und Webhook-Adressen werden verschlüsselt gespeichert und nie wieder angezeigt. Störungen kommen bei Push-Diensten mit hoher Priorität. **Wartungsfenster** (einmalig oder wöchentlich) unterdrücken Alarme.
+Tokens, Schlüssel und Webhook-Adressen werden verschlüsselt gespeichert und nie wieder angezeigt. Störungen kommen bei Push-Diensten mit hoher Priorität.
+
+**Wartungsfenster** (*Überwachung → Monitoring → Wartungsfenster*): einmalig oder an bestimmten Wochentagen von-bis (auch über Mitternacht). Es gilt für die angehakten Monitore und Sensoren - die Auswahl ist nach Gerät bzw. Hypervisor gruppiert, mit Suche, ein Haken beim Gerät nimmt alles davon. Nichts angehakt = alles. Schneller für einen einzelnen: auf der Seite des Monitors oder Sensors unter *Zeiten ohne Alarm* → **Zeitfenster ohne Alarm** (vorbelegt: täglich 20-23 Uhr, z. B. für die Zeit des Backups, in der eine SSD warm wird). Geprüft und aufgezeichnet wird auch im Wartungsfenster, nur die Meldungen schweigen.
+
+**Was in einem Alarm steht:** Webseite, Port und Ping melden „ist nicht erreichbar“. Ein Messwert meldet „Grenzwert überschritten - 83,9 °C (≥ 80)“ und später „wieder im normalen Bereich“, ein Zustand (Dienst, VM, Festplatte, Container …) „Störung“ und „wieder in Ordnung“, ein Sensor ohne aktuelle Werte „keine aktuellen Werte“. Deutsche Kanäle bekommen auch die Einzelheiten auf Deutsch.
 
 ### Eskalation
 
@@ -132,7 +136,7 @@ Der *Netzplan* zeigt aus den MAC-Tabellen und LLDP, welches Gerät an welchem Po
 
 ## Sensoren
 
-Jeder Wert, den ein Gerät liefert, kann ein eigener Monitor werden - mit Verlauf, Alarm und Wartungsfenstern. Auf der Geräteseite „Sensor anlegen“, dann Wert und Bedingung wählen, z. B.:
+Jeder Wert, den ein Gerät liefert, kann ein eigener Monitor werden - mit Verlauf, Alarm und Wartungsfenstern. Alle Sensoren stehen unter *Überwachung → Sensoren*. Auf der Geräteseite „Sensor anlegen“, dann Wert und Bedingung wählen, z. B.:
 
 - „Toner Cyan kleiner oder gleich 10 %“
 - „Belegung /volume1 größer oder gleich 85 %“
