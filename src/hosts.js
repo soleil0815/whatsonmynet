@@ -10,6 +10,7 @@ import { normalizeMac } from './lib/net.js';
 import { hostScript } from './hostscripts.js';
 import { fillDevice } from './devicefill.js';
 import { cleanUps } from './scan/ups.js';
+import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts } from './hostfacts.js';
 
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
 const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -46,6 +47,9 @@ export function cleanReport(body) {
     ips: [...new Set(list(b.ips, 20).map((ip) => String(ip).trim()).filter((ip) => IPV4.test(ip)))],
     // UPS the machine sees (Linux: local NUT/apcupsd, Windows: UPS on USB)
     ups: cleanUps(b.ups),
+    // Hardware, physical disks, updates, protection, events, certificates (scripts from version 0.10 on)
+    hw: cleanHw(b.hw), pdisks: cleanPdisks(b.pdisks), updates: cleanUpdates(b.updates), ...cleanSecurity(b.av, b.firewall),
+    events: cleanEvents(b.events), certs: cleanCerts(b.certs),
   };
 }
 
@@ -109,7 +113,9 @@ export function createHosts({ db }) {
       .run(deviceId, at, JSON.stringify(r));
     db.prepare('DELETE FROM host_unmatched WHERE lower(hostname)=lower(?)').run(r.hostname);
     // Operating system and host name from the machine itself into empty fields of the device
-    fillDevice(db, deviceId, { os: r.os, hostname: r.hostname }, 'script');
+    // … and what the machine knows about its hardware (manufacturer, model, serial number; a VM is a VM)
+    const hw = r.hw || {};
+    fillDevice(db, deviceId, { os: r.os, hostname: r.hostname, vendor: hw.vendor, model: hw.model, serial: hw.serial, type: hw.virtual ? 'vm' : undefined }, 'script');
     return { ok: true, device: deviceId };
   }
 

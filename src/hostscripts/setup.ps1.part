@@ -4,7 +4,8 @@
 $Task = @TASK@
 $Dir = Join-Path $env:ProgramData 'WhatsOnMyNet'
 $Dest = Join-Path $Dir @FILE@
-if ($PSCommandPath -and $PSCommandPath -ne $Dest) {
+$Setup = [bool]($PSCommandPath -and $PSCommandPath -ne $Dest)
+if ($Setup) {
   New-Item -ItemType Directory -Force -Path $Dir | Out-Null
   Copy-Item -Force -Path $PSCommandPath -Destination $Dest
   & icacls.exe $Dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null

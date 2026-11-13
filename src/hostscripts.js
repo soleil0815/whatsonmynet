@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 
 const KINDS = {
-  windows: { file: 'womn-host.ps1', ps: true, task: 'WhatsOnMyNet-Host', old: [] },
+  windows: { file: 'womn-host.ps1', ps: true, task: 'WhatsOnMyNet-Host', old: [], extra: ['womn-updates.json'] },
   linux: { file: 'womn-host.sh', ps: false, cron: 'whatsonmynet-host', old: [] },
   hyperv: { file: 'womn-hyperv.ps1', ps: true, task: 'WhatsOnMyNet-HyperV', old: ['WhatsOnMyNet'] },
   libvirt: { file: 'womn-libvirt.sh', ps: false, cron: 'whatsonmynet-kvm', old: ['whatsonmynet'] },
@@ -41,7 +41,7 @@ export function uninstallScript(kind) {
   const k = KINDS[kind];
   if (!k) throw new Error(`unknown script kind ${kind}`);
   const text = k.ps
-    ? read('uninstall.ps1').replace('@TASKS@', psList([k.task, ...k.old])).replace('@FILES@', psList([k.file]))
+    ? read('uninstall.ps1').replace('@TASKS@', psList([k.task, ...k.old])).replace('@FILES@', psList([k.file, ...(k.extra || [])]))
     : read('uninstall.sh').replace('@FILES@', shList([k.file])).replace('@CRONS@', shList([k.cron, ...k.old]));
   return { file: uninstallName(k.file), text };
 }

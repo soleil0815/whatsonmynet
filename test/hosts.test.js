@@ -9,6 +9,8 @@ import { memoryDb, tmp, startApp } from './helpers.js';
 import { createHosts, cleanReport } from '../src/hosts.js';
 import { hostScript, uninstallScript } from '../src/hostscripts.js';
 import { metricsFor, sensorCheck } from '../src/monitor/sensors.js';
+import { cleanPdisks, cleanHw } from '../src/hostfacts.js';
+import { createInventory } from '../src/inventory.js';
 
 const GiB = 1024 ** 3;
 const ts = new Date().toISOString();
@@ -110,6 +112,7 @@ test('Linux script: POSIX sh, sets itself up in cron, reports what the server ac
   w('df', `printf 'Filesystem Type 1024-blocks Used Available Capacity Mounted on\\n/dev/sda1 ext4 102400 51200 51200 50%% /\\ntmpfs tmpfs 1000 0 1000 0%% /run\\n/dev/sdb1 xfs 2048000 2000000 48000 98%% /var/lib/data\\n'`);
   w('systemctl', `printf 'nginx.service loaded active running A high performance web server\\ncron.service loaded active running Regular background program processing daemon\\npostgresql.service loaded failed failed PostgreSQL "database" server\\nfoo.service not-found inactive dead foo.service\\n'`);
   w('ip', `printf '2: eth0    inet 10.0.0.20/24 brd 10.0.0.255 scope global eth0\\n'`);
+  w('apt-get', `printf 'Inst openssl [3.0.2] (3.0.13 Ubuntu:22.04/jammy-security [amd64])\\nInst vim [2:8.2] (2:8.2.3995 Ubuntu:22.04/jammy-updates [amd64])\\nConf openssl\\n'`);
   const s = hostScript('linux', { url: 'https://womn:8443/api/hosts/push', token: 'tok-123', pin: { spki: 'PIN=' } });
   const file = path.join(dir, s.file);
   fs.writeFileSync(file, s.text);
@@ -128,6 +131,7 @@ test('Linux script: POSIX sh, sets itself up in cron, reports what the server ac
   assert.equal(r.services.find((x) => x.name === 'postgresql').display, 'PostgreSQL "database" server');
   assert.deepEqual(r.ips, ['10.0.0.20']);
   assert.equal(r.ups, null, 'no UPS software - no UPS values');
+  assert.equal(r.updates.pending, null, 'the setup does not search for updates');
   // cron calls the copy with --run: it only reports, the crontab stays as it is
   execFileSync('sh', [dest, '--run'], { env, timeout: 15000 });
   assert.equal(fs.readFileSync(path.join(dir, 'crontab'), 'utf8').split('\n').filter(Boolean).length, 1);
@@ -142,12 +146,66 @@ test('Linux script: POSIX sh, sets itself up in cron, reports what the server ac
   execFileSync('sh', [dest, '--run'], { env, timeout: 15000 });
   const a = cleanReport(JSON.parse(fs.readFileSync(path.join(dir, 'body'), 'utf8'))).ups;
   assert.deepEqual([a.status, a.charge, a.runtime, a.load, a.model, a.vendor], ['online', 100, 2730, 12, 'Back-UPS XS 700U', 'APC']);
+  // Disks, journal, updates, firewall (as a normal user: no smartctl, no dmidecode)
+  w('lsblk', `case "$*" in *NAME,TYPE*) printf 'sda disk\\nnvme0n1 disk\\nloop0 loop\\nzram0 disk\\n' ;;
+    */dev/sda) printf 'MODEL="ST4000NM0035-1V4107" SERIAL="ZC1ABCDE" SIZE="4000787030016" ROTA="1" TRAN="sata"\\n' ;;
+    */dev/nvme0n1) printf 'MODEL="Samsung SSD 980 PRO 1TB" SERIAL="S5GXNF0R123" SIZE="1000204886016" ROTA="0" TRAN="nvme"\\n' ;; esac`);
+  w('journalctl', `case "$*" in *"-o json"*) printf '%s\\n' '{"PRIORITY":"2","SYSLOG_IDENTIFIER":"kernel","MESSAGE":"EXT4-fs error (device sdb1): bad block","__REALTIME_TIMESTAMP":"1763038800000000"}' '{"PRIORITY":"3","SYSLOG_IDENTIFIER":"sshd","MESSAGE":[1,2]}' ;;
+    *"0..2"*) echo one ;; *"3..3"*) printf 'a\\nb\\nc\\n' ;; esac`);
+  w('firewall-cmd', 'echo running');
+  execFileSync('sh', [dest, '--run'], { env, timeout: 15000 });
+  let x = cleanReport(JSON.parse(fs.readFileSync(path.join(dir, 'body'), 'utf8')));
+  assert.deepEqual(x.pdisks.map((d) => [d.name, d.model, d.serial, d.media, d.size, d.health]), [
+    ['sda', 'ST4000NM0035-1V4107', 'ZC1ABCDE', 'HDD', 4000787030016, 'unknown'], ['nvme0n1', 'Samsung SSD 980 PRO 1TB', 'S5GXNF0R123', 'NVMe', 1000204886016, 'unknown']]);
+  assert.deepEqual([x.events.critical, x.events.errors, x.events.items.length, x.events.items[0].source, x.events.items[0].level, x.events.items[0].at], [1, 3, 2, 'kernel', 'critical', '2025-11-13T13:00:00.000Z']);
+  assert.equal(x.events.items[1].message, '', 'binary journal message left out');
+  assert.deepEqual(x.firewall, { name: 'firewalld', state: 'on', profiles: null });
+  assert.ok(x.hw && x.hw.threads > 0 && x.hw.cores > 0, 'CPU from /proc/cpuinfo');
+  // The search ran after the first report of cron; later reports have it
+  assert.deepEqual([x.updates.pending, x.updates.security, x.updates.reboot], [2, 1, false]);
+  assert.ok(fs.existsSync(path.join(dir, '.cache/whatsonmynet/updates.json')));
   const un = path.join(dir, s.uninstall.file);
   fs.writeFileSync(un, s.uninstall.text);
   execFileSync('sh', ['-n', un]);
   execFileSync('sh', [un], { env });
   assert.ok(!fs.existsSync(dest));
   assert.equal(fs.readFileSync(path.join(dir, 'crontab'), 'utf8'), '');
+  assert.ok(!fs.existsSync(path.join(dir, '.cache/whatsonmynet')), 'update status removed too');
+});
+
+// The Windows script under PowerShell with a pretended Windows server (test/fixtures/winmock.ps1); GitHub's runners
+// have pwsh - where it is missing the test is skipped
+const pwsh = ['pwsh', process.env.PWSH].filter(Boolean).find((p) => { try { execFileSync(p, ['-NoProfile', '-Command', '1'], { stdio: 'ignore' }); return true; } catch { return false; } });
+test('Windows script: reports hardware, disks, updates, protection, events and certificates', { skip: !pwsh && 'pwsh missing' }, () => {
+  const dir = fs.mkdtempSync(path.join(tmp, 'win-'));
+  const s = hostScript('windows', { url: 'https://womn:8443/api/hosts/push', token: 'tok', pin: { sha1: 'AB:CD' } });
+  const home = path.join(dir, 'WhatsOnMyNet');
+  fs.mkdirSync(home);
+  const file = path.join(home, s.file);
+  fs.writeFileSync(file, s.text);
+  const body = path.join(dir, 'body.json');
+  const run = () => {
+    execFileSync(pwsh, ['-NoProfile', '-NonInteractive', '-File', path.resolve('test/fixtures/winmock.ps1'), '-Script', file], { env: { ...process.env, ProgramData: dir, WOMN_BODY: body, COMPUTERNAME: 'SRV-DC01' }, timeout: 60000 });
+    return cleanReport(JSON.parse(fs.readFileSync(body, 'utf8')));
+  };
+  let r = run();
+  assert.equal(r.hostname, 'SRV-DC01');
+  assert.deepEqual([r.hw.vendor, r.hw.model, r.hw.serial, r.hw.bios, r.hw.biosDate, r.hw.sockets, r.hw.cores, r.hw.threads, r.hw.virtual, r.hw.ramTotal],
+    ['Dell Inc.', 'PowerEdge R650', '7XK2Q93', '1.13.2', '2024-03-05', 2, 20, 40, false, 34359738368]);
+  assert.deepEqual(r.hw.nics.map((n) => [n.name, n.mac, n.speed, n.up]), [['Ethernet 1', '00:15:5d:01:02:03', 1000, true], ['Ethernet 2', '00:15:5d:01:02:04', null, false]]);
+  assert.deepEqual(r.pdisks.map((d) => [d.model, d.serial, d.media, d.health, d.temp, d.wear, d.hours]),
+    [['SAMSUNG MZ7LH480', 'S45PNA0M123456', 'SSD', 'ok', 34, 7, 21000], ['ST4000NM0035', 'ZC1ABCDE', 'HDD', 'warning', null, null, null]]);
+  assert.deepEqual(r.updates, { pending: null, security: null, checkedAt: null, lastInstalled: null, reboot: true });
+  assert.deepEqual(r.antivirus, { name: 'Microsoft Defender', enabled: true, realtime: true, upToDate: true, sigAge: 1, state: 'ok' });
+  assert.deepEqual(r.firewall, { name: 'Windows', state: 'partial', profiles: { domain: true, private: true, public: false } });
+  assert.deepEqual([r.events.critical, r.events.errors, r.events.items[0].source, r.events.items[0].id, r.events.items[0].message],
+    [1, 1, 'Microsoft-Windows-Kernel-Power', 41, 'The system has rebooted without cleanly shutting down first.']);
+  assert.deepEqual(r.certs.map((c) => [c.subject, c.thumb]), [['CN=rdg.firma.de', 'A1B2C3']], 'long expired ones are left out');
+  // The update search ran after the report (not during setup): the next report has its result
+  assert.ok(fs.existsSync(path.join(home, 'womn-updates.json')));
+  r = run();
+  assert.deepEqual([r.updates.pending, r.updates.security, r.updates.lastInstalled], [3, 2, '2026-11-01T03:00:00.000Z']);
+  assert.ok(uninstallScript('windows').text.includes("@('womn-host.ps1', 'womn-updates.json')"), 'uninstall removes the update status too');
 });
 
 test('Windows scripts: set up / remove the scheduled task, also the one of version 0.6.0 (Hyper-V)', () => {
@@ -158,4 +216,42 @@ test('Windows scripts: set up / remove the scheduled task, also the one of versi
   assert.ok(uninstallScript('libvirt').text.includes("for c in 'whatsonmynet-kvm' 'whatsonmynet'; do"));
   assert.ok(!/@[A-Z]+@/.test(hostScript('windows', { url: 'u', token: 't' }).text), 'no placeholder left');
   assert.throws(() => hostScript('beos', {}), /unknown/);
+});
+
+test('disk health from smartctl, sensors on disks, updates, protection, events and certificates', () => {
+  const pd = cleanPdisks([
+    { name: 'sda', model: '', serial: '', size: 1, rota: 0, tran: 'sata', smart: { model_name: 'Samsung SSD 870 EVO 1TB', serial_number: 'S6P', smart_status: { passed: true },
+      temperature: { current: 38 }, power_on_time: { hours: 9000 }, ata_smart_attributes: { table: [{ id: 5, value: 100, raw: { value: 8 } }, { id: 177, value: 92, raw: { value: 81 } }] } } },
+    { name: 'nvme0n1', size: 2, rota: 0, tran: 'nvme', smart: { model_name: 'WD Red SN700', serial_number: 'W1', smart_status: { passed: false },
+      temperature: { current: 0 }, nvme_smart_health_information_log: { percentage_used: 104, media_errors: 3 } } },
+  ]);
+  assert.deepEqual(pd.map((d) => [d.model, d.serial, d.media, d.health, d.temp, d.wear, d.hours, d.realloc, d.readErrors]), [
+    ['Samsung SSD 870 EVO 1TB', 'S6P', 'SSD', 'warning', 38, 8, 9000, 8, null], ['WD Red SN700', 'W1', 'NVMe', 'failed', null, 100, null, null, 3]]);
+  assert.equal(cleanHw({ biosDate: '03/05/2024', model: 'X' }).biosDate, '2024-03-05');
+
+  const db = memoryDb();
+  const inv = createInventory(db);
+  const d = inv.create({ name: 'srv', ip: '10.0.0.9', type: 'server' });
+  const soon = new Date(Date.now() + 10.5 * 86400000).toISOString();
+  const data = cleanReport({ hostname: 'srv', pdisks: [{ name: 'S1', serial: 'ZC1', health: 'Warning', temp: 61, wear: 3 }],
+    updates: { pending: 4, security: 1, reboot: true }, av: { name: 'Microsoft Defender', enabled: true, realtime: true, upToDate: false, sigAge: 9 },
+    firewall: { domain: true, private: true, public: true }, events: { hours: 24, critical: 2, errors: 5, items: [{ level: 'critical', source: 'Kernel-Power', id: 41, message: 'rebooted' }] },
+    certs: [{ subject: 'CN=web.firma.de', notAfter: soon, thumb: 'ab12' }] });
+  db.prepare('INSERT INTO host_reports(device_id,at,data) VALUES(?,?,?)').run(d.id, new Date().toISOString(), JSON.stringify(data));
+  const m = metricsFor(db, d.id);
+  const val = (metric) => m.find((x) => x.metric === metric)?.value;
+  assert.deepEqual(['hostPdHealth', 'hostPdTemp', 'hostUpdates', 'hostUpdatesSec', 'hostReboot', 'hostAv', 'hostFirewall', 'hostEvCritical', 'hostCert'].map(val),
+    ['warning', 61, 4, 1, 'required', 'outdated', 'on', 2, 10]);
+  assert.equal(m.find((x) => x.metric === 'hostCert').name, 'web.firma.de');
+  const check = (metric, key = '', extra = {}) => sensorCheck(db, { device_id: d.id, options: JSON.stringify({ metric, key, label: metric, ...extra }) });
+  assert.equal(check('hostPdHealth', 'ZC1').ok, false);
+  assert.match(check('hostPdHealth', 'ZC1').message, /warning \(61 °C, 3 % worn\)/);
+  assert.equal(check('hostPdTemp', 'ZC1', { op: 'ge', threshold: 55 }).ok, false);
+  assert.equal(check('hostReboot').ok, false);
+  assert.match(check('hostAv').message, /signatures 9 days old/);
+  assert.equal(check('hostFirewall').ok, true);
+  assert.match(check('hostEvCritical', '', { op: 'gt', threshold: 0 }).message, /2 in 24 h - newest: Kernel-Power 41: rebooted/);
+  assert.equal(check('hostCert', 'AB12', { op: 'le', threshold: 21 }).ok, false);
+  assert.equal(check('hostCert', 'AB12', { op: 'le', threshold: 7 }).ok, true);
+  assert.equal(check('hostUpdatesSec', '', { op: 'gt', threshold: 0 }).ok, false);
 });

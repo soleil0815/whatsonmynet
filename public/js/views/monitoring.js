@@ -70,7 +70,7 @@ export function nowParts(m) {
     return { main: t('smb.free', { size: fmtBytes(d.free) }), sub: t('smb.of', { total: fmtBytes(d.total), pct: pct(d.pct) }), tone: d.low ? 'bad' : 'ok', bar: 100 - d.pct };
   }
   if (d.state) {
-    const up = d.state === 'online' || d.state === 'running' || d.state === 'mains';
+    const up = ['online', 'running', 'mains', 'ok', 'on', 'none'].includes(d.state);
     if (d.uptime) parts.push(t('val.since', { time: fmtUptime(d.uptime) }));
     // UPS: battery charge and how long it lasts
     if (d.charge !== null && d.charge !== undefined) parts.push(t('ups.chargeShort', { n: d.charge }));
