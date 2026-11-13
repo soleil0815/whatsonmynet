@@ -4,6 +4,7 @@
 import { openSnmp, getValues, text } from '../scan/snmpwalk.js';
 import { nasProblems } from '../scan/nas.js';
 import { proxmoxMetrics } from '../proxmox.js';
+import { certName, daysLeft } from '../hostfacts.js';
 
 export const OPS = ['lt', 'le', 'gt', 'ge', 'eq', 'ne', 'contains', 'notcontains'];
 const OID = /^\.?([0-2])(\.\d{1,10}){2,40}$/;
@@ -76,6 +77,26 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
     for (const dk of x.disks || []) out.push({ metric: 'hostDisk', key: dk.name, name: dk.name, value: dk.pct, unit: '%', kind: 'number', op: 'ge', threshold: nasThreshold });
     out.push({ metric: 'servicesFailed', key: '', name: '', value: (x.services || []).filter((v) => v.failed).length, unit: '', kind: 'number', op: 'gt', threshold: 0 });
     for (const v of x.services || []) out.push({ metric: 'service', key: v.name, name: v.display && v.display !== v.name && !v.display.includes(`(${v.name})`) ? `${v.display} (${v.name})` : v.display || v.name, value: v.state, unit: '', kind: 'state' });
+    // Physical disks, updates, protection, events, certificates
+    for (const pd of x.pdisks || []) {
+      const key = pdKey(pd);
+      const nm = `${pd.model || pd.name}${pd.serial ? ` (${pd.serial})` : ''}`;
+      out.push({ metric: 'hostPdHealth', key, name: nm, value: pd.health, unit: '', kind: 'state' });
+      if (pd.temp !== null && pd.temp !== undefined) out.push({ metric: 'hostPdTemp', key, name: nm, value: pd.temp, unit: '°C', kind: 'number', op: 'ge', threshold: 55 });
+      if (pd.wear !== null && pd.wear !== undefined) out.push({ metric: 'hostPdWear', key, name: nm, value: pd.wear, unit: '%', kind: 'number', op: 'ge', threshold: 80 });
+    }
+    if (x.updates?.pending !== null && x.updates?.pending !== undefined) {
+      out.push({ metric: 'hostUpdates', key: '', name: '', value: x.updates.pending, unit: '', kind: 'number', op: 'gt', threshold: 0 });
+      out.push({ metric: 'hostUpdatesSec', key: '', name: '', value: x.updates.security ?? 0, unit: '', kind: 'number', op: 'gt', threshold: 0 });
+    }
+    if (x.updates) out.push({ metric: 'hostReboot', key: '', name: '', value: x.updates.reboot ? 'required' : 'none', unit: '', kind: 'state' });
+    if (x.antivirus) out.push({ metric: 'hostAv', key: '', name: x.antivirus.name, value: x.antivirus.state, unit: '', kind: 'state' });
+    if (x.firewall) out.push({ metric: 'hostFirewall', key: '', name: x.firewall.name, value: x.firewall.state, unit: '', kind: 'state' });
+    if (x.events) {
+      out.push({ metric: 'hostEvCritical', key: '', name: '', value: x.events.critical, unit: '', kind: 'number', op: 'gt', threshold: 0 });
+      out.push({ metric: 'hostEvErrors', key: '', name: '', value: x.events.errors, unit: '', kind: 'number', op: 'gt', threshold: 20 });
+    }
+    for (const c of x.certs || []) out.push({ metric: 'hostCert', key: c.thumb, name: certName(c), value: daysLeft(c.notAfter), unit: 'd', kind: 'number', op: 'le', threshold: 21 });
   } else if (s.kind === 'switch') {
     for (const p of (s.data.ports || []).filter((x) => !x.lag)) {
       out.push({ metric: 'port', key: String(p.ifIndex), name: `${p.name}${p.alias ? ` (${p.alias})` : ''}`, value: p.status, unit: '', kind: 'state' });
@@ -94,6 +115,9 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
   }
   return out;
 }
+
+/** A physical disk is the same disk by its serial number (names can change) */
+const pdKey = (pd) => pd.serial || pd.name;
 
 /**
  * Check of a "sensor" monitor. options: { metric, key, op, threshold, label }. ms = the value (for the chart).
@@ -146,6 +170,34 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
       if (u.status === 'battery') return { ok: false, ms: u.charge, message: `${label}: on battery${extra ? ` (${extra})` : ''}${u.low ? ', battery low' : ''}`, data: { state: 'battery', ...info } };
       if (u.replace) return { ok: false, ms: u.charge, message: `${label}: replace battery`, data: { state: 'replace', ...info } };
       return { ok: true, ms: u.charge, message: `${label}: ${u.status === 'online' ? 'on mains' : 'state unknown'}${extra ? ` (${extra})` : ''}`, data: { state: u.status === 'online' ? 'mains' : 'unknown', ...info } }; }
+    case 'hostPdHealth': case 'hostPdTemp': case 'hostPdWear': {
+      const pd = (s.data.pdisks || []).find((y) => pdKey(y) === o.key);
+      if (!pd) return { ok: false, ms: null, message: `${label}: not found` };
+      if (o.metric === 'hostPdTemp') { val = num(pd.temp, '°C'); break; }
+      if (o.metric === 'hostPdWear') { val = num(pd.wear, '%'); break; }
+      const extra = [pd.temp !== null ? `${pd.temp} °C` : '', pd.wear !== null ? `${pd.wear} % worn` : '', pd.realloc ? `${pd.realloc} reallocated sectors` : ''].filter(Boolean).join(', ');
+      return pd.health === 'ok' || pd.health === 'unknown'
+        ? { ok: true, ms: pd.temp, message: `${label}: ${pd.health === 'ok' ? 'healthy' : 'no health data'}${extra ? ` (${extra})` : ''}`, data: { state: pd.health } }
+        : { ok: false, ms: pd.temp, message: `${label}: ${pd.health}${extra ? ` (${extra})` : ''}`, data: { state: pd.health } }; }
+    case 'hostUpdates': val = num(s.data.updates?.pending ?? null); break;
+    case 'hostUpdatesSec': val = num(s.data.updates?.pending === null || s.data.updates?.pending === undefined ? null : s.data.updates.security ?? 0); break;
+    case 'hostReboot': { const u = s.data.updates; if (!u) return { ok: false, ms: null, message: `${label}: no data` };
+      return u.reboot ? { ok: false, ms: null, message: `${label}: restart required`, data: { state: 'required' } } : { ok: true, ms: null, message: `${label}: no restart needed`, data: { state: 'none' } }; }
+    case 'hostAv': { const a = s.data.antivirus; if (!a) return { ok: false, ms: null, message: `${label}: no data` };
+      const text = { ok: 'on and up to date', off: 'off', outdated: `signatures ${a.sigAge ?? '?'} days old` }[a.state];
+      return { ok: a.state === 'ok', ms: a.sigAge, message: `${label}: ${a.name} ${text}`, data: { state: a.state } }; }
+    case 'hostFirewall': { const f = s.data.firewall; if (!f) return { ok: false, ms: null, message: `${label}: no data` };
+      const off = f.profiles ? Object.entries(f.profiles).filter(([, v]) => !v).map(([k]) => k) : [];
+      return { ok: f.state === 'on', ms: null, message: `${label}: ${f.state}${off.length && f.state !== 'off' ? ` (off: ${off.join(', ')})` : ''}`, data: { state: f.state } }; }
+    case 'hostEvCritical': case 'hostEvErrors': { const e = s.data.events; if (!e) return { ok: false, ms: null, message: `${label}: no data` };
+      const n = o.metric === 'hostEvCritical' ? e.critical : e.errors;
+      const last = (e.items || []).find((i) => (o.metric === 'hostEvCritical' ? i.level === 'critical' : i.level === 'error'));
+      val = num(n, '', {});
+      if (compare(o.op, n, o.threshold)) return { ok: false, ms: n, message: `${label}: ${n} in ${e.hours} h${last ? ` - newest: ${last.source}${last.id ? ` ${last.id}` : ''}: ${last.message}` : ''}`.slice(0, 400), data: valueData(n, '', o) };
+      break; }
+    case 'hostCert': { const c = (s.data.certs || []).find((y) => y.thumb === o.key); if (!c) return { ok: false, ms: null, message: `${label}: not found` };
+      const d = daysLeft(c.notAfter);
+      val = { v: d, unit: 'd', text: d < 0 ? `expired ${-d} days ago` : `${d} days left` }; break; }
     case 'upsCharge': val = num(s.data.ups?.charge ?? null, '%'); break;
     case 'upsRuntime': { const r = s.data.ups?.runtime; val = num(r === null || r === undefined ? null : Math.round(r / 60), 'min'); break; }
     case 'upsLoad': val = num(s.data.ups?.load ?? null, '%'); break;
