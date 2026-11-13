@@ -148,6 +148,35 @@ if command -v journalctl >/dev/null 2>&1; then
   ej="{\"hours\":24,\"critical\":${crit:-0},\"errors\":${errs:-0},\"journal\":[$items]}"
 fi
 
+# Temperatures from hwmon - the same source lm-sensors' "sensors" reads, without lm-sensors and without root:
+# CPU (coretemp/k10temp), NVMe, chipset, mainboard chip, … in thousandths of a degree, with the limits the chip
+# itself names. Without hwmon (some ARM boards, VMs): the thermal zones. The device behind a chip makes the name
+# stable (hwmon numbers can change at the next start). WOMN_HWMON / WOMN_THERMAL only for the tests.
+HWMON=${WOMN_HWMON:-/sys/class/hwmon}
+THERMAL=${WOMN_THERMAL:-/sys/class/thermal}
+tj=""; tn=0
+mc() { v=$(cat "$1" 2>/dev/null); case "$v" in ''|*[!0-9-]*|-) printf null ;; *) printf '%s' "$v" ;; esac; }
+for c in "$HWMON"/hwmon*; do
+  [ -r "$c/name" ] || continue
+  chip=$(cat "$c/name" 2>/dev/null)
+  dev=$( (cd "$c/device" 2>/dev/null && pwd -P) || true); dev=${dev##*/}
+  for t in "$c"/temp*_input; do
+    [ -r "$t" ] && [ "$tn" -lt 64 ] || continue
+    b=${t%_input}; v=$(mc "$t"); [ "$v" = null ] && continue
+    lab=$(cat "${b}_label" 2>/dev/null); [ -n "$lab" ] || lab=${b##*/}
+    tj="$tj${tj:+,}{\"chip\":\"$(esc "$chip")\",\"dev\":\"$(esc "$dev")\",\"name\":\"$(esc "$lab")\",\"mC\":$v,\"maxMC\":$(mc "${b}_max"),\"critMC\":$(mc "${b}_crit")}"
+    tn=$((tn + 1))
+  done
+done
+if [ -z "$tj" ]; then
+  for z in "$THERMAL"/thermal_zone*; do
+    [ -r "$z/temp" ] && [ "$tn" -lt 16 ] || continue
+    v=$(mc "$z/temp"); [ "$v" = null ] && continue
+    tj="$tj${tj:+,}{\"chip\":\"thermal\",\"dev\":\"$(esc "${z##*/}")\",\"name\":\"$(esc "$(cat "$z/type" 2>/dev/null)")\",\"mC\":$v,\"maxMC\":null,\"critMC\":null}"
+    tn=$((tn + 1))
+  done
+fi
+
 macs=""
 for a in /sys/class/net/*/address; do
   [ -r "$a" ] || continue
@@ -157,7 +186,7 @@ for a in /sys/class/net/*/address; do
 done
 ips=$( (ip -o -4 addr show scope global 2>/dev/null || true) | awk '{split($4,a,"/"); printf "%s\"%s\"", (n++?",":""), a[1]}')
 
-body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej}"
+body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj]}"
 if [ -n "$PIN" ]; then TLS="-k --pinnedpubkey $PIN"; else TLS=""; fi
 # shellcheck disable=SC2086
 printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer $TOKEN" -H 'X-WOMN-Request: 1' -H 'Content-Type: application/json' --data-binary @- "$URL" >/dev/null

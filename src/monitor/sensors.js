@@ -98,6 +98,13 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
       out.push({ metric: 'hostEvErrors', key: '', name: '', value: x.events.errors, unit: '', kind: 'number', op: 'gt', threshold: 20 });
     }
     for (const c of x.certs || []) out.push({ metric: 'hostCert', key: c.thumb, name: certName(c), value: daysLeft(c.notAfter), unit: 'd', kind: 'number', op: 'le', threshold: 21 });
+    // Temperatures: the hottest of all (one sensor for the whole machine), and each one on its own
+    const temps = x.temps || [];
+    if (temps.length) {
+      const hot = temps.reduce((a, b) => (b.c > a.c ? b : a));
+      out.push({ metric: 'hostTempMax', key: '', name: hot.name, value: hot.c, unit: '°C', kind: 'number', op: 'ge', threshold: 85 });
+      for (const tp of temps) out.push({ metric: 'hostTemp', key: tp.key, name: tp.name, value: tp.c, unit: '°C', kind: 'number', op: 'ge', threshold: tp.warn });
+    }
   } else if (s.kind === 'switch') {
     for (const p of (s.data.ports || []).filter((x) => !x.lag)) {
       out.push({ metric: 'port', key: String(p.ifIndex), name: `${p.name}${p.alias ? ` (${p.alias})` : ''}`, value: p.status, unit: '', kind: 'state' });
@@ -180,6 +187,9 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
       return pd.health === 'ok' || pd.health === 'unknown'
         ? { ok: true, ms: pd.temp, message: `${label}: ${pd.health === 'ok' ? 'healthy' : 'no health data'}${extra ? ` (${extra})` : ''}`, data: { state: pd.health } }
         : { ok: false, ms: pd.temp, message: `${label}: ${pd.health}${extra ? ` (${extra})` : ''}`, data: { state: pd.health } }; }
+    case 'hostTemp': { const tp = (s.data.temps || []).find((y) => y.key === o.key); if (!tp) return { ok: false, ms: null, message: `${label}: not found` }; val = num(tp.c, '°C'); break; }
+    case 'hostTempMax': { const temps = s.data.temps || []; if (!temps.length) return { ok: false, ms: null, message: `${label}: no temperatures` };
+      const hot = temps.reduce((a, b) => (b.c > a.c ? b : a)); val = { v: hot.c, unit: '°C', extra: { name: hot.name }, text: `${hot.c} °C (${hot.name})` }; break; }
     case 'hostUpdates': val = num(s.data.updates?.pending ?? null); break;
     case 'hostUpdatesSec': val = num(s.data.updates?.pending === null || s.data.updates?.pending === undefined ? null : s.data.updates.security ?? 0); break;
     case 'hostReboot': { const u = s.data.updates; if (!u) return { ok: false, ms: null, message: `${label}: no data` };

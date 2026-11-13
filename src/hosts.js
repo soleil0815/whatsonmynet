@@ -10,7 +10,7 @@ import { normalizeMac } from './lib/net.js';
 import { hostScript } from './hostscripts.js';
 import { fillDevice } from './devicefill.js';
 import { cleanUps } from './scan/ups.js';
-import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts } from './hostfacts.js';
+import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts, cleanTemps } from './hostfacts.js';
 
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
 const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -50,6 +50,8 @@ export function cleanReport(body) {
     // Hardware, physical disks, updates, protection, events, certificates (scripts from version 0.10 on)
     hw: cleanHw(b.hw), pdisks: cleanPdisks(b.pdisks), updates: cleanUpdates(b.updates), ...cleanSecurity(b.av, b.firewall),
     events: cleanEvents(b.events), certs: cleanCerts(b.certs),
+    // Temperatures (Linux script from version 0.11 on: hwmon)
+    temps: cleanTemps(b.temps),
   };
 }
 
@@ -156,4 +158,25 @@ export function createHosts({ db }) {
     /** Devices that report (for the sensor form) */
     deviceIds: () => db.prepare('SELECT device_id FROM host_reports').all().map((r) => r.device_id),
   };
+}
+
+/**
+ * Hottest temperature per machine that reports by script, by its short name - for the nodes on the virtualisation
+ * page (Proxmox gives no temperatures; the node runs the Linux script and sends them): name → { c, name, warn, at, deviceId }
+ */
+export function hostTempsByName(db) {
+  const out = new Map();
+  for (const r of db.prepare('SELECT d.id, d.name, d.hostname, h.at, h.data FROM host_reports h JOIN devices d ON d.id=h.device_id').all()) {
+    let x;
+    try { x = JSON.parse(r.data); } catch { continue; }
+    const temps = Array.isArray(x?.temps) ? x.temps : [];
+    if (!temps.length) continue;
+    const hot = temps.reduce((a, b) => (b.c > a.c ? b : a));
+    const v = { c: hot.c, name: hot.name, warn: hot.warn, at: r.at, deviceId: r.id, stale: Date.now() - Date.parse(r.at) > STALE_MIN * 60 * 1000 };
+    for (const n of [x.hostname, r.hostname, r.name]) {
+      const k = String(n || '').toLowerCase().split('.')[0].trim();
+      if (k && !out.has(k)) out.set(k, v);
+    }
+  }
+  return out;
 }
