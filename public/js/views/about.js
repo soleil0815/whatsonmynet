@@ -47,7 +47,7 @@ export function aboutContent() {
       h('dt', {}, t('about.website')), h('dd', {}, ext(WEBSITE, 'helfi.space'))),
     h('div', { class: 'coffee' },
       h('p', { style: { margin: 0 } }, t('about.thanks')),
-      ext(COFFEE, [h('span', { html: icon('coffee') }), t('about.coffee')], 'btn')),
+      ext(COFFEE, [h('span', { html: icon('coffee') }), t('about.coffee')], 'btn btn-coffee')),
     h('h2', { class: 'section-title', style: { marginTop: '22px' } }, t('about.whatsNew')),
     whatsNew());
 }
