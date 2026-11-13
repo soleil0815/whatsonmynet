@@ -113,3 +113,22 @@ test('virtualisation: sensor "temperature" of a node, from the script on it', ()
   assert.equal(s.ok, false);
   assert.match(s.message, /Linux script/);
 });
+
+test('every value of a device has its own label in the sensor form (no list of "Temperatur, Temperatur …")', async () => {
+  globalThis.document ??= { documentElement: {} };
+  const { t, setLang } = await import('../public/js/i18n.js');
+  const db = memoryDb();
+  const id = hostWithTemps(db, [{ chip: 'coretemp', dev: 'coretemp.0', name: 'Package id 0', mC: 50000 }, { chip: 'coretemp', dev: 'coretemp.0', name: 'Core 0', mC: 48000 },
+    { chip: 'nvme', dev: 'nvme0', name: 'Sensor 2', mC: 60000 }]);
+  const r = JSON.parse(db.prepare('SELECT data FROM host_reports WHERE device_id=?').get(id).data);
+  r.pdisks = [{ name: 'sda', model: 'Disk A', serial: 'S1', health: 'ok', temp: 30, wear: 2 }, { name: 'sdb', model: 'Disk B', serial: 'S2', health: 'ok', temp: 31, wear: 3 }];
+  r.certs = [{ subject: 'CN=a.firma.local', thumb: 'AA', notAfter: '2030-01-01T00:00:00Z' }, { subject: 'CN=b.firma.local', thumb: 'BB', notAfter: '2030-01-01T00:00:00Z' }];
+  db.prepare('UPDATE host_reports SET data=? WHERE device_id=?').run(JSON.stringify(r), id);
+  for (const lang of ['de', 'en']) {
+    setLang(lang);
+    const labels = metricsFor(db, id).map((x) => t(`sens.m.${x.metric}`, { name: x.name || '' }));
+    const twice = labels.filter((l, i) => labels.indexOf(l) !== i);
+    assert.deepEqual(twice, [], `${lang}: ${twice.join(' | ')}`);
+    assert.ok(labels.some((l) => /nvme0 Sensor 2/.test(l)));
+  }
+});
