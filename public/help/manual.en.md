@@ -122,6 +122,8 @@ Nodes, storage, VMs and containers, backups, datastores and failed tasks are sho
 Under *Settings → Reports* reports go out by e-mail at set times – e.g. the toner levels to the office every Monday at 8:00.
 
 - Content: printers, NAS, switches, network drives; can be limited to locations; optionally only devices that need action.
+- **Devices**: all devices of the chosen content – or only chosen ones, e.g. a report of its own for the printer in the front office.
+- Printers show the **pages printed** (in total and in the report period, e.g. "in the last 7 days") and – if the printer reports it – how many pages the toner still lasts.
 - The mail is **neutral**: no link, no program name – only your sender name, subject (`{week}`, `{date}`), introduction, the devices and your closing.
 - "Preview", "Test to me" and "Send now" right in the list.
 
