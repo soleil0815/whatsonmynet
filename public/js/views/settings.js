@@ -401,11 +401,11 @@ const ago = (sec) => { if (!sec) return '–'; const hrs = Math.round((Date.now(
 
 function proxmoxDetail(x) {
   const d = x.data || {};
-  if (!x.last_at) return h('p', { class: 'muted' }, t('prn.none'));
+  if (!x.last_at) return h('p', { class: 'muted' }, PUSH.includes(x.kind) ? t('virt.waiting') : t('prn.none'));
   // never reached yet: only the error and what to do, no empty sections
   const sensor = () => openMonitorForm(null, () => {}, { type: 'proxmox', name: `${x.name} - Sensor`, interval_s: 300, fail_threshold: 1, options: { host: x.id } });
   const head = h('div', { class: 'actions', style: { marginBottom: '10px' } },
-    !x.last_ok ? h('span', { class: 'note warn', style: { margin: 0 } }, x.last_error) : h('span', { class: 'muted small' }, `${t('prn.checked')}: ${fmtDate(x.last_at, getLang())}`),
+    !x.last_ok ? h('span', { class: 'note warn', style: { margin: 0 } }, x.last_error) : h('span', { class: 'muted small' }, `${PUSH.includes(x.kind) ? t('virt.lastPush') : t('prn.checked')}: ${fmtDate(x.last_at, getLang())}`),
     btn(t('sens.add'), { class: 'btn btn-sm', onclick: sensor }, 'plus'));
   // Token without read rights: Proxmox shows almost nothing instead of refusing - say what is missing and how to fix it
   const user = String(x.token_id || '').split('!')[0];
@@ -415,19 +415,21 @@ function proxmoxDetail(x) {
     cmdBox(PX_FIX[d.kind === 'pbs' ? 'pbs' : 'pve'](user, x.token_id)),
     h('p', { class: 'small', style: { margin: '6px 0 0' } }, t('px.missingThen')))) : null;
   if (!d.kind) return head;
-  if (d.kind === 'pve') {
+  if (d.kind !== 'pbs') {
     const running = (d.guests || []).filter((g) => g.status === 'running').length;
+    const pve = d.kind === 'pve';
     return h('div', {}, head, rights,
-      h('h3', { class: 'sub-title' }, t('px.nodes')),
+      h('h3', { class: 'sub-title' }, pve ? t('px.nodes') : t('virt.hosts')),
       h('ul', { class: 'port-macs' }, (d.nodes || []).map((n) => h('li', {}, h('strong', {}, n.name),
-        h('span', { class: `badge ${n.online ? 'badge-ok' : 'badge-bad'}` }, n.online ? 'online' : 'offline'),
-        n.online && (n.cpu !== null || n.mem !== null) ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu ?? '–'} % · RAM ${n.mem ?? '–'} %`) : null))),
+        h('span', { class: `badge ${n.online ? 'badge-ok' : 'badge-bad'}` }, n.stale ? t('virt.silent') : n.online ? 'online' : 'offline'),
+        n.online && (n.cpu !== null || n.mem !== null) ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu ?? '–'} % · RAM ${n.mem ?? '–'} %`) : null,
+        n.seen ? h('span', { class: 'muted small' }, t('virt.seen', { when: fmtDate(n.seen, getLang()) })) : null))),
       h('h3', { class: 'sub-title' }, t('px.storages')),
-      h('div', { class: 'supplies' }, (d.storages || []).filter((s) => s.total).map((s) => meter(`${s.name} · ${s.node}`, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
-      h('h3', { class: 'sub-title' }, t('px.guests', { running, n: (d.guests || []).length })),
-      h('div', { class: 'chips' }, (d.guests || []).map((g) => h('span', { class: `badge ${g.status === 'running' ? 'badge-ok' : ''}`, title: `${g.kind} · ${g.node} · ${g.status}` }, `${g.vmid} ${g.name}`))),
-      h('h3', { class: 'sub-title' }, t('px.backups')),
-      (d.backups || []).length ? h('ul', { class: 'port-macs' }, d.backups.slice(0, 8).map((b) => h('li', {},
+      h('div', { class: 'supplies' }, (d.storages || []).filter((s) => s.total).map((s) => meter(s.node ? `${s.name} · ${s.node}` : s.name, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
+      h('h3', { class: 'sub-title' }, pve ? t('px.guests', { running, n: (d.guests || []).length }) : t('virt.guests', { running, n: (d.guests || []).length })),
+      h('div', { class: 'chips' }, (d.guests || []).map((g) => h('span', { class: `badge ${g.status === 'running' ? 'badge-ok' : ''}`, title: [g.node, t(`val.state.${g.status}`), g.cpu !== null && g.cpu !== undefined ? `CPU ${g.cpu} %` : ''].filter(Boolean).join(' · ') }, pve ? `${g.vmid} ${g.name}` : g.name))),
+      !pve ? null : h('h3', { class: 'sub-title' }, t('px.backups')),
+      !pve ? null : (d.backups || []).length ? h('ul', { class: 'port-macs' }, d.backups.slice(0, 8).map((b) => h('li', {},
         h('span', { class: `badge ${b.ok ? 'badge-ok' : b.end ? 'badge-bad' : ''}` }, b.ok ? 'OK' : b.status), h('span', { class: 'mono small' }, b.vmid ? `VM ${b.vmid}` : t('px.allGuests')),
         h('span', { class: 'muted small' }, `${b.node} · ${fmtDate(new Date(b.start * 1000).toISOString(), getLang())}`)))) : h('p', { class: 'muted small' }, t('px.noBackups')));
   }
@@ -492,17 +494,115 @@ function confirmServerCert(r, kind) {
     let result = null;
     const ok = h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { result = r.pem; m.close(); } }, t('adc.trust'));
     const m = modal(t('adc.checkTitle'), h('div', {},
-      h('p', { style: { marginTop: 0 } }, rich(t(kind === 'pbs' ? 'pxs.compare.pbs' : 'pxs.compare.pve'))),
+      h('p', { style: { marginTop: 0 } }, rich(t(kind === 'pbs' ? 'pxs.compare.pbs' : kind === 'pve' ? 'pxs.compare.pve' : 'virt.compare'))),
       h('div', { class: 'cert-list' }, r.certs.map((c) => certRow(c, { full: true }))),
       h('div', { class: 'note', style: { marginTop: '14px', marginBottom: 0 } }, r.publicTrust ? t('pxs.public') : t('pxs.pinned'))),
     { wide: true, onClose: () => resolve(result), actions: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, t('cancel')), ok] });
   });
 }
 
+// Hypervisors beside Proxmox: asked through their API (account with read rights) or sending on their own (script)
+const VIRT = ['pve', 'pbs', 'vmware', 'xcpng', 'hyperv', 'nutanix', 'ovirt', 'libvirt'];
+const PUSH = ['hyperv', 'libvirt'];
+const VIRT_URL = { vmware: 'https://vcenter.firma.local', xcpng: 'https://xcp-master.firma.local', nutanix: 'https://prism.firma.local:9440', ovirt: 'https://engine.firma.local' };
+const VIRT_USER = { vmware: 'whatsonmynet@vsphere.local', xcpng: 'root', nutanix: 'whatsonmynet', ovirt: 'whatsonmynet@internal' };
+
+/** Step 1: what kind of host */
+function pickVirt(then) {
+  const dlg = modal(t('virt.add'), h('div', { class: 'pick-grid' }, VIRT.map((k) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); then(k); } },
+    h('span', { class: 'pick-ico', html: icon(k === 'pbs' ? 'download' : 'hypervisor') }),
+    h('span', { class: 'pick-title' }, t(`virt.k.${k}`)),
+    h('span', { class: 'pick-text' }, t(`virt.what.${k}`))))), { wide: true });
+}
+
+/** VMware, XCP-ng, Nutanix, oVirt: address, certificate, read-only account. Hyper-V, KVM: only a name, then the script. */
+function editVirt(x, kind, reload) {
+  const push = PUSH.includes(kind);
+  const guide = h('div', { class: 'px-setup' }, h('h3', { class: 'px-step' }, t('virt.step1', { kind: t(`virt.k.${kind}`) })),
+    h('ol', { class: 'px-steps' }, [1, 2, 3].map((n) => t(`virt.${kind}.s${n}`)).filter((s) => !/^virt\./.test(s)).map((s) => h('li', {}, rich(s)))));
+  const name = input('name', x?.name || '', { required: true, maxlength: 80, placeholder: push ? (kind === 'hyperv' ? 'Hyper-V Cluster' : 'kvm01') : t(`virt.k.${kind}`) });
+  let form;
+  if (push) {
+    form = h('form', { class: 'form' }, x ? null : guide, field(t('px.name'), name, t('virt.pushName')));
+  } else {
+    const url = input('url', x?.url || '', { required: true, class: 'mono', placeholder: VIRT_URL[kind] });
+    const ca = h('textarea', { name: 'ca', rows: 3, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false' }, x?.ca || '');
+    const verify = h('input', { type: 'checkbox', name: 'verify', checked: x ? x.verify : true });
+    const certState = h('div', { class: 'px-cert-state' });
+    const showCert = (info, publicTrust = false) => mount(certState, publicTrust ? h('span', { class: 'badge badge-ok' }, t('pxs.publicShort'))
+      : info ? h('div', { class: 'cert-list', style: { margin: 0 } }, certRow(info)) : h('span', { class: 'muted small' }, t('pxs.noCert')));
+    showCert(x?.ca_info || null);
+    const fetchBtn = h('button', { class: 'btn', type: 'button', html: `${icon('download')}<span>${t('pxs.fetch')}</span>`, onclick: async () => {
+      if (!url.value.trim()) { url.reportValidity(); return; }
+      fetchBtn.disabled = true;
+      try {
+        const r = await post('/proxmox/cert', { url: url.value });
+        const pem = await confirmServerCert(r, kind);
+        if (pem !== null) { ca.value = pem; verify.checked = true; showCert(r.certs[r.certs.length - 1], r.publicTrust); }
+      } catch (ex) { fail(ex); }
+      fetchBtn.disabled = false;
+    } });
+    form = h('form', { class: 'form' },
+      x ? null : guide,
+      h('h3', { class: 'px-step' }, x ? t('pxs.connection') : t('pxs.step2')),
+      field(t('px.name'), name),
+      field(t('px.url'), url, t(`virt.${kind}.url`)),
+      h('div', { class: 'field' }, h('span', {}, t('px.ca')), h('div', { class: 'actions' }, fetchBtn), certState, h('span', { class: 'hint' }, t('virt.certHint'))),
+      h('div', { class: 'form-grid' },
+        field(t('virt.user'), input('token_id', x?.token_id || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: VIRT_USER[kind] })),
+        field(t('virt.password'), input('secret', '', { type: 'password', autocomplete: 'new-password', required: !x?.has_secret, placeholder: x?.has_secret ? '••••••' : '' }), x?.has_secret ? t('set.smtpPasswordSet') : t('virt.passwordHint'))),
+      h('details', { class: 'cert-manual' }, h('summary', {}, t('pxs.expert')),
+        field(t('px.ca'), ca, t('virt.caHint')),
+        field(t('px.verify'), verify, t('px.verifyHint'))));
+  }
+  const m = modal(x ? x.name : `${t('virt.add')}: ${t(`virt.k.${kind}`)}`, form, { wide: true, actions: [
+    btn(t('cancel'), { onclick: () => m.close() }),
+    h('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
+      if (!form.reportValidity()) return;
+      e.currentTarget.disabled = true;
+      const d = { ...formData(form), kind };
+      if (!d.secret) delete d.secret;
+      try {
+        const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d);
+        m.close();
+        if (push && !x) { showScript(r, reload); return; }
+        toast(push || r.last_ok ? t('saved') : r.last_error, push || r.last_ok ? undefined : 'error');
+        reload();
+      } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
+    } }, push ? t('save') : t('pxs.save'))] });
+}
+
+/** Hyper-V / KVM: token + script for the host, shown once, with the steps to run it every 5 minutes */
+async function showScript(x, reload) {
+  if (x.has_secret && !await confirmDialog(t('virt.newScript'), t('virt.newScriptConfirm'), t('virt.newScript'), t('cancel'))) return;
+  let r;
+  try { r = await post(`/proxmox/${x.id}/token`, { server: location.origin }); } catch (ex) { fail(ex); return; }
+  const download = () => {
+    const a = h('a', { href: URL.createObjectURL(new Blob([r.text.replace(/\n/g, x.kind === 'hyperv' ? '\r\n' : '\n')], { type: 'text/plain' })), download: r.file });
+    document.body.append(a); a.click(); a.remove();
+  };
+  const install = x.kind === 'hyperv'
+    ? ['New-Item -ItemType Directory -Force C:\\ProgramData\\WhatsOnMyNet | Out-Null',
+      `Move-Item -Force "$env:USERPROFILE\\Downloads\\${r.file}" C:\\ProgramData\\WhatsOnMyNet\\`,
+      `schtasks /Create /F /TN WhatsOnMyNet /SC MINUTE /MO 5 /RU SYSTEM /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\ProgramData\\WhatsOnMyNet\\${r.file}"`,
+      'schtasks /Run /TN WhatsOnMyNet']
+    : [`install -m 700 -o root ${r.file} /usr/local/sbin/${r.file}`,
+      `echo '*/5 * * * * root /usr/local/sbin/${r.file}' > /etc/cron.d/whatsonmynet`,
+      `/usr/local/sbin/${r.file} && echo OK`];
+  const m = modal(`${t('virt.scriptTitle')}: ${x.name}`, h('div', { class: 'form' },
+    h('p', { class: 'note warn', style: { margin: 0 } }, t('virt.scriptOnce')),
+    h('ol', { class: 'px-steps' },
+      h('li', {}, rich(t(`virt.${x.kind}.run1`)), h('div', { class: 'actions', style: { marginTop: '6px' } }, btn(t('virt.download'), { class: 'btn btn-sm btn-primary', onclick: download }, 'download'), copyBtn(() => r.text))),
+      h('li', {}, rich(t(`virt.${x.kind}.run2`)), cmdBox(install)),
+      h('li', {}, rich(t('virt.run3')))),
+    h('details', { class: 'cert-manual' }, h('summary', {}, t('virt.showScript')), h('pre', { class: 'code wrap', style: { maxHeight: '260px', overflow: 'auto' } }, r.text))),
+  { wide: true, onClose: reload, actions: [h('button', { class: 'btn btn-primary', type: 'button', onclick: () => m.close() }, t('virt.done'))] });
+}
+
 async function proxmox(body, _s, reload) {
   const list = await get('/proxmox');
-  const edit = (x) => {
-    const kind = select('kind', [['pve', 'Proxmox VE'], ['pbs', 'Proxmox Backup Server']], x?.kind || 'pve');
+  const edit = (x, preset = 'pve') => {
+    const kind = select('kind', [['pve', 'Proxmox VE'], ['pbs', 'Proxmox Backup Server']], x?.kind || preset);
     const url = input('url', x?.url || '', { required: true, class: 'mono', placeholder: 'https://192.168.1.10:8006' });
     const defToken = (k) => (k === 'pbs' ? 'whatsonmynet@pbs!womn' : 'whatsonmynet@pve!womn');
     const tokenId = input('token_id', x?.token_id || defToken(x?.kind || 'pve'), { required: true, class: 'mono', autocomplete: 'off', placeholder: defToken(x?.kind || 'pve') });
@@ -521,6 +621,7 @@ async function proxmox(body, _s, reload) {
     const fetchBtn = h('button', { class: 'btn', type: 'button', html: `${icon('download')}<span>${t('pxs.fetch')}</span>`, onclick: async () => {
       if (!url.value.trim()) { url.reportValidity(); return; }
       fetchBtn.disabled = true;
+      // (same steps in editVirt for the other hypervisors)
       try {
         const r = await post('/proxmox/cert', { url: url.value });
         const pem = await confirmServerCert(r, kind.value);
@@ -553,14 +654,16 @@ async function proxmox(body, _s, reload) {
       } }, t('pxs.save'))] });
   };
   const admin = state.user.isAdmin;
-  mount(body, pageHead('Proxmox', t('px.lead'), admin ? btn(t('px.add'), { class: 'btn btn-primary', onclick: () => edit(null) }, 'plus') : null),
+  const add = () => pickVirt((kind) => (kind === 'pve' || kind === 'pbs' ? edit(null, kind) : editVirt(null, kind, reload)));
+  mount(body, pageHead(t('virt.title'), t('virt.lead'), admin ? btn(t('virt.add'), { class: 'btn btn-primary', onclick: add }, 'plus') : null),
   !list.length ? h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, admin ? t('px.none') : t('px.noHosts'))) : null,
   list.map((x) => h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '6px' } },
-      h('div', {}, h('h2', { class: 'section-title', style: { margin: 0 } }, x.name), h('div', { class: 'muted small mono' }, `${x.kind === 'pbs' ? 'Backup Server' : 'VE'} · ${x.url}`)),
+      h('div', {}, h('h2', { class: 'section-title', style: { margin: 0 } }, x.name), h('div', { class: 'muted small mono' }, [t(`virt.k.${x.kind}`), x.url].filter(Boolean).join(' · '))),
       !admin ? null : h('div', { class: 'actions' },
-        btn(t('prn.refresh'), { class: 'btn btn-sm', onclick: async (e) => { e.currentTarget.disabled = true; try { await post(`/proxmox/${x.id}/poll`, {}); reload(); } catch (ex) { fail(ex); } } }, 'refresh'),
-        btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => edit(x) }),
+        PUSH.includes(x.kind) ? null : btn(t('prn.refresh'), { class: 'btn btn-sm', onclick: async (e) => { e.currentTarget.disabled = true; try { await post(`/proxmox/${x.id}/poll`, {}); reload(); } catch (ex) { fail(ex); } } }, 'refresh'),
+        PUSH.includes(x.kind) ? btn(t('virt.newScript'), { class: 'btn btn-sm btn-ghost', onclick: () => showScript(x, reload) }) : null,
+        btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => (x.kind === 'pve' || x.kind === 'pbs' ? edit(x) : editVirt(x, x.kind, reload)) }),
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${x.name}`, html: icon('trash'), onclick: async () => {
           if (!await confirmDialog(t('delete'), t('px.deleteConfirm', { name: x.name }), t('delete'), t('cancel'), { danger: true })) return;
           try { await del(`/proxmox/${x.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }

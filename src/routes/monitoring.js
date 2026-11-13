@@ -1,4 +1,5 @@
 // API for monitors, notification channels and maintenance windows.
+import crypto from 'node:crypto';
 import express from 'express';
 import { HttpError, int, str } from '../lib/http.js';
 import { requireRole } from '../auth/session.js';
@@ -94,6 +95,19 @@ export function createMonitoringApi(ctx) {
   r.post('/proxmox/cert', admin, async (req, res) => res.json(await ctx.proxmox.fetchCert(req.body?.url)));
   r.post('/proxmox/:id/poll', admin, async (req, res) => res.json(await ctx.proxmox.poll(idParam(req))));
   r.get('/proxmox/:id/metrics', editor, unscoped, (req, res) => res.json(ctx.proxmox.metrics(idParam(req))));
+  // New token + script for such a host; a self-signed certificate of this server is pinned in the script
+  r.post('/proxmox/:id/token', admin, (req, res) => {
+    const pin = {};
+    const pem = String(ctx.tls?.current()?.cert || '').match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/)?.[0];
+    if (pem && ctx.tls?.describe()?.source !== 'custom') {
+      const c = new crypto.X509Certificate(pem);
+      pin.sha1 = c.fingerprint.replace(/:/g, '');
+      pin.spki = crypto.createHash('sha256').update(c.publicKey.export({ type: 'spki', format: 'der' })).digest('base64');
+    }
+    const out = ctx.proxmox.newToken(idParam(req), { server: str(req.body?.server, 300), pin });
+    audit(req, 'proxmox.token', req.params.id);
+    res.json(out);
+  });
 
   // Maintenance windows (editors)
   r.get('/maintenance', (_req, res) => res.json(maintenance.list()));

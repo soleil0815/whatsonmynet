@@ -9,6 +9,10 @@ import { HttpError, line, str } from './lib/http.js';
 import { encrypt, decrypt } from './lib/crypto.js';
 import { log } from './lib/log.js';
 import { fetchTlsChain, describe, publiclyTrusted, toPem } from './auth/dccert.js';
+import { READERS, API_KINDS, PUSH_KINDS, newPushToken, pushTokenOk, cleanPush, mergePush, markStale, pushScript } from './virt.js';
+
+/** Every kind of host on the page: Proxmox, hypervisors asked through their API, hypervisors that send on their own */
+export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS];
 
 const URL_RE = /^https:\/\/[a-z0-9.\-[\]:]+(:\d{1,5})?$/i;
 const PVE_TOKEN = /^[\w.@-]+![\w.-]+$/;   // user@realm!tokenid
@@ -26,41 +30,52 @@ function chainFingerprints(cert) {
   return out;
 }
 
+/** TLS options for a host: the pasted certificate pinned (name does not matter then), else the normal check or none */
+export function tlsOptions(host) {
+  if (host.ca) {
+    const pinned = new crypto.X509Certificate(host.ca).fingerprint256;
+    // allowPartialTrustChain: the pinned certificate may also be the server's own (not only a CA)
+    return { ca: [host.ca], allowPartialTrustChain: true, checkServerIdentity: (_h, cert) => (chainFingerprints(cert).includes(pinned) ? undefined : new Error('certificate is not the pasted one')) };
+  }
+  return { rejectUnauthorized: !!host.verify };
+}
+
+/** Network and TLS errors in words that say what to do */
+export function netError(e) {
+  return new Error({ DEPTH_ZERO_SELF_SIGNED_CERT: 'self-signed certificate - Edit → Fetch certificate',
+    SELF_SIGNED_CERT_IN_CHAIN: 'certificate of an unknown CA - Edit → Fetch certificate', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate cannot be verified - Edit → Fetch certificate',
+    ECONNREFUSED: 'connection refused', ENOTFOUND: 'name not found (DNS)', EHOSTUNREACH: 'host unreachable', ECONNRESET: 'connection reset' }[e.code]
+    || (/not the pasted one/.test(e.message) ? 'certificate changed - fetch it again (Edit → Fetch certificate)' : e.message));
+}
+
 /**
- * GET on the API. TLS: with a pasted certificate (the self-signed one of the host or the Proxmox CA) exactly this one
- * is trusted and has to be in the chain - the name does not matter then; otherwise the normal check, or none if the
- * admin switched it off for this host.
+ * One HTTPS request to a hypervisor (Proxmox, vCenter, XCP-ng, Nutanix, oVirt) with the TLS rules of the host.
+ * Resolves { status, headers, text } for every answer; rejects only on network/TLS errors.
  */
-export function apiGet(host, path, timeoutMs = 15000) {
+export function tlsRequest(host, method, path, { body = null, headers = {}, timeoutMs = 15000, maxBytes = 16 * 1024 * 1024 } = {}) {
   return new Promise((resolve, reject) => {
-    const u = new URL(`/api2/json${path}`, host.url);
-    const auth = host.kind === 'pbs' ? `PBSAPIToken=${host.token_id}:${host.secretPlain}` : `PVEAPIToken=${host.token_id}=${host.secretPlain}`;
-    const opts = { method: 'GET', timeout: timeoutMs, headers: { Authorization: auth, Accept: 'application/json' }, agent: false };
-    if (host.ca) {
-      const pinned = new crypto.X509Certificate(host.ca).fingerprint256;
-      // allowPartialTrustChain: the pinned certificate may also be the server's own (not only a CA)
-      Object.assign(opts, { ca: [host.ca], allowPartialTrustChain: true, checkServerIdentity: (_h, cert) => (chainFingerprints(cert).includes(pinned) ? undefined : new Error('certificate is not the pasted one')) });
-    } else {
-      opts.rejectUnauthorized = !!host.verify;
-    }
-    const req = https.request(u, opts, (res) => {
+    const u = new URL(path, host.url);
+    const data = body === null ? null : Buffer.from(body);
+    const req = https.request(u, { method, timeout: timeoutMs, agent: false, headers: { ...(data ? { 'Content-Length': data.length } : {}), ...headers }, ...tlsOptions(host) }, (res) => {
       const chunks = []; let size = 0;
-      res.on('data', (d) => { size += d.length; if (size < 8 * 1024 * 1024) chunks.push(d); else res.destroy(); });
-      res.on('end', () => {
-        const body = parse(Buffer.concat(chunks).toString('utf8'), null);
-        if (res.statusCode === 401) return reject(Object.assign(new Error('sign-in refused (401) - token ID or secret wrong'), { status: 401 }));
-        if (res.statusCode === 403) return reject(Object.assign(new Error('access denied (403) - the token lacks the role PVEAuditor/Audit'), { status: 403 }));
-        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
-        resolve(body?.data);
-      });
+      res.on('data', (d) => { size += d.length; if (size < maxBytes) chunks.push(d); else res.destroy(new Error('answer too large')); });
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(chunks).toString('utf8') }));
+      res.on('error', (e) => reject(netError(e)));
     });
     req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', (e) => reject(new Error({ DEPTH_ZERO_SELF_SIGNED_CERT: 'self-signed certificate - Edit → Fetch certificate',
-      SELF_SIGNED_CERT_IN_CHAIN: 'certificate of an unknown CA - paste the Proxmox CA', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate cannot be verified - paste the CA',
-      ECONNREFUSED: 'connection refused', ENOTFOUND: 'name not found (DNS)', EHOSTUNREACH: 'host unreachable' }[e.code]
-      || (/not the pasted one/.test(e.message) ? 'certificate changed - fetch it again (Edit → Fetch certificate)' : e.message))));
-    req.end();
+    req.on('error', (e) => reject(netError(e)));
+    req.end(data || undefined);
   });
+}
+
+/** GET on the Proxmox API (token in the header) */
+export async function apiGet(host, path, timeoutMs = 15000) {
+  const auth = host.kind === 'pbs' ? `PBSAPIToken=${host.token_id}:${host.secretPlain}` : `PVEAPIToken=${host.token_id}=${host.secretPlain}`;
+  const res = await tlsRequest(host, 'GET', `/api2/json${path}`, { headers: { Authorization: auth, Accept: 'application/json' }, timeoutMs, maxBytes: 8 * 1024 * 1024 });
+  if (res.status === 401) throw Object.assign(new Error('sign-in refused (401) - token ID or secret wrong'), { status: 401 });
+  if (res.status === 403) throw Object.assign(new Error('access denied (403) - the token lacks the role PVEAuditor/Audit'), { status: 403 });
+  if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+  return parse(res.text, null)?.data;
 }
 
 /** Reads a PVE cluster/node */
@@ -126,7 +141,7 @@ export async function readPbs(host) {
 export function proxmoxMetrics(data) {
   const out = [];
   if (!data) return out;
-  if (data.kind === 'pve') {
+  if (data.kind !== 'pbs') {
     for (const n of data.nodes || []) {
       out.push({ metric: 'nodeOnline', key: n.name, name: n.name, value: n.online ? 'online' : 'offline', kind: 'state', uptime: n.uptime || 0, cpu: n.cpu, mem: n.mem });
       out.push({ metric: 'nodeCpu', key: n.name, name: n.name, value: n.cpu, unit: '%', kind: 'number', op: 'ge', threshold: 90 });
@@ -135,9 +150,9 @@ export function proxmoxMetrics(data) {
     for (const s of data.storages || []) out.push({ metric: 'storage', key: `${s.node}/${s.name}`, name: `${s.name} (${s.node})`, value: s.pct, unit: '%', kind: 'number', op: 'ge', threshold: 85, used: s.used, total: s.total });
     for (const g of data.guests || []) {
       out.push({ metric: 'guestRunning', key: String(g.vmid), name: `${g.vmid} ${g.name}`, value: g.status, kind: 'state', node: g.node, cpu: g.cpu, mem: g.mem });
-      out.push({ metric: 'backupAge', key: String(g.vmid), name: `${g.vmid} ${g.name}`, value: backupAgeHours(data, g.vmid), unit: 'h', kind: 'number', op: 'gt', threshold: 26 });
+      if (data.kind === 'pve') out.push({ metric: 'backupAge', key: String(g.vmid), name: `${g.vmid} ${g.name}`, value: backupAgeHours(data, g.vmid), unit: 'h', kind: 'number', op: 'gt', threshold: 26 });
     }
-    out.push({ metric: 'backupFailed', key: '', name: '', value: (data.backups || []).filter((b) => !b.ok && b.end && Date.now() / 1000 - b.start < 86400).length, kind: 'number', op: 'gt', threshold: 0 });
+    if (data.kind === 'pve') out.push({ metric: 'backupFailed', key: '', name: '', value: (data.backups || []).filter((b) => !b.ok && b.end && Date.now() / 1000 - b.start < 86400).length, kind: 'number', op: 'gt', threshold: 0 });
   } else {
     for (const d of data.datastores || []) out.push({ metric: 'datastore', key: d.name, name: d.name, value: d.pct, unit: '%', kind: 'number', op: 'ge', threshold: 85, used: d.used, total: d.total });
     for (const g of data.groups || []) {
@@ -167,16 +182,19 @@ export function createProxmox({ db, settings }) {
   function clean(input, old = null) {
     const name = line(input.name, 80);
     if (!name) throw new HttpError(400, 'err.nameRequired');
-    const kind = input.kind === 'pbs' ? 'pbs' : 'pve';
+    const kind = old ? old.kind : HOST_KINDS.includes(input.kind) ? input.kind : 'pve';
+    // Hyper-V, KVM: the host sends - no address, no account; the token is made on creating
+    if (PUSH_KINDS.includes(kind)) return { name, kind, url: '', token_id: '', secret: old?.secret || '', verify: 1, ca: '' };
     const url = line(input.url, 300).replace(/\/+$/, '');
     if (!URL_RE.test(url)) throw new HttpError(400, 'err.proxmoxUrl');
     const tokenId = line(input.token_id, 200);
-    if (!PVE_TOKEN.test(tokenId)) throw new HttpError(400, 'err.proxmoxToken');
+    // Proxmox: token ID user@realm!name; other hypervisors: the user name of a read-only account (DOMAIN\\user, user@domain …)
+    if (API_KINDS.includes(kind) ? !tokenId || /[\x00-\x1f]/.test(tokenId) : !PVE_TOKEN.test(tokenId)) throw new HttpError(400, API_KINDS.includes(kind) ? 'err.virtUser' : 'err.proxmoxToken');
     const ca = str(input.ca, 20000).trim();
     if (ca) { try { new crypto.X509Certificate(ca); } catch { throw new HttpError(400, 'err.adCa'); } }
     let secret = old?.secret || '';
     if (typeof input.secret === 'string' && input.secret.trim()) secret = encrypt(input.secret.trim().slice(0, 200));
-    if (!secret) throw new HttpError(400, 'err.proxmoxToken');
+    if (!secret) throw new HttpError(400, API_KINDS.includes(kind) ? 'err.virtUser' : 'err.proxmoxToken');
     return { name, kind, url, token_id: tokenId, secret, verify: input.verify === false ? 0 : 1, ca };
   }
 
@@ -184,8 +202,10 @@ export function createProxmox({ db, settings }) {
     const h = rowOf(id);
     if (!h) throw new HttpError(404, 'err.notFound');
     const at = new Date().toISOString();
+    // A host that sends on its own is not asked: only check whether its nodes still report
+    if (PUSH_KINDS.includes(h.kind)) return checkPush(h);
     try {
-      const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : await readPve(withSecret(h));
+      const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : READERS[h.kind] ? await READERS[h.kind](withSecret(h)) : await readPve(withSecret(h));
       db.prepare("UPDATE proxmox_hosts SET last_at=?, last_ok=1, last_error='', data=? WHERE id=?").run(at, JSON.stringify(data), id);
     } catch (e) {
       db.prepare('UPDATE proxmox_hosts SET last_at=?, last_ok=0, last_error=? WHERE id=?').run(at, String(e.message).slice(0, 300), id);
@@ -193,13 +213,45 @@ export function createProxmox({ db, settings }) {
     return shape(rowOf(id));
   }
 
+  /** Push hosts: nodes silent for 15 minutes count as offline; without any node that reports the host has an error */
+  function checkPush(h) {
+    const data = markStale(parse(h.data, {}), 15);
+    const live = (data.nodes || []).filter((n) => !n.stale);
+    const ok = live.length > 0;
+    const error = ok ? '' : (data.nodes || []).length ? 'no data from the host script for more than 15 minutes - is the scheduled task running?' : 'waiting for the first data from the host script';
+    db.prepare('UPDATE proxmox_hosts SET last_ok=?, last_error=?, data=? WHERE id=?').run(ok ? 1 : 0, error, JSON.stringify(data), h.id);
+    return shape(rowOf(h.id));
+  }
+
+  /** Data a host script sends (Bearer token of this host) */
+  function push(id, token, body) {
+    const h = rowOf(id);
+    if (!h || !PUSH_KINDS.includes(h.kind) || !pushTokenOk(h.secret, token)) throw new HttpError(401, 'err.unauthorized');
+    let incoming;
+    try { incoming = cleanPush(body); } catch (e) { throw new HttpError(400, 'err.badRequest', e.message); }
+    const at = new Date().toISOString();
+    const data = mergePush(h.kind, parse(h.data, {}), incoming, at);
+    db.prepare("UPDATE proxmox_hosts SET last_at=?, last_ok=1, last_error='', data=? WHERE id=?").run(at, JSON.stringify(data), id);
+    return { ok: true, nodes: incoming.nodes.length, guests: incoming.guests.length };
+  }
+
+  /** New token for a push host and the script with it (the token is shown only now) */
+  function newToken(id, { server, pin }) {
+    const h = rowOf(id);
+    if (!h || !PUSH_KINDS.includes(h.kind)) throw new HttpError(404, 'err.notFound');
+    if (!/^https?:\/\/[^\s/"'<>]+$/i.test(String(server || ''))) throw new HttpError(400, 'err.badRequest');
+    const t = newPushToken();
+    db.prepare('UPDATE proxmox_hosts SET secret=? WHERE id=?').run(t.stored, id);
+    return { token: t.token, ...pushScript(h.kind, { server, id, token: t.token, pin }) };
+  }
+
   async function pollAll() {
     if (polling) return;
     polling = true;
     try {
       const every = Math.max(1, Number(settings.get('proxmox.interval')) || 5) * 60 * 1000;
-      for (const h of db.prepare('SELECT id, last_at FROM proxmox_hosts').all()) {
-        if (h.last_at && Date.now() - Date.parse(h.last_at) < every) continue;
+      for (const h of db.prepare('SELECT id, kind, last_at FROM proxmox_hosts').all()) {
+        if (!PUSH_KINDS.includes(h.kind) && h.last_at && Date.now() - Date.parse(h.last_at) < every) continue;
         await poll(h.id).catch((e) => log.warn(`Proxmox ${h.id}: ${e.message}`));
       }
     } finally { polling = false; }
@@ -240,9 +292,12 @@ export function createProxmox({ db, settings }) {
       const old = rowOf(id);
       if (!old) throw new HttpError(404, 'err.notFound');
       const v = clean(input, old);
+      if (PUSH_KINDS.includes(v.kind)) { db.prepare('UPDATE proxmox_hosts SET name=? WHERE id=?').run(v.name, id); return shape(rowOf(id)); }
       db.prepare('UPDATE proxmox_hosts SET name=?, kind=?, url=?, token_id=?, secret=?, verify=?, ca=?, last_at=NULL WHERE id=?').run(v.name, v.kind, v.url, v.token_id, v.secret, v.verify, v.ca, id);
       return shape(rowOf(id));
     },
+    push,
+    newToken,
     remove(id) {
       if (db.prepare("SELECT 1 FROM monitors WHERE type='proxmox' AND json_extract(options,'$.host')=?").get(id)) throw new HttpError(409, 'err.proxmoxInUse');
       if (!db.prepare('DELETE FROM proxmox_hosts WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound');
