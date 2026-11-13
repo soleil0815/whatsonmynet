@@ -203,13 +203,21 @@ async function renderResult(main, id) {
       onclick: () => { tab = k; tabChosen = true; renderTabs(); },
     }, t(`scan.tab.${k}`), h('span', { class: `badge${k === 'new' && by.new.length ? ' badge-new' : ''}` }, by[k].length))));
     const list = by[tab];
-    for (const rid of [...selected]) if (!by.new.some((r) => r.id === rid && !r.handled)) selected.delete(rid);
-    mount(content, tabs, tab === 'new' ? newTable(list) : otherTable(list));
+    // Only rows of the open tab that can still be acted on stay selected
+    const selectable = new Set(tab === 'new' || tab === 'ignored' ? openRows(list, tab).map((r) => r.id) : []);
+    for (const rid of [...selected]) if (!selectable.has(rid)) selected.delete(rid);
+    mount(content, tabs, tab === 'new' || tab === 'ignored' ? pickTable(list, tab) : otherTable(list));
   }
 
-  function newTable(list) {
-    const open = list.filter((r) => !r.handled);
-    if (!open.length) return h('div', { class: 'empty' }, data.status === 'running' ? t('scan.radarEmpty') : t('scan.noNew'));
+  /** New: not yet adopted or ignored. Ignored: everything not in the inventory (also what was ignored in this scan). */
+  const openRows = (list, mode) => list.filter((r) => (mode === 'ignored' ? !r.device_id : !r.handled));
+
+  /** Table with check boxes - "new" to adopt or ignore, "ignored" to stop ignoring or adopt right away. */
+  function pickTable(list, mode) {
+    const open = openRows(list, mode);
+    if (!open.length) {
+      return h('div', { class: 'empty' }, mode === 'ignored' ? t('scan.noIgnored') : data.status === 'running' ? t('scan.radarEmpty') : t('scan.noNew'));
+    }
     const count = h('span', { class: 'count' }, t('scan.selected', { n: selected.size }));
     const all = h('input', { type: 'checkbox', 'aria-label': t('scan.selectAll'), checked: selected.size === open.length && open.length > 0,
       onchange: (e) => { open.forEach((r) => (e.target.checked ? selected.add(r.id) : selected.delete(r.id))); renderTabs(); } });
@@ -218,19 +226,26 @@ async function renderResult(main, id) {
       try {
         const body = { ids: [...selected], overrides };
         const r = await post(`/scans/${id}/${what}`, body);
-        toast(what === 'adopt' ? t('scan.adopted', { n: r.created.length }) : t('scan.ignoredN', { n: r.ignored }));
+        toast(what === 'adopt' ? t('scan.adopted', { n: r.created.length })
+          : what === 'unignore' ? t('scan.unignoredN', { n: r.unignored }) : t('scan.ignoredN', { n: r.ignored }));
         selected.clear();
         await load();
         updateBadge();
       } catch (e) { fail(e); }
     };
-    const bulk = edit ? h('div', { class: 'bulk' }, count,
-      h('span', { class: 'muted small bulk-hint' }, t('scan.adoptHint')),
-      btn(t('scan.ignore'), { onclick: () => act('ignore'), disabled: !selected.size }, 'eyeoff'),
-      h('button', { class: 'btn btn-primary', type: 'button', disabled: !selected.size, onclick: () => act('adopt') }, h('span', { html: icon('check') }), t('scan.adopt'))) : null;
+    const adoptBtn = h('button', { class: 'btn btn-primary', type: 'button', disabled: !selected.size, onclick: () => act('adopt') }, h('span', { html: icon('check') }), t('scan.adopt'));
+    const bulk = !edit ? null : mode === 'ignored'
+      ? h('div', { class: 'bulk' }, count,
+        h('span', { class: 'muted small bulk-hint' }, t('scan.unignoreHint')),
+        btn(t('scan.unignore'), { onclick: () => act('unignore'), disabled: !selected.size }, 'eye'),
+        adoptBtn)
+      : h('div', { class: 'bulk' }, count,
+        h('span', { class: 'muted small bulk-hint' }, t('scan.adoptHint')),
+        btn(t('scan.ignore'), { onclick: () => act('ignore'), disabled: !selected.size }, 'eyeoff'),
+        adoptBtn);
     return h('div', {}, bulk, h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, edit ? h('th', { class: 'min' }, all) : null, h('th', {}, t('col.name')), h('th', {}, t('col.type')), h('th', {}, `${t('col.ip')} / ${t('col.mac')}`),
-        h('th', { class: 'hide-sm' }, t('col.vendor')), h('th', { class: 'hide-sm' }, t('col.ports')))),
+        h('th', { class: 'hide-sm' }, t('col.vendor')), h('th', { class: 'hide-sm hide-md' }, t('col.ports')))),
       h('tbody', {}, open.map((r) => {
         const o = overrides[r.id] || (overrides[r.id] = {});
         // The name shown is the name used - also when the user does not touch it
@@ -246,7 +261,7 @@ async function renderResult(main, id) {
           h('td', { class: 'mono' }, r.ip, h('div', { class: 'sub' }, r.mac || '–')),
           h('td', { class: 'hide-sm' }, r.vendor || (r.facts.randomMac ? h('span', { class: 'muted small', title: t('dev.randomMac') }, t('scan.privateMac')) : '–'),
             r.facts.classification?.model ? h('div', { class: 'sub' }, r.facts.classification.model) : null),
-          h('td', { class: 'hide-sm' }, portList(r.facts.ports, services)));
+          h('td', { class: 'hide-sm hide-md' }, portList(r.facts.ports, services)));
       })))));
   }
 
