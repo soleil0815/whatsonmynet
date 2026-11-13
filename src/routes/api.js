@@ -212,7 +212,7 @@ export function createApi(ctx) {
 
   r.get('/meta', (_req, res) => {
     res.json({ types: TYPES, services: SERVICE_NAMES, gentlePorts: GENTLE_PORTS, printerThreshold: Number(settings.get('printer.threshold')) || 15,
-      nasThreshold: Number(settings.get('nas.threshold')) || 90 });
+      nasThreshold: Number(settings.get('nas.threshold')) || 90, escalateMin: Number(settings.get('escalate.min')) || 0, escalateChannels: (settings.get('escalate.channels') || []).length });
   });
 
   r.get('/dashboard', (req, res) => {
@@ -514,7 +514,14 @@ export function createApi(ctx) {
   r.get('/settings', admin, (_req, res) => {
     res.json({ security: { require2faAdmins: !!settings.get('security.require2faAdmins') }, general: settings.publicGroup('general'), scan: settings.publicGroup('scan'), smtp: settings.publicGroup('smtp'), backup: settings.publicGroup('backup'),
       lightscan: { ...settings.publicGroup('lightscan'), last: ctx.nightly.lastLight() }, printer: settings.publicGroup('printer'),
-      snmpdev: settings.publicGroup('snmpdev'), nas: settings.publicGroup('nas') });
+      snmpdev: settings.publicGroup('snmpdev'), nas: settings.publicGroup('nas'), escalate: settings.publicGroup('escalate') });
+  });
+  r.put('/settings/escalate', admin, (req, res) => {
+    const b = req.body;
+    if ('min' in b) settings.set('escalate.min', Math.min(1440, Math.max(0, int(String(b.min)) || 0)));
+    if ('channels' in b) settings.set('escalate.channels', channelIds(b.channels));
+    audit(req, 'settings.escalate');
+    res.json(settings.publicGroup('escalate'));
   });
   r.put('/settings/general', admin, (req, res) => {
     settings.set('general.title', line(req.body.title, 60) || 'WhatsOnMyNet');

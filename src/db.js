@@ -572,6 +572,11 @@ export const MIGRATIONS = [
    UPDATE monitor_hourly SET (v_n, v_sum, v_min, v_max) = (SELECT COUNT(c.ms), COALESCE(SUM(c.ms), 0), MIN(c.ms), MAX(c.ms) FROM checks c
      WHERE c.monitor_id = monitor_hourly.monitor_id AND c.at >= monitor_hourly.hour AND c.at < substr(monitor_hourly.hour, 1, 13) || ':99' AND c.ms IS NOT NULL);
    UPDATE monitor_hourly SET v_n = ok, v_sum = ms_sum WHERE v_n = 0 AND ok > 0 AND ms_sum > 0;`,
+  // 21: escalation - per monitor after how many minutes (NULL = the setting for all) and to which channels
+  // (empty = the escalation channels of the setting); escalated_at = this outage was escalated already
+  `ALTER TABLE monitors ADD COLUMN escalate_min INTEGER;
+   ALTER TABLE monitors ADD COLUMN escalate_channels TEXT NOT NULL DEFAULT '[]';
+   ALTER TABLE monitors ADD COLUMN escalated_at TEXT;`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
