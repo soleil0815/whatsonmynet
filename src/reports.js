@@ -195,7 +195,7 @@ export function createReports({ db, settings, mailer }) {
         const data = parse(m.data, {});
         const unc = `\\\\${m.target}\\${o.share || ''}${o.path ? `\\${o.path}` : ''}`;
         const low = !!data.low;
-        const unreachable = m.status === 'down' && !low;
+        const unreachable = (m.status === 'down' || m.status === 'unreachable') && !low;
         const bars = data.total ? [{ label: L.volume,
           value: `${fill(L.freeOf, { free: size(data.free), total: size(data.total) })} (${Number(data.pct).toLocaleString(lang)} %)`,
           fill: Math.max(0, Math.min(100, 100 - data.pct)), color: '#3f7f8c', low, lowText: L.nearlyFull }] : [];

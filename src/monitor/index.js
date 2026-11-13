@@ -1,7 +1,7 @@
 // Monitoring: monitors (ping, TCP port, web address), the scheduler that runs their checks, status changes with
 // notifications (only after several failed checks in a row), certificate expiry warnings, availability statistics.
 import { HttpError, line, str, int, ids } from '../lib/http.js';
-import { isIPv4 } from '../lib/net.js';
+import { isIPv4, normalizeMac } from '../lib/net.js';
 import { log } from '../lib/log.js';
 import { runCheck, validStatusSpec } from './checks.js';
 import { CONTAINER_NAME, DEFAULT_PORTS } from './services.js';
@@ -41,6 +41,9 @@ export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'storage', '
 export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service'];
 const DB_TYPES = ['mysql', 'postgres', 'redis'];
 const SECRET_TYPES = [...DB_TYPES, 'smb'];
+// Monitors that say whether a device is reachable at all - only these make sense as "everything behind it" parent
+export const REACH_TYPES = ['ping', 'tcp', 'http', 'snmp'];
+const MAX_DEPTH = 20;
 
 export function createMonitoring({ db, channels, maintenance, settings = null, now = () => new Date() }) {
   const checkCtx = {
@@ -63,6 +66,81 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   const running = new Set();
   let timer = null;
 
+  // ---------------------------------------------------------------------------------------------------- dependencies
+  const parentStmt = db.prepare('SELECT id, name, status, fail_count, enabled, parent_id FROM monitors WHERE id=?');
+  /** "Depends on": an existing monitor, not itself, and no circle (A behind B behind A) */
+  function cleanParent(input, old) {
+    const raw = input.parent_id !== undefined ? input.parent_id : old?.parent_id;
+    if (raw === null || raw === undefined || raw === '' || raw === 0 || raw === '0') return null;
+    const pid = int(String(raw));
+    if (!pid || !parentStmt.get(pid)) throw new HttpError(400, 'err.parentMonitor');
+    if (old) {
+      let id = pid;
+      for (let i = 0; id && i < MAX_DEPTH; i++) {
+        if (id === old.id) throw new HttpError(400, 'err.parentCycle');
+        id = parentStmt.get(id)?.parent_id;
+      }
+    }
+    return pid;
+  }
+
+  /**
+   * Is something in front of this monitor down? → { state: 'down', mon } (then this one is only a follow-up),
+   * { state: 'wait', mon } when the one in front failed its last check but is not down yet (checked again right away).
+   */
+  function blocker(m) {
+    let id = m.parent_id;
+    const seen = new Set([m.id]);
+    while (id && !seen.has(id) && seen.size <= MAX_DEPTH) {
+      seen.add(id);
+      const p = parentStmt.get(id);
+      if (!p) break;
+      if (p.enabled && (p.status === 'down' || p.status === 'unreachable')) return { state: 'down', mon: p };
+      if (p.enabled && p.fail_count > 0) return { state: 'wait', mon: p };
+      id = p.parent_id;
+    }
+    return null;
+  }
+
+  // Which switch is a device plugged in at? The port with the fewest addresses (an uplink sees many devices).
+  const locateStmt = db.prepare(`SELECT s.switch_id FROM switch_macs s WHERE s.mac=?
+    ORDER BY (SELECT COUNT(*) FROM switch_macs x WHERE x.switch_id=s.switch_id AND x.if_index=s.if_index), s.seen_at DESC LIMIT 1`);
+  function switchOf(deviceId) {
+    const mac = normalizeMac(db.prepare('SELECT mac FROM devices WHERE id=?').get(deviceId)?.mac);
+    const sw = mac ? locateStmt.get(mac)?.switch_id : null;
+    return sw && sw !== deviceId ? sw : null;
+  }
+  /** The monitor that tells whether a device is reachable (ping first) */
+  function reachMonitorOf(deviceId) {
+    return db.prepare(`SELECT id, name FROM monitors WHERE device_id=? AND type IN (${REACH_TYPES.map(() => '?').join(',')})
+      ORDER BY enabled DESC, CASE type WHEN 'ping' THEN 0 WHEN 'snmp' THEN 1 WHEN 'tcp' THEN 2 ELSE 3 END, id LIMIT 1`).get(deviceId, ...REACH_TYPES) || null;
+  }
+  /** For a new monitor of a device: the monitor of the switch it is plugged in at */
+  function suggestParent(deviceId) {
+    const sw = deviceId ? switchOf(deviceId) : null;
+    return sw ? reachMonitorOf(sw) : null;
+  }
+  /** Monitors of devices plugged in at the device of this monitor that have no dependency yet */
+  function childCandidates(id) {
+    const m = db.prepare('SELECT id, type, device_id FROM monitors WHERE id=?').get(id);
+    if (!m || !m.device_id || !REACH_TYPES.includes(m.type)) return [];
+    return db.prepare('SELECT id, name, device_id FROM monitors WHERE parent_id IS NULL AND device_id IS NOT NULL AND device_id<>? AND id<>?').all(m.device_id, id)
+      .filter((c) => switchOf(c.device_id) === m.device_id);
+  }
+  /** Set this monitor as dependency of the given monitors (only candidates, never a circle) */
+  function adoptChildren(id, only) {
+    const list = childCandidates(id).filter((c) => !only || only(c));
+    const up = db.prepare('UPDATE monitors SET parent_id=? WHERE id=? AND parent_id IS NULL');
+    let n = 0;
+    db.transaction(() => { for (const c of list) if (!wouldCycle(c.id, id)) n += up.run(id, c.id).changes; })();
+    return n;
+  }
+  function wouldCycle(childId, parentId) {
+    let id = parentId;
+    for (let i = 0; id && i < MAX_DEPTH; i++) { if (id === childId) return true; id = parentStmt.get(id)?.parent_id; }
+    return false;
+  }
+
   // ---------------------------------------------------------------------------------------------------- input
   async function clean(input, old = null) {
     const type = old ? (input.type ?? old.type) : input.type;
@@ -82,6 +160,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       channels: JSON.stringify(ids(input.channels ?? parse(old?.channels, []), 50)),
     };
     if (!v.name) throw new HttpError(400, 'err.nameRequired');
+    v.parent_id = cleanParent(input, old);
     if (!validStatusSpec(v.http_status)) throw new HttpError(400, 'err.httpStatus');
     v.timeout_s = Math.min(v.timeout_s, v.interval_s - 1);
     for (const c of parse(v.channels, [])) if (!db.prepare('SELECT 1 FROM channels WHERE id=?').get(c)) throw new HttpError(400, 'err.channel');
@@ -205,6 +284,12 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     if (!d) throw new HttpError(404, 'err.notFound');
     if (!d.ip) throw new HttpError(400, 'err.noIp');
     const facts = parse(d.facts, {});
+    const parent = suggestParent(d.id);
+    const base = await suggestKind(d, facts);
+    return parent ? { ...base, parent_id: parent.id } : base;
+  }
+
+  async function suggestKind(d, facts) {
     const web = d.web_url && /^https?:/i.test(d.web_url) ? d.web_url : bestWebUrl(d.ip, facts, d.type);
     if (web) return { name: d.name, type: 'http', target: web, tls_verify: false, device_id: d.id };
     if (await pingAvailable()) return { name: d.name, type: 'ping', target: d.ip, device_id: d.id };
@@ -289,6 +374,9 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       uptime: { h24: uptime(id, 24), d7: uptime(id, 24 * 7), d30: uptime(id, 24 * 30) },
       checks,
       events: db.prepare('SELECT * FROM monitor_events WHERE monitor_id=? ORDER BY id DESC LIMIT 100').all(id),
+      parent: m.parent_id ? db.prepare('SELECT id, name, status FROM monitors WHERE id=?').get(m.parent_id) || null : null,
+      dependents: db.prepare('SELECT id, name, status FROM monitors WHERE parent_id=? ORDER BY name').all(id),
+      candidates: childCandidates(id).length,
       maintenance: !!maintenance.activeFor(id, now()),
     };
   }
@@ -302,6 +390,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       total: rows.length,
       up: rows.filter((m) => m.status === 'up').length,
       down: rows.filter((m) => m.status === 'down').map((m) => ({ id: m.id, name: m.name, since: m.status_since, message: m.last_message })),
+      unreachable: rows.filter((m) => m.status === 'unreachable').length,
       pending: rows.filter((m) => m.status === 'pending' && m.enabled).length,
       paused: rows.filter((m) => !m.enabled).length,
       maintenance: rows.filter((m) => m.status === 'maintenance').length,
@@ -309,9 +398,9 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     };
   }
 
-  /** Status per inventory device (worst of its monitors): up | down | pending | maintenance | paused */
+  /** Status per inventory device (worst of its monitors): up | down | unreachable | pending | maintenance | paused */
   function deviceStatus() {
-    const order = { down: 5, pending: 4, maintenance: 3, up: 2, paused: 1 };
+    const order = { down: 6, unreachable: 5, pending: 4, maintenance: 3, up: 2, paused: 1 };
     const map = {};
     for (const m of db.prepare('SELECT device_id, status FROM monitors WHERE device_id IS NOT NULL').all()) {
       if (!map[m.device_id] || (order[m.status] || 0) > (order[map[m.device_id]] || 0)) map[m.device_id] = m.status;
@@ -377,11 +466,23 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
           notifyEv = { kind: 'up', downtimeMin: Math.max(1, Math.round((at.getTime() - downSince) / 60000)) };
           set.notified_down = 0;
         }
-        if (m.status === 'down' || notifyEv) event(m, 'up', msg);
+        if (m.status === 'down' || m.status === 'unreachable' || notifyEv) event(m, 'up', msg);
+        // What hangs behind it is checked again right away: still failing means a problem of its own
+        if (m.status === 'down' || m.status === 'unreachable') {
+          for (const c of db.prepare("SELECT id FROM monitors WHERE parent_id=? AND status IN ('unreachable','pending')").all(m.id)) nextRun.set(c.id, 0);
+        }
       }
     } else {
       set.fail_count = m.fail_count + 1;
-      if (set.fail_count >= m.fail_threshold) {
+      // Something in front of it (switch, router, line) is down: follow-up outage, no own alarm
+      const b = set.fail_count >= m.fail_threshold && m.status !== 'down' ? blocker(m) : null;
+      if (b?.state === 'down') {
+        if (m.status !== 'unreachable') { set.status = 'unreachable'; set.status_since = iso(at); event(m, 'unreachable', b.mon.name); }
+      } else if (b?.state === 'wait') {
+        // The one in front failed too but is not down yet - wait for it instead of raising an alarm of our own
+        if (m.status !== 'pending') { set.status = 'pending'; set.status_since = iso(at); }
+        nextRun.set(b.mon.id, 0);
+      } else if (set.fail_count >= m.fail_threshold) {
         if (m.status !== 'down') {
           set.status = 'down';
           set.status_since = iso(at);
@@ -434,7 +535,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   }
 
   return {
-    create, update, remove, get, list, detail, summary, deviceStatus, suggestionFor, checkNow,
+    create, update, remove, get, list, detail, summary, deviceStatus, suggestionFor, checkNow, childCandidates, adoptChildren,
     pause: (id) => setEnabled(id, false),
     resume: (id) => setEnabled(id, true),
     record,

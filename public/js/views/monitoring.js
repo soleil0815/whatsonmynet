@@ -171,15 +171,18 @@ export async function renderMonitoring(main, id, sub) {
   // Filter by state and search; the list is grouped so that what is down comes first
   let filter = new URLSearchParams(location.search).get('status') || '';
   let all = [];
+  let byId = new Map();
   const q = h('input', { type: 'search', placeholder: t('mon.search'), 'aria-label': t('mon.search'), oninput: () => draw() });
   const chips = h('div', { class: 'inv-chips', role: 'group', 'aria-label': t('mon.col.name') });
-  const ORDER = ['down', 'pending', 'maintenance', 'up', 'paused'];
+  const ORDER = ['down', 'unreachable', 'pending', 'maintenance', 'up', 'paused'];
 
   function row(m) {
     return h('tr', { class: 'click', onclick: (e) => { if (!e.target.closest('a,button')) navigate(`/monitoring/${m.id}`); } },
       h('td', {}, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
         h('div', { style: { minWidth: 0 } }, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
-          h('div', { class: 'sub' }, m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, m.last_message) : h('span', { class: 'mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`))))),
+          h('div', { class: 'sub' }, m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, m.last_message)
+            : m.status === 'unreachable' ? h('span', {}, t('mon.behind', { name: byId.get(m.parent_id)?.name || '?' }))
+              : h('span', { class: 'mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`))))),
       h('td', { class: 'hide-sm' }, beatsBar(m.beats, 40, isValueType(m))),
       h('td', {}, pct(m.uptime24)),
       h('td', { class: 'hide-sm' }, nowCell(m)),
@@ -193,6 +196,7 @@ export async function renderMonitoring(main, id, sub) {
       onclick: () => { filter = filter === key && key ? '' : key; history.replaceState({}, '', `/monitoring${filter ? `?status=${filter}` : ''}`); draw(); } },
       tone ? h('span', { class: `dot dot-${tone}` }) : null, label, h('span', { class: 'chip-n' }, n));
     mount(chips, chip('', t('all'), all.length), counts.down ? chip('down', t('mon.status.down'), counts.down, 'bad') : null,
+      counts.unreachable ? chip('unreachable', t('mon.status.unreachable'), counts.unreachable) : null,
       counts.up ? chip('up', t('mon.status.up'), counts.up, 'ok') : null, counts.paused ? chip('paused', t('mon.status.paused'), counts.paused) : null);
     const term = q.value.trim().toLowerCase();
     const list = all.filter((m) => (!filter || m.status === filter) && (!term || `${m.name} ${m.target} ${t(`mon.type.${m.type}`)}`.toLowerCase().includes(term)));
@@ -214,6 +218,7 @@ export async function renderMonitoring(main, id, sub) {
     try { list = await get('/monitors'); } catch (e) { if (alive) fail(e); return; }
     if (!alive) return;
     all = list;
+    byId = new Map(list.map((m) => [m.id, m]));
     if (!list.length) {
       mount(body, h('div', { class: 'empty' }, h('h2', {}, t('mon.emptyTitle')), h('p', {}, t('mon.emptyText')),
         edit ? btn(t('mon.add'), { class: 'btn btn-primary', onclick: () => openMonitorForm(null, load) }, 'plus') : null));
@@ -318,6 +323,8 @@ async function renderDetail(main, id) {
       onclick: () => { hours = v; reload(); } }, l)));
     mount(body,
       m.status === 'down' ? h('div', { class: 'note bad' }, t('mon.downSince', { when: fmtAgo(m.status_since, t), message: m.last_message })) : null,
+      m.status === 'unreachable' && m.parent ? h('div', { class: 'note' }, h('span', {}, t('mon.unreachableNote', { when: fmtAgo(m.status_since, t) }), ' ',
+        h('a', { href: `/monitoring/${m.parent.id}`, 'data-link': true }, m.parent.name))) : null,
       m.maintenance ? h('div', { class: 'note ti' }, t('mon.inMaintenance')) : null,
       h('div', { class: 'figures' },
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.h24.pct)), h('span', {}, t('mon.uptime24'))),
@@ -332,6 +339,7 @@ async function renderDetail(main, id) {
       h('section', { class: 'panel panel-pad' },
         h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '10px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, isValueType(m) ? t('sens.chart') : t('mon.chart')), span),
         chart(m.checks, hours, isValueType(m))),
+      depPanel(m, edit, reload),
       h('section', { class: 'panel panel-pad' },
         h('h2', { class: 'section-title' }, t('mon.events')),
         m.events.length ? h('ul', { class: 'timeline' }, m.events.map((e) => h('li', { class: `ev-${e.kind}` },
@@ -346,7 +354,28 @@ async function renderDetail(main, id) {
 
 function eventLine(e) {
   if (e.kind === 'cert') return t('mon.ev.cert', { n: e.message });
+  if (e.kind === 'unreachable') return t('mon.ev.unreachable', { name: e.message });
   return `${t(`mon.ev.${e.kind}`)}${e.message && e.kind === 'down' ? ` - ${e.message}` : ''}`;
+}
+
+/** Dependencies: what this monitor sits behind, what sits behind it, and the devices at its switch that could */
+function depPanel(m, edit, reload) {
+  const deps = m.dependents || [];
+  const offer = edit && m.candidates > 0;
+  if (!m.parent && !deps.length && !offer) return null;
+  const link = (x) => h('a', { href: `/monitoring/${x.id}`, 'data-link': true, class: 'dep-link' }, monitorDot(x.status), x.name);
+  return h('section', { class: 'panel panel-pad' },
+    h('h2', { class: 'section-title' }, t('mon.dep.title')),
+    h('dl', { class: 'kv' },
+      m.parent ? [h('dt', {}, t('mon.f.parent')), h('dd', {}, link(m.parent))] : null,
+      deps.length ? [h('dt', {}, t('mon.dep.behind', { n: deps.length })), h('dd', {}, h('div', { class: 'dep-list' }, deps.map(link)))] : null),
+    deps.length ? h('p', { class: 'muted small', style: { margin: '8px 0 0' } }, t('mon.dep.explain')) : null,
+    offer ? h('div', { class: 'note', style: { marginTop: '12px' } }, h('div', {},
+      h('p', { style: { margin: '0 0 8px' } }, t('mon.dep.offer', { n: m.candidates })),
+      btn(t('mon.dep.adopt'), { class: 'btn btn-sm', onclick: async (e) => {
+        e.currentTarget.disabled = true;
+        try { const r = await post(`/monitors/${m.id}/children`); toast(t('mon.dep.adopted', { n: r.count })); reload(); } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
+      } }, 'switch'))) : null);
 }
 
 /** Form to add or edit a monitor. `preset` fills a new one (e.g. from a device). */
@@ -610,6 +639,16 @@ export async function openMonitorForm(m, done, preset = null) {
     sync();
   });
   const selected = new Set(v.channels || []);
+  // Depends on: switch, router or line in front - while that is down this one is a follow-up and sends no alarm.
+  // Not offered: itself and what already sits behind it (that would be a circle)
+  let others = [];
+  try { others = await get('/monitors'); } catch { /* list stays empty */ }
+  const below = new Set(m ? [m.id] : []);
+  for (let grew = true; grew;) { grew = false; for (const x of others) if (x.parent_id && below.has(x.parent_id) && !below.has(x.id)) { below.add(x.id); grew = true; } }
+  const REACH = ['ping', 'tcp', 'http', 'snmp'];
+  const parentChoices = others.filter((x) => !below.has(x.id)).sort((a, b) => (REACH.includes(b.type) - REACH.includes(a.type)) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const parentSel = select('parent_id', [['', t('mon.f.parentNone')], ...parentChoices.map((x) => [String(x.id), `${x.name} · ${t(`mon.type.${x.type}`)}`])], v.parent_id ? String(v.parent_id) : '');
+  const parentBox = field(t('mon.f.parent'), parentSel, t('mon.f.parentHint'));
   const chanBox = chans.length ? h('div', { class: 'full field' }, t('mon.f.channels'),
     h('div', { class: 'chips' }, chans.map((c) => h('label', { class: 'check', style: { marginRight: '14px' } },
       h('input', { type: 'checkbox', name: `ch_${c.id}`, checked: selected.size ? selected.has(c.id) : false }), `${c.name}${c.is_default ? ` (${t('mon.f.default')})` : ''}`))),
@@ -628,6 +667,7 @@ export async function openMonitorForm(m, done, preset = null) {
     dbBox,
     smbBox,
     chanBox,
+    parentBox,
     // Rarely changed: how often, when to alarm, HTTP details - folded away with sensible defaults
     h('details', { class: 'adv full', open: !!m && m.type === 'http' && (m.http_keyword || m.http_status !== '200-399') },
       h('summary', {}, t('mon.f.advanced')),
@@ -648,7 +688,7 @@ export async function openMonitorForm(m, done, preset = null) {
     const body = { name: d.name, type: d.type, target: d.target.trim(), port: d.port, interval_s: d.interval_s, timeout_s: d.timeout_s,
       fail_threshold: d.fail_threshold, resend_min: d.resend_min, http_status: d.http_status, http_keyword: d.http_keyword,
       tls_verify: d.tls_verify, cert_check: d.cert_check, cert_days: d.cert_days,
-      channels: chans.filter((c) => d[`ch_${c.id}`]).map((c) => c.id) };
+      channels: chans.filter((c) => d[`ch_${c.id}`]).map((c) => c.id), parent_id: d.parent_id ? Number(d.parent_id) : null };
     // An address typed as URL for a host check ("https://nas:5001" with ping) only needs the host
     if (!['http', 'docker', 'smb'].includes(d.type) && /^[a-z][a-z0-9+.-]*:\/\//i.test(body.target)) body.target = splitAddress(body.target).host;
     if (d.type === 'docker') body.docker_host_id = d.docker_host_id;

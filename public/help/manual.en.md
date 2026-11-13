@@ -67,6 +67,17 @@ On the device page "Monitor" creates a fitting monitor. If the IP of a device ch
 
 Tokens, keys and webhook addresses are stored encrypted and never shown again. Outages arrive with high priority on push services. **Maintenance windows** (once or weekly) suppress alarms.
 
+### Dependencies: no alarm flood
+
+When a switch fails, every device behind it is unreachable too. So that twenty messages do not arrive at once, every monitor can **depend on** another one (form → *Depends on*, e.g. the ping of the switch or the internet router).
+
+- While the monitor in front is down, the one behind it is a **follow-up outage** (hollow red dot) and sends nothing. Only the cause is reported.
+- When both fail at the same time, the one behind waits briefly for the result of the one in front instead of raising its own alarm.
+- When the monitor in front is back, the ones behind are checked again right away. Whatever still fails has a problem of its own and is reported as usual.
+- Chains are possible (internet router → core switch → floor switch → printer). Circles are refused.
+
+**Automatically by switch port:** When a switch is queried by SNMP, WhatsOnMyNet knows which switch a device is plugged in at. When you **Monitor** a device, the monitor of its switch is already chosen as dependency. The page of the switch monitor also tells how many monitored devices are plugged in at it and depend on nothing yet. **Put them behind this monitor** sets them all at once.
+
 ## Printers, switches and NAS
 
 Devices of type *Printer*, *Switch* and *NAS* are queried via SNMP (read-only). Set the community under *Settings → Scan*; SNMP v1/v2c has to be on at the device.
