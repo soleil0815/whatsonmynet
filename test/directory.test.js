@@ -126,4 +126,9 @@ test('real LDAPS server', { skip: !LDAP }, async () => {
   // With certificate check on, the self-signed certificate is refused
   dir.save({ ...dir.config(), verify: true, bindPassword: undefined });
   await assert.rejects(dir.verify('anna', 'Anna-Passwort-1'), { status: 502 });
+  // The certificate can be fetched from the server (not trusted until confirmed)
+  const fc = await dir.fetchCert({});
+  assert.ok(fc.certs.length >= 1);
+  assert.match(fc.certs[0].fingerprint256, /^[0-9A-F]{2}(:[0-9A-F]{2}){31}$/);
+  assert.ok(fc.pem.includes('BEGIN CERTIFICATE'));
 });

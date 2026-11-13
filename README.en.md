@@ -149,7 +149,8 @@ By default the scan asks devices with the community `public` (SNMP v2c, else v1)
 
 Under *Settings → Active Directory* users sign in with their Windows account:
 
-- Encrypted connections only: `ldaps://dc01.example.local` (port 636) or `ldap://` with StartTLS. The certificate of the domain controller is checked; the certificate of your company CA can be entered as PEM.
+- Encrypted connections only: `ldaps://dc01.example.local` (port 636) or `ldap://` with StartTLS. The certificate of the domain controller is checked.
+- **Fetch certificate from DC** (from 0.4): WhatsOnMyNet gets the certificate chain straight from the domain controller and adds missing CAs via the AIA address in the certificate. You compare the fingerprint (SHA-256 and SHA-1, as in certlm.msc) and confirm. If the root CA is still missing, it is read from AD over the now trusted connection (*Public Key Services*). Every added CA must really have signed the certificate below it. With the root CA a renewed DC certificate is accepted without a new confirmation. Pasting a PEM still works.
 - A **service account without special rights** finds the account, the domain controller itself checks the password – WhatsOnMyNet never stores it.
 - **Roles by group**: one group each for administrator, editor and read-only (full DN, nested groups included). Members of none cannot sign in. Name, e-mail and role are taken from AD at every sign-in.
 - Local accounts keep working; for the same name the **local account always wins** – so the local admin stays the emergency access.
