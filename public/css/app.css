@@ -439,6 +439,19 @@ pre.code.wrap { white-space: pre-wrap; word-break: break-all; }
 .manual figcaption { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
 @media (max-width: 900px) { .help-layout { grid-template-columns: 1fr; } .help-toc { position: static; } }
 
+/* ---------- Active Directory settings ---------- */
+.ad-sec { font-size: 15px; margin: 22px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.ad-grid-3 { display: grid; grid-template-columns: 2fr 1.2fr 0.8fr; gap: 0 16px; }
+@media (max-width: 720px) { .ad-grid-3 { grid-template-columns: 1fr; } }
+.ad-steps ul { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+.ad-steps li { display: flex; gap: 10px; align-items: flex-start; }
+.ad-steps li > div { min-width: 0; overflow-wrap: anywhere; }
+.ad-mark { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.ad-steps li.ok .ad-mark { background: var(--accent-soft); color: var(--accent); }
+.ad-steps li.bad .ad-mark { background: var(--bad-soft); color: var(--bad); }
+.ad-steps li.warn .ad-mark { background: var(--new-soft); color: var(--new); }
+.ad-result.ok { color: var(--accent); font-weight: 600; margin: 12px 0 0; }
+
 /* ---------- TLS certificate of the domain controller ---------- */
 .cert-block { border: 1px solid var(--line); border-radius: var(--r-m, 10px); padding: 14px 16px; margin: 6px 0 14px; }
 .cert-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin-bottom: 6px; }
