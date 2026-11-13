@@ -444,6 +444,7 @@ function proxmoxDetail(x) {
       h('ul', { class: 'port-macs' }, (d.nodes || []).map((n) => h('li', {}, h('strong', {}, n.name),
         h('span', { class: `badge ${n.online ? 'badge-ok' : 'badge-bad'}` }, n.stale ? t('virt.silent') : n.online ? 'online' : 'offline'),
         n.online && (n.cpu !== null || n.mem !== null) ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu ?? '–'} % · RAM ${n.mem ?? '–'} %`) : null,
+        n.temp ? h('span', { class: `badge ${n.temp.c >= n.temp.warn ? 'badge-new' : ''}`, title: t('vo.tempTitle', { name: n.temp.name, warn: n.temp.warn }) }, `${n.temp.c} °C`) : null,
         n.seen ? h('span', { class: 'muted small' }, t('virt.seen', { when: fmtDate(n.seen, getLang()) })) : null))),
       h('h3', { class: 'sub-title' }, t('px.storages')),
       h('div', { class: 'supplies' }, (d.storages || []).filter((s) => s.total).map((s) => meter(s.node ? `${s.name} · ${s.node}` : s.name, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
@@ -808,6 +809,13 @@ function hostSummary(x) {
     }
     const on = guests.filter((g) => g.status === 'running').length;
     figures.push(t('vo.fig.nodes', { on: nodes.length - offN, n: nodes.length }), t('vo.fig.guests', { on, n: guests.length }));
+    // Temperatures of nodes that also run the Linux script
+    const hot = nodes.filter((y) => y.temp).map((y) => y.temp);
+    if (hot.length) {
+      const top = hot.reduce((a, b) => (b.c > a.c ? b : a));
+      figures.push(t('vo.fig.temp', { c: top.c }));
+      if (hot.some((y) => y.c >= y.warn)) warn(tn('vo.tempHigh', { n: hot.filter((y) => y.c >= y.warn).length }));
+    }
     if (stores.length) figures.push(t('vo.fig.storage', { pct: Math.max(...stores.map((y) => y.pct || 0)) }));
     Object.assign(n, { nodes: nodes.length, nodesOn: nodes.length - offN, guests: guests.length, guestsOn: on, stores: stores.length, storesFull: full.length, backupIssues });
     deep.push(...nodes.map((y) => y.name), ...guests.map((g) => `${g.vmid ?? ''} ${g.name}`), ...stores.map((y) => y.name));
