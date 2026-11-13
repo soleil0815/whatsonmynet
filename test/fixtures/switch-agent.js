@@ -34,7 +34,7 @@ export function addSwitch(mib, { ports, fdb }) {
   for (const f of fdb) mib.addTableRow('qfdb', [f.vlan, ...f.mac.split(':').map((x) => parseInt(x, 16)), f.port]);
 }
 
-export function addNas(mib, { volumes, disks, raids, model = 'DS920+', temp = 41 }) {
+export function addNas(mib, { volumes, disks, raids, model = 'DS920+', temp = 41, ups = null }) {
   table(mib, 'hrStorage', '1.3.6.1.2.1.25.2.3.1', [[1, 'hsIdx']], [[2, 'hsType', snmp.ObjectType.OID], [3, 'hsDescr', S], [4, 'hsUnit', I], [5, 'hsSize', I], [6, 'hsUsed', I]]);
   volumes.forEach((v, i) => mib.addTableRow('hrStorage', [i + 1, '1.3.6.1.2.1.25.2.1.4', v.name, 4096, v.sizeBlocks, v.usedBlocks]));
   const sc = (name, oid, type, value) => { mib.registerProvider({ name, type: snmp.MibProviderType.Scalar, oid, scalarType: type, maxAccess: RO }); mib.setScalarValue(name, value); };
@@ -46,4 +46,39 @@ export function addNas(mib, { volumes, disks, raids, model = 'DS920+', temp = 41
   disks.forEach((d, i) => mib.addTableRow('synDisk', [i, d.name, d.model, d.status, d.temp]));
   table(mib, 'synRaid', '1.3.6.1.4.1.6574.3.1.1', [[1, 'rIdx']], [[2, 'rName', S], [3, 'rStatus', I]]);
   raids.forEach((r, i) => mib.addTableRow('synRaid', [i, r.name, r.status]));
+  // UPS on the NAS (SYNOLOGY-UPS-MIB)
+  if (ups) {
+    sc('upsModel', '1.3.6.1.4.1.6574.4.1.1', S, ups.model);
+    sc('upsMfr', '1.3.6.1.4.1.6574.4.1.2', S, ups.vendor);
+    sc('upsStatus', '1.3.6.1.4.1.6574.4.2.1', S, ups.status);
+    sc('upsLoad', '1.3.6.1.4.1.6574.4.2.12.1', I, ups.load);
+    sc('upsCharge', '1.3.6.1.4.1.6574.4.3.1.1', I, ups.charge);
+    sc('upsRuntime', '1.3.6.1.4.1.6574.4.3.6.1', I, ups.runtime);
+  }
+}
+
+/** Network card of a UPS: standard UPS-MIB (RFC 1628) or APC PowerNet */
+export function addUpsCard(mib, kind) {
+  const sc = (name, oid, type, value) => { mib.registerProvider({ name, type: snmp.MibProviderType.Scalar, oid, scalarType: type, maxAccess: RO }); mib.setScalarValue(name, value); };
+  if (kind === 'apc') {
+    sc('apcModel', '1.3.6.1.4.1.318.1.1.1.1.1.1', S, 'Smart-UPS 1500');
+    sc('apcFw', '1.3.6.1.4.1.318.1.1.1.1.2.1', S, 'UPS 09.3');
+    sc('apcSerial', '1.3.6.1.4.1.318.1.1.1.1.2.3', S, 'AS1234567890');
+    sc('apcBatStatus', '1.3.6.1.4.1.318.1.1.1.2.1.1', I, 2);
+    sc('apcCharge', '1.3.6.1.4.1.318.1.1.1.2.2.1', snmp.ObjectType.Gauge32, 100);
+    sc('apcRuntime', '1.3.6.1.4.1.318.1.1.1.2.2.3', snmp.ObjectType.TimeTicks, 384000);
+    sc('apcReplace', '1.3.6.1.4.1.318.1.1.1.2.2.4', I, 2);
+    sc('apcOutput', '1.3.6.1.4.1.318.1.1.1.4.1.1', I, 2);
+    sc('apcLoad', '1.3.6.1.4.1.318.1.1.1.4.2.3', snmp.ObjectType.Gauge32, 31);
+    return;
+  }
+  sc('stdMfr', '1.3.6.1.2.1.33.1.1.1', S, 'EATON');
+  sc('stdModel', '1.3.6.1.2.1.33.1.1.2', S, '9PX 2200');
+  sc('stdFw', '1.3.6.1.2.1.33.1.1.3', S, 'INV: 01.14.0026');
+  sc('stdBattery', '1.3.6.1.2.1.33.1.2.1', I, 3);
+  sc('stdMinutes', '1.3.6.1.2.1.33.1.2.3', I, 7);
+  sc('stdCharge', '1.3.6.1.2.1.33.1.2.4', I, 18);
+  sc('stdSource', '1.3.6.1.2.1.33.1.4.1', I, 5);
+  table(mib, 'upsOut', '1.3.6.1.2.1.33.1.4.4.1', [[1, 'lineIdx']], [[5, 'pctLoad', I]]);
+  mib.addTableRow('upsOut', [1, 42]);
 }

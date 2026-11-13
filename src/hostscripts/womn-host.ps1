@@ -27,11 +27,21 @@ $disks = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Where-Objec
 $services = @(Get-CimInstance Win32_Service -Filter "StartMode='Auto'" | ForEach-Object {
   $st = if ($_.State -eq 'Running') { 'running' } else { 'stopped' }
   @{ name = $_.Name; display = $_.DisplayName; state = $st; failed = ($st -ne 'running' -and $_.ExitCode -ne 0) } })
+# UPS on USB: Windows sees it like a battery (BatteryStatus 1 = discharging, 4/5 = low/critical)
+$ups = $null
+try {
+  $bat = @(Get-CimInstance Win32_Battery) | Select-Object -First 1
+  if ($bat) {
+    $rt = [int64]$bat.EstimatedRunTime
+    $ups = @{ status = $(if (@(1, 4, 5) -contains [int]$bat.BatteryStatus) { 'OB' } else { 'OL' }) + $(if (@(4, 5) -contains [int]$bat.BatteryStatus) { ' LB' } else { '' })
+      charge = $bat.EstimatedChargeRemaining; runtime = $(if ($rt -gt 0 -and $rt -lt 71582788) { $rt * 60 } else { $null }); model = [string]$bat.Name; kind = 'battery' }
+  }
+} catch { $ups = $null }
 $net = @(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE')
 $body = @{
   hostname = $env:COMPUTERNAME; os = "$($os.Caption) $($os.Version)".Trim(); cpu = [int]$cpu
   memTotal = [int64]$os.TotalVisibleMemorySize * 1024; memUsed = ([int64]$os.TotalVisibleMemorySize - [int64]$os.FreePhysicalMemory) * 1024
   uptime = [int]((Get-Date) - $os.LastBootUpTime).TotalSeconds; disks = $disks; services = $services
-  macs = @($net | ForEach-Object { $_.MACAddress } | Where-Object { $_ }); ips = @($net | ForEach-Object { $_.IPAddress } | Where-Object { $_ -match '^\d+\.' })
+  macs = @($net | ForEach-Object { $_.MACAddress } | Where-Object { $_ }); ips = @($net | ForEach-Object { $_.IPAddress } | Where-Object { $_ -match '^\d+\.' }); ups = $ups
 } | ConvertTo-Json -Depth 4 -Compress
 Invoke-RestMethod -Method Post -Uri $Url -Headers @{ Authorization = "Bearer $Token"; 'X-WOMN-Request' = '1' } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30 | Out-Null

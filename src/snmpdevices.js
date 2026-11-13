@@ -3,12 +3,12 @@
 // NAS: volumes, disks, RAID, temperature, health - problems are reported once and again when they are solved.
 import { readSwitch } from './scan/switch.js';
 import { fillDevice, snmpFacts } from './devicefill.js';
-import { readNas, nasProblems } from './scan/nas.js';
+import { readNas, nasProblems, readUpsDevice } from './scan/nas.js';
 import { HttpError } from './lib/http.js';
 import { log } from './lib/log.js';
 import { normalizeMac } from './lib/net.js';
 
-export const SNMP_KINDS = { switch: 'switch', nas: 'nas' };
+export const SNMP_KINDS = { switch: 'switch', nas: 'nas', ups: 'ups' };
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
 
 export function createSnmpDevices({ db, settings, channels }) {
@@ -16,7 +16,7 @@ export function createSnmpDevices({ db, settings, channels }) {
     const list = String(settings.get('scan.snmpCommunities') || '').split(/[\n,]/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
     return list.length ? list : ['public'];
   };
-  const readers = { switch: readSwitch, nas: readNas };
+  const readers = { switch: readSwitch, nas: readNas, ups: readUpsDevice };
   const busy = new Set();
   let timer = null;
   let polling = false;
@@ -103,7 +103,7 @@ export function createSnmpDevices({ db, settings, channels }) {
     const prev = getStatus.get(d.id);
     try {
       let data = null; let error = '';
-      try { data = await readers[kind](d.ip, communities()); } catch (e) { error = ['snmp', 'noIfMib', 'noNasMib'].includes(e.message) ? e.message : 'snmp'; log.debug?.(`SNMP ${d.name}: ${e.message}`); }
+      try { data = await readers[kind](d.ip, communities()); } catch (e) { error = ['snmp', 'noIfMib', 'noNasMib', 'noUpsMib'].includes(e.message) ? e.message : 'snmp'; log.debug?.(`SNMP ${d.name}: ${e.message}`); }
       let alerts = prev && prev.kind === kind ? parse(prev.alerts) : {};
       if (data && kind === 'switch') {
         storeMacs(d.id, data, at);
@@ -125,7 +125,7 @@ export function createSnmpDevices({ db, settings, channels }) {
     try {
       const every = Math.max(5, Number(settings.get('snmpdev.interval')) || 15) * 60 * 1000;
       const due = db.prepare(`SELECT d.id, s.at FROM devices d LEFT JOIN snmp_status s ON s.device_id=d.id
-        WHERE d.type IN ('switch','nas') AND d.ip IS NOT NULL AND d.ip<>''`).all().filter((r) => !r.at || now - Date.parse(r.at) >= every);
+        WHERE d.type IN ('switch','nas','ups') AND d.ip IS NOT NULL AND d.ip<>''`).all().filter((r) => !r.at || now - Date.parse(r.at) >= every);
       for (const r of due.slice(0, 20)) {
         try { await poll(r.id); } catch (e) { log.warn(`SNMP device ${r.id}: ${e.message}`); }
       }

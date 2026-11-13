@@ -127,9 +127,21 @@ test('Linux script: POSIX sh, sets itself up in cron, reports what the server ac
   assert.deepEqual(r.services.map((x) => [x.name, x.state, x.failed]), [['cron', 'running', false], ['nginx', 'running', false], ['postgresql', 'failed', true]]);
   assert.equal(r.services.find((x) => x.name === 'postgresql').display, 'PostgreSQL "database" server');
   assert.deepEqual(r.ips, ['10.0.0.20']);
+  assert.equal(r.ups, null, 'no UPS software - no UPS values');
   // cron calls the copy with --run: it only reports, the crontab stays as it is
   execFileSync('sh', [dest, '--run'], { env, timeout: 15000 });
   assert.equal(fs.readFileSync(path.join(dir, 'crontab'), 'utf8').split('\n').filter(Boolean).length, 1);
+  // A local NUT: its values come along
+  w('upsc', `if [ "$1" = -l ]; then echo eaton; else printf 'battery.charge: 87\\nbattery.runtime: 1260\\ndevice.mfr: EATON\\nups.load: 23\\nups.model: Ellipse PRO "650"\\nups.status: OB DISCHRG\\n'; fi`);
+  execFileSync('sh', [dest, '--run'], { env, timeout: 15000 });
+  assert.deepEqual(cleanReport(JSON.parse(fs.readFileSync(path.join(dir, 'body'), 'utf8'))).ups,
+    { source: 'script', vendor: 'EATON', model: 'Ellipse PRO "650"', serial: '', firmware: '', status: 'battery', low: false, replace: false, charge: 87, runtime: 1260, load: 23 });
+  // apcupsd instead
+  fs.rmSync(path.join(bin, 'upsc'));
+  w('apcaccess', `printf 'APC      : 001,036,0866\\nSTATUS   : ONLINE\\nMODEL    : Back-UPS XS 700U\\nLOADPCT  : 12.0 Percent\\nBCHARGE  : 100.0 Percent\\nTIMELEFT : 45.5 Minutes\\n'`);
+  execFileSync('sh', [dest, '--run'], { env, timeout: 15000 });
+  const a = cleanReport(JSON.parse(fs.readFileSync(path.join(dir, 'body'), 'utf8'))).ups;
+  assert.deepEqual([a.status, a.charge, a.runtime, a.load, a.model, a.vendor], ['online', 100, 2730, 12, 'Back-UPS XS 700U', 'APC']);
   const un = path.join(dir, s.uninstall.file);
   fs.writeFileSync(un, s.uninstall.text);
   execFileSync('sh', ['-n', un]);

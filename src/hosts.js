@@ -9,6 +9,7 @@ import { HttpError, line } from './lib/http.js';
 import { normalizeMac } from './lib/net.js';
 import { hostScript } from './hostscripts.js';
 import { fillDevice } from './devicefill.js';
+import { cleanUps } from './scan/ups.js';
 
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
 const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -43,6 +44,8 @@ export function cleanReport(body) {
     uptime: Math.max(0, Math.round(num(b.uptime) || 0)), disks, services,
     macs: [...new Set(list(b.macs, 20).map((m) => normalizeMac(m)).filter(Boolean))],
     ips: [...new Set(list(b.ips, 20).map((ip) => String(ip).trim()).filter((ip) => IPV4.test(ip)))],
+    // UPS the machine sees (Linux: local NUT/apcupsd, Windows: UPS on USB)
+    ups: cleanUps(b.ups),
   };
 }
 
