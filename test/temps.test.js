@@ -8,7 +8,7 @@ import { memoryDb, tmp } from './helpers.js';
 import { hostScript } from '../src/hostscripts.js';
 import { cleanTemps } from '../src/hostfacts.js';
 import { cleanReport } from '../src/hosts.js';
-import { metricsFor, sensorCheck } from '../src/monitor/sensors.js';
+import { metricsFor, sensorCheck, proxmoxCheck } from '../src/monitor/sensors.js';
 import { createProxmox } from '../src/proxmox.js';
 import { createSettings } from '../src/settings.js';
 
@@ -90,4 +90,26 @@ test('virtualisation: a Proxmox node that runs the script shows its temperature'
   const nodes = px.list()[0].data.nodes;
   assert.equal(nodes[0].temp.c, 63);
   assert.equal(nodes[1].temp, undefined);
+});
+
+test('virtualisation: sensor "temperature" of a node, from the script on it', () => {
+  const db = memoryDb();
+  const dev = hostWithTemps(db, [{ chip: 'coretemp', dev: 'coretemp.0', name: 'Package id 0', mC: 83000, maxMC: 80000, critMC: 100000 }]);
+  const at = new Date().toISOString();
+  const host = db.prepare("INSERT INTO proxmox_hosts(name,kind,url,token_id,secret,verify,created_at,last_at,last_ok,data) VALUES('Cluster','pve','https://pve1:8006','a@pve!b','x',1,?,?,1,?)")
+    .run(at, at, JSON.stringify({ kind: 'pve', nodes: [{ name: 'pve1', online: true }, { name: 'pve2', online: true }], guests: [], storages: [] })).lastInsertRowid;
+  const px = createProxmox({ db, settings: createSettings(db) });
+  const m = px.metrics(host).filter((x) => x.metric === 'nodeTemp');
+  assert.deepEqual(m.map((x) => [x.key, x.value, x.threshold, x.sensor]), [['pve1', 83, 80, 'CPU Package id 0']]);
+  const mon = (o) => ({ options: JSON.stringify({ host, ...o }) });
+  const r = proxmoxCheck(db, mon({ metric: 'nodeTemp', key: 'pve1', op: 'ge', threshold: 80, label: 'Temperatur pve1' }));
+  assert.equal(r.ok, false);
+  assert.equal(r.ms, 83);
+  assert.match(r.message, /83 °C \(CPU Package id 0\)/);
+  assert.equal(proxmoxCheck(db, mon({ metric: 'nodeTemp', key: 'pve1', op: 'ge', threshold: 90, label: 'x' })).ok, true);
+  // the script on the node stops reporting: no old value, a clear message
+  db.prepare('UPDATE host_reports SET at=? WHERE device_id=?').run(new Date(Date.now() - 20 * 60000).toISOString(), dev);
+  const s = proxmoxCheck(db, mon({ metric: 'nodeTemp', key: 'pve1', op: 'ge', threshold: 80, label: 'T' }));
+  assert.equal(s.ok, false);
+  assert.match(s.message, /Linux script/);
 });

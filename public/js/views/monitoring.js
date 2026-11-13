@@ -21,7 +21,7 @@ export function monitorDot(status) {
 
 // Monitors that measure a value (not a response time): device sensors, SNMP values and Proxmox values
 const PX_STATE = ['nodeOnline', 'guestRunning', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume'];
-const PX_UNIT = { rfTemp: ' °C', rfDriveLife: ' %', rfWatts: ' W', nodeCpu: ' %', nodeMem: ' %', storage: ' %', datastore: ' %', backupAge: ' h', groupAge: ' h' };
+const PX_UNIT = { rfTemp: ' °C', rfDriveLife: ' %', rfWatts: ' W', nodeCpu: ' %', nodeMem: ' %', nodeTemp: ' °C', storage: ' %', datastore: ' %', backupAge: ' h', groupAge: ' h' };
 export const isValueType = (m) => m.type === 'sensor' || m.type === 'snmp' || (m.type === 'proxmox' && !PX_STATE.includes(m.options?.metric));
 const unitOf = (m) => (m.type === 'proxmox' ? PX_UNIT[m.options?.metric] || '' : m.options?.unit ? ` ${m.options.unit}` : '');
 /** Last measured value with its unit, '–' while there is none */
