@@ -37,6 +37,8 @@ test('roles: viewer reads, editor scans, only admin changes settings', async () 
   assert.equal((await call('GET', '/api/devices', undefined, { who: 'viewer' })).status, 200);
   assert.equal((await call('POST', '/api/devices', { name: 'x' }, { who: 'viewer' })).status, 403);
   assert.equal((await call('POST', '/api/scans', { cidrs: ['127.0.0.1/32'] }, { who: 'viewer' })).status, 403);
+  assert.equal((await call('POST', '/api/scans/1/unignore', { ids: [1] }, { who: 'viewer' })).status, 403);
+  assert.deepEqual((await call('POST', '/api/scans/999/unignore', { ids: [1] }, { who: 'editor' })).data, { unignored: 0 });
   assert.equal((await call('GET', '/api/settings', undefined, { who: 'editor' })).status, 403);
   assert.equal((await call('POST', '/api/devices', { name: 'Switch Keller', type: 'switch', ip: '192.168.1.2' }, { who: 'editor' })).status, 201);
   // the last admin cannot be demoted or deleted

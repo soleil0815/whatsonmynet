@@ -397,6 +397,13 @@ export function createApi(ctx) {
     if (n) audit(req, 'inventory.ignore', `${n} device(s) from scan ${scanId}`);
     res.json({ ignored: n });
   });
+  r.post('/scans/:id/unignore', editor, (req, res) => {
+    const scanId = idParam(req);
+    const resultIds = ids(req.body.ids).filter((x) => { const r0 = db.prepare('SELECT location_id FROM scan_results WHERE id=? AND scan_id=?').get(x, scanId); return r0 && inScope(req.scope, r0.location_id); });
+    const n = inventory.unignore(resultIds);
+    if (n) audit(req, 'inventory.unignore', `${n} device(s) from scan ${scanId}`);
+    res.json({ unignored: n });
+  });
 
   r.get('/ignored', (_req, res) => res.json(db.prepare('SELECT * FROM ignored ORDER BY created_at DESC').all()));
   r.delete('/ignored/:id', editor, (req, res) => {

@@ -23,6 +23,12 @@ export function createInventory(db) {
   const isIgnored = db.prepare('SELECT id FROM ignored WHERE (mac IS NOT NULL AND mac=?) OR (mac IS NULL AND ip=?)');
   const addHistory = db.prepare('INSERT INTO device_history(device_id,at,user,kind,detail) VALUES(?,?,?,?,?)');
 
+  /** Takes a device off the ignore list: by MAC, or by IP for devices without MAC. */
+  function unlistIgnored(mac, ip) {
+    if (mac) db.prepare('DELETE FROM ignored WHERE mac=?').run(mac);
+    else db.prepare('DELETE FROM ignored WHERE mac IS NULL AND ip=?').run(ip);
+  }
+
   function history(deviceId, kind, detail, user = '') {
     addHistory.run(deviceId, now(), user, kind, JSON.stringify(detail || {}));
   }
@@ -240,8 +246,8 @@ export function createInventory(db) {
         // What the scan guessed (model, OS, manufacturer from the MAC) may be replaced by what the device itself reports
         const guessed = Object.fromEntries(['vendor', 'model', 'os', 'type'].filter((k) => d[k]).map((k) => [k, d[k]]));
         if (Object.keys(guessed).length) db.prepare('UPDATE devices SET auto_fields=? WHERE id=?').run(JSON.stringify(guessed), d.id);
-        // Remove the device from the ignore list if it was there
-        if (mac) db.prepare('DELETE FROM ignored WHERE mac=?').run(mac);
+        // Remove the device from the ignore list if it was there (devices without MAC are on it by IP)
+        unlistIgnored(mac, r.ip);
         created.push(d.id);
       }
     })();
@@ -259,6 +265,21 @@ export function createInventory(db) {
         if (mac) db.prepare('INSERT INTO ignored(mac,ip,label,created_at,created_by) VALUES(?,?,?,?,?) ON CONFLICT(mac) DO UPDATE SET ip=excluded.ip').run(mac, r.ip, label, now(), user);
         else if (!isIgnored.get(null, r.ip)) db.prepare('INSERT INTO ignored(mac,ip,label,created_at,created_by) VALUES(NULL,?,?,?,?)').run(r.ip, label, now(), user);
         db.prepare("UPDATE scan_results SET handled='ignored', status='ignored' WHERE id=?").run(rid);
+        n++;
+      }
+    })();
+    return n;
+  }
+
+  /** Takes ignored scan results off the ignore list; in this scan they count as new again (to adopt or ignore). */
+  function unignore(resultIds) {
+    let n = 0;
+    db.transaction(() => {
+      for (const rid of resultIds) {
+        const r = getResult.get(rid);
+        if (!r || r.device_id || r.status !== 'ignored') continue;
+        unlistIgnored(normalizeMac(r.mac), r.ip);
+        db.prepare("UPDATE scan_results SET handled=NULL, status='new' WHERE id=?").run(rid);
         n++;
       }
     })();
@@ -347,7 +368,7 @@ export function createInventory(db) {
     return n;
   }
 
-  return { applyResult, finishScan, create, update, remove, get, list, historyOf, adopt, ignore, stats, history, suggestions, bulkUpdate, bulkRemove };
+  return { applyResult, finishScan, create, update, remove, get, list, historyOf, adopt, ignore, unignore, stats, history, suggestions, bulkUpdate, bulkRemove };
 }
 
 /** CSV export (semicolon, UTF-8 with BOM - opens correctly in Excel) */
