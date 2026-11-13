@@ -26,9 +26,11 @@ on:
 permissions:
   contents: read
 
-# Never run releases concurrently (a second button press waits); other runs per branch/PR
+# Never run releases concurrently (a second button press waits); other runs per branch/PR.
+# Only a real release (release != nein) joins the group "release" of the security update - a run by button
+# without release must not queue behind it or replace a waiting security update.
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && 'release' || format('ci-{0}', github.ref) }}
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.release != 'nein' && 'release' || format('ci-{0}', github.ref) }}
   # outdated runs of a pull request are cancelled; releases and main never
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -100,7 +102,7 @@ jobs:
       - name: Lint shell scripts
         run: |
           shellcheck -s sh docker/entrypoint.sh docker/womn-admin.sh docker/prune-modules.sh .github/scripts/*.sh
-          dash -n docker/entrypoint.sh && dash -n docker/womn-admin.sh && dash -n docker/prune-modules.sh
+          for f in docker/*.sh .github/scripts/*.sh; do dash -n "$f" || exit 1; done
 
   # Build and check the image (no write permissions, no publishing)
   image:
@@ -227,8 +229,11 @@ jobs:
           build-args: VERSION=${{ needs.release-check.outputs.version }}
           tags: ${{ env.IMAGE }}:${{ needs.release-check.outputs.version }}-kandidat-${{ github.run_id }}-${{ matrix.arch }}
       - name: Test candidate (${{ matrix.arch }})
+        env:
+          V: ${{ needs.release-check.outputs.version }}
+          ARCH: ${{ matrix.arch }}
         run: |
-          img="$IMAGE:${{ needs.release-check.outputs.version }}-kandidat-${{ github.run_id }}-${{ matrix.arch }}"
+          img="$IMAGE:$V-kandidat-$GITHUB_RUN_ID-$ARCH"
           docker pull "$img"
           sh .github/scripts/smoke-test.sh "$img"
 
@@ -255,9 +260,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set version outputs
         id: v
+        env:
+          V: ${{ needs.release-check.outputs.version }}
+          LATEST: ${{ needs.release-check.outputs.latest }}
         run: |
-          echo "version=${{ needs.release-check.outputs.version }}" >> "$GITHUB_OUTPUT"
-          echo "latest=${{ needs.release-check.outputs.latest }}" >> "$GITHUB_OUTPUT"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
       - name: Tag must not exist yet
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -277,8 +285,10 @@ jobs:
           case "$out" in *"Not Found"*|*"HTTP 404"*) ;; *) echo "::error::Cannot check tag v$V: $out"; exit 1 ;; esac
       - name: Merge candidate from both architectures (record digest)
         id: cand
+        env:
+          V: ${{ steps.v.outputs.version }}
         run: |
-          k="$IMAGE:${{ steps.v.outputs.version }}-kandidat-$GITHUB_RUN_ID"
+          k="$IMAGE:$V-kandidat-$GITHUB_RUN_ID"
           docker buildx imagetools create -t "$k" "$k-amd64" "$k-arm64"
           digest="$(docker buildx imagetools inspect "$k" --format '{{json .Manifest.Digest}}' | tr -d '"')"
           case "$digest" in sha256:*) ;; *) echo "::error::Cannot read the candidate digest ($digest)"; exit 1 ;; esac
@@ -299,8 +309,9 @@ jobs:
       - name: Release files (offline images + checksums)
         env:
           DIGEST: ${{ steps.cand.outputs.digest }}
+          V: ${{ steps.v.outputs.version }}
         run: |
-          v="${{ steps.v.outputs.version }}"
+          v="$V"
           mkdir -p release
           for arch in amd64 arm64; do
             docker pull --platform "linux/$arch" "$IMAGE@$DIGEST"
@@ -349,8 +360,10 @@ jobs:
       - name: Publish the checked image (same digest)
         env:
           DIGEST: ${{ steps.cand.outputs.digest }}
+          V: ${{ steps.v.outputs.version }}
+          LATEST: ${{ steps.v.outputs.latest }}
         run: |
-          v="${{ steps.v.outputs.version }}"
+          v="$V"
           # Never overwrite a published version: an existing tag may only be this very digest (re-run)
           if old="$(docker buildx imagetools inspect "$IMAGE:$v" --format '{{json .Manifest.Digest}}' 2>inspect.err)"; then
             old="$(printf '%s' "$old" | tr -d '"')"
@@ -360,7 +373,7 @@ jobs:
             case "$old" in *"not found"*|*"manifest unknown"*|*"MANIFEST_UNKNOWN"*|*"404"*) ;; *) echo "::error::Cannot check $IMAGE:$v: $old"; exit 1 ;; esac
           fi
           tags="-t $IMAGE:$v"
-          [ "${{ steps.v.outputs.latest }}" = true ] && tags="$tags -t $IMAGE:latest"
+          [ "$LATEST" = true ] && tags="$tags -t $IMAGE:latest"
           # shellcheck disable=SC2086
           docker buildx imagetools create $tags "$IMAGE@$DIGEST"
           now="$(docker buildx imagetools inspect "$IMAGE:$v" --format '{{json .Manifest.Digest}}' | tr -d '"')"

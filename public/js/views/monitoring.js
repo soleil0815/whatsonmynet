@@ -1,6 +1,6 @@
 // Monitoring: list of monitors with heartbeat bar, detail with response time chart and events,
 // form to add or edit a monitor, maintenance windows.
-import { h, mount, modal, toast, confirmDialog, fmtDate, fmtAgo } from '../dom.js';
+import { h, mount, modal, toast, confirmDialog, fmtDate, fmtAgo, busy } from '../dom.js';
 import { get, post, put, del } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
@@ -270,7 +270,7 @@ export async function renderMonitoring(main, id, sub) {
     all = list.filter(mine);
     byId = new Map(list.map((m) => [m.id, m]));
     if (!all.length) {
-      mount(body, h('div', { class: 'empty' }, h('h2', {}, t(kind === 'sensors' ? 'sens.emptyTitle' : 'mon.emptyTitle')), h('p', {}, t(kind === 'sensors' ? 'sens.emptyText' : 'mon.emptyText')),
+      mount(body, h('div', { class: 'empty' }, h('h2', {}, t(kind === 'sensors' ? 'sens.emptyTitle' : 'mon.emptyTitle')), h('p', {}, t(!edit ? 'mon.emptyViewer' : kind === 'sensors' ? 'sens.emptyText' : 'mon.emptyText')),
         edit ? addBtn() : null));
     } else {
       draw();
@@ -773,7 +773,8 @@ export async function openMonitorForm(m, done, preset = null) {
   const escMin = v.escalate_min === null || v.escalate_min === undefined ? '' : String(v.escalate_min);
   const ESC_STEPS = [15, 30, 60, 120, 240, 480];
   const escSel = select('escalate_min', [['', escDefault], ['0', t('mon.f.escOff')],
-    ...[...new Set([...ESC_STEPS, ...(escMin && escMin !== '0' ? [Number(escMin)] : [])])].sort((a, b) => a - b).map((n) => [String(n), t('mon.f.escAfter', { n })])], escMin);
+    ...[...new Set([...ESC_STEPS, ...(escMin && escMin !== '0' ? [Number(escMin)] : [])])].sort((a, b) => a - b).map((n) => [String(n), t('mon.f.escAfter', { n })])], escMin,
+    { 'aria-label': t('mon.f.escalate') });
   const escSelected = new Set(v.escalate_channels || []);
   const escChans = h('div', { class: 'chips' }, chans.map((c) => h('label', { class: 'check', style: { marginRight: '14px' } },
     h('input', { type: 'checkbox', name: `esc_${c.id}`, checked: escSelected.has(c.id) }), c.name)));
@@ -804,9 +805,10 @@ export async function openMonitorForm(m, done, preset = null) {
         escBox,
         httpBox)));
   sync();
+  const saveBtn = h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save() }, t('save'));
   const dlg = modal(m ? m.name : t('mon.add'), form, { wide: true, actions: [
     btn(t('cancel'), { onclick: () => dlg.close() }),
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save() }, t('save')),
+    saveBtn,
   ] });
   async function save() {
     if (!form.reportValidity()) return;
@@ -846,12 +848,14 @@ export async function openMonitorForm(m, done, preset = null) {
       if (d.password) body.password = d.password;
     }
     if (!m && preset?.device_id && body.type !== 'proxmox' && body.device_id === undefined) body.device_id = preset.device_id;
-    try {
-      const r = m ? await put(`/monitors/${m.id}`, body) : await post('/monitors', body);
-      dlg.close();
-      toast(t('saved'));
-      if (done) done(r); else navigate(`/monitoring/${r.id}`);
-    } catch (e) { fail(e); }
+    await busy(saveBtn, async () => {
+      try {
+        const r = m ? await put(`/monitors/${m.id}`, body) : await post('/monitors', body);
+        dlg.close();
+        toast(t('saved'));
+        if (done) done(r); else navigate(`/monitoring/${r.id}`);
+      } catch (e) { fail(e); }
+    });
   }
 }
 

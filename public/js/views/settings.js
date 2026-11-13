@@ -1,5 +1,5 @@
 // Administration: general, scan, email, HTTPS certificate, users, ignored devices, log, about.
-import { h, mount, toast, modal, confirmDialog, fmtDate } from '../dom.js';
+import { h, mount, toast, modal, confirmDialog, fmtDate, busy } from '../dom.js';
 import { get, put, post, patch, del, api } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
@@ -32,6 +32,12 @@ export async function renderSettings(main, section = 'general') {
         list.map(([s, ico]) => h('a', { href: `/settings/${s}`, 'data-link': true,
           class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))])),
       body)));
+  // On narrow screens the sub navigation is a horizontal strip: bring the current entry into view (only sideways)
+  const nav = main.querySelector('.subnav'); const cur = nav?.querySelector('a.active');
+  if (nav && cur && nav.scrollWidth > nav.clientWidth) {
+    const n = nav.getBoundingClientRect(); const c = cur.getBoundingClientRect();
+    nav.scrollLeft += c.left - n.left - (n.width - c.width) / 2;
+  }
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev', 'notify'].includes(section) ? await get('/settings') : null;
   const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), ad, agents, backup, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
@@ -212,13 +218,13 @@ async function docker(body, _s, reload) {
       field(t('dock.url'), input('url', x?.url || '', { required: true, class: 'mono', placeholder: 'http://10.0.0.5:2375' }), t('dock.urlHint')));
     const dlg = modal(x ? x.name : t('dock.add'), form, { wide: true, actions: [
       btn(t('cancel'), { onclick: () => dlg.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
         if (!form.reportValidity()) return;
         try {
           if (x) await put(`/docker/hosts/${x.id}`, formData(form)); else await post('/docker/hosts', formData(form));
           dlg.close(); toast(t('saved')); reload();
         } catch (ex) { fail(ex); }
-      } }, t('save'))] });
+      }) }, t('save'))] });
   };
   const result = h('div');
   async function test(x, button) {
@@ -269,7 +275,7 @@ async function smtp(body, s) {
     try { await put('/settings/smtp', formData(form)); toast(t('saved')); } catch (ex) { fail(ex); }
   } },
   h('div', { class: 'form-grid' },
-    field(t('set.smtpHost'), input('host', m.host, { placeholder: 'mail.firma.de' })),
+    field(t('set.smtpHost'), input('host', m.host, { placeholder: t('ph.smtpHost') })),
     field(t('set.smtpPort'), input('port', m.port, { type: 'number', min: 1, max: 65535 })),
     field(t('set.smtpSecurity'), select('security', [['starttls', t('sec.starttls')], ['tls', t('sec.tls')], ['none', t('sec.none')]], m.security)),
     field(t('set.smtpFrom'), input('from', m.from), t('set.smtpFromHint')),
@@ -369,21 +375,21 @@ async function users(body, _s, reload) {
     syncLoc();
     const m = modal(u ? u.username : t('users.add'), form, { actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
         if (!form.reportValidity()) return;
         const d = formData(form);
         for (const k of Object.keys(d)) if (k.startsWith('loc_')) delete d[k];
         d.locations = locs.filter((l) => form.querySelector(`[name=loc_${l.id}]`)?.checked).map((l) => l.id);
         try { if (u) await patch(`/users/${u.id}`, d); else await post('/users', d); m.close(); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
-      } }, t('save'))] });
+      }) }, t('save'))] });
   };
   const setPw = (u) => {
     const pw = input('password', '', { type: 'password', minlength: 10, required: true, autocomplete: 'new-password' });
     const m = modal(`${t('users.resetPassword')}: ${u.username}`, h('form', { class: 'form' }, field(t('users.newPassword'), pw, t('user.passwordHint'))), { actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
         try { await post(`/users/${u.id}/password`, { password: pw.value }); m.close(); toast(t('saved')); } catch (ex) { fail(ex); }
-      } }, t('save'))] });
+      }) }, t('save'))] });
   };
   mount(body, h('section', { class: 'panel' },
     h('div', { class: 'panel-head', style: { paddingBottom: '12px' } }, h('h2', {}, t('set.users')), btn(t('users.add'), { class: 'btn btn-primary btn-sm', onclick: () => edit(null) }, 'plus')),
@@ -860,7 +866,7 @@ async function backup(body, _s, reload) {
       h('p', { class: 'muted', style: { marginTop: 0 } }, t('bk.lead', { keep })),
       h('div', { class: 'actions' },
         h('a', { class: 'btn btn-primary', href: '/api/backups/download', download: '' }, h('span', { html: icon('download') }), t('bk.download')),
-        btn(t('bk.createNow'), { onclick: async (e) => { e.currentTarget.disabled = true; try { await post('/backups'); toast(t('saved')); reload(); } catch (ex) { fail(ex); } } }, 'plus')),
+        btn(t('bk.createNow'), { onclick: (e) => busy(e.currentTarget, async () => { try { await post('/backups'); toast(t('saved')); reload(); } catch (ex) { fail(ex); } }) }, 'plus')),
       h('p', { class: 'note warn', style: { marginBottom: 0 } }, t('bk.keyHint'))),
     panel(t('bk.stored'), list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, h('th', {}, t('bk.file')), h('th', {}, t('bk.when')), h('th', { class: 'hide-sm' }, t('bk.size')), h('th', {}))),
@@ -870,9 +876,12 @@ async function backup(body, _s, reload) {
         h('td', { class: 'hide-sm mono small', style: { whiteSpace: 'nowrap' } }, size(x.size)),
         h('td', { class: 'min' }, h('div', { class: 'actions' },
           h('a', { class: 'btn btn-sm', href: `/api/backups/file/${encodeURIComponent(x.name)}`, download: '' }, t('bk.downloadShort')),
-          btn(t('bk.restore'), { class: 'btn btn-sm btn-ghost', onclick: async () => {
+          btn(t('bk.restore'), { class: 'btn btn-sm btn-ghost', onclick: async (e) => {
+            const b = e.currentTarget;
             if (!await confirmRestore(x.name)) return;
-            try { await api(`/backups/file/${encodeURIComponent(x.name)}/restore`, { method: 'POST', body: {}, headers: { 'X-WOMN-Confirm': 'restore' } }); waitForRestart(); } catch (ex) { fail(ex); }
+            if (b.disabled) return;
+            b.disabled = true; // stays disabled on success: the server restarts
+            try { await api(`/backups/file/${encodeURIComponent(x.name)}/restore`, { method: 'POST', body: {}, headers: { 'X-WOMN-Confirm': 'restore' } }); waitForRestart(); } catch (ex) { fail(ex); b.disabled = false; }
           } })))))))) : h('p', { class: 'muted' }, t('bk.none'))),
     panel(t('bk.restoreUpload'), h('p', { class: 'muted', style: { marginTop: 0 } }, t('bk.restoreLead')), field(t('bk.file'), file), h('div', { class: 'actions' }, upload)));
 }
@@ -919,7 +928,7 @@ async function reports(body, _s, reload) {
       h('div', { class: 'full' }, field(t('rep.name'), input('name', v.name, { required: true, maxlength: 100, placeholder: t('rep.namePh') }))),
       h('div', { class: 'full field' }, t('rep.sections'), h('div', { class: 'chips' }, SECS.map((x) => h('label', { class: 'check', style: { marginRight: '14px' } },
         h('input', { type: 'checkbox', name: `sec_${x}`, checked: v.sections.includes(x) }), t(`rep.sec.${x}`))))),
-      h('div', { class: 'full' }, field(t('rep.recipients'), h('textarea', { name: 'recipients', rows: 2, required: true, placeholder: 'buero@firma.de, einkauf@firma.de' }, v.recipients.join(', ')), t('rep.recipientsHint'))),
+      h('div', { class: 'full' }, field(t('rep.recipients'), h('textarea', { name: 'recipients', rows: 2, required: true, placeholder: t('ph.recipients') }, v.recipients.join(', ')), t('rep.recipientsHint'))),
       field(t('rep.freq'), freq), wd, md,
       field(t('rep.time'), input('time', v.schedule.time, { type: 'time', required: true })),
       locs.length > 1 ? h('div', { class: 'full field' }, t('rep.locations'), h('div', { class: 'chips' }, locs.map((l) => h('label', { class: 'check', style: { marginRight: '14px' } },
@@ -997,18 +1006,18 @@ async function agents(body, _s, reload) {
   };
   const edit = (a) => {
     const form = h('form', { class: 'form' },
-      field(t('agent.name'), input('name', a?.name || '', { required: true, maxlength: 80, placeholder: 'Außenstelle Nord' })),
+      field(t('agent.name'), input('name', a?.name || '', { required: true, maxlength: 80, placeholder: t('ph.agentName') })),
       field(t('agent.location'), select('location_id', locs.map((l) => [String(l.id), l.name]), a ? String(a.location_id) : String(locs[0]?.id || '')), t('agent.locationHint')),
       a ? field(t('user.active'), h('input', { type: 'checkbox', name: 'enabled', checked: !!a.enabled })) : null);
     const m = modal(a ? a.name : t('agent.add'), form, { actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
         if (!form.reportValidity()) return;
         try {
           if (a) { await put(`/agents/${a.id}`, formData(form)); m.close(); toast(t('saved')); reload(); }
           else { const r = await post('/agents', formData(form)); m.close(); showToken(r); }
         } catch (ex) { fail(ex); }
-      } }, t('save'))] });
+      }) }, t('save'))] });
   };
   const seen = (a) => {
     if (!a.last_seen) return h('span', { class: 'badge' }, t('agent.never'));
@@ -1119,7 +1128,7 @@ async function ad(body, _s, reload) {
       mount(out, h('ul', {}, r.steps.map((st) => h('li', { class: st.ok ? 'ok' : st.error === 'noBind' ? 'warn' : 'bad' },
         h('span', { class: 'ad-mark', 'aria-hidden': 'true' }, st.ok ? '✓' : st.error === 'noBind' ? '!' : '✗'),
         h('div', {}, h('div', {}, stepText(st)),
-          !st.ok && st.error && !['noBind', 'noGroups', 'noRole', 'groupNotFound', 'userNotFound', 'userDisabled', 'ambiguous', 'noBase'].includes(st.error)
+          !st.ok && st.error && !['noBind', 'noGroups', 'noRole', 'groupNotFound', 'userNotFound', 'disabled', 'ambiguous', 'noBase'].includes(st.error)
             ? h('div', { class: 'muted small' }, t(`adt.err.${st.error}`), st.detail ? h('span', { class: 'mono' }, ` (${st.detail})`) : null) : null,
           st.key === 'group' && st.dn ? h('div', { class: 'muted small mono' }, st.dn) : null,
           st.key === 'user' && st.ok ? h('div', { class: 'muted small' }, [st.email, st.dn].filter(Boolean).join(' · ')) : null,
@@ -1192,7 +1201,7 @@ function adCertBlock(cert, formValues, reload) {
     if (!await confirmDialog(t('adc.remove'), t('adc.removeConfirm'), t('adc.remove'), t('cancel'), { danger: true })) return;
     try { await del('/settings/ad/cert'); toast(t('adc.removed')); reload(); } catch (ex) { fail(ex); }
   } }) : null;
-  const pem = h('textarea', { rows: 5, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false' });
+  const pem = h('textarea', { rows: 5, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false', 'aria-label': t('adc.manual') });
   const manual = h('details', { class: 'cert-manual' }, h('summary', {}, t('adc.manual')),
     h('p', { class: 'muted small' }, t('adc.manualHint')), pem,
     h('div', { class: 'actions', style: { marginTop: '8px' } }, h('button', { class: 'btn btn-sm', type: 'button', onclick: async () => {
