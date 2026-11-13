@@ -352,6 +352,8 @@ For a branch office a second container runs there as scan agent. Under *Settings
 - **Keep `data/secret.key` (or `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 - Updates: in Dockhand/Watchtower or `docker compose pull && docker compose up -d`. Once a month a security update with new packages is released.
 
+**What's new?** A click on the version number at the bottom left of the menu shows *About WhatsOnMyNet*: the changes of the latest versions, the link to the source code, the website and a coffee link. This works for every user, not only for administrators.
+
 ## Troubleshooting
 
 - **Interface not reachable**: open the host firewall for the HTTPS port. With host networking Docker/Dockhand shows no port mapping - that is correct.

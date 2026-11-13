@@ -250,6 +250,12 @@ Under *Settings → Backup* (from 0.4) you download a current backup at any time
 
 **Rebuild the manual** (after changes to `public/help/manual.*.md` or the images): `node tools/build-manual.mjs` - needs Playwright with Chromium, ImageMagick makes the PDFs smaller.
 
+## Support
+
+WhatsOnMyNet is made in spare time. If it helps you, I am happy about a [coffee](https://buymeacoffee.com/soleil0815). More from me: [helfi.space](https://helfi.space).
+
+What changed in which version is shown in the program itself: click the version number at the bottom left (*About WhatsOnMyNet → What's new*), or see [Releases](https://github.com/soleil0815/whatsonmynet/releases).
+
 ## License
 
 WhatsOnMyNet is open source under the [GNU Affero General Public License 3.0](LICENSE) (AGPL-3.0-or-later). Whoever offers a modified version over a network has to make its source code available (`WOMN_SOURCE_URL`).
