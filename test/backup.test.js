@@ -15,6 +15,7 @@ function makeDb(dir, devices = 1) {
   const db = openDatabase(file);
   verifyKey(db);
   const ts = new Date().toISOString();
+  db.prepare("INSERT INTO users(username,password_hash,role,created_at) VALUES('admin','x','admin',?)").run(ts);
   for (let i = 0; i < devices; i++) db.prepare('INSERT INTO devices(name,created_at,updated_at) VALUES(?,?,?)').run(`Gerät ${i}`, ts, ts);
   return { db, file };
 }
@@ -24,7 +25,7 @@ test('backup files are checked before a restore', async () => {
   const { db, file } = makeDb(path.join(dir, 'a'), 3);
   const copy = path.join(dir, 'copy.sqlite');
   await db.backup(copy);
-  assert.deepEqual(inspect(copy), { schema: db.pragma('user_version', { simple: true }), devices: 3, users: 0 });
+  assert.deepEqual(inspect(copy), { schema: db.pragma('user_version', { simple: true }), devices: 3, users: 1 });
   fs.writeFileSync(path.join(dir, 'x.sqlite'), 'kein sqlite '.repeat(200));
   assert.throws(() => inspect(path.join(dir, 'x.sqlite')), { code: 'err.backupFile' });
   // newer schema

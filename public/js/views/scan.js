@@ -158,7 +158,7 @@ async function renderResult(main, id) {
     if (host) return host;
     if (r.facts?.netbios?.name) return r.facts.netbios.name;
     if (r.facts?.snmp?.name) return r.facts.snmp.name;
-    if (r.facts?.classification?.model) return r.facts.classification.model.slice(0, 80);
+    if (r.facts?.classification?.model) return String(r.facts.classification.model).slice(0, 80);
     return `${r.vendor || t(`type.${r.detected_type}`)} .${r.ip.split('.').pop()}`;
   };
 
@@ -256,7 +256,7 @@ async function renderResult(main, id) {
         return h('tr', {},
           edit ? h('td', { class: 'min' }, cb) : null,
           h('td', {}, edit ? name : h('span', { class: 'name' }, suggest(r)), r.hostname ? h('div', { class: 'sub' }, r.hostname) : null),
-          h('td', {}, edit ? h('span', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, typeSel, r.confidence < 0.45 ? h('span', { class: 'badge badge-new', title: (r.facts.classification?.reasons || []).map(reasonText).join(', ') }, t('unsure')) : confidenceBar(r.confidence))
+          h('td', {}, edit ? h('span', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, typeSel, r.confidence < 0.45 ? h('span', { class: 'badge badge-new', title: (Array.isArray(r.facts.classification?.reasons) ? r.facts.classification.reasons : []).map(reasonText).join(', ') }, t('unsure')) : confidenceBar(r.confidence))
             : typeChip(r.detected_type)),
           h('td', { class: 'mono' }, r.ip, h('div', { class: 'sub' }, r.mac || '–')),
           h('td', { class: 'hide-sm' }, r.vendor || (r.facts.randomMac ? h('span', { class: 'muted small', title: t('dev.randomMac') }, t('scan.privateMac')) : '–'),

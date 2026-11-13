@@ -100,7 +100,7 @@ export async function renderDevice(main, id) {
       return x.protocol === y.protocol && x.hostname === y.hostname && (x.port || x.protocol) === (y.port || y.protocol);
     } catch { return false; }
   };
-  const webs = (f.http || []).map((w) => ({ url: `${w.proto}://${d.ip}:${w.port}/`, label: `${w.proto}://${d.ip}:${w.port}`, w }));
+  const webs = (Array.isArray(f.http) ? f.http : []).filter((w) => ['http', 'https'].includes(w?.proto) && Number.isInteger(w.port)).map((w) => ({ url: `${w.proto}://${d.ip}:${w.port}/`, label: `${w.proto}://${d.ip}:${w.port}`, w }));
   const quick = d.web_url ? webs.find((x) => sameTarget(x.url, d.web_url)) : null;
   if (d.web_url && !quick) webs.unshift({ url: d.web_url, label: d.web_url.replace(/\/$/, ''), manual: true });
   const quickBadge = (manual) => h('span', { class: 'badge badge-ok', title: manual ? t('dev.quickManual') : t('dev.quick') },

@@ -524,6 +524,10 @@ pre.code.wrap { white-space: pre-wrap; word-break: break-all; }
 .manual h2:first-child { margin-top: 0; }
 .manual h3 { font-size: 16px; margin: 22px 0 6px; }
 .manual p, .manual ul, .manual ol { margin: 0 0 12px; }
+.manual .md-table { overflow-x: auto; margin: 0 0 14px; }
+.manual table { border-collapse: collapse; font-size: 14px; line-height: 1.5; min-width: 100%; }
+.manual th, .manual td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.manual th { font-weight: 600; border-bottom-width: 2px; }
 .manual li { margin: 3px 0; }
 .manual code { font: 13px var(--mono); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
 .manual pre { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-s); padding: 10px 12px; overflow-x: auto; margin: 8px 0 14px; }

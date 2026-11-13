@@ -46,10 +46,14 @@ export function parseStorage(map) {
     if (size < 1024 ** 3) continue; // under 1 GB: system partitions
     out.push({ name, size, used, pct: Math.round((used / size) * 100) });
   }
-  // Synology lists the same volume under several mount points - keep the shortest name per size
-  const bySize = new Map();
-  for (const v of out) { const k = `${v.size}`; if (!bySize.has(k) || v.name.length < bySize.get(k).name.length) bySize.set(k, v); }
-  return [...bySize.values()].sort((a, b) => a.name.localeCompare(b.name));
+  // Synology lists the same volume under several mount points (/volume1 and /volume1/@docker …): the same size, the
+  // same space used and one path inside the other - keep the shortest. Two volumes of the same size stay two.
+  const inside = (a, b) => b.name === a.name || b.name.startsWith(`${a.name.replace(/\/+$/, '')}/`);
+  const keep = [];
+  for (const v of [...out].sort((a, b) => a.name.length - b.name.length)) {
+    if (!keep.some((k) => k.size === v.size && k.used === v.used && inside(k, v))) keep.push(v);
+  }
+  return keep.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function rowsOf(map) {

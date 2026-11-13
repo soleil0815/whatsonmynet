@@ -23,7 +23,7 @@ const MAX_WEB_PROBES = 4;
 const ARP_SETTLE_MS = 9000;
 
 /** Checks scan targets: [{ cidr, locationId }] → normalised list or HttpError. */
-export function validateTargets(targets) {
+export function validateTargets(targets, maxTotal = MAX_TOTAL_HOSTS) {
   const seen = new Set();
   const out = [];
   let total = 0;
@@ -37,7 +37,7 @@ export function validateTargets(targets) {
     out.push({ cidr: c.cidr, locationId: t.locationId || null });
   }
   if (!out.length) throw new HttpError(400, 'err.noTargets');
-  if (total > MAX_TOTAL_HOSTS) throw new HttpError(400, 'err.tooManyHosts', String(MAX_TOTAL_HOSTS));
+  if (total > maxTotal) throw new HttpError(400, 'err.tooManyHosts', String(maxTotal));
   return out;
 }
 
@@ -312,7 +312,12 @@ export function createScanner({ db, settings, inventory }) {
       log.info(`Scan ${id} (${kind}) ${status}: ${p.probed} device(s) in ${Math.round(stats.durationMs / 1000)} s`);
       setTimeout(() => running.delete(id), 10 * 60 * 1000).unref();
       pruneOld();
-    })();
+    })().catch((e) => {
+      // A database error after the scan must not end the program; the scan is no longer counted as running
+      log.error(`Scan ${id}: ${e.stack || e.message}`);
+      const p = running.get(id);
+      if (p) { p.finished = true; p.phase = 'failed'; }
+    });
     return id;
   }
 
@@ -329,7 +334,9 @@ export function createScanner({ db, settings, inventory }) {
       return launch('network', list, user, (id) => runNetwork(id, list));
     },
     startLight(targets, user) {
-      const list = validateTargets(targets);
+      // The light scan only pings and reads ARP: all subnets of all locations together may be four times as many
+      // addresses - otherwise a few large sites would make the nightly scan fail every night without a word
+      const list = validateTargets(targets, MAX_TOTAL_HOSTS * 4);
       return launch('light', list, user, (id) => runLight(id, list));
     },
     /** fn({ id, kind, status }) runs after every scan */

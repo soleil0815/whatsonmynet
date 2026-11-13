@@ -2,6 +2,7 @@
 // locations to scan; found devices get their location automatically.
 import { HttpError, line, str } from './lib/http.js';
 import { parseCidr, MAX_PREFIX_HOSTS, ipToInt } from './lib/net.js';
+import { forgetLocation } from './lib/idlists.js';
 
 export function createLocations(db) {
   const now = () => new Date().toISOString();
@@ -53,7 +54,14 @@ export function createLocations(db) {
     create: (input) => save(null, input),
     update: (id, input) => save(id, input),
     remove(id) {
-      if (!db.prepare('DELETE FROM locations WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound');
+      // A user limited to locations must never end up limited to none: no rows means "everything" (see auth/scope.js)
+      const only = db.prepare(`SELECT u.username FROM users u JOIN user_locations ul ON ul.user_id=u.id
+        WHERE ul.location_id=? AND u.role<>'admin' AND (SELECT COUNT(*) FROM user_locations x WHERE x.user_id=u.id)=1 ORDER BY u.username`).all(id);
+      if (only.length) throw new HttpError(409, 'err.locationLastScope', only.map((u) => u.username).slice(0, 10).join(', '));
+      db.transaction(() => {
+        if (!db.prepare('DELETE FROM locations WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound');
+        forgetLocation(db, id);
+      })();
     },
     /** Scan targets of the chosen locations */
     targets(ids) {

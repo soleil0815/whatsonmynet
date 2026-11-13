@@ -243,13 +243,13 @@ Under *Monitoring → Virtualization → Add host* further hypervisors are offer
 1. *Add host* → **Microsoft Hyper-V** or **KVM / libvirt**, give a name, save.
 2. The dialog shows the script with a key of its own (only this once) - **Download script**.
 3. Run it once, it sets itself up. **Hyper-V** as administrator: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\womn-hyperv.ps1` (scheduled task *WhatsOnMyNet-HyperV*, every 5 minutes as SYSTEM). In a cluster on every node - all nodes land in the same entry.
-   **KVM:** `sh womn-libvirt.sh` (cron entry, every 5 minutes). It needs `virsh`, `awk` and `curl`; it reads with `virsh -r`.
+   **KVM:** `sh womn-libvirt.sh` as root or as a user of the group `libvirt` (cron entry, every 5 minutes) - otherwise `virsh` may not see the VMs of the system. It needs `virsh`, `awk` and `curl`; it reads with `virsh -r`.
    Removing again: the **uninstall script** from the dialog or *Settings → Machine scripts* - it also removes the setup of version 0.6.0.
 4. After a few seconds the host appears. If it does not report for more than 15 minutes it counts as offline - a sensor "host online" then raises the alarm.
 
 If the key is lost or should be renewed: **New script** - the old one stops working then.
 
-With the self-signed certificate of WhatsOnMyNet the script trusts exactly this certificate (built in); with a certificate of a real CA it checks as usual.
+With the self-signed certificate of WhatsOnMyNet the script trusts exactly its key (built in); with a certificate of a real CA it checks as usual. When WhatsOnMyNet renews its certificate (30 days before it expires, after a new IP address or `WOMN_BASE_URL`), the key stays the same and the scripts go on reporting. Exception: Windows scripts made with versions up to 0.10.1 only know the certificate itself - create them once more. Scan agents with `WOMN_AGENT_CA` need the new value from *Settings → Scan agents* after a renewal.
 
 ## Network controllers: UniFi, Omada, MikroTik
 
@@ -284,7 +284,7 @@ Shown are:
 
 Whatever is not fine is listed at the top. WhatsOnMyNet matches the server to **its device in the inventory** by the MAC addresses of its network cards or by the serial number. Its page then shows the *Server hardware* area, and manufacturer, model and serial number are taken over.
 
-Sensors (*Add sensor*): overall health, server switched on, every fan, temperature, power supply, drive (also life left), volume, and power consumption. It is asked every few minutes like Proxmox (*Settings → General*), read only.
+Sensors (*Add sensor*): overall health, server switched on, every fan, temperature, power supply, drive (also life left), volume, and power consumption. It is asked every 5 minutes like Proxmox, read only.
 
 ## Windows and Linux machines by script (without agent)
 
@@ -300,7 +300,7 @@ On top comes what an administrator wants to know about a server. Everything is o
 
 Fans, power supplies, mainboard temperatures and RAID controllers are usually unknown to the operating system. They come from the management chip of the server (see *Server hardware* above).
 
-The script installs nothing, loads nothing, opens no port and needs no account - it only talks to WhatsOnMyNet. On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
+The script installs nothing, loads nothing, opens no port and needs no account - it only sends to WhatsOnMyNet. (On Windows the update search asks the WSUS server or Windows Update, like Windows itself.) On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
 
 **A single machine:** *Monitoring* → **Add monitor** → **Machine by script (Windows/Linux)** → choose the machine. On the device page the same works with **Monitor** (kind of check *Machine by script*) or *More* → **Monitor with script**. Then Windows or Linux → **Create script**.
 

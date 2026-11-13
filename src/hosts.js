@@ -53,6 +53,16 @@ export function cleanReport(body) {
   };
 }
 
+/** Address of this server for the scripts: only scheme, host and port - it is written into a script */
+export function serverBase(server) {
+  let u;
+  try { u = new URL(String(server || '')); } catch { throw new HttpError(400, 'err.badRequest'); }
+  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || !/^[A-Za-z0-9.\[\]:-]+$/.test(u.host) || (u.pathname !== '/' && u.pathname !== '') || u.search || u.hash) {
+    throw new HttpError(400, 'err.badRequest');
+  }
+  return `${u.protocol}//${u.host}`;
+}
+
 export function createHosts({ db }) {
   const now = () => new Date().toISOString();
   const tokenRow = (id) => db.prepare('SELECT * FROM host_tokens WHERE id=?').get(id);
@@ -63,7 +73,7 @@ export function createHosts({ db }) {
   function issue(id, { server, pin }) {
     const t = tokenRow(id);
     if (!t) throw new HttpError(404, 'err.notFound');
-    if (!/^https?:\/\/[^\s/"'<>]+$/i.test(String(server || ''))) throw new HttpError(400, 'err.badRequest');
+    server = serverBase(server);
     const token = crypto.randomBytes(32).toString('base64url');
     db.prepare('UPDATE host_tokens SET token_hash=? WHERE id=?').run(sha(token), id);
     const s = hostScript(t.os, { url: `${server.replace(/\/+$/, '')}/api/hosts/push`, token, pin });
@@ -73,25 +83,31 @@ export function createHosts({ db }) {
   function create(input, opts) {
     const os = input?.os === 'linux' ? 'linux' : input?.os === 'windows' ? 'windows' : null;
     if (!os) throw new HttpError(400, 'err.badRequest');
+    serverBase(opts?.server); // checked before the old key of the device is given up
     const deviceId = input.device_id ? Number(input.device_id) : null;
     if (deviceId && !db.prepare('SELECT 1 FROM devices WHERE id=?').get(deviceId)) throw new HttpError(404, 'err.notFound');
     // One key per device: a new script for the same device replaces the old key
-    if (deviceId) db.prepare('DELETE FROM host_tokens WHERE device_id=?').run(deviceId);
     const name = line(input.name, 80) || (deviceId ? db.prepare('SELECT name FROM devices WHERE id=?').get(deviceId).name : '');
     if (!name) throw new HttpError(400, 'err.nameRequired');
-    const id = db.prepare('INSERT INTO host_tokens(name,os,device_id,token_hash,created_at) VALUES(?,?,?,?,?)').run(name, os, deviceId, '', now()).lastInsertRowid;
-    return issue(id, opts);
+    return db.transaction(() => {
+      if (deviceId) db.prepare('DELETE FROM host_tokens WHERE device_id=?').run(deviceId);
+      const id = db.prepare('INSERT INTO host_tokens(name,os,device_id,token_hash,created_at) VALUES(?,?,?,?,?)').run(name, os, deviceId, '', now()).lastInsertRowid;
+      return issue(id, opts);
+    })();
   }
 
   /** Which inventory device sent this? Device key: that one. Shared key: MAC, then host name, then IP. */
   function match(t, r, remoteIp) {
     if (t.device_id) return t.device_id;
-    for (const m of r.macs) { const d = db.prepare('SELECT id FROM devices WHERE mac=?').get(m); if (d) return d.id; }
+    // The shared key never reaches a device that has a key of its own (its reports come only with that key)
+    const free = 'id NOT IN (SELECT device_id FROM host_tokens WHERE device_id IS NOT NULL)';
+    for (const m of r.macs) { const d = db.prepare(`SELECT id FROM devices WHERE mac=? AND ${free}`).get(m); if (d) return d.id; }
     const short = r.hostname.toLowerCase().split('.')[0];
-    const byName = db.prepare(`SELECT id FROM devices WHERE lower(hostname)=? OR lower(name)=? OR lower(hostname) LIKE ? OR lower(name) LIKE ? ORDER BY id LIMIT 1`)
-      .get(short, short, `${short}.%`, `${short}.%`);
+    // "name" or "name.domain" - compared as text (no LIKE: % and _ in a reported name would be wildcards)
+    const byName = short ? db.prepare(`SELECT id FROM devices WHERE (lower(hostname)=@n OR lower(name)=@n OR substr(lower(hostname),1,length(@n)+1)=@n||'.'
+      OR substr(lower(name),1,length(@n)+1)=@n||'.') AND ${free} ORDER BY id LIMIT 1`).get({ n: short }) : null;
     if (byName) return byName.id;
-    for (const ip of [...r.ips, remoteIp].filter(Boolean)) { const d = db.prepare('SELECT id FROM devices WHERE ip=?').get(ip); if (d) return d.id; }
+    for (const ip of [...r.ips, remoteIp].filter(Boolean)) { const d = db.prepare(`SELECT id FROM devices WHERE ip=? AND ${free}`).get(ip); if (d) return d.id; }
     return null;
   }
 
@@ -107,6 +123,8 @@ export function createHosts({ db }) {
     if (!deviceId) {
       db.prepare(`INSERT INTO host_unmatched(hostname,ip,os,token_id,at) VALUES(?,?,?,?,?)
         ON CONFLICT(hostname) DO UPDATE SET ip=excluded.ip, os=excluded.os, token_id=excluded.token_id, at=excluded.at`).run(r.hostname, r.ips[0] || ip, r.os, t.id, at);
+      // Kept small: whoever has the shared key could otherwise fill it with made-up names
+      db.prepare('DELETE FROM host_unmatched WHERE rowid NOT IN (SELECT rowid FROM host_unmatched ORDER BY at DESC LIMIT 500)').run();
       throw new HttpError(404, 'err.hostUnknown', r.hostname);
     }
     db.prepare('INSERT INTO host_reports(device_id,at,data) VALUES(?,?,?) ON CONFLICT(device_id) DO UPDATE SET at=excluded.at, data=excluded.data')

@@ -107,7 +107,7 @@ export function parseNbstat(msg) {
     const count = msg[o]; o += 1;
     const names = [];
     for (let i = 0; i < count && o + 18 <= msg.length; i++, o += 18) {
-      const n = msg.subarray(o, o + 15).toString('latin1').replace(/\0/g, '').trim();
+      const n = msg.subarray(o, o + 15).toString('latin1').replace(/[\x00-\x1f\x7f-\x9f]/g, '').trim();
       const suffix = msg[o + 15];
       const group = (msg[o + 16] & 0x80) === 0x80;
       names.push({ name: n, suffix, group });
@@ -128,7 +128,8 @@ export function netbios(ip, timeout = 1200) {
     const end = (v) => { if (!done) { done = true; clearTimeout(t); try { sock.close(); } catch { /* closed */ } resolve(v); } };
     const t = setTimeout(() => end(null), timeout);
     sock.on('error', () => end(null));
-    sock.on('message', (msg) => { if (msg.readUInt16BE(0) === id) end(parseNbstat(msg)); });
+    // Only the answer of the asked address, and never trusted: a short or broken packet must not end the program
+    sock.on('message', (msg, rinfo) => { try { if (rinfo?.address === ip && msg.length >= 2 && msg.readUInt16BE(0) === id) end(parseNbstat(msg)); } catch { end(null); } });
     sock.send(nbstatQuery(id), 137, ip, (err) => { if (err) end(null); });
   });
 }
@@ -136,7 +137,7 @@ export function netbios(ip, timeout = 1200) {
 export async function reverseDns(ip, timeout = 1500) {
   try {
     const names = await Promise.race([dns.reverse(ip), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), timeout))]);
-    return String(names?.[0] || '').replace(/\.$/, '');
+    return String(names?.[0] || '').replace(/[^\x21-\x7e]/g, '').replace(/\.$/, '').slice(0, 253);
   } catch { return ''; }
 }
 
@@ -167,7 +168,9 @@ function snmpGetOnce(ip, community, version, timeout) {
       vbs.forEach((vb, i) => {
         if (snmp.isVarbindError(vb)) return;
         const v = vb.value;
-        out[keys[i]] = Buffer.isBuffer(v) ? v.toString('utf8').replace(/[^\x20-\x7e -￿\n\r\t]/g, '').trim() : String(v);
+        // Shown as names and searched with patterns: no control or direction characters, not endless
+        out[keys[i]] = (Buffer.isBuffer(v) ? v.toString('utf8') : String(v)).replace(/[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufffd]/g, ' ')
+          .replace(/\s+/g, ' ').trim().slice(0, keys[i] === 'descr' ? 512 : 255);
       });
       end(Object.keys(out).length ? out : null);
     });
@@ -189,7 +192,8 @@ export async function snmpSystem(ip, communities = ['public'], timeout = 900) {
 // --- Web interface: title, server header, certificate ---------------------------------------------------
 
 export function extractTitle(html) {
-  const m = /<title[^>]*>([\s\S]{0,300}?)<\/title>/i.exec(html);
+  // Bounded patterns on a bounded text: a crafted page must not keep the scanner busy for seconds
+  const m = /<title[^>]{0,200}>([\s\S]{0,300}?)<\/title>/i.exec(String(html).slice(0, 16384));
   if (!m) return '';
   return m[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
@@ -200,7 +204,11 @@ export function httpProbe(ip, port, proto = 'http', timeout = 3000) {
   return new Promise((resolve) => {
     const lib = proto === 'https' ? https : http;
     let done = false;
-    const end = (v) => { if (!done) { done = true; resolve(v); } };
+    let partial = null;
+    // The socket timeout only measures silence: a device sending a byte every two seconds would keep the scan for
+    // hours. So also a deadline for the whole request; what has arrived by then is used.
+    const deadline = setTimeout(() => { if (partial) partial(); else end(null); req.destroy(); }, timeout * 2 + 1000);
+    const end = (v) => { if (!done) { done = true; clearTimeout(deadline); resolve(v); } };
     const req = lib.request({
       host: ip, port, path: '/', method: 'GET', timeout,
       headers: { 'User-Agent': UA, Accept: 'text/html,*/*;q=0.5', Connection: 'close' },
@@ -226,6 +234,7 @@ export function httpProbe(ip, port, proto = 'http', timeout = 3000) {
         end({ port, proto, status: res.statusCode, title: extractTitle(body), server: String(res.headers.server || '').slice(0, 120),
           location: String(res.headers.location || '').slice(0, 300), cert, body: body.slice(0, 4000) });
       };
+      partial = finish;
       res.on('end', finish);
       res.on('close', finish);
       res.on('error', finish);

@@ -11,7 +11,7 @@ PIN=@PIN@
 export LC_ALL=C
 @SETUP@
 
-esc() { printf '%s' "$1" | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/," "); if (NR>1) print " "; print}'; }
+esc() { printf '%s' "$1" | tr -d '\001-\010\013-\037\177' | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/," "); if (NR>1) print " "; print}'; }
 
 name=$(hostname 2>/dev/null || cat /proc/sys/kernel/hostname)
 os=$(. /etc/os-release 2>/dev/null && printf '%s' "${PRETTY_NAME:-$NAME}")
@@ -26,7 +26,16 @@ availkb=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)
 uptime=$(awk '{printf "%d", $1}' /proc/uptime)
 
 # File systems on disks (no tmpfs, overlay, snap images …); sizes in KiB, turned into bytes by the server
-disks=$(df -P -k -T 2>/dev/null | awk 'NR>1 && $2 !~ /^(tmpfs|devtmpfs|overlay|squashfs|proc|sysfs|cgroup2?|efivarfs|autofs|ramfs|nsfs|fuse\..*|nfs.*|cifs|smb3)$/ && $3>0 {print $7"\t"$4"\t"$3}' | sort -u -k1,1 | head -n 50)
+# Columns: device, type, size, used, free, use%, mount point. A device or mount point with spaces (a CIFS share
+# "//nas/Team Daten") shifts them - so the use% column is looked for, and only lines with numbers are taken.
+disks=$(df -P -k -T 2>/dev/null | awk 'NR>1 {
+  p = 0; for (i = 5; i <= NF; i++) if ($i ~ /^[0-9]+%$/) { p = i; break }
+  if (!p) next
+  type = $(p-4); total = $(p-3); used = $(p-2)
+  if (total !~ /^[0-9]+$/ || used !~ /^[0-9]+$/ || total == 0) next
+  if (type ~ /^(tmpfs|devtmpfs|overlay|squashfs|proc|sysfs|cgroup2?|efivarfs|autofs|ramfs|nsfs|fuse\..*|nfs.*|cifs|smb3)$/) next
+  m = $(p+1); for (i = p+2; i <= NF; i++) m = m " " $i
+  print m "\t" used "\t" total }' | sort -u -t "$(printf '\t')" -k1,1 | head -n 50)
 dj=""
 while IFS="$(printf '\t')" read -r mnt used total; do
   [ -n "$mnt" ] || continue
@@ -67,7 +76,7 @@ fi
 # Hardware from DMI (serial number and memory modules only as root)
 rd() { [ -r "$1" ] && tr -d '\n' < "$1" 2>/dev/null | sed 's/[[:space:]]*$//'; }
 d=/sys/class/dmi/id
-hmodel=$(rd $d/product_name); [ -n "$hmodel" ] || hmodel=$(tr -d '\000' < /proc/device-tree/model 2>/dev/null)
+hmodel=$(rd $d/product_name); [ -n "$hmodel" ] || hmodel=$(tr -d '\000' 2>/dev/null < /proc/device-tree/model)
 hcpu=$(awk -F': *' '/^model name/ {print $2; exit}' /proc/cpuinfo)
 [ -n "$hcpu" ] || hcpu=$(awk -F': *' '/^(Hardware|Model)[[:space:]]*:/ {print $2; exit}' /proc/cpuinfo)
 threads=$(grep -c '^processor' /proc/cpuinfo)
