@@ -290,6 +290,70 @@ function chart(checks, hours, valueMode = false) {
   return svg;
 }
 
+/**
+ * Long ranges (30 days to a year) from the hourly summary: average line, the band from lowest to highest value,
+ * and below a strip per bucket that shows how much of the time the monitor was reachable.
+ */
+function longChart(series, hours, bucketHours, valueMode = false) {
+  const W = 720; const H = 160; const P = 6; const STRIP = 10;
+  const svg = svgEl('svg', { class: 'mon-chart', viewBox: `0 0 ${W} ${H + 18}`, role: 'img', 'aria-label': t('mon.chart') });
+  if (!series.length) {
+    const tx = svgEl('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle', class: 'muted-text' });
+    tx.textContent = t('mon.noChecks');
+    svg.append(tx);
+    return svg;
+  }
+  const size = bucketHours * 3600 * 1000;
+  const end = Date.now();
+  // Young monitors: start at the first data instead of showing months of nothing
+  const start = Math.max(end - hours * 3600 * 1000, Date.parse(series[0].at) - size);
+  const x = (ms) => P + ((ms - start) / (end - start)) * (W - 2 * P);
+  const bw = Math.max(1, x(start + size) - x(start) - 0.5);
+  const vals = series.filter((b) => b.avg !== null);
+  const max = Math.max(10, ...vals.map((b) => b.max ?? b.avg));
+  const top = H - STRIP - 4;
+  const y = (v) => top - (v / max) * (top - P - 10);
+  for (const f of [0.5, 1]) {
+    svg.append(svgEl('line', { x1: 0, x2: W, y1: y(max * f), y2: y(max * f), class: 'grid' }));
+    const lab = svgEl('text', { x: 2, y: y(max * f) - 3, class: 'axis' });
+    lab.textContent = `${Math.round(max * f)}${valueMode ? '' : ' ms'}`;
+    svg.append(lab);
+  }
+  // Band and line, broken where buckets are missing (monitor paused, program off)
+  const mid = (b) => x(Date.parse(b.at) + size / 2);
+  let runs = []; let cur = [];
+  for (const b of vals) {
+    if (cur.length && Date.parse(b.at) - Date.parse(cur[cur.length - 1].at) > size) { runs.push(cur); cur = []; }
+    cur.push(b);
+  }
+  if (cur.length) runs.push(cur);
+  for (const r of runs) {
+    const hi = r.map((b) => `${mid(b).toFixed(1)},${y(b.max ?? b.avg).toFixed(1)}`);
+    const lo = r.slice().reverse().map((b) => `${mid(b).toFixed(1)},${y(b.min ?? b.avg).toFixed(1)}`);
+    svg.append(svgEl('path', { d: `M${hi.join('L')}L${lo.join('L')}Z`, class: 'band' }));
+    svg.append(svgEl('path', { d: r.length > 1 ? `M${r.map((b) => `${mid(b).toFixed(1)},${y(b.avg).toFixed(1)}`).join('L')}` : `M${mid(r[0]) - 1},${y(r[0].avg)}h2`, class: 'line' }));
+  }
+  // Availability strip: full = always reachable, red the more checks failed
+  const day = bucketHours >= 24;
+  for (const b of series) {
+    const share = b.total ? b.ok / b.total : 1;
+    const rect = svgEl('rect', { x: x(Date.parse(b.at)), y: H - STRIP, width: bw, height: STRIP, class: share >= 0.999 ? 'avail' : share >= 0.95 ? 'avail warn' : 'avail bad' });
+    const tip = svgEl('title');
+    const when = fmtDate(b.at, getLang(), !day);
+    tip.textContent = `${when}: ${t('mon.histUp', { pct: (Math.floor(share * 1000) / 10).toLocaleString(getLang()) })}${b.avg !== null ? ` · ${t('mon.histAvg')} ${b.avg}${valueMode ? '' : ' ms'}${b.min !== null && b.max !== null && b.min !== b.max ? ` (${b.min}–${b.max})` : ''}` : ''}`;
+    rect.append(tip);
+    svg.append(rect);
+  }
+  // Date marks: start, two in between, now
+  for (let i = 0; i <= 3; i++) {
+    const at = start + ((end - start) * i) / 3;
+    const lab = svgEl('text', { x: i === 0 ? 2 : i === 3 ? W - 2 : x(at), y: H + 14, class: 'axis', 'text-anchor': i === 0 ? 'start' : i === 3 ? 'end' : 'middle' });
+    lab.textContent = fmtDate(new Date(at).toISOString(), getLang(), false);
+    svg.append(lab);
+  }
+  return svg;
+}
+
 async function renderDetail(main, id) {
   const edit = state.user.canEdit;
   let hours = 24;
@@ -319,7 +383,7 @@ async function renderDetail(main, id) {
           try { await del(`/monitors/${id}`); toast(t('deleted')); navigate('/monitoring'); } catch (ex) { fail(ex); }
         } }, 'trash')) : null));
 
-    const span = h('div', { class: 'seg' }, [[24, '24 h'], [72, '3 d'], [168, '7 d']].map(([v, l]) => h('button', { type: 'button', class: v === hours ? 'on' : '',
+    const span = h('div', { class: 'seg' }, [[24, '24 h'], [72, t('mon.r.3d')], [168, t('mon.r.7d')], [720, t('mon.r.30d')], [2160, t('mon.r.90d')], [8784, t('mon.r.1y')]].map(([v, l]) => h('button', { type: 'button', class: v === hours ? 'on' : '',
       onclick: () => { hours = v; reload(); } }, l)));
     mount(body,
       m.status === 'down' ? h('div', { class: 'note bad' }, t('mon.downSince', { when: fmtAgo(m.status_since, t), message: m.last_message })) : null,
@@ -329,7 +393,8 @@ async function renderDetail(main, id) {
       h('div', { class: 'figures' },
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.h24.pct)), h('span', {}, t('mon.uptime24'))),
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d7.pct)), h('span', {}, t('mon.uptime7'))),
-        h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d30.pct)), h('span', {}, t('mon.uptime30'))),
+        m.uptime.span ? h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.span.pct)), h('span', {}, t('mon.uptimeSpan', { range: rangeName(hours) })))
+          : h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d30.pct)), h('span', {}, t('mon.uptime30'))),
         isValueType(m) || m.data?.state ? (() => { const n = nowParts(m); return h('div', { class: `figure${n.tone === 'bad' ? ' bad' : n.tone === 'warn' ? ' alert' : ''}` }, h('b', {}, n.main), h('span', {}, n.sub || t('sens.current'))); })()
           : h('div', { class: 'figure' }, h('b', {}, m.uptime.h24.avgMs !== null ? `${m.uptime.h24.avgMs} ms` : '–'), h('span', {}, t('mon.avgMs'))),
         m.type === 'smb' && m.data && m.data.total ? h('div', { class: `figure${m.data.low ? ' alert' : ''}` }, h('b', {}, t('smb.free', { size: fmtBytes(m.data.free) })),
@@ -338,7 +403,8 @@ async function renderDetail(main, id) {
           h('span', {}, t('mon.certLeft', { date: fmtDate(m.cert_valid_to, getLang(), false) }))) : null),
       h('section', { class: 'panel panel-pad' },
         h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '10px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, isValueType(m) ? t('sens.chart') : t('mon.chart')), span),
-        chart(m.checks, hours, isValueType(m))),
+        m.history ? longChart(m.history, hours, m.bucketHours, isValueType(m)) : chart(m.checks, hours, isValueType(m)),
+        m.history ? h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, t(isValueType(m) ? 'mon.histLegendValue' : 'mon.histLegend', { bucket: m.bucketHours >= 24 ? t('mon.histDay') : t('mon.hist6h') })) : null),
       depPanel(m, edit, reload),
       h('section', { class: 'panel panel-pad' },
         h('h2', { class: 'section-title' }, t('mon.events')),
@@ -357,6 +423,8 @@ function eventLine(e) {
   if (e.kind === 'unreachable') return t('mon.ev.unreachable', { name: e.message });
   return `${t(`mon.ev.${e.kind}`)}${e.message && e.kind === 'down' ? ` - ${e.message}` : ''}`;
 }
+
+const rangeName = (hours) => ({ 720: t('mon.r.30dLong'), 2160: t('mon.r.90dLong'), 8784: t('mon.r.1yLong') }[hours] || `${hours} h`);
 
 /** Dependencies: what this monitor sits behind, what sits behind it, and the devices at its switch that could */
 function depPanel(m, edit, reload) {
