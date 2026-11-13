@@ -704,7 +704,8 @@ async function proxmox(body, _s, reload, scope = 'virt') {
   let open;
   try { open = new Set(JSON.parse(sessionStorage.getItem(KEY) || '[]')); } catch { open = new Set(); }
   const remember = () => { try { sessionStorage.setItem(KEY, JSON.stringify([...open])); } catch { /* not allowed */ } };
-  const compact = list.length > 3;
+  // From two hosts on: one line each with the figures; a single host stays open as before
+  const compact = list.length > 1;
   let filter = 'all';
   const q = h('input', { type: 'search', placeholder: t('vo.search'), 'aria-label': t('vo.search') });
   const qBox = h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q);
