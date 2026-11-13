@@ -52,7 +52,7 @@ A monitor checks regularly (20 seconds to 24 hours) and reports only after sever
 - **Docker container** (through a socket proxy, *Settings → Docker*): running, restarting all the time, health check "unhealthy"
 - **Databases**: MariaDB/MySQL, PostgreSQL, Redis/Valkey - sign-in and one harmless query
 - **Network drive (SMB)**: Windows shares and NAS - see below
-- **Sensor (device value)**, **SNMP value (OID)** and **Virtualization** (Proxmox, VMware, Hyper-V …) - see below
+- **Sensor** (value of a device, a machine with script, a hypervisor or controller) and **SNMP value (OID)** - see below
 
 On the device page "Monitor" creates a fitting monitor. If the IP of a device changes, its monitors follow. If you rename the device, its monitors and sensors take the new name too, so an alarm names it as it is called now (a monitor with a name of your own without the device name stays as it is).
 
@@ -136,12 +136,16 @@ The *Network map* shows from MAC tables and LLDP which device hangs at which por
 
 ## Sensors
 
-Every value a device delivers can become a monitor of its own - with history, alarm and maintenance windows. All sensors are listed under *Monitoring → Sensors*. On the device page "Add sensor", then choose value and condition, e.g.:
+Every value a device delivers can become a monitor of its own - with history, alarm and maintenance windows. All sensors are listed under *Monitoring → Sensors*. "Add sensor" is on the device page, at the host under *Virtualization* and under *Monitoring → Sensors*. It is always the same dialog: choose device or host, then value and condition, e.g.:
 
 - "toner cyan less than or equal 10 %"
 - "usage /volume1 greater than or equal 85 %"
 - "temperature drive 2 greater than 50 °C"
 - "port 10 (uplink) connected"
+
+**Proxmox nodes:** a node that is also in the inventory (same name, e.g. `pve2` or `pve2.firma.local`) has one common list - whether opened from the device or from the host under Virtualization: "Node pve2 online" from Proxmox and, if the Linux script runs there, every temperature, CPU, RAM, drives and services from the script. What both deliver (CPU, RAM, the highest temperature) is listed only once. Under Virtualization the list is grouped by node. Likewise a server with a management chip (Redfish) shows its hardware values and a Proxmox Backup Server its datastores and backups at the device.
+
+When editing, an existing sensor can be switched to any other value of this list, for example from "Temperature pve2" to "Temperature: NVMe nvme0 Sensor 2".
 
 The kind **SNMP value (OID)** reads any SNMP value (e.g. runtime left of a UPS) and compares with less, greater, equal or "contains text".
 
@@ -167,7 +171,7 @@ WhatsOnMyNet reads Proxmox VE and the Proxmox Backup Server through their built-
 
 **Cluster:** entering one node is enough. WhatsOnMyNet asks the cluster which nodes there are, at which address they are reachable and which certificate they have (again every 6 hours). If the entered node does not answer, the next node is asked - with the same token (it is valid in the whole cluster) and only after its certificate has been checked. The virtualisation page then shows "read through node pve2". The Proxmox Backup Server knows no cluster: each one is entered on its own.
 
-**Temperatures of the nodes:** the Proxmox interface knows no temperatures. If a node also runs the Linux script (see *Windows and Linux machines by script*), its highest temperature is shown at the node on the virtualisation page. A sensor for it: at the Proxmox host **Add sensor** → *Temperature pve1* (alarm from the chip's warning limit, can be changed); single sensors (CPU, NVMe …) are on the device of the node. They are matched by name: node `pve1` ↔ machine `pve1` or `pve1.firma.local`.
+**Temperatures of the nodes:** the Proxmox interface knows no temperatures. If a node also runs the Linux script (see *Windows and Linux machines by script*), its highest temperature is shown at the node on the virtualisation page. A sensor for it: at the Proxmox host or at the device **Add sensor** → *Temperature: the highest of all sensors* (alarm from the chip's warning limit, can be changed); single sensors (CPU, NVMe …) are in the same list under "Node pve1". They are matched by name: node `pve1` ↔ machine `pve1` or `pve1.firma.local`.
 
 ### Step 1: prepare Proxmox (once)
 

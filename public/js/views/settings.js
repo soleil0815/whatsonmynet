@@ -422,7 +422,7 @@ function proxmoxDetail(x) {
   const d = x.data || {};
   if (!x.last_at) return h('p', { class: 'muted' }, PUSH.includes(x.kind) ? t('virt.waiting') : t('prn.none'));
   // never reached yet: only the error and what to do, no empty sections
-  const sensor = () => openMonitorForm(null, () => {}, { type: 'proxmox', name: `${x.name} - Sensor`, interval_s: 300, fail_threshold: 1, options: { host: x.id } });
+  const sensor = () => openMonitorForm(null, () => {}, { type: 'sensor', name: `${x.name} - Sensor`, interval_s: 300, fail_threshold: 1, options: { host: x.id } });
   const head = h('div', { class: 'actions', style: { marginBottom: '10px' } },
     !x.last_ok ? h('span', { class: 'note warn', style: { margin: 0 } }, x.last_error) : h('span', { class: 'muted small' }, `${PUSH.includes(x.kind) ? t('virt.lastPush') : t('prn.checked')}: ${fmtDate(x.last_at, getLang())}`),
     btn(t('sens.add'), { class: 'btn btn-sm', onclick: sensor }, 'plus'));
