@@ -11,7 +11,7 @@ import { renderScan } from './views/scan.js';
 import { renderLocations } from './views/locations.js';
 import { renderTopology } from './views/topology.js';
 import { renderHelp } from './views/help.js';
-import { renderSettings, renderProxmox, renderReports } from './views/settings.js';
+import { renderSettings, renderProxmox, renderControllers, renderReports } from './views/settings.js';
 import { renderAccount } from './views/account.js';
 import { renderMonitoring } from './views/monitoring.js';
 
@@ -51,6 +51,7 @@ const ROUTES = [
   [/^\/monitoring\/(maintenance)$/, (main, sub) => renderMonitoring(main, null, sub), 'monitoring'],
   [/^\/locations$/, renderLocations, 'locations'],
   [/^\/(virtualization|proxmox)$/, renderProxmox, 'proxmox'],
+  [/^\/controllers$/, renderControllers, 'controllers'],
   [/^\/reports$/, renderReports, 'reports'],
   [/^\/topology$/, renderTopology, 'topology'],
   [/^\/help$/, renderHelp, 'help'],
@@ -75,6 +76,7 @@ function sidebar(active) {
       h('div', { class: 'nav-group' }, t('nav.groupWatch')),
       link('/monitoring', 'monitoring', 'pulse', state.down ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.down) : null),
       u.canEdit ? link('/virtualization', 'proxmox', 'hypervisor') : null,
+      u.canEdit ? link('/controllers', 'controllers', 'accesspoint') : null,
       u.isAdmin ? link('/reports', 'reports', 'mail') : null,
     ),
     h('div', { class: 'side-foot' },

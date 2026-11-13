@@ -106,8 +106,26 @@ export function classify(f) {
     else add('router', 3, 'LANCOM');
   }
   if (NETWORK_VENDORS.test(brand) && (f.snmp || has(80, 443, 23, 22)) && !has(445, 3389, 9100)) add('switch', 2, `network manufacturer ${brand}`);
-  if (t(/unifi|access point|\bap\b|omada.*eap|eap\d{3}|airos|aironet|wlan/i)) add('accesspoint', 4, 'access point name');
+  if (t(/access point|\bap\b|omada.*eap|eap\d{3}|airos|aironet|wlan/i)) add('accesspoint', 4, 'access point name');
   if (/^Ubiquiti$/i.test(brand)) add('accesspoint', 2, 'Ubiquiti');
+  // UniFi, Omada, MikroTik, Aruba Instant On: the model names say what it is (stronger than the manufacturer alone) -
+  // they often appear only as host name (UniFi devices register with their model, e.g. USW-Lite-8-PoE)
+  const named = [text, f.hostname, f.rdns, f.netbios?.name].filter(Boolean).join(' | ');
+  const tn = (re) => re.test(named);
+  const unifi = /^Ubiquiti$/i.test(brand) || tn(/unifi/i);
+  if (unifi && tn(/\b(usw|us-?(8|16|24|48)|us-xg|usw-flex|switch (lite|pro|enterprise|aggregation))/i)) { add('switch', 6, 'UniFi switch'); model = model || /(usw[-\w]*|us-?\d+[-\w]*)/i.exec(named)?.[1] || ''; }
+  if (unifi && tn(/\b(uap|u6|u7|nanohd|flexhd|ac-?(lite|lr|pro|mesh)|in-?wall|beaconhd)/i)) add('accesspoint', 6, 'UniFi access point');
+  if (tn(/\b(udm|udr|ucg|usg|uxg|udw|dream (machine|router|wall)|cloud gateway|security gateway)\b/i)) { add('router', 7, 'UniFi gateway'); os = os || 'UniFi OS'; }
+  if (unifi && tn(/cloud ?key|\buck\b|unifi network application|unifi network server|unifi controller|^unifi network$/i)) add('server', 7, 'UniFi Network application');
+  if (tn(/\bEAP\d{3}/i)) add('accesspoint', 6, 'Omada access point');
+  if (tn(/\bER(605|707|7206|7212|8411|2260)\b|omada.*(gateway|router)/i)) add('router', 6, 'Omada gateway');
+  if (tn(/\bOC(200|220|300|400)\b|omada (software )?controller|omada network/i)) add('server', 6, 'Omada controller');
+  if (tn(/\b(SG|TL-SG|SX)\d{3,4}|omada.*switch/i) && /^TP-Link$/i.test(brand)) add('switch', 3, 'Omada/JetStream switch');
+  if (/^MikroTik$/i.test(brand) || tn(/routeros|mikrotik/i)) {
+    if (tn(/\b(CRS|CSS)\d{3}/i)) add('switch', 7, 'MikroTik switch (CRS)');
+    if (tn(/\b(cAP|wAP)\b/)) add('accesspoint', 7, 'MikroTik access point');
+  }
+  if (tn(/instant on/i)) { if (tn(/\bAP\d{2}\b/)) add('accesspoint', 6, 'Aruba Instant On AP'); else if (tn(/\b19[3-6]0\b/)) add('switch', 6, 'Aruba Instant On switch'); }
   if (UPS_VENDORS.test(brand) || t(/\bups\b|usv|smart-ups|network management card|powerware/i)) add('ups', 5, 'UPS');
 
   // --- Computers and servers

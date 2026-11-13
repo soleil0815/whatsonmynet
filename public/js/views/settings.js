@@ -40,7 +40,15 @@ export async function renderProxmox(main) {
   if (!state.user.canEdit) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
-  await proxmox(body, null, () => renderProxmox(main));
+  await proxmox(body, null, () => renderProxmox(main), 'virt');
+}
+
+/** UniFi, Omada, MikroTik: own page under "Monitoring" (same building blocks as the hypervisors) */
+export async function renderControllers(main) {
+  if (!state.user.canEdit) { navigate('/', { replace: true }); return; }
+  const body = h('div', { class: 'stack' });
+  mount(main, h('div', { class: 'page' }, body));
+  await proxmox(body, null, () => renderControllers(main), 'net');
 }
 
 /** Planned reports: own page under "Monitoring" */
@@ -416,6 +424,7 @@ function proxmoxDetail(x) {
     cmdBox(PX_FIX[d.kind === 'pbs' ? 'pbs' : 'pve'](user, x.token_id)),
     h('p', { class: 'small', style: { margin: '6px 0 0' } }, t('px.missingThen')))) : null;
   if (!d.kind) return head;
+  if (d.netdevices) return netDetail(d, head);
   if (d.kind !== 'pbs') {
     const running = (d.guests || []).filter((g) => g.status === 'running').length;
     const pve = d.kind === 'pve';
@@ -445,6 +454,24 @@ function proxmoxDetail(x) {
     })),
     (d.failed || []).length ? [h('h3', { class: 'sub-title' }, t('px.failed')), h('ul', { class: 'port-macs' }, d.failed.slice(0, 10).map((f) => h('li', {},
       h('span', { class: 'badge badge-bad' }, f.type), h('span', { class: 'small' }, f.status), h('span', { class: 'muted small' }, fmtDate(new Date(f.start * 1000).toISOString(), getLang())))))] : null);
+}
+
+/** Devices of a network controller: state, model, firmware (update), clients - and whether it is in the inventory */
+function netDetail(d, head) {
+  const online = d.netdevices.filter((x) => x.online).length;
+  return h('div', {}, head,
+    h('p', { class: 'muted small', style: { margin: '0 0 10px' } }, t('net.summary', { n: d.netdevices.length, online, clients: d.clients ?? 0 })),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('net.device')), h('th', { class: 'hide-sm' }, 'IP'), h('th', { class: 'hide-sm' }, t('net.firmware')), h('th', {}, t('net.clients')), h('th', {}, t('net.state')))),
+      h('tbody', {}, d.netdevices.map((x) => h('tr', {},
+        h('td', {}, h('div', { class: 'inv-dev' }, h('span', { class: 'inv-ico', html: icon(x.type) }),
+          h('div', {}, x.deviceId ? h('a', { class: 'name', href: `/devices/${x.deviceId}`, 'data-link': true }, x.name) : h('span', { class: 'name' }, x.name),
+            h('div', { class: 'sub' }, [x.model, x.serial].filter(Boolean).join(' · '), x.deviceId ? null : h('span', { class: 'badge', style: { marginLeft: '6px' }, title: t('net.notInInventoryHint') }, t('net.notInInventory')))))),
+        h('td', { class: 'hide-sm mono' }, x.ip || '–'),
+        h('td', { class: 'hide-sm' }, h('span', { class: 'mono small' }, x.firmware || '–'), x.update ? h('span', { class: 'badge badge-new', style: { marginLeft: '6px' } }, t('net.update')) : null),
+        h('td', {}, x.clients ?? '–'),
+        h('td', {}, h('span', { class: `badge ${x.online ? 'badge-ok' : 'badge-bad'}` }, x.online ? 'online' : 'offline'))))))),
+    (d.ports || []).length ? [h('h3', { class: 'sub-title' }, t('net.ports')), h('div', { class: 'chips' }, d.ports.map((p) => h('span', { class: `badge ${p.up ? 'badge-ok' : ''}` }, p.name)))] : null);
 }
 
 // Text with `code` parts → nodes (no HTML from translations)
@@ -505,13 +532,14 @@ function confirmServerCert(r, kind) {
 // Hypervisors beside Proxmox: asked through their API (account with read rights) or sending on their own (script)
 const VIRT = ['pve', 'pbs', 'vmware', 'xcpng', 'hyperv', 'nutanix', 'ovirt', 'libvirt'];
 const PUSH = ['hyperv', 'libvirt'];
-const VIRT_URL = { vmware: 'https://vcenter.firma.local', xcpng: 'https://xcp-master.firma.local', nutanix: 'https://prism.firma.local:9440', ovirt: 'https://engine.firma.local' };
-const VIRT_USER = { vmware: 'whatsonmynet@vsphere.local', xcpng: 'root', nutanix: 'whatsonmynet', ovirt: 'whatsonmynet@internal' };
+const NET = ['unifi', 'omada', 'mikrotik'];
+const VIRT_URL = { unifi: 'https://unifi.firma.local', omada: 'https://omada.firma.local:8043', mikrotik: 'https://router.firma.local', vmware: 'https://vcenter.firma.local', xcpng: 'https://xcp-master.firma.local', nutanix: 'https://prism.firma.local:9440', ovirt: 'https://engine.firma.local' };
+const VIRT_USER = { unifi: 'whatsonmynet', omada: 'whatsonmynet', mikrotik: 'whatsonmynet', vmware: 'whatsonmynet@vsphere.local', xcpng: 'root', nutanix: 'whatsonmynet', ovirt: 'whatsonmynet@internal' };
 
 /** Step 1: what kind of host */
-function pickVirt(then) {
-  const dlg = modal(t('virt.add'), h('div', { class: 'pick-grid' }, VIRT.map((k) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); then(k); } },
-    h('span', { class: 'pick-ico', html: icon(k === 'pbs' ? 'download' : 'hypervisor') }),
+function pickVirt(then, kinds = VIRT) {
+  const dlg = modal(t(kinds === NET ? 'net.add' : 'virt.add'), h('div', { class: 'pick-grid' }, kinds.map((k) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); then(k); } },
+    h('span', { class: 'pick-ico', html: icon(k === 'pbs' ? 'download' : NET.includes(k) ? 'accesspoint' : 'hypervisor') }),
     h('span', { class: 'pick-title' }, t(`virt.k.${k}`)),
     h('span', { class: 'pick-text' }, t(`virt.what.${k}`))))), { wide: true });
 }
@@ -556,7 +584,7 @@ function editVirt(x, kind, reload) {
         field(t('px.ca'), ca, t('virt.caHint')),
         field(t('px.verify'), verify, t('px.verifyHint'))));
   }
-  const m = modal(x ? x.name : `${t('virt.add')}: ${t(`virt.k.${kind}`)}`, form, { wide: true, actions: [
+  const m = modal(x ? x.name : `${t(NET.includes(kind) ? 'net.add' : 'virt.add')}: ${t(`virt.k.${kind}`)}`, form, { wide: true, actions: [
     btn(t('cancel'), { onclick: () => m.close() }),
     h('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
       if (!form.reportValidity()) return;
@@ -581,8 +609,9 @@ async function showScript(x, reload) {
   scriptDialog(`${t('virt.scriptTitle')}: ${x.name}`, { script: { file: r.file, text: r.text }, uninstall: r.uninstall }, { where: x.kind, onClose: reload });
 }
 
-async function proxmox(body, _s, reload) {
-  const list = await get('/proxmox');
+async function proxmox(body, _s, reload, scope = 'virt') {
+  const kinds = scope === 'net' ? NET : VIRT;
+  const list = (await get('/proxmox')).filter((x) => kinds.includes(x.kind));
   const edit = (x, preset = 'pve') => {
     const kind = select('kind', [['pve', 'Proxmox VE'], ['pbs', 'Proxmox Backup Server']], x?.kind || preset);
     const url = input('url', x?.url || '', { required: true, class: 'mono', placeholder: 'https://192.168.1.10:8006' });
@@ -636,9 +665,10 @@ async function proxmox(body, _s, reload) {
       } }, t('pxs.save'))] });
   };
   const admin = state.user.isAdmin;
-  const add = () => pickVirt((kind) => (kind === 'pve' || kind === 'pbs' ? edit(null, kind) : editVirt(null, kind, reload)));
-  mount(body, pageHead(t('virt.title'), t('virt.lead'), admin ? btn(t('virt.add'), { class: 'btn btn-primary', onclick: add }, 'plus') : null),
-  !list.length ? h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, admin ? t('px.none') : t('px.noHosts'))) : null,
+  const add = () => pickVirt((kind) => (kind === 'pve' || kind === 'pbs' ? edit(null, kind) : editVirt(null, kind, reload)), kinds);
+  const net = scope === 'net';
+  mount(body, pageHead(t(net ? 'net.title' : 'virt.title'), t(net ? 'net.lead' : 'virt.lead'), admin ? btn(t(net ? 'net.add' : 'virt.add'), { class: 'btn btn-primary', onclick: add }, 'plus') : null),
+  !list.length ? h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, admin ? t(net ? 'net.none' : 'px.none') : t('px.noHosts'))) : null,
   list.map((x) => h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '6px' } },
       h('div', {}, h('h2', { class: 'section-title', style: { margin: 0 } }, x.name), h('div', { class: 'muted small mono' }, [t(`virt.k.${x.kind}`), x.url].filter(Boolean).join(' · '))),
