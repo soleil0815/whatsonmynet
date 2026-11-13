@@ -26,7 +26,8 @@ export async function renderDashboard(main) {
   const d = await get('/dashboard');
   state.waiting = d.waiting;
   const mon = d.monitoring || { total: 0, up: 0, down: [], certs: [] };
-  state.down = mon.down.length;
+  state.sensorsDown = mon.down.filter((m) => ['sensor', 'snmp', 'proxmox'].includes(m.type)).length;
+  state.down = mon.down.length - state.sensorsDown;
   const canScan = state.user.canEdit;
   const lang = getLang();
 

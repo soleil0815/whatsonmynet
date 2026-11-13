@@ -36,7 +36,7 @@ test('notification services: request shape, stored secrets, readable errors', as
     await ch.notifyIds([ntfy.id], down);
     assert.equal(last().body.topic, 'womn-test');
     assert.equal(last().body.priority, 4);
-    assert.match(last().body.message, /^NAS ist nicht erreichbar - timeout/);
+    assert.match(last().body.message, /^NAS ist nicht erreichbar - Zeitüberschreitung/);
     assert.equal(last().headers.authorization, 'Bearer tk_secret123');
 
     // Gotify: token in its header, editing without a new token keeps the old one

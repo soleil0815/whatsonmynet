@@ -7,6 +7,7 @@ import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, btn, formData } from './common.js';
 import { openHostScript } from './hostscripts.js';
+import { checkText } from '../checktext.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const svgEl = (tag, attrs = {}) => { const el = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
@@ -87,7 +88,7 @@ export function nowParts(m) {
     const main = `${withUnit(d.v, d.unit)}${d.free ? ` ${t('val.free')}` : ''}`;
     return { main, sub: parts.join(' · '), tone, bar: d.unit === '%' && typeof d.v === 'number' ? d.v : null };
   }
-  if (m.type === 'sensor' && m.status === 'up' && m.last_message) return { main: m.last_message.replace(/^[^:]*:\s*/, ''), sub: '', tone: 'ok' };
+  if (m.type === 'sensor' && m.status === 'up' && m.last_message) return { main: checkText(m.last_message, getLang()).replace(/^[^:]*:\s*/, ''), sub: '', tone: 'ok' };
   if (isValueType(m)) return { main: valueText(m), sub: '', tone: m.status === 'down' ? 'bad' : 'ok' };
   if (m.status === 'up' && m.last_ms !== null && m.last_ms !== undefined) return { main: `${m.last_ms} ms`, sub: '', tone: 'ok', plain: true };
   return { main: '–', sub: '', tone: 'muted', plain: true };
@@ -125,7 +126,7 @@ function beatsBar(beats, slots = 40, valueMode = false) {
   const pad = Math.max(0, slots - beats.length);
   return h('span', { class: 'beats', 'aria-hidden': 'true' },
     Array.from({ length: pad }, () => h('i', { class: 'none' })),
-    beats.slice(-slots).map((b) => h('i', { class: b.ok ? 'ok' : 'bad', title: `${fmtDate(b.at, getLang())} · ${valueMode || !b.ok ? b.message : `${b.ms ?? '–'} ms`}` })));
+    beats.slice(-slots).map((b) => h('i', { class: b.ok ? 'ok' : 'bad', title: `${fmtDate(b.at, getLang())} · ${valueMode || !b.ok ? checkText(b.message, getLang()) : `${b.ms ?? '–'} ms`}` })));
 }
 
 /** Size in bytes, readable: 31,8 GB */
@@ -167,7 +168,11 @@ export async function renderMonitoring(main, id, sub) {
   if (id) return renderDetail(main, Number(id));
   if (sub === 'maintenance') return renderMaintenance(main);
   const edit = state.user.canEdit;
-  const tabs = tabBar('monitors');
+  // Monitors (reachable, service running …) and sensors (values of devices and hypervisors) - one list each
+  const kind = sub === 'sensors' ? 'sensors' : 'monitors';
+  const mine = (m) => (kind === 'sensors' ? isSensor(m) : !isSensor(m));
+  const base = kind === 'sensors' ? '/monitoring/sensors' : '/monitoring';
+  const tabs = tabBar(kind);
   const body = h('section', { class: 'panel' });
   let timer = null;
   let alive = true;
@@ -183,20 +188,20 @@ export async function renderMonitoring(main, id, sub) {
     return h('tr', { class: 'click', onclick: (e) => { if (!e.target.closest('a,button')) navigate(`/monitoring/${m.id}`); } },
       h('td', {}, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
         h('div', { style: { minWidth: 0 } }, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
-          h('div', { class: 'sub' }, m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, m.last_message)
+          h('div', { class: 'sub' }, m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, checkText(m.last_message, getLang()))
             : m.status === 'unreachable' ? h('span', {}, t('mon.behind', { name: byId.get(m.parent_id)?.name || '?' }))
               : h('span', { class: 'mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`))))),
       h('td', { class: 'hide-sm' }, beatsBar(m.beats, 40, isValueType(m))),
       h('td', {}, pct(m.uptime24)),
       h('td', { class: 'hide-sm' }, nowCell(m)),
-      h('td', { class: 'hide-sm' }, certBadge(m)));
+      kind === 'sensors' ? null : h('td', { class: 'hide-sm' }, certBadge(m)));
   }
 
   function draw() {
     const counts = {};
     for (const m of all) counts[m.status] = (counts[m.status] || 0) + 1;
     const chip = (key, label, n, tone) => h('button', { type: 'button', class: `fchip${filter === key ? ' on' : ''}`, 'aria-pressed': String(filter === key),
-      onclick: () => { filter = filter === key && key ? '' : key; history.replaceState({}, '', `/monitoring${filter ? `?status=${filter}` : ''}`); draw(); } },
+      onclick: () => { filter = filter === key && key ? '' : key; history.replaceState({}, '', `${base}${filter ? `?status=${filter}` : ''}`); draw(); } },
       tone ? h('span', { class: `dot dot-${tone}` }) : null, label, h('span', { class: 'chip-n' }, n));
     mount(chips, chip('', t('all'), all.length), counts.down ? chip('down', t('mon.status.down'), counts.down, 'bad') : null,
       counts.unreachable ? chip('unreachable', t('mon.status.unreachable'), counts.unreachable) : null,
@@ -207,24 +212,27 @@ export async function renderMonitoring(main, id, sub) {
     for (const st of ORDER) {
       const part = list.filter((m) => (ORDER.includes(m.status) ? m.status : 'pending') === st);
       if (!part.length) continue;
-      rows.push(h('tr', { class: 'group' }, h('td', { colspan: 5 }, `${t(`mon.status.${st}`)} · ${part.length}`)));
+      rows.push(h('tr', { class: 'group' }, h('td', { colspan: kind === 'sensors' ? 4 : 5 }, `${t(`mon.status.${st}`)} · ${part.length}`)));
       for (const m of part) rows.push(row(m));
     }
     mount(body, h('div', { class: 'table-wrap' }, rows.length ? h('table', { class: 'data' },
-      h('thead', {}, h('tr', {}, h('th', {}, t('mon.col.name')), h('th', { class: 'hide-sm' }, t('mon.col.beats')),
-        h('th', {}, t('mon.col.uptime')), h('th', { class: 'hide-sm' }, t('mon.col.now')), h('th', { class: 'hide-sm' }, t('mon.col.cert')))),
+      h('thead', {}, h('tr', {}, h('th', {}, t(kind === 'sensors' ? 'sens.col.name' : 'mon.col.name')), h('th', { class: 'hide-sm' }, t('mon.col.beats')),
+        h('th', {}, t('mon.col.uptime')), h('th', { class: 'hide-sm' }, t('mon.col.now')), kind === 'sensors' ? null : h('th', { class: 'hide-sm' }, t('mon.col.cert')))),
       h('tbody', {}, rows)) : h('div', { class: 'empty' }, t('mon.noMatch'))));
   }
+
+  // Sensors: the form starts with "value of a device"
+  const addBtn = () => btn(t(kind === 'sensors' ? 'sens.add' : 'mon.add'), { class: 'btn btn-primary', onclick: () => openMonitorForm(null, load, kind === 'sensors' ? { type: 'sensor' } : null) }, 'plus');
 
   async function load() {
     let list;
     try { list = await get('/monitors'); } catch (e) { if (alive) fail(e); return; }
     if (!alive) return;
-    all = list;
+    all = list.filter(mine);
     byId = new Map(list.map((m) => [m.id, m]));
-    if (!list.length) {
-      mount(body, h('div', { class: 'empty' }, h('h2', {}, t('mon.emptyTitle')), h('p', {}, t('mon.emptyText')),
-        edit ? btn(t('mon.add'), { class: 'btn btn-primary', onclick: () => openMonitorForm(null, load) }, 'plus') : null));
+    if (!all.length) {
+      mount(body, h('div', { class: 'empty' }, h('h2', {}, t(kind === 'sensors' ? 'sens.emptyTitle' : 'mon.emptyTitle')), h('p', {}, t(kind === 'sensors' ? 'sens.emptyText' : 'mon.emptyText')),
+        edit ? addBtn() : null));
     } else {
       draw();
     }
@@ -232,7 +240,7 @@ export async function renderMonitoring(main, id, sub) {
   }
 
   mount(main, h('div', { class: 'page' },
-    pageHead(t('mon.title'), t('mon.lead'), edit ? btn(t('mon.add'), { class: 'btn btn-primary', onclick: () => openMonitorForm(null, load) }, 'plus') : null),
+    pageHead(t(kind === 'sensors' ? 'sens.title' : 'mon.title'), t(kind === 'sensors' ? 'sens.lead' : 'mon.lead'), edit ? addBtn() : null),
     tabs, h('div', { class: 'inv-filter' }, h('div', { class: 'search' }, h('span', { html: icon('search') }), q), chips), body));
   mount(body, h('div', { class: 'empty' }, t('loading')));
   await load();
@@ -241,7 +249,7 @@ export async function renderMonitoring(main, id, sub) {
 
 function tabBar(active) {
   return h('div', { class: 'tabs page-tabs', role: 'tablist' },
-    [['monitors', '/monitoring'], ['maintenance', '/monitoring/maintenance']].map(([k, href]) => h('a', { href, 'data-link': true, role: 'tab',
+    [['monitors', '/monitoring'], ['sensors', '/monitoring/sensors'], ['maintenance', '/monitoring/maintenance']].map(([k, href]) => h('a', { href, 'data-link': true, role: 'tab',
       class: active === k ? 'on' : '', 'aria-selected': String(active === k) }, t(`mon.tab.${k}`))));
 }
 
@@ -366,8 +374,8 @@ async function renderDetail(main, id) {
   mount(main, h('div', { class: 'page' }, head, body));
 
   async function load() {
-    let m;
-    try { m = await get(`/monitors/${id}?hours=${hours}`); } catch (e) { if (alive) fail(e); return; }
+    let m; let windows = [];
+    try { [m, windows] = await Promise.all([get(`/monitors/${id}?hours=${hours}`), get('/maintenance').catch(() => [])]); } catch (e) { if (alive) fail(e); return; }
     if (!alive) return;
     const reload = () => { clearTimeout(timer); load(); };
     mount(head, h('div', { class: 'device-head' },
@@ -389,7 +397,7 @@ async function renderDetail(main, id) {
     const span = h('div', { class: 'seg' }, [[24, '24 h'], [72, t('mon.r.3d')], [168, t('mon.r.7d')], [720, t('mon.r.30d')], [2160, t('mon.r.90d')], [8784, t('mon.r.1y')]].map(([v, l]) => h('button', { type: 'button', class: v === hours ? 'on' : '',
       onclick: () => { hours = v; reload(); } }, l)));
     mount(body,
-      m.status === 'down' ? h('div', { class: 'note bad' }, t('mon.downSince', { when: fmtAgo(m.status_since, t), message: m.last_message })) : null,
+      m.status === 'down' ? h('div', { class: 'note bad' }, t('mon.downSince', { when: fmtAgo(m.status_since, t), message: checkText(m.last_message, getLang()) })) : null,
       m.status === 'unreachable' && m.parent ? h('div', { class: 'note' }, h('span', {}, t('mon.unreachableNote', { when: fmtAgo(m.status_since, t) }), ' ',
         h('a', { href: `/monitoring/${m.parent.id}`, 'data-link': true }, m.parent.name))) : null,
       m.maintenance ? h('div', { class: 'note ti' }, t('mon.inMaintenance')) : null,
@@ -409,6 +417,7 @@ async function renderDetail(main, id) {
         m.history ? longChart(m.history, hours, m.bucketHours, isValueType(m)) : chart(m.checks, hours, isValueType(m)),
         m.history ? h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, t(isValueType(m) ? 'mon.histLegendValue' : 'mon.histLegend', { bucket: m.bucketHours >= 24 ? t('mon.histDay') : t('mon.hist6h') })) : null),
       depPanel(m, edit, reload),
+      quietPanel(m, windows, edit, reload),
       h('section', { class: 'panel panel-pad' },
         h('h2', { class: 'section-title' }, t('mon.events')),
         m.events.length ? h('ul', { class: 'timeline' }, m.events.map((e) => h('li', { class: `ev-${e.kind}` },
@@ -425,7 +434,7 @@ function eventLine(e) {
   if (e.kind === 'cert') return t('mon.ev.cert', { n: e.message });
   if (e.kind === 'unreachable') return t('mon.ev.unreachable', { name: e.message });
   if (e.kind === 'escalated') return t('mon.ev.escalated', { n: e.message });
-  return `${t(`mon.ev.${e.kind}`)}${e.message && e.kind === 'down' ? ` - ${e.message}` : ''}`;
+  return `${t(`mon.ev.${e.kind}`)}${e.message && e.kind === 'down' ? ` - ${checkText(e.message, getLang())}` : ''}`;
 }
 
 const rangeName = (hours) => ({ 720: t('mon.r.30dLong'), 2160: t('mon.r.90dLong'), 8784: t('mon.r.1yLong') }[hours] || `${hours} h`);
@@ -837,7 +846,8 @@ async function renderMaintenance(main) {
       h('tbody', {}, list.map((w) => h('tr', {},
         h('td', {}, h('span', { class: 'name' }, w.name), w.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('mon.status.paused'))),
         h('td', {}, when(w)),
-        h('td', {}, w.monitor_ids.length ? w.monitor_ids.map((i) => names[i] || `#${i}`).join(', ') : t('maint.all')),
+        h('td', { title: w.monitor_ids.map((i) => names[i] || `#${i}`).join('\n') }, w.monitor_ids.length
+          ? `${w.monitor_ids.slice(0, 3).map((i) => names[i] || `#${i}`).join(', ')}${w.monitor_ids.length > 3 ? ` ${t('maint.more', { n: w.monitor_ids.length - 3 })}` : ''}` : t('maint.all')),
         h('td', { class: 'min' }, edit ? h('div', { class: 'actions' },
           btn(t('edit'), { class: 'btn btn-sm', onclick: () => maintenanceForm(w, monitors, reload) }),
           h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${w.name}`, html: icon('trash'), onclick: async () => {
@@ -854,8 +864,89 @@ const localInput = (iso) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-function maintenanceForm(w, monitors, done) {
-  const v = w || { kind: 'weekly', weekdays: [0], time_from: '22:00', time_to: '02:00', monitor_ids: [], enabled: true };
+/** When the time of a window is, in words: "Mo-So 20:00-23:00", "12.11. 09:00 - 12.11. 11:00" */
+function windowWhen(w) {
+  if (w.kind === 'once') return `${fmtDate(w.starts_at, getLang())} - ${fmtDate(w.ends_at, getLang())}`;
+  const days = w.weekdays.length === 7 ? t('maint.daily') : DAYS.filter((d) => w.weekdays.includes(d)).map((d) => t(`day.${d}`)).join(', ');
+  return `${days} ${w.time_from}-${w.time_to}`;
+}
+
+/**
+ * On the page of a monitor: the times in which it does not alarm (maintenance windows for it or for all), and a
+ * window for just this one - e.g. "every day 20:00-23:00, during the backup the SSD gets warm"
+ */
+function quietPanel(m, windows, edit, reload) {
+  const mine = windows.filter((w) => !w.monitor_ids.length || w.monitor_ids.includes(m.id));
+  const add = async () => {
+    try {
+      const monitors = await get('/monitors');
+      maintenanceForm(null, monitors, reload, { name: t('maint.forOne', { name: m.name }), monitor_ids: [m.id], weekdays: [...DAYS], time_from: '20:00', time_to: '23:00' });
+    } catch (e) { fail(e); }
+  };
+  return h('section', { class: 'panel panel-pad' },
+    h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('maint.quietTitle')),
+      edit ? btn(t('maint.quietAdd'), { class: 'btn btn-sm', onclick: add }, 'plus') : null),
+    mine.length ? h('ul', { class: 'port-macs' }, mine.map((w) => h('li', {},
+      h('strong', {}, w.name), h('span', { class: 'muted small mono' }, windowWhen(w)),
+      w.monitor_ids.length ? null : h('span', { class: 'badge' }, t('maint.all')),
+      w.enabled ? null : h('span', { class: 'badge' }, t('maint.off')))))
+      : h('p', { class: 'muted small', style: { margin: 0 } }, t('maint.quietNone')));
+}
+
+const SENSOR_TYPES = ['sensor', 'snmp', 'proxmox'];
+export const isSensor = (m) => SENSOR_TYPES.includes(m.type);
+
+/**
+ * Which monitors and sensors a maintenance window is for: two parts (monitors, sensors), each by device, searchable,
+ * a whole device with one tick, the number chosen at the top. Nothing ticked = all.
+ */
+function scopePicker(monitors, chosenIds, hosts = new Map()) {
+  const chosen = new Set(chosenIds);
+  const boxes = [];
+  const count = h('span', { class: 'muted small' });
+  const update = () => { const n = boxes.filter((b) => b.input.checked).length; count.textContent = n ? t('maint.chosen', { n }) : t('maint.chosenNone'); };
+  const group = (title, list) => {
+    const inputs = list.map((m) => {
+      const input = h('input', { type: 'checkbox', checked: chosen.has(m.id), onchange: () => { syncAll(); update(); } });
+      const label = h('label', { class: 'check scope-item', 'data-q': `${m.name} ${title} ${m.target || ''}`.toLowerCase() }, input,
+        h('span', {}, m.name), isSensor(m) ? null : h('span', { class: 'muted small mono' }, t(`mon.type.${m.type}`)));
+      boxes.push({ id: m.id, input, label });
+      return { input, label };
+    });
+    const all = h('input', { type: 'checkbox', 'aria-label': t('maint.wholeDevice', { name: title }), onchange: () => { for (const x of inputs) if (!x.label.hidden) x.input.checked = all.checked; update(); } });
+    const syncAll = () => { all.checked = inputs.every((x) => x.input.checked); all.indeterminate = !all.checked && inputs.some((x) => x.input.checked); };
+    syncAll();
+    const det = h('details', { class: 'scope-group' }, h('summary', {}, all, h('strong', {}, title), h('span', { class: 'muted small' }, ` · ${list.length}`)),
+      h('div', { class: 'scope-items' }, inputs.map((x) => x.label)));
+    det.open = inputs.some((x) => x.input.checked) || monitors.length <= 12;
+    return det;
+  };
+  const byDevice = (list) => {
+    const map = new Map();
+    for (const m of list) {
+      const k = m.device_name || (m.type === 'proxmox' ? hosts.get(Number(m.options?.host)) || t('mon.type.proxmox') : t('maint.noDevice'));
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(m);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, l]) => group(k, l));
+  };
+  const mons = monitors.filter((m) => !isSensor(m)); const sens = monitors.filter(isSensor);
+  const parts = [[t('mon.tab.monitors'), mons], [t('mon.tab.sensors'), sens]].filter(([, l]) => l.length)
+    .map(([title, l]) => h('div', { class: 'scope-part' }, h('div', { class: 'scope-head' }, title), byDevice(l)));
+  const search = h('input', { type: 'search', placeholder: t('maint.filter'), 'aria-label': t('maint.filter'), oninput: () => {
+    const q = search.value.trim().toLowerCase();
+    for (const b of boxes) b.label.hidden = !!q && !b.label.dataset.q.includes(q);
+    for (const d of el.querySelectorAll('.scope-group')) { const any = [...d.querySelectorAll('.scope-item')].some((l) => !l.hidden); d.hidden = !any; if (q && any) d.open = true; }
+  } });
+  const el = h('div', { class: 'scope-picker' }, h('div', { class: 'scope-top' }, search, count), parts);
+  update();
+  return { el, chosen: () => boxes.filter((b) => b.input.checked).map((b) => b.id) };
+}
+
+async function maintenanceForm(w, monitors, done, preset = null) {
+  // Names of the hypervisors and controllers: their sensors are grouped by them
+  const hosts = new Map((await get('/proxmox').catch(() => [])).map((x) => [x.id, x.name]));
+  const v = w || { kind: 'weekly', weekdays: [0], time_from: '22:00', time_to: '02:00', monitor_ids: [], enabled: true, ...(preset || {}) };
   const kind = select('kind', [['weekly', t('maint.weekly')], ['once', t('maint.once')]], v.kind);
   const onceBox = h('div', { class: 'form-grid full' },
     field(t('maint.from'), input('starts_at', localInput(v.starts_at), { type: 'datetime-local' })),
@@ -867,15 +958,13 @@ function maintenanceForm(w, monitors, done) {
     field(t('maint.timeTo'), input('time_to', v.time_to || '', { type: 'time' }), t('maint.midnight')));
   const sync = () => { onceBox.hidden = kind.value !== 'once'; weeklyBox.hidden = kind.value !== 'weekly'; };
   kind.addEventListener('change', sync);
+  const picker = scopePicker(monitors, v.monitor_ids, hosts);
   const form = h('form', { class: 'form-grid' },
     h('div', { class: 'full' }, field(t('maint.name'), input('name', v.name || '', { required: true, maxlength: 80, placeholder: t('maint.namePh') }))),
     field(t('maint.kind'), kind),
     field(t('user.active'), h('input', { type: 'checkbox', name: 'enabled', checked: v.enabled !== false })),
     onceBox, weeklyBox,
-    monitors.length ? h('div', { class: 'full field' }, t('maint.scope'),
-      h('div', { class: 'chips' }, monitors.map((m) => h('label', { class: 'check', style: { marginRight: '12px' } },
-        h('input', { type: 'checkbox', name: `m_${m.id}`, checked: v.monitor_ids.includes(m.id) }), m.name))),
-      h('span', { class: 'hint' }, t('maint.scopeHint'))) : null);
+    monitors.length ? h('div', { class: 'full field' }, t('maint.scope'), picker.el, h('span', { class: 'hint' }, t('maint.scopeHint'))) : null);
   sync();
   const dlg = modal(w ? w.name : t('maint.add'), form, { wide: true, actions: [
     btn(t('cancel'), { onclick: () => dlg.close() }),
@@ -885,7 +974,7 @@ function maintenanceForm(w, monitors, done) {
       const body = { name: d.name, kind: d.kind, enabled: d.enabled,
         starts_at: d.starts_at ? new Date(d.starts_at).toISOString() : null, ends_at: d.ends_at ? new Date(d.ends_at).toISOString() : null,
         weekdays: DAYS.filter((x) => d[`d_${x}`]), time_from: d.time_from, time_to: d.time_to,
-        monitor_ids: monitors.filter((m) => d[`m_${m.id}`]).map((m) => m.id) };
+        monitor_ids: picker.chosen() };
       try { if (w) await put(`/maintenance/${w.id}`, body); else await post('/maintenance', body); dlg.close(); toast(t('saved')); done(); } catch (e) { fail(e); }
     } }, t('save')),
   ] });
