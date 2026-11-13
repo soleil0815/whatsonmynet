@@ -1,13 +1,13 @@
 // Certificate of the domain controller: fetch it, complete the chain up to the root CA, describe it.
 //
-// 1. fetchChain: opens LDAPS (or LDAP + StartTLS) to the DC and takes the certificates the server sends – without
-//    trusting them yet. No password goes over this connection.
+// 1. fetchChain: asks the DC (LDAPS or LDAP + StartTLS) which certificates it presents – without trusting them yet.
+//    Nothing is sent, no password.
 // 2. completeViaAia: a missing issuer is downloaded from the "CA Issuers" address (AIA) in the certificate.
 // 3. completeViaAd: after the admin has confirmed the fingerprint, the root CA can also come from AD itself
 //    (Configuration partition, Public Key Services) – this connection already trusts the confirmed certificate.
 // Every added CA must really have signed the certificate below it (signature check), otherwise it is ignored.
 import net from 'node:net';
-import tls from 'node:tls';
+import { execFile } from 'node:child_process';
 import { X509Certificate } from 'node:crypto';
 
 const PEM_RE = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g;
@@ -83,71 +83,48 @@ export function parseLdapUrl(url) {
   return { host: m[2].replace(/^\[|\]$/g, ''), port: Number(m[3]) || (ldaps ? 636 : 389), ldaps };
 }
 
-// LDAP ExtendedRequest StartTLS (OID 1.3.6.1.4.1.1466.20037), message id 1
-function startTlsRequest() {
-  const oid = Buffer.from('1.3.6.1.4.1.1466.20037', 'ascii');
-  const name = Buffer.concat([Buffer.from([0x80, oid.length]), oid]);
-  const ext = Buffer.concat([Buffer.from([0x77, name.length]), name]);
-  const body = Buffer.concat([Buffer.from([0x02, 0x01, 0x01]), ext]);
-  return Buffer.concat([Buffer.from([0x30, body.length]), body]);
+const HOSTNAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62})(?:\.[A-Za-z0-9-]{1,63})*\.?$/;
+
+/** Does the server certificate carry this name (DNS name or IP address)? */
+export function nameFits(cert, host) {
+  try { return net.isIP(host) ? !!cert.checkIP(host) : !!cert.checkHost(host); } catch { return false; }
+}
+
+/** Error text of openssl s_client, shortened to what the admin can act on */
+function opensslError(out) {
+  if (/STARTTLS/i.test(out)) return 'the server does not support StartTLS';
+  if (/errno=111|Connection refused/i.test(out)) return 'connection refused';
+  if (/errno=110|timed out/i.test(out)) return 'timeout';
+  if (/getaddrinfo|Name or service not known|nodename nor servname/i.test(out)) return 'name not found';
+  if (/no peer certificate|handshake failure|wrong version number|unexpected eof/i.test(out)) return 'no TLS handshake (wrong port or protocol?)';
+  return (out.trim().split('\n').filter(Boolean).pop() || 'no answer').slice(0, 160);
 }
 
 /**
- * Connects and returns what the server presents: { certs (leaf first), nameOk, names, protocol }.
- * Nothing is trusted here; the admin confirms the fingerprint afterwards.
+ * Asks the DC for its certificates – "openssl s_client -showcerts", the usual tool to look at a server's certificate
+ * (LDAPS directly or with "-starttls ldap"). Nothing is sent and nothing is trusted here: the admin compares the
+ * fingerprint and confirms; all real connections afterwards verify against the confirmed certificate.
+ * Returns { certs (leaf first), nameOk, host }.
  */
-export function fetchChain({ url, startTls = false, timeoutMs = 8000 }) {
+export function fetchChain({ url, startTls = false, timeoutMs = 8000, openssl = process.env.WOMN_OPENSSL || 'openssl' }) {
   const u = parseLdapUrl(url);
-  if (!u) return Promise.reject(Object.assign(new Error('invalid url'), { code: 'err.adUrl' }));
+  if (!u || !(net.isIP(u.host) || HOSTNAME.test(u.host))) return Promise.reject(Object.assign(new Error('invalid url'), { code: 'err.adUrl' }));
   if (!u.ldaps && !startTls) return Promise.reject(Object.assign(new Error('no TLS'), { code: 'err.adPlain' }));
+  const target = net.isIPv6(u.host) ? `[${u.host}]:${u.port}` : `${u.host}:${u.port}`;
+  const args = ['s_client', '-connect', target, '-showcerts', '-verify_quiet'];
+  if (!net.isIP(u.host)) args.push('-servername', u.host);
+  if (!u.ldaps) args.push('-starttls', 'ldap');
   return new Promise((resolve, reject) => {
-    let done = false;
-    let sock = null;
-    const finish = (err, val) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      try { sock?.destroy(); } catch { /* closed already */ }
-      if (err) reject(err); else resolve(val);
-    };
-    const timer = setTimeout(() => finish(new Error(`timeout (${Math.round(timeoutMs / 1000)} s)`)), timeoutMs);
-    // Deliberately unverified: this connection only READS the certificate the server presents, so that the admin can
-    // compare its fingerprint (nothing is sent, no password, the socket is closed right away). Trust comes only from
-    // that confirmation – every real connection afterwards verifies against the confirmed certificate.
-    const opts = { host: u.host, servername: net.isIP(u.host) ? undefined : u.host, rejectUnauthorized: false, minVersion: 'TLSv1.2' };
-    const onSecure = (s) => {
-      const peer = s.getPeerCertificate(true);
-      const raw = [];
-      const seen = new Set();
-      for (let c = peer; c && c.raw && !seen.has(c.fingerprint256); c = c.issuerCertificate) {
-        seen.add(c.fingerprint256);
-        raw.push(new X509Certificate(c.raw));
-        if (!c.issuerCertificate || c.issuerCertificate === c) break;
+    const child = execFile(openssl, args, { timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024, env: { PATH: process.env.PATH } }, (err, stdout, stderr) => {
+      let certs = [];
+      try { certs = parsePem(stdout); } catch { certs = []; }
+      if (!certs.length) {
+        if (err && err.killed) return reject(new Error(`timeout (${Math.round(timeoutMs / 1000)} s)`));
+        return reject(new Error(opensslError(`${stderr}\n${stdout}`)));
       }
-      if (!raw.length) return finish(new Error('the server sent no certificate'));
-      const nameErr = tls.checkServerIdentity(u.host, peer);
-      finish(null, { certs: orderChain(raw), nameOk: !nameErr, host: u.host, protocol: s.getProtocol() });
-    };
-    if (u.ldaps) {
-      sock = tls.connect({ ...opts, port: u.port }, () => onSecure(sock));
-      sock.on('error', finish);
-      return;
-    }
-    const plain = net.connect({ host: u.host, port: u.port }, () => plain.write(startTlsRequest()));
-    sock = plain;
-    plain.on('error', finish);
-    let buf = Buffer.alloc(0);
-    const onData = (chunk) => {
-      buf = Buffer.concat([buf, chunk]);
-      const i = buf.indexOf(0x78); // [APPLICATION 24] ExtendedResponse
-      const r = i >= 0 ? buf.indexOf(Buffer.from([0x0a, 0x01]), i) : -1;
-      if (r < 0 || buf.length < r + 3) { if (buf.length > 4096) finish(new Error('no StartTLS answer')); return; }
-      plain.off('data', onData);
-      if (buf[r + 2] !== 0) return finish(new Error('the server does not support StartTLS'));
-      sock = tls.connect({ ...opts, socket: plain }, () => onSecure(sock));
-      sock.on('error', finish);
-    };
-    plain.on('data', onData);
+      resolve({ certs: orderChain(certs), nameOk: nameFits(certs[0], u.host), host: u.host });
+    });
+    child.stdin.end(); // send nothing: openssl closes the connection right after the handshake
   });
 }
 
