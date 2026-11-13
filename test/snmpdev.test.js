@@ -7,6 +7,8 @@ import { readNas, parseStorage, nasProblems } from '../src/scan/nas.js';
 import { createSnmpDevices } from '../src/snmpdevices.js';
 import { createSettings } from '../src/settings.js';
 import { eventText } from '../src/monitor/notify.js';
+import { createInventory } from '../src/inventory.js';
+import { syncStoredFacts } from '../src/devicefill.js';
 
 test('MAC from an OID suffix', () => {
   assert.equal(macFromOid('10.0.17.226.5.1.255'), '00:11:e2:05:01:ff');
@@ -121,4 +123,50 @@ test('serial number, model and firmware from SNMP go into empty device fields on
   // later polls change nothing (fields are filled now), the history stays quiet
   await svc.poll(nas);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM device_history WHERE device_id=? AND kind='snmp'").get(nas).n, 1);
+});
+
+test('device details follow the device: firmware updates, exchanged hardware, values from earlier polls', async () => {
+  const db = memoryDb();
+  const svc = createSnmpDevices({ db, settings: createSettings(db), channels: { notifyIds: async () => [] } });
+  const now = new Date().toISOString();
+  const sw = db.prepare("INSERT INTO devices(name,type,ip,mac,created_at,updated_at) VALUES('core','switch','10.0.0.2','aa:aa:aa:00:00:01',?,?)").run(now, now).lastInsertRowid;
+  let state = { ports: [], macs: [], serial: 'SN-OLD-1', model: 'GS-2310P', firmware: '10.42.0457' };
+  svc.setReaderForTests('switch', async () => state);
+  await svc.poll(sw);
+  const get = () => db.prepare('SELECT serial, model, os, mac FROM devices WHERE id=?').get(sw);
+  assert.deepEqual(get(), { serial: 'SN-OLD-1', model: 'GS-2310P', os: '10.42.0457', mac: 'aa:aa:aa:00:00:01' });
+
+  // Firmware update: the field still holds what the device reported → kept up to date
+  state = { ...state, firmware: '10.50.0100' };
+  await svc.poll(sw);
+  assert.equal(get().os, '10.50.0100');
+  // Typed in by hand: stays
+  db.prepare("UPDATE devices SET model='Core-Switch Keller' WHERE id=?").run(sw);
+  state = { ...state, model: 'GS-2310P v2' };
+  await svc.poll(sw);
+  assert.equal(get().model, 'Core-Switch Keller');
+
+  // Exchanged at the same IP: another serial number → hardware fields from the new device, old MAC dropped
+  state = { ports: [], macs: [], serial: 'SN-NEW-2', model: 'GS-4530X', firmware: '10.80.0001' };
+  await svc.poll(sw);
+  assert.deepEqual(get(), { serial: 'SN-NEW-2', model: 'GS-4530X', os: '10.80.0001', mac: null });
+  const h = db.prepare("SELECT kind, detail FROM device_history WHERE device_id=? AND kind='replaced'").get(sw);
+  assert.deepEqual(JSON.parse(h.detail), { source: 'SNMP', from: 'SN-OLD-1', to: 'SN-NEW-2', mac: 'aa:aa:aa:00:00:01' });
+  // … so the next scan takes the new MAC at that address instead of reporting a new device
+  const inv = createInventory(db);
+  const scan = db.prepare("INSERT INTO scans(kind,status,targets,started_at) VALUES('network','running','[]',?)").run(now).lastInsertRowid;
+  const rid = db.prepare("INSERT INTO scan_results(scan_id,ip,mac,hostname,vendor,detected_type,confidence,facts,status) VALUES(?,'10.0.0.2','bb:bb:bb:00:00:02','','','switch',0.8,'{}','pending')").run(scan).lastInsertRowid;
+  inv.applyResult(rid);
+  assert.equal(get().mac, 'bb:bb:bb:00:00:02');
+  assert.equal(db.prepare('SELECT status FROM scan_results WHERE id=?').get(rid).status, 'changed');
+});
+
+test('values polled before the update are taken over at start', () => {
+  const db = memoryDb();
+  const now = new Date().toISOString();
+  const prn = db.prepare("INSERT INTO devices(name,type,ip,created_at,updated_at) VALUES('Drucker','printer','10.0.0.9',?,?)").run(now, now).lastInsertRowid;
+  db.prepare("INSERT INTO printer_status(device_id,at,ok,error,data,alerts) VALUES(?,?,1,'',?,'{}')").run(prn, now, JSON.stringify({ serial: 'E78123', model: 'Brother HL-L2350DW series', supplies: [] }));
+  assert.equal(syncStoredFacts(db), 1);
+  assert.deepEqual(db.prepare('SELECT serial, model FROM devices WHERE id=?').get(prn), { serial: 'E78123', model: 'Brother HL-L2350DW series' });
+  assert.equal(syncStoredFacts(db), 0, 'nothing twice');
 });
