@@ -113,6 +113,14 @@ export function createApi(ctx) {
   });
 
   // --- Scan agents (own token, no session) -----------------------------------------------------------------
+  // Hyper-V / KVM hosts send their data themselves (token of the host, no session)
+  r.post('/proxmox/:id/push', (req, res) => {
+    const m = /^Bearer\s+(\S{20,200})$/.exec(String(req.get('authorization') || ''));
+    if (!m) throw new HttpError(401, 'err.unauthorized');
+    const id = int(req.params.id);
+    if (!id || id < 1) throw new HttpError(401, 'err.unauthorized');
+    res.json(ctx.proxmox.push(id, m[1], req.body));
+  });
   r.get('/agent/poll', (req, res) => res.json(ctx.agents.poll(ctx.agents.authenticate(req))));
   r.post('/agent/results', express.json({ limit: '16mb' }), async (req, res) => {
     const agent = ctx.agents.authenticate(req);

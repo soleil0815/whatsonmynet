@@ -508,6 +508,28 @@ export const MIGRATIONS = [
   DROP TABLE channels;
   ALTER TABLE channels_new RENAME TO channels;
   ` },
+  // 16: more hypervisors beside Proxmox (VMware, XCP-ng, Hyper-V, Nutanix, oVirt, KVM/libvirt) in the same table; the kind
+  // is checked by the program
+  { foreignKeysOff: true, sql: `
+  CREATE TABLE proxmox_hosts_new (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    url TEXT NOT NULL,
+    token_id TEXT NOT NULL,
+    secret TEXT NOT NULL DEFAULT '',
+    verify INTEGER NOT NULL DEFAULT 1,
+    ca TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    last_at TEXT,
+    last_ok INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL DEFAULT '{}'
+  );
+  INSERT INTO proxmox_hosts_new(id,name,kind,url,token_id,secret,verify,ca,created_at,last_at,last_ok,last_error,data) SELECT id,name,kind,url,token_id,secret,verify,ca,created_at,last_at,last_ok,last_error,data FROM proxmox_hosts;
+  DROP TABLE proxmox_hosts;
+  ALTER TABLE proxmox_hosts_new RENAME TO proxmox_hosts;
+  ` },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

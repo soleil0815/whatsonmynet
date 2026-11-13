@@ -160,7 +160,7 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
     return x.value === 'running' ? { ok: true, ms: null, message: `${label}: running`, data } : { ok: false, ms: null, message: `${label}: ${x.value}`, data: { state: x.value, node: x.node || '' } };
   }
   if (x.value === null || x.value === undefined) {
-    return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found' : 'no value - the token probably lacks read rights (Monitoring → Proxmox)'}` };
+    return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found' : 'no value - the account probably lacks read rights (Monitoring → Virtualization)'}` };
   }
   const alarm = compare(o.op, x.value, o.threshold);
   const extra = x.total ? { used: x.used, total: x.total } : {};
