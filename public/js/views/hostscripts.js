@@ -95,6 +95,7 @@ export function systemPanel(x) {
         : h('p', { class: 'muted small', style: { margin: 0 } }, t('hs.servicesOk', { n: running }))] : null,
     x.ups ? [h('h3', { class: 'sub-title' }, x.ups.source === 'battery' ? t('ups.titleBattery') : t('ups.title')), upsBlock(x.ups)] : null,
     careBlock(x),
+    tempsBlock(x.temps),
     pdisksBlock(x.pdisks),
     eventsBlock(x.events),
     certsBlock(x.certs),
@@ -164,6 +165,14 @@ function hwBlock(hw) {
   ])];
 }
 const speedText = (mbit) => (mbit >= 1000 ? `${mbit / 1000} Gbit/s` : `${mbit} Mbit/s`);
+
+/** Temperatures (Linux: hwmon): one chip each, hottest first; over the chip's own limit yellow, at its critical limit red */
+function tempsBlock(list) {
+  if (!list?.length) return null;
+  const tone = (x) => (x.crit !== null && x.crit !== undefined && x.c >= x.crit ? 'bad' : x.c >= x.warn ? 'new' : '');
+  return [sub(t('host.temps')), h('div', { class: 'chips' }, [...list].sort((a, b) => b.c - a.c).map((x) =>
+    h('span', { class: `badge ${tone(x) ? `badge-${tone(x)}` : ''}`, title: t('host.tempLimit', { warn: x.warn }) }, `${x.name} · ${x.c} °C`)))];
+}
 
 function pdisksBlock(list) {
   if (!list?.length) return null;

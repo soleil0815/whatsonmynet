@@ -161,6 +161,8 @@ The check runs over SMB 2/3: sign in, read the share (or the folder or file), as
 
 WhatsOnMyNet reads Proxmox VE and the Proxmox Backup Server through their built-in interface (API). Nothing is installed on Proxmox. WhatsOnMyNet gets a user of its own there that may **only read**, and a key for it (API token). The dialog *Monitoring → Virtualization → Add host → Proxmox VE* shows the same steps, with a button to copy.
 
+**Temperatures of the nodes:** the Proxmox interface knows no temperatures. If a node also runs the Linux script (see *Windows and Linux machines by script*), its highest temperature is shown at the node on the virtualisation page, and you add the sensors for it on the device of the node. They are matched by name: node `pve1` ↔ machine `pve1` or `pve1.firma.local`.
+
 ### Step 1: prepare Proxmox (once)
 
 **With commands (recommended) - Proxmox VE**
@@ -297,8 +299,9 @@ On top comes what an administrator wants to know about a server. Everything is o
 - **Events:** critical entries and errors of the last 24 hours (Windows: system log, Linux: journal), the newest ten with text.
 - **Certificates** of the machine (Windows, store "Personal" of the computer), with days until they expire.
 - **Hardware:** manufacturer, model, serial number, BIOS, processors, memory modules and network cards. Manufacturer, model and serial number also go into the inventory. On Linux, serial number and memory modules only come as root (`dmidecode`).
+- **Temperatures (Linux):** CPU, NVMe, chipset and - depending on the mainboard - further sensors, straight from the kernel (`/sys/class/hwmon`, the same source as `sensors`). Nothing has to be installed, not even lm-sensors, and root is not needed. The warning limit is the one the chip names itself, otherwise 80 °C. Sensors: *Temperature* (one sensor) or *Temperature: the highest* (all together, alarm from 85 °C). If a mainboard sensor is missing, the kernel does not load its driver by itself - `sensors-detect` from lm-sensors finds it and adds it to `/etc/modules`.
 
-Fans, power supplies, mainboard temperatures and RAID controllers are usually unknown to the operating system. They come from the management chip of the server (see *Server hardware* above).
+Fans, power supplies, further temperatures and RAID controllers are usually unknown to the operating system. They come from the management chip of the server (see *Server hardware* above).
 
 The script installs nothing, loads nothing, opens no port and needs no account - it only sends to WhatsOnMyNet. (On Windows the update search asks the WSUS server or Windows Update, like Windows itself.) On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
 

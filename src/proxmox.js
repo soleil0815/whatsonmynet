@@ -12,7 +12,7 @@ import { log } from './lib/log.js';
 import { fetchTlsChain, describe, publiclyTrusted, toPem } from './auth/dccert.js';
 import { NET_KINDS, NET_READERS } from './netctl.js';
 import { fillDevice } from './devicefill.js';
-import { serverBase } from './hosts.js';
+import { serverBase, hostTempsByName } from './hosts.js';
 import { readRedfish, redfishMetrics, labelSerial } from './redfish.js';
 import { READERS, API_KINDS, PUSH_KINDS, newPushToken, pushTokenOk, cleanPush, mergePush, markStale, pushScript } from './virt.js';
 
@@ -207,8 +207,15 @@ export function createProxmox({ db, settings }) {
   const rowOf = (id) => db.prepare('SELECT * FROM proxmox_hosts WHERE id=?').get(id);
   const withSecret = (h) => { let s = ''; try { s = h.secret ? decrypt(h.secret) : ''; } catch { s = ''; } return { ...h, secretPlain: s }; };
   const caInfo = (pem) => { try { return pem ? describe(new crypto.X509Certificate(pem)) : null; } catch { return null; } };
+  // Nodes that also run the Linux script get its hottest temperature (Proxmox itself gives none)
+  const withTemps = (data) => {
+    if (!Array.isArray(data?.nodes) || !data.nodes.length) return data;
+    const temps = hostTempsByName(db);
+    if (!temps.size) return data;
+    return { ...data, nodes: data.nodes.map((n) => { const x = temps.get(String(n.name || '').toLowerCase().split('.')[0]); return x && !x.stale ? { ...n, temp: x } : n; }) };
+  };
   const shape = (h) => (h ? { id: h.id, name: h.name, kind: h.kind, url: h.url, token_id: h.token_id, has_secret: !!h.secret, verify: !!h.verify, ca: h.ca, ca_info: caInfo(h.ca),
-    created_at: h.created_at, last_at: h.last_at, last_ok: !!h.last_ok, last_error: h.last_error, data: parse(h.data, {}) } : null);
+    created_at: h.created_at, last_at: h.last_at, last_ok: !!h.last_ok, last_error: h.last_error, data: withTemps(parse(h.data, {})) } : null);
 
   const hostPort = (u) => { try { const x = new URL(u); return `${x.hostname.toLowerCase()}:${x.port || (x.protocol === 'http:' ? 80 : 443)}`; } catch { return String(u); } };
   function clean(input, old = null) {
