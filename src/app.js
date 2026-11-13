@@ -21,6 +21,7 @@ import { createPrinters } from './printers.js';
 import { createDockerHosts } from './monitor/docker.js';
 import { createSnmpDevices } from './snmpdevices.js';
 import { createHosts } from './hosts.js';
+import { syncStoredFacts } from './devicefill.js';
 import { createDirectory } from './auth/directory.js';
 import { createAgents } from './agents.js';
 import { createReports } from './reports.js';
@@ -75,6 +76,8 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   const dockerHosts = createDockerHosts(db);
   const snmpDevices = createSnmpDevices({ db, settings, channels });
   const hosts = createHosts({ db });
+  // Serial numbers etc. already polled before this version knew how to take them over
+  try { const n = syncStoredFacts(db); if (n) log.info(`Device details taken over from earlier polls: ${n} device(s)`); } catch (e) { log.warn(`Device details: ${e.message}`); }
   const directory = createDirectory(settings);
   const agents = createAgents({ db, settings, inventory, scanner });
   const reports = createReports({ db, settings, mailer });
