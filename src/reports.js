@@ -6,7 +6,7 @@ import { log } from './lib/log.js';
 import { nasProblems } from './scan/nas.js';
 import { localDay } from './scan/nightly.js';
 
-export const SECTIONS = ['printers', 'nas', 'switches'];
+export const SECTIONS = ['printers', 'nas', 'switches', 'shares'];
 const EMAIL = /^[^\s@,;<>]{1,64}@[^\s@,;<>]{1,253}\.[^\s@,;<>]{2,}$/;
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const WINDOW_MIN = 4 * 60;
@@ -15,7 +15,8 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 const T = {
   de: {
-    subject: 'Gerätestatus – KW {week}', printers: 'Drucker', nas: 'Speichersysteme (NAS)', switches: 'Switches',
+    subject: 'Gerätestatus – KW {week}', printers: 'Drucker', nas: 'Speichersysteme (NAS)', switches: 'Switches', shares: 'Netzlaufwerke',
+    freeOf: '{free} frei von {total}',
     order: 'bitte nachbestellen', nearlyFull: 'fast voll', empty: 'leer', full: 'voll', free: '{pct} % frei', some: 'vorhanden', unknown: 'unbekannt',
     unreachable: 'zurzeit nicht erreichbar', pages: 'Seiten gesamt', state: 'Zustand', ok: 'in Ordnung', attention: 'Handlungsbedarf',
     volume: 'Speicher', disks: 'Festplatten', temp: 'Temperatur', portsUp: '{up} von {n} Anschlüssen verbunden', none: 'Keine Geräte in diesem Bericht.',
@@ -25,7 +26,8 @@ const T = {
     st: { systemPartitionFailed: 'Systempartition defekt', crashed: 'ausgefallen', degrade: 'eingeschränkt', rwError: 'Lese-/Schreibfehler', invalid: 'ungültig', raidUnknownStatus: 'unbekannter Zustand' },
   },
   en: {
-    subject: 'Device status – week {week}', printers: 'Printers', nas: 'Storage (NAS)', switches: 'Switches',
+    subject: 'Device status – week {week}', printers: 'Printers', nas: 'Storage (NAS)', switches: 'Switches', shares: 'Network drives',
+    freeOf: '{free} free of {total}',
     order: 'please order', nearlyFull: 'almost full', empty: 'empty', full: 'full', free: '{pct} % free', some: 'available', unknown: 'unknown',
     unreachable: 'currently not reachable', pages: 'Pages in total', state: 'State', ok: 'fine', attention: 'Action needed',
     volume: 'Storage', disks: 'Disks', temp: 'Temperature', portsUp: '{up} of {n} ports connected', none: 'No devices in this report.',
@@ -141,12 +143,37 @@ export function createReports({ db, settings, mailer }) {
     });
   }
 
+  /** Network drives: the SMB monitors with their last measured free space */
+  function shareItems(locs, L) {
+    const lang = L === T.en ? 'en-GB' : 'de-DE';
+    const size = (n) => {
+      const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+      let v = Number(n) || 0; let i = 0;
+      while (v >= 1000 && i < units.length - 1) { v /= 1000; i++; }
+      return `${v.toLocaleString(lang, { maximumFractionDigits: v >= 100 || i === 0 ? 0 : 1 })} ${units[i]}`;
+    };
+    return db.prepare(`SELECT m.*, d.location_id, l.name location FROM monitors m LEFT JOIN devices d ON d.id=m.device_id
+      LEFT JOIN locations l ON l.id=d.location_id WHERE m.type='smb' AND m.enabled=1 ORDER BY m.name`).all()
+      .filter((m) => !locs.length || locs.includes(m.location_id))
+      .map((m) => {
+        const o = parse(m.options, {});
+        const data = parse(m.data, {});
+        const unc = `\\\\${m.target}\\${o.share || ''}${o.path ? `\\${o.path}` : ''}`;
+        const low = !!data.low;
+        const unreachable = m.status === 'down' && !low;
+        const bars = data.total ? [{ label: L.volume,
+          value: `${fill(L.freeOf, { free: size(data.free), total: size(data.total) })} (${Number(data.pct).toLocaleString(lang)} %)`,
+          fill: Math.max(0, Math.min(100, 100 - data.pct)), color: '#3f7f8c', low, lowText: L.nearlyFull }] : [];
+        return { name: m.name, sub: [unc, m.location].filter(Boolean).join(' · '), supplies: bars, notes: [], unreachable, attention: unreachable || low };
+      });
+  }
+
   /** { subject, html, text, count, attention } */
   function render(r, now = new Date()) {
     const L = T[r.language] || T.de;
     const vars = { week: isoWeek(now), kw: isoWeek(now), date: now.toLocaleDateString(r.language === 'en' ? 'en-GB' : 'de-DE'), datum: now.toLocaleDateString('de-DE') };
     const subject = fill(r.subject || L.subject, vars);
-    const builders = { printers: printerItems, nas: nasItems, switches: switchItems };
+    const builders = { printers: printerItems, nas: nasItems, switches: switchItems, shares: shareItems };
     const groups = r.sections.map((sec) => {
       let items = builders[sec](r.location_ids, L);
       if (r.only_attention) items = items.filter((i) => i.attention);

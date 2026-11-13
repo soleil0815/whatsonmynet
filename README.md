@@ -65,6 +65,10 @@ Wie bei PRTG lässt sich jeder Wert, den ein Gerät liefert, als eigener Monitor
 - **SNMP-Wert (OID)**: jeder per SNMP lesbare Wert mit eigener Bedingung (kleiner, größer, gleich, enthält Text …) – z. B. Restlaufzeit einer USV, Temperatur einer Klimaanlage, Sitzungen einer Firewall.
 - Der Verlauf zeigt den gemessenen Wert über 24 Stunden bis 7 Tage.
 
+### Netzlaufwerke (ab Version 0.4)
+
+Der Typ **Netzlaufwerk (SMB)** meldet sich an einer Windows- oder NAS-Freigabe an (z. B. `\\fs01\Abteilung`), liest sie oder einen bestimmten Ordner und fragt den freien Platz ab – über SMB 2/3 und nur lesend. Gemeldet wird, wenn die Anmeldung scheitert (Passwort abgelaufen, Konto gesperrt), die Freigabe oder der Ordner fehlt, der Zugriff verweigert wird oder weniger als … % bzw. … GB frei sind. Am besten ein eigenes Konto nur mit Leserecht verwenden; das Passwort wird verschlüsselt gespeichert und nur über die Umgebung an `smbclient` übergeben, nie auf der Befehlszeile. Im Bericht gibt es den Abschnitt *Netzlaufwerke* mit dem freien Platz.
+
 ## Installation
 
 Voraussetzung: ein **Linux-Host mit Docker** (Server, VM, Proxmox-LXC mit Docker, Synology Container Manager). WhatsOnMyNet läuft im **Host-Netzwerk** – nur so sieht es die MAC-Adressen deiner Geräte. Docker Desktop unter Windows oder macOS sieht das echte Netz nicht und eignet sich deshalb nicht.
@@ -176,7 +180,7 @@ Unter *Einstellungen → Proxmox* liest WhatsOnMyNet Proxmox VE und Proxmox Back
 
 Unter *Einstellungen → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Berichte per E-Mail – zum Beispiel jeden Montag um 8 Uhr die Tonerstände aller Drucker ans Büro, oder monatlich den Zustand der NAS.
 
-- **Inhalt**: Drucker (Toner je Farbe, Trommel, Resttoner, Seitenzähler, Störungen), NAS (Belegung, Platten, Temperatur) und Switches; auf Standorte beschränkbar, wahlweise nur Geräte mit Handlungsbedarf. Was bald nachbestellt werden muss, ist rot markiert.
+- **Inhalt**: Drucker (Toner je Farbe, Trommel, Resttoner, Seitenzähler, Störungen), NAS (Belegung, Platten, Temperatur), Switches und Netzlaufwerke (freier Platz); auf Standorte beschränkbar, wahlweise nur Geräte mit Handlungsbedarf. Was bald nachbestellt werden muss, ist rot markiert.
 - **Neutral**: Die Mail enthält keinen Link und keinen Programmnamen – nur deinen Absendernamen, Betreff (`{kw}`, `{datum}`), Einleitung, die Geräte und deinen Gruß, z. B. „Ihre freundliche IT“.
 - Zeitplan täglich, wöchentlich oder monatlich; Vorschau, „Test an mich“ und „Jetzt senden“ direkt in den Einstellungen.
 

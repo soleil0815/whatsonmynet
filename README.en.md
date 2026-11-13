@@ -65,6 +65,10 @@ Like in PRTG, every value a device delivers can be watched as a monitor of its o
 - **SNMP value (OID)**: any value readable via SNMP with its own condition (less, greater, equal, contains text …) – e.g. runtime left of a UPS, temperature of an air conditioner, sessions of a firewall.
 - The history shows the measured value over 24 hours up to 7 days.
 
+### Network drives (from version 0.4)
+
+The kind **Network drive (SMB)** signs in to a Windows or NAS share (e.g. `\\fs01\Department`), reads it or a given folder and asks for the free space – over SMB 2/3 and read-only. It reports when the sign-in fails (password expired, account locked), the share or folder is missing, access is denied or less than … % or … GB are free. Best use an account of its own with read rights only; the password is stored encrypted and handed to `smbclient` only through the environment, never on the command line. Reports have the section *Network drives* with the free space.
+
 ## Installation
 
 Requirement: a **Linux host with Docker** (server, VM, Proxmox LXC with Docker, Synology Container Manager). WhatsOnMyNet runs in the **host network** – only this way it sees the MAC addresses of your devices. Docker Desktop on Windows or macOS does not see the real network and is therefore not suitable.
@@ -176,7 +180,7 @@ Under *Settings → Proxmox* WhatsOnMyNet reads Proxmox VE and Proxmox Backup Se
 
 Under *Settings → Reports* WhatsOnMyNet sends reports by e-mail at set times – e.g. the toner levels of all printers to the office every Monday at 8:00, or the state of the NAS once a month.
 
-- **Content**: printers (toner per colour, drum, waste toner, page counter, faults), NAS (usage, disks, temperature) and switches; can be limited to locations, optionally only devices that need action. What should be ordered soon is marked red.
+- **Content**: printers (toner per colour, drum, waste toner, page counter, faults), NAS (usage, disks, temperature), switches and network drives (free space); can be limited to locations, optionally only devices that need action. What should be ordered soon is marked red.
 - **Neutral**: the mail has no link and no program name – only your sender name, subject (`{week}`, `{date}`), introduction, the devices and your closing, e.g. "Your IT team".
 - Schedule daily, weekly or monthly; preview, "Test to me" and "Send now" right in the settings.
 

@@ -24,12 +24,14 @@ LABEL org.opencontainers.image.title="WhatsOnMyNet" \
 
 # openssl: creates the self-signed certificate and reads uploaded .pfx files
 # iputils-ping: ICMP echo without root (if the host allows unprivileged ping)
+# samba-client: smbclient for the network drive check (sign in, read, free space – read-only commands only)
 # npm, corepack and yarn of the base image are not needed at runtime – removed (smaller attack surface)
-RUN apk add --no-cache tini su-exec tzdata openssl iputils-ping \
+RUN apk add --no-cache tini su-exec tzdata openssl iputils-ping samba-client \
  && apk upgrade --no-cache \
  && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
            /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
-           /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
+           /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+ && smbclient --version
 
 WORKDIR /app
 ENV NODE_ENV=production \
