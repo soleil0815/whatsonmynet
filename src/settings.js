@@ -30,6 +30,9 @@ export const DEFAULTS = {
   'nas.threshold': 90,            // % - report a volume at or above this
   'nas.notify': true,
   'nas.channels': [],
+  // Escalation: an outage not solved after this many minutes goes to these channels too (0 = off)
+  'escalate.min': 0,
+  'escalate.channels': [],
   // Active Directory / LDAP sign-in
   'ad.enabled': false,
   'ad.url': '',                   // ldaps://dc01.firma.local or ldap://… with StartTLS

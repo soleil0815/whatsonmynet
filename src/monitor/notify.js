@@ -16,6 +16,7 @@ export function setTelegramApiForTests(url) { telegramApi = url; }
 const TEXT = {
   de: {
     down: '🔴 {name} ist nicht erreichbar - {message}',
+    escalate: '🚨 Eskalation: {name} ist seit {min} Min. nicht erreichbar - {message}',
     up: '🟢 {name} ist wieder erreichbar{downtime}',
     downtime: ' (Ausfall {min} Min.)',
     cert: '🟠 Das Zertifikat von {name} läuft in {days} Tagen ab ({date}).',
@@ -38,6 +39,7 @@ const TEXT = {
   },
   en: {
     down: '🔴 {name} is down - {message}',
+    escalate: '🚨 Escalation: {name} has been down for {min} min - {message}',
     up: '🟢 {name} is up again{downtime}',
     downtime: ' (down for {min} min)',
     cert: '🟠 The certificate of {name} expires in {days} days ({date}).',
@@ -69,6 +71,7 @@ export function eventText(ev, lang = 'de') {
   const date = ev.certValidTo ? new Date(ev.certValidTo).toLocaleDateString(lang === 'en' ? 'en-GB' : 'de-DE', { timeZone: process.env.TZ || undefined }) : '';
   switch (ev.kind) {
     case 'down': return fill(T.down, { name, message: ev.message || '' });
+    case 'escalate': return fill(T.escalate, { name, min: ev.downMin ?? '', message: ev.message || '' });
     case 'up': return fill(T.up, { name, downtime: ev.downtimeMin ? fill(T.downtime, { min: ev.downtimeMin }) : '' });
     case 'cert': return ev.certDays < 0 ? fill(T.certExpired, { name, date }) : fill(T.cert, { name, days: ev.certDays, date });
     case 'newDevices': {
@@ -214,7 +217,7 @@ export function createChannels(db, mailer) {
     const more = details(ev, lang);
     if (PROVIDERS[row.type]) {
       const textPlain = text.replace(/^\S+\s/, '');
-      const urgent = ev.kind === 'down' || (ev.kind === 'cert' && ev.certDays < 0) || (ev.kind === 'supply' && ev.empty) || (ev.kind === 'nas' && !ev.problem?.solved);
+      const urgent = ev.kind === 'down' || ev.kind === 'escalate' || (ev.kind === 'cert' && ev.certDays < 0) || (ev.kind === 'supply' && ev.empty) || (ev.kind === 'nas' && !ev.problem?.solved);
       const good = ev.kind === 'up' || ev.kind === 'test' || (ev.kind === 'nas' && !!ev.problem?.solved);
       try {
         await sendProvider(row.type, c, { title: 'WhatsOnMyNet', text, textPlain, more, full: `${text}${more ? `\n${more}` : ''}`, urgent, good });
@@ -232,7 +235,7 @@ export function createChannels(db, mailer) {
         throw new Error(`Telegram: ${String(why).replace(c.token, '***')}`);
       }
     } else {
-      const vars = { event: ev.kind, status: ev.kind === 'up' ? 'up' : ev.kind === 'down' ? 'down' : ev.kind, name: ev.monitor?.name || ev.device?.name || '', target: ev.monitor?.target || ev.device?.ip || '',
+      const vars = { event: ev.kind, status: ev.kind === 'up' ? 'up' : ev.kind === 'down' || ev.kind === 'escalate' ? 'down' : ev.kind, name: ev.monitor?.name || ev.device?.name || '', target: ev.monitor?.target || ev.device?.ip || '',
         message: ev.message || '', text, time: new Date(ev.at || Date.now()).toISOString(), url: ev.monitor?.target || '' };
       const body = c.template ? renderTemplate(c.template, vars)
         : { event: ev.kind, text, monitor: ev.monitor ? { id: ev.monitor.id, name: ev.monitor.name, target: ev.monitor.target } : null,
