@@ -72,6 +72,39 @@ test('ignored devices', () => {
   assert.deepEqual(b.ids.map((id) => db.prepare('SELECT status FROM scan_results WHERE id=?').get(id).status), ['ignored', 'ignored']);
 });
 
+test('ignored devices can be taken off the ignore list again', () => {
+  const db = memoryDb();
+  const inv = createInventory(db);
+  const a = scanWith(db, [{ ip: '192.168.1.50', mac: 'da:a1:19:00:00:01' }, { ip: '10.9.9.9', mac: null }, { ip: '192.168.1.52', mac: 'da:a1:19:00:00:03' }]);
+  a.ids.forEach((id) => inv.applyResult(id));
+  assert.equal(inv.ignore(a.ids, 'michael'), 3);
+  // in the same scan: back to "new", off the list (by MAC and by IP)
+  assert.equal(inv.unignore(a.ids.slice(0, 2)), 2);
+  const st = (id) => db.prepare('SELECT status, handled FROM scan_results WHERE id=?').get(id);
+  assert.deepEqual({ ...st(a.ids[0]) }, { status: 'new', handled: null });
+  assert.deepEqual({ ...st(a.ids[1]) }, { status: 'new', handled: null });
+  assert.deepEqual(db.prepare('SELECT mac, ip FROM ignored').all().map((x) => ({ ...x })), [{ mac: 'da:a1:19:00:00:03', ip: '192.168.1.52' }]);
+  // a later scan: found again, it counts as new; the one still ignored stays ignored
+  const b = scanWith(db, [{ ip: '192.168.1.50', mac: 'da:a1:19:00:00:01' }, { ip: '10.9.9.9', mac: null }, { ip: '192.168.1.52', mac: 'da:a1:19:00:00:03' }]);
+  b.ids.forEach((id) => inv.applyResult(id));
+  assert.deepEqual(b.ids.map((id) => st(id).status), ['new', 'new', 'ignored']);
+  // only ignored results are touched, and nothing twice
+  assert.equal(inv.unignore([b.ids[0], 999999]), 0);
+});
+
+test('adopting an ignored device without MAC takes it off the ignore list', () => {
+  const db = memoryDb();
+  const inv = createInventory(db);
+  const a = scanWith(db, [{ ip: '10.9.9.9', mac: null }]);
+  inv.applyResult(a.ids[0]);
+  inv.ignore(a.ids, 'michael');
+  const b = scanWith(db, [{ ip: '10.9.9.9', mac: null }]);
+  inv.applyResult(b.ids[0]);
+  assert.equal(db.prepare('SELECT status FROM scan_results WHERE id=?').get(b.ids[0]).status, 'ignored');
+  assert.equal(inv.adopt(b.ids, {}, 'michael').length, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM ignored').get().n, 0);
+});
+
 test('devices without MAC are matched by IP', () => {
   const db = memoryDb();
   const inv = createInventory(db);
