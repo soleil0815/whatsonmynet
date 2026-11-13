@@ -14,6 +14,7 @@ import { renderHelp } from './views/help.js';
 import { renderSettings, renderProxmox, renderControllers, renderReports } from './views/settings.js';
 import { renderAccount } from './views/account.js';
 import { renderMonitoring } from './views/monitoring.js';
+import { openAbout } from './views/about.js';
 
 export const state = { user: null, boot: null, meta: null, waiting: 0, down: 0 };
 const root = document.getElementById('app');
@@ -88,7 +89,8 @@ function sidebar(active) {
         link('/account', 'account', 'user'),
         h('a', { href: '#', onclick: async (e) => { e.preventDefault(); await post('/logout').catch(() => {}); state.user = null; navigate('/login'); } },
           h('span', { html: icon('logout') }), t('nav.logout'))),
-      h('div', { class: 'version' }, `WhatsOnMyNet ${state.boot.version}`)),
+      // For everyone: version, source code (AGPL), what is new
+      h('button', { type: 'button', class: 'version', title: t('about.title'), onclick: openAbout }, `WhatsOnMyNet ${state.boot.version}`)),
   );
 }
 

@@ -250,6 +250,12 @@ Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle S
 
 **Handbuch neu bauen** (nach Änderungen an `public/help/manual.*.md` oder den Bildern): `node tools/build-manual.mjs` - braucht Playwright mit Chromium, ImageMagick macht die PDFs kleiner.
 
+## Unterstützen
+
+WhatsOnMyNet entsteht in der Freizeit. Wenn es dir hilft, freue ich mich über einen [Kaffee](https://buymeacoffee.com/soleil0815). Mehr von mir: [helfi.space](https://helfi.space).
+
+Was sich in welcher Version geändert hat, steht im Programm selbst: Klick unten links auf die Versionsnummer (*Über WhatsOnMyNet → Was ist neu*), oder unter [Releases](https://github.com/soleil0815/whatsonmynet/releases).
+
 ## Lizenz
 
 WhatsOnMyNet ist Open Source unter der [GNU Affero General Public License 3.0](LICENSE) (AGPL-3.0-or-later). Wer eine veränderte Fassung im Netz anbietet, muss deren Quellcode zugänglich machen (`WOMN_SOURCE_URL`).
