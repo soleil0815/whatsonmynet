@@ -20,7 +20,8 @@ export function historyText(r) {
     case 'change': return t('hist.change', { field: FIELD_LABEL(d.field), from: d.from || '–', to: d.to || '–' });
     case 'edit': return t('hist.edit', { fields: (d.fields || []).map((f) => FIELD_LABEL(f.field)).join(', ') });
     case 'deep': return t('hist.deep', { n: d.ports ?? 0 });
-    case 'snmp': return t('hist.snmp', { fields: (d.fields || []).map((f) => `${FIELD_LABEL(f.field)} ${f.to}`).join(', ') });
+    case 'snmp': return t(d.source === 'script' ? 'hist.script' : 'hist.snmp', { fields: (d.fields || []).map((f) => (f.from ? `${FIELD_LABEL(f.field)} ${f.from} → ${f.to}` : `${FIELD_LABEL(f.field)} ${f.to}`)).join(', ') });
+    case 'replaced': return t('hist.replaced', { from: d.from, to: d.to });
     default: return r.kind;
   }
 }

@@ -603,3 +603,4 @@ pre.code.wrap { white-space: pre-wrap; word-break: break-all; }
 .ch-group + .ch-group { margin-top: 16px; }
 .ch-group .pick { padding: 10px 12px; }
 .ch-group .sub-title { margin-top: 0; margin-bottom: 8px; }
+.timeline li.replaced::before { background: var(--new-fill); }
