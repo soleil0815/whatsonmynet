@@ -242,3 +242,79 @@ test('channels: webhook and Telegram are sent, secrets never shown or logged', a
   await assert.rejects(ch.test(bad.id), (e) => e.code === 'err.channelFailed' && !String(e.detail).includes('BAD') && /Unauthorized/.test(e.detail));
   srv.close();
 });
+
+test('dependencies: behind a failed switch no alarm flood, own problem reported once the switch is back', async () => {
+  const { db, sent, mon, clock } = setup();
+  const sw = await mon.create({ name: 'Switch Keller', type: 'tcp', target: '10.0.0.2', port: 22, fail_threshold: 2 });
+  const nas = await mon.create({ name: 'NAS', type: 'tcp', target: '10.0.0.20', port: 445, fail_threshold: 1, parent_id: sw.id });
+  const cam = await mon.create({ name: 'Kamera', type: 'tcp', target: '10.0.0.30', port: 22, fail_threshold: 1, parent_id: sw.id });
+  for (const m of [sw, nas, cam]) await mon.record(m, { ok: true, ms: 1, message: 'ok' });
+  // Everything fails at once; the NAS reaches its threshold before the switch: it waits for the switch
+  tick(clock);
+  await mon.record(sw, { ok: false, message: 'no answer' });
+  await mon.record(nas, { ok: false, message: 'timeout' });
+  assert.equal(mon.get(nas.id).status, 'pending');
+  assert.equal(sent.length, 0);
+  tick(clock);
+  await mon.record(sw, { ok: false, message: 'no answer' });
+  assert.equal(mon.get(sw.id).status, 'down');
+  await mon.record(nas, { ok: false, message: 'timeout' });
+  await mon.record(cam, { ok: false, message: 'no answer' });
+  assert.equal(mon.get(nas.id).status, 'unreachable');
+  assert.equal(mon.get(cam.id).status, 'unreachable');
+  assert.deepEqual(sent.map((e) => e.kind), ['down'], 'only the switch is reported');
+  const ev = db.prepare("SELECT message FROM monitor_events WHERE monitor_id=? AND kind='unreachable'").get(nas.id);
+  assert.equal(ev.message, 'Switch Keller');
+  assert.equal(mon.summary().unreachable, 2);
+  assert.equal(mon.summary().down.length, 1);
+  // Switch back: the camera is fine again (no "up" message - there was no alarm), the NAS still fails → its own alarm
+  tick(clock, 600);
+  await mon.record(sw, { ok: true, ms: 1, message: 'ok' });
+  await mon.record(cam, { ok: true, ms: 1, message: 'ok' });
+  await mon.record(nas, { ok: false, message: 'timeout' });
+  assert.equal(mon.get(cam.id).status, 'up');
+  assert.equal(mon.get(nas.id).status, 'down');
+  assert.deepEqual(sent.map((e) => `${e.kind}:${e.monitor.name}`), ['down:Switch Keller', 'up:Switch Keller', 'down:NAS']);
+  const d = mon.detail(sw.id);
+  assert.deepEqual(d.dependents.map((x) => x.name), ['Kamera', 'NAS']);
+  assert.equal(mon.detail(nas.id).parent.name, 'Switch Keller');
+});
+
+test('dependencies: no circles, unknown parent refused, deleting the parent frees the others', async () => {
+  const { db, mon } = setup();
+  const a = await mon.create({ name: 'Router', type: 'tcp', target: '10.0.0.1', port: 22 });
+  const b = await mon.create({ name: 'Switch', type: 'tcp', target: '10.0.0.2', port: 22, parent_id: a.id });
+  const c = await mon.create({ name: 'Server', type: 'tcp', target: '10.0.0.3', port: 22, parent_id: b.id });
+  await assert.rejects(mon.update(a.id, { parent_id: c.id }), /err.parentCycle/);
+  await assert.rejects(mon.update(a.id, { parent_id: a.id }), /err.parentCycle/);
+  await assert.rejects(mon.create({ name: 'X', type: 'tcp', target: '10.0.0.9', port: 22, parent_id: 999 }), /err.parentMonitor/);
+  // An edit without parent_id keeps it; empty removes it
+  await mon.update(c.id, { name: 'Server 1' });
+  assert.equal(mon.get(c.id).parent_id, b.id);
+  await mon.update(c.id, { parent_id: '' });
+  assert.equal(mon.get(c.id).parent_id, null);
+  mon.remove(a.id);
+  assert.equal(db.prepare('SELECT parent_id FROM monitors WHERE id=?').get(b.id).parent_id, null);
+});
+
+test('dependencies: the switch a device is plugged in at is suggested and can take all devices behind it', async () => {
+  const { db, mon } = setup();
+  const now = '2026-11-12T10:00:00Z';
+  const dev = (name, ip, mac, type = 'server') => Number(db.prepare(`INSERT INTO devices(name,ip,mac,type,created_at,updated_at,first_seen,last_seen)
+    VALUES(?,?,?,?,?,?,?,?)`).run(name, ip, mac, type, now, now, now, now).lastInsertRowid);
+  const sw = dev('Switch Keller', '10.0.0.2', 'aa:00:00:00:00:02', 'switch');
+  const nas = dev('NAS', '10.0.0.20', 'aa:00:00:00:00:20', 'nas');
+  const cam = dev('Kamera', '10.0.0.30', 'aa:00:00:00:00:30', 'camera');
+  const mac = db.prepare('INSERT INTO switch_macs(switch_id,mac,if_index,port,vlan,seen_at) VALUES(?,?,?,?,?,?)');
+  mac.run(sw, 'aa:00:00:00:00:20', 3, 'Port 3', 1, now);
+  mac.run(sw, 'aa:00:00:00:00:30', 4, 'Port 4', 1, now);
+  const swMon = await mon.create({ name: 'Switch Keller', type: 'tcp', target: '10.0.0.2', port: 22, device_id: sw });
+  const s = await mon.suggestionFor(nas);
+  assert.equal(s.parent_id, swMon.id);
+  await mon.create({ name: 'NAS', type: 'tcp', target: '10.0.0.20', port: 22, device_id: nas });
+  await mon.create({ name: 'Kamera', type: 'tcp', target: '10.0.0.30', port: 22, device_id: cam });
+  assert.equal(mon.detail(swMon.id).candidates, 2);
+  assert.equal(mon.adoptChildren(swMon.id), 2);
+  assert.equal(mon.detail(swMon.id).candidates, 0);
+  assert.deepEqual(mon.detail(swMon.id).dependents.map((x) => x.name), ['Kamera', 'NAS']);
+});

@@ -37,7 +37,8 @@ export async function renderDashboard(main) {
     items.push(todo('bad', 'pulse', t('dash.monDown', { n: mon.down.length }), t('dash.monDownSince', { when: fmtAgo(mon.down[mon.down.length - 1].since, t) }),
       { href: '/monitoring', label: t('dash.look') },
       h('div', { class: 'todo-chips' }, shown.map((m) => h('a', { href: `/monitoring/${m.id}`, 'data-link': true, title: m.message }, m.name)),
-        mon.down.length > shown.length ? h('span', {}, t('dash.more', { n: mon.down.length - shown.length })) : null)));
+        mon.down.length > shown.length ? h('span', {}, t('dash.more', { n: mon.down.length - shown.length })) : null,
+        mon.unreachable ? h('a', { href: '/monitoring?status=unreachable', 'data-link': true, class: 'muted' }, t('dash.unreachable', { n: mon.unreachable })) : null)));
   }
   if (d.missing) items.push(todo('bad', 'inventory', t('dash.missingN', { n: d.missing }), t('dash.missingDetail'), { href: '/inventory?filter=problems', label: t('dash.look') }));
   if (d.waiting) {

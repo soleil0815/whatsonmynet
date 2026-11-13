@@ -559,6 +559,10 @@ export const MIGRATIONS = [
   `,
   // 18: which device fields hold what the device itself reported (kept up to date; replaced on an exchanged device)
   `ALTER TABLE devices ADD COLUMN auto_fields TEXT NOT NULL DEFAULT '{}';`,
+  // 19: dependencies - a monitor behind another one (switch, router, internet line) is not reported on its own while
+  // that one is down; its status is then 'unreachable' (follow-up outage)
+  `ALTER TABLE monitors ADD COLUMN parent_id INTEGER REFERENCES monitors(id) ON DELETE SET NULL;
+   CREATE INDEX monitors_parent ON monitors(parent_id);`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
