@@ -44,7 +44,7 @@ WhatsOnMyNet monitors devices, services and websites and replaces Uptime Kuma fo
 - **Checks**: web (HTTP/HTTPS with valid status codes and an optional keyword), TCP port or ping, every 20 seconds up to 24 hours.
 - **No false alarms**: an alarm comes only after several failed checks in a row (default 3), the all-clear with the length of the outage. Optionally the alarm repeats while the outage lasts.
 - **Certificates**: for HTTPS the expiry date is read; warnings e.g. 30, 14 and 7 days before, each step once. Checking chain and name can be switched on for internet sites; LAN devices with self-signed certificates work without it.
-- **Notifications** under *Settings → Notifications*: email (through the SMTP server), Telegram bot (token from @BotFather, chat ID) and webhook with an own JSON template (`{{text}}`, `{{name}}`, `{{status}}`, `{{message}}`, `{{target}}`, `{{time}}`) and an optional header for a key. Token and header are stored encrypted. Every channel has a test message.
+- **Notifications** under *Settings → Notifications*: Discord, Slack, Microsoft Teams, Google Chat, Mattermost, Rocket.Chat, Matrix, Signal, WhatsApp (CallMeBot), ntfy, Gotify, Pushover, Pushbullet, Home Assistant and Apprise (more than 100 further services), each with a short guide in the form; also email (through the SMTP server), Telegram bot (token from @BotFather, chat ID) and webhook with an own JSON template (`{{text}}`, `{{name}}`, `{{status}}`, `{{message}}`, `{{target}}`, `{{time}}`) and an optional header for a key. Token and header are stored encrypted. Every channel has a test message.
 - **Maintenance windows** once or weekly (also across midnight), for all or selected monitors - no alarms meanwhile.
 - **Availability** over 24 hours, 7 and 30 days, response time chart, events showing who was notified.
 - **Devices**: on a device page, “Monitor” adds a fitting monitor (web interface, else ping or an open port). When the scan changes a device's IP address, its monitors follow.
@@ -106,7 +106,7 @@ Once a night (default 02:30 local time, `TZ` in `.env`) WhatsOnMyNet looks for d
 
 - Known devices get their new IP address automatically (the MAC address is the identity), their monitors follow.
 - Unknown devices wait in the scan result to be adopted or ignored; the overview shows how many are waiting.
-- **Report new devices**: a device that shows up for the very first time is reported once through the notification channels (email, Telegram, webhook). The first scan after the update only learns what is already there - no flood of notices.
+- **Report new devices**: a device that shows up for the very first time is reported once through the notification channels. The first scan after the update only learns what is already there - no flood of notices.
 - Time, channels and "Run now" under *Settings → Scan*. After a restart the scan is caught up to 4 hours later.
 
 ## Printers via SNMP (from version 0.3)

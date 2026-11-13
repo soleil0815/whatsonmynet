@@ -1,4 +1,5 @@
-// Notification channels: email (SMTP from the settings), Telegram bot, webhook (any URL, optional body template).
+// Notification channels: email (SMTP from the settings), Telegram bot, webhook (any URL, optional body template) and the
+// services in providers.js (Discord, Slack, Teams, ntfy, Pushover, Signal, Apprise …).
 // The configuration of a channel is stored encrypted; tokens and header values never go back to the browser.
 import http from 'node:http';
 import https from 'node:https';
@@ -6,8 +7,9 @@ import { encrypt, decrypt } from '../lib/crypto.js';
 import { HttpError, line, str, oneOf } from '../lib/http.js';
 import { log } from '../lib/log.js';
 import { config } from '../config.js';
+import { PROVIDERS, PROVIDER_TYPES, publicConfig, cleanProviderConfig, sendProvider } from './providers.js';
 
-export const CHANNEL_TYPES = ['email', 'telegram', 'webhook'];
+export const CHANNEL_TYPES = ['email', 'telegram', 'webhook', ...PROVIDER_TYPES];
 let telegramApi = 'https://api.telegram.org';
 export function setTelegramApiForTests(url) { telegramApi = url; }
 
@@ -141,11 +143,17 @@ export function createChannels(db, mailer) {
     if (row.type === 'email') out.config = { to: c.to || '' };
     if (row.type === 'telegram') out.config = { chatId: c.chatId || '', threadId: c.threadId || '', token: { set: !!c.token } };
     if (row.type === 'webhook') out.config = { url: c.url || '', template: c.template || '', headerName: c.headerName || '', headerValue: { set: !!c.headerValue } };
+    if (PROVIDERS[row.type]) out.config = publicConfig(row.type, c);
     return out;
   }
 
   function cleanConfig(type, input, old = {}) {
     const c = input && typeof input === 'object' ? input : {};
+    if (PROVIDERS[type]) {
+      const r = cleanProviderConfig(type, c, old);
+      if (r.bad) throw new HttpError(400, `err.chField.${r.bad}`);
+      return r.config;
+    }
     if (type === 'email') {
       const to = line(c.to, 1000).split(/[,;\s]+/).filter(Boolean);
       if (to.some((a) => !EMAILS_RE.test(a))) throw new HttpError(400, 'err.email');
@@ -204,7 +212,14 @@ export function createChannels(db, mailer) {
     const lang = row.language;
     const text = eventText(ev, lang);
     const more = details(ev, lang);
-    if (row.type === 'email') {
+    if (PROVIDERS[row.type]) {
+      const textPlain = text.replace(/^\S+\s/, '');
+      const urgent = ev.kind === 'down' || (ev.kind === 'cert' && ev.certDays < 0) || (ev.kind === 'supply' && ev.empty) || (ev.kind === 'nas' && !ev.problem?.solved);
+      const good = ev.kind === 'up' || ev.kind === 'test' || (ev.kind === 'nas' && !!ev.problem?.solved);
+      try {
+        await sendProvider(row.type, c, { title: 'WhatsOnMyNet', text, textPlain, more, full: `${text}${more ? `\n${more}` : ''}`, urgent, good });
+      } catch (e) { throw new Error(`${row.type}: ${e.message}`); }
+    } else if (row.type === 'email') {
       await mailer.send({ to: c.to, subject: fill(TEXT[lang === 'en' ? 'en' : 'de'].subject, { text: text.replace(/^\S+\s/, '') }), text: `${text}\n\n${more}`.trim() });
     } else if (row.type === 'telegram') {
       try {

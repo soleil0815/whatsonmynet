@@ -1,6 +1,6 @@
 # WhatsOnMyNet - Manual
 
-WhatsOnMyNet finds what runs on your network and keeps only what you adopt in the inventory. It also monitors devices, services and websites, reads printers, switches, NAS and Proxmox, and reports by e-mail, Telegram or webhook when something is wrong.
+WhatsOnMyNet finds what runs on your network and keeps only what you adopt in the inventory. It also monitors devices, services and websites, reads printers, switches, NAS and Proxmox, and reports by e-mail, messenger, push to the phone or webhook when something is wrong.
 
 ![Overview](img/dashboard-en.png)
 
@@ -58,7 +58,14 @@ On the device page "Monitor" creates a fitting monitor. If the IP of a device ch
 
 ![Monitor with history](img/monitor-en.png)
 
-**Notifications** (*Settings → Notifications*): e-mail (through the SMTP server), Telegram bot and webhook with your own JSON template. Every channel has a test message. **Maintenance windows** (once or weekly) suppress alarms.
+**Notifications** (*Settings → Notifications → Add channel*): choose the service, follow the short guide in the form, save and check with **Test message**.
+
+- **Common:** e-mail (through the SMTP server), Telegram bot, webhook with your own JSON template (e.g. for n8n or a script)
+- **Chat and messengers:** Discord, Slack, Microsoft Teams (Workflows), Google Chat, Mattermost, Rocket.Chat, Matrix/Element, Signal (through signal-cli-rest-api), WhatsApp (CallMeBot, to your own number)
+- **Push to the phone:** ntfy, Gotify, Pushover, Pushbullet, Home Assistant (companion app)
+- **Everything else:** Apprise - a bridge to more than 100 further services (SMS, Threema …)
+
+Tokens, keys and webhook addresses are stored encrypted and never shown again. Outages arrive with high priority on push services. **Maintenance windows** (once or weekly) suppress alarms.
 
 ## Printers, switches and NAS
 
