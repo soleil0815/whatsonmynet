@@ -183,8 +183,35 @@ Unter *Einstellungen → Berichte* gehen Berichte zu festen Zeiten per E-Mail ra
 
 - **Rollen**: *Administrator* (alles), *Bearbeiter* (scannen, übernehmen, pflegen, Monitore), *Nur lesen*.
 - **Standorte**: Bearbeiter und Leser lassen sich auf Standorte beschränken – sie sehen und ändern dann nur deren Geräte, Scans und Monitore.
-- **Active Directory** (*Einstellungen → Active Directory*): Anmeldung mit dem Windows-Konto über LDAPS oder StartTLS. Die Rolle kommt aus AD-Gruppen; wer in keiner Gruppe ist, kommt nicht herein. Lokale Konten haben bei gleichem Namen Vorrang. Unter *TLS-Zertifikat* holt „Zertifikat vom DC abrufen“ die Kette vom Domänencontroller (fehlende CAs über AIA oder aus dem AD); du vergleichst den Fingerabdruck mit certlm.msc und bestätigst.
+- **Active Directory**: Anmeldung mit dem Windows-Konto, siehe nächster Abschnitt.
 - **Zwei-Faktor-Anmeldung** (*Mein Konto*): QR-Code mit einer Authenticator-App scannen, Code bestätigen, Wiederherstellungscodes aufbewahren. Für Administratoren lässt sie sich unter *Einstellungen → Allgemein* verpflichtend machen.
+
+## Anmeldung mit Active Directory
+
+Mitarbeitende melden sich mit ihrem Windows-Konto an. Welche Rolle sie bekommen, steuern AD-Gruppen. Lokale Konten funktionieren weiter; bei gleichem Namen hat das lokale Konto Vorrang, so bleibt der lokale Admin der Notfallzugang.
+
+### Schritt 1: Im AD vorbereiten (einmalig)
+
+1. Ein **Dienstkonto** anlegen, z. B. `svc-womn`. Es braucht keine besonderen Rechte, ein normales Domänenkonto mit Passwort genügt.
+2. Bis zu drei **Gruppen** anlegen, z. B. `WOMN-Admins`, `WOMN-Bearbeiter` und `WOMN-Lesen`, und die Mitarbeitenden hineinlegen. Gruppen in Gruppen werden berücksichtigt.
+
+### Schritt 2: In WhatsOnMyNet eintragen
+
+1. *Einstellungen → Active Directory*.
+2. **Server**: Name des Domänencontrollers so, wie er im Zertifikat steht, z. B. `dc01.firma.local`. Verschlüsselung **LDAPS** (Port 636) oder **StartTLS** (Port 389). Ohne Verschlüsselung geht es nicht.
+3. **Zertifikat**: Vertrauen auf *Abgerufenes Zertifikat* lassen und **Zertifikat vom DC abrufen** klicken. Den Fingerabdruck mit dem Zertifikat auf dem DC vergleichen (`certlm.msc` → *Eigene Zertifikate* → Zertifikat öffnen → *Details* → *Fingerabdruck*) und bestätigen. Fehlt die Stamm-CA, holt WhatsOnMyNet sie selbst (über die AIA-Adresse im Zertifikat oder nach dem Bestätigen aus dem AD).
+4. **Verzeichnis**: Basis-DN leer lassen, der Test findet ihn. Dienstkonto eintragen, z. B. `svc-womn@firma.local`, dazu sein Passwort.
+5. **Gruppen**: einfach die Gruppennamen eintragen, z. B. `WOMN-Admins`. Wer in mehreren Gruppen ist, bekommt die höchste Rolle; wer in keiner ist, kommt nicht herein.
+6. **Verbindung testen**, am besten mit dem eigenen Benutzernamen. Jeder Schritt bekommt ✓ oder ✗ mit dem Grund: Verbindung, Dienstkonto, Basis-DN, Gruppen, Benutzer, Rolle und auf Wunsch das Passwort.
+7. Wenn alles ✓ ist: *Anmeldung über Active Directory erlauben* anhaken und **Speichern**.
+
+### Wenn etwas nicht klappt
+
+- **„Das Zertifikat des DC ist nicht vertrauenswürdig“**: *Zertifikat vom DC abrufen* und bestätigen.
+- **„Der Name im Zertifikat passt nicht“**: Beim Domänencontroller den Namen aus dem Zertifikat eintragen (der Abruf zeigt ihn an). Nur wenn du den DC über die IP-Adresse ansprichst: *Servernamen im Zertifikat prüfen* abschalten.
+- **„Dienstkonto: Anmeldung abgelehnt“**: Name oder Passwort des Dienstkontos falsch, oder das Konto ist gesperrt.
+- **„Gruppe nicht gefunden“**: Schreibweise der Gruppe im AD prüfen.
+- **„Keine Rolle“**: Der Benutzer ist in keiner der eingetragenen Gruppen.
 
 ## Scan-Agent für Außenstellen
 

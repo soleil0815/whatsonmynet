@@ -44,6 +44,8 @@ export const DEFAULTS = {
   'ad.groupEditor': '',
   'ad.groupViewer': '',
   'ad.nested': true,              // nested groups (AD)
+  'ad.trust': '',                 // pinned (certificate fetched from the DC) | system | '' = derived
+  'ad.verifyHostname': true,      // name in the certificate must fit the server address
   // Proxmox VE / Backup Server
   'proxmox.interval': 5,          // minutes between two queries
   // Security

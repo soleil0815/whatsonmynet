@@ -183,8 +183,35 @@ Under *Settings → Reports* reports go out by e-mail at set times – e.g. the 
 
 - **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*.
 - **Locations**: editors and viewers can be limited to locations – they then only see and change devices, scans and monitors of these.
-- **Active Directory** (*Settings → Active Directory*): sign-in with the Windows account over LDAPS or StartTLS. The role comes from AD groups; members of none cannot sign in. Local accounts win for the same name. Under *TLS certificate*, "Fetch certificate from DC" gets the chain from the domain controller (missing CAs via AIA or from AD); you compare the fingerprint with certlm.msc and confirm.
+- **Active Directory**: sign-in with the Windows account, see the next section.
 - **Two-factor sign-in** (*My account*): scan the QR code with an authenticator app, confirm a code, keep the recovery codes. It can be made mandatory for administrators under *Settings → General*.
+
+## Sign-in with Active Directory
+
+Staff sign in with their Windows account. AD groups decide which role they get. Local accounts keep working; for the same name the local account wins, so the local admin stays the emergency access.
+
+### Step 1: prepare AD (once)
+
+1. Create a **service account**, e.g. `svc-womn`. It needs no special rights, a normal domain account with a password is enough.
+2. Create up to three **groups**, e.g. `WOMN-Admins`, `WOMN-Editors` and `WOMN-Read`, and put the staff into them. Groups in groups count.
+
+### Step 2: enter it in WhatsOnMyNet
+
+1. *Settings → Active Directory*.
+2. **Server**: name of the domain controller as it is in the certificate, e.g. `dc01.company.local`. Encryption **LDAPS** (port 636) or **StartTLS** (port 389). Without encryption it does not work.
+3. **Certificate**: leave trust on *Fetched certificate* and click **Fetch certificate from DC**. Compare the fingerprint with the certificate on the DC (`certlm.msc` → *Personal* → open the certificate → *Details* → *Thumbprint*) and confirm. If the root CA is missing, WhatsOnMyNet gets it itself (via the AIA address in the certificate or, after confirming, from AD).
+4. **Directory**: leave the base DN empty, the test finds it. Enter the service account, e.g. `svc-womn@company.local`, and its password.
+5. **Groups**: simply enter the group names, e.g. `WOMN-Admins`. Members of several groups get the highest role; members of none cannot sign in.
+6. **Test connection**, best with your own user name. Every step gets ✓ or ✗ with the reason: connection, service account, base DN, groups, user, role and, if you like, the password.
+7. When everything is ✓: tick *Allow sign-in through Active Directory* and **Save**.
+
+### If something does not work
+
+- **"The certificate of the DC is not trusted"**: *Fetch certificate from DC* and confirm.
+- **"The name in the certificate does not fit"**: enter the name from the certificate as domain controller (fetching shows it). Only if you reach the DC by its IP address: switch *Check the server name in the certificate* off.
+- **"Service account: sign-in refused"**: name or password of the service account wrong, or the account is locked.
+- **"Group not found"**: check the spelling of the group in AD.
+- **"No role"**: the user is in none of the groups entered.
 
 ## Scan agent for branch offices
 
