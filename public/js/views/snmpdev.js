@@ -27,7 +27,9 @@ function head(title, device, onData) {
 }
 
 const checked = (s) => h('p', { class: 'muted small', style: { margin: '12px 0 0' } }, `${t('prn.checked')}: ${fmtDate(s.at, getLang())} (${fmtAgo(s.at, t)})`);
-const errNote = (s) => (!s.ok ? h('div', { class: 'note warn', style: { marginBottom: '10px' } }, t(`snmp.err.${s.error || 'snmp'}`)) : null);
+// "Showing the last known state" only makes sense when there is an earlier state (hasData)
+const errNote = (s, hasData = true) => (!s.ok ? h('div', { class: 'note warn', style: { marginBottom: '10px' } },
+  t(`snmp.err.${(s.error || 'snmp') === 'snmp' && !hasData ? 'snmpNone' : s.error || 'snmp'}`)) : null);
 
 // ------------------------------------------------------------------------------------------------- switch
 
@@ -58,8 +60,9 @@ export function switchPanel(device) {
       'aria-label': `${p.name}: ${p.status}`,
       onclick: (e) => { box.querySelectorAll('.port-sq.sel').forEach((x) => x.classList.remove('sel')); e.currentTarget.classList.add('sel'); showPort(p); },
     }, h('span', { class: 'num' }, p.name.replace(/^.*?(\d+(?:\/\d+)*)$/, '$1').slice(-5)), p.macs.length ? h('i', {}, p.macs.length) : null)));
-    mount(box, head(t('sw.panel'), device, draw), errNote(s),
-      h('p', { class: 'muted small', style: { margin: '0 0 10px' } }, t('sw.summary', { up, n: ports.length })),
+    const known = ports.length > 0 || !!(s.model || s.firmware || s.serial || s.descr);
+    mount(box, head(t('sw.panel'), device, draw), errNote(s, known),
+      ports.length ? h('p', { class: 'muted small', style: { margin: '0 0 10px' } }, t('sw.summary', { up, n: ports.length })) : null,
       grid, detail,
       (s.neighbours || []).length ? [h('h3', { class: 'sub-title' }, t('sw.neighbours')), h('ul', { class: 'port-macs' }, s.neighbours.map((n) => h('li', {},
         h('strong', {}, n.localPort), h('span', {}, `→ ${n.name || '?'}`), n.port ? h('span', { class: 'muted small' }, n.port) : null)))] : null,
@@ -83,7 +86,8 @@ export function nasPanel(device) {
 
   function draw(s) {
     if (!s) { mount(box, head(t('nas.panel'), device, draw), h('p', { class: 'muted', style: { margin: 0 } }, t('prn.none'))); return; }
-    mount(box, head(t('nas.panel'), device, draw), errNote(s),
+    const known = !!((s.volumes || []).length || (s.disks || []).length || s.model || s.version || s.serial);
+    mount(box, head(t('nas.panel'), device, draw), errNote(s, known),
       (s.volumes || []).length ? h('div', { class: 'supplies' }, s.volumes.map((v) => h('div', { class: `supply${v.pct >= threshold ? ' low' : ''}`, 'data-color': 'other' },
         h('div', { class: 'supply-head' }, h('span', { class: 'supply-name mono' }, v.name), h('span', { class: 'supply-val mono' }, `${fmtBytes(v.used)} / ${fmtBytes(v.size)} · ${v.pct} %`)),
         h('div', { class: 'supply-track', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': v.pct, 'aria-label': v.name },

@@ -22,6 +22,17 @@ function stateRow(href, tone, label, n, note) {
     h('span', { class: `dot dot-${tone}` }), h('span', { class: 'state-label' }, label), h('b', {}, n), h('span', { class: `state-note tone-${tone}` }, note));
 }
 
+/**
+ * Devices line: "all seen" only when every device was really seen in a scan.
+ * Devices never scanned (added by hand, no scan yet) are neither "seen" nor "missing".
+ */
+function devicesRow(d) {
+  const online = d.online ?? d.devices - (d.missing || 0);
+  if (d.missing) return stateRow('/inventory', 'bad', t('dash.devicesShort'), d.devices, t('dash.notSeenN', { n: d.missing }));
+  if (online >= d.devices) return stateRow('/inventory', 'ok', t('dash.devicesShort'), d.devices, t('dash.allSeen'));
+  return stateRow('/inventory', 'muted', t('dash.devicesShort'), d.devices, online ? t('dash.seenOf', { n: online, total: d.devices }) : t('presence.unknown'));
+}
+
 export async function renderDashboard(main) {
   const d = await get('/dashboard');
   state.waiting = d.waiting;
@@ -65,7 +76,7 @@ export async function renderDashboard(main) {
 
   const empty = !d.devices;
   const attention = empty
-    ? h('section', { class: 'panel empty' }, h('h2', {}, t('dash.emptyTitle')), h('p', {}, t('dash.emptyText')),
+    ? h('section', { class: 'panel empty' }, h('h2', {}, t('dash.emptyTitle')), h('p', {}, canScan ? t('dash.emptyText') : t('dash.noScanViewer')),
       canScan ? h('a', { class: 'btn btn-primary btn-big', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('dash.scanNow')) : null)
     : h('section', { class: 'panel', 'aria-labelledby': 'todo-title' },
       h('h2', { id: 'todo-title' }, t('dash.attention')),
@@ -75,7 +86,7 @@ export async function renderDashboard(main) {
   // State at a glance
   const lowN = (d.printersLow || []).length;
   const stateCard = h('section', { class: 'panel state-card', 'aria-label': t('dash.state') },
-    stateRow('/inventory', d.missing ? 'bad' : 'ok', t('dash.devicesShort'), d.devices, d.missing ? t('dash.notSeenN', { n: d.missing }) : t('dash.allSeen')),
+    devicesRow(d),
     mon.total ? stateRow('/monitoring', mon.down.length ? 'bad' : 'ok', t('nav.monitoring'), mon.total, mon.down.length ? t('dash.downN', { n: mon.down.length }) : t('dash.allUp')) : null,
     d.byType?.printer ? stateRow('/inventory?type=printer', lowN ? 'new' : 'ok', t('type.printer'), d.byType.printer, lowN ? t('dash.lowN', { n: lowN }) : t('dash.suppliesOk')) : null,
     d.telematik ? stateRow('/inventory?type=telematik', 'ti', t('dash.telematik'), d.telematik, t('dash.telematikNote')) : null);
@@ -90,7 +101,7 @@ export async function renderDashboard(main) {
   const ls = d.lastScan;
   const scanLine = h('p', { class: 'muted small scan-line' }, ls
     ? t('dash.lastScanLine', { when: fmtDate(ls.started_at, lang), n: ls.stats.probed ?? 0, s: Math.round((ls.stats.durationMs || 0) / 1000) })
-    : t('dash.noScan'));
+    : t(canScan ? 'dash.noScan' : 'dash.noScanViewer'));
 
   const n = items.length;
   mount(main, h('div', { class: 'page' },

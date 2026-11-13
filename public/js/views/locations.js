@@ -1,5 +1,5 @@
 // Locations with their subnets.
-import { h, mount, modal, toast, confirmDialog } from '../dom.js';
+import { h, mount, modal, toast, confirmDialog, busy } from '../dom.js';
 import { get, post, put, del } from '../api.js';
 import { t } from '../i18n.js';
 import { icon } from '../icons.js';
@@ -51,20 +51,23 @@ function editor(loc, net, done) {
     h('div', { class: 'field' }, t('loc.subnets'), rows,
       h('div', { class: 'actions' }, btn(t('loc.addSubnet'), { class: 'btn btn-sm', onclick: () => addRow() }, 'plus'),
         net.suggestions.map((c) => h('button', { type: 'button', class: 'chip', onclick: () => addRow(c) }, c)))));
+  const saveBtn = h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save() }, t('save'));
   const m = modal(loc ? loc.name : t('loc.add'), form, { wide: true, actions: [
     btn(t('cancel'), { onclick: () => m.close() }),
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save() }, t('save')),
+    saveBtn,
   ] });
   name.focus();
   async function save() {
     if (!form.reportValidity()) return;
     const subnets = [...rows.querySelectorAll('.subnet-row')].map((r) => ({ cidr: r.querySelector('[name=cidr]').value.trim(), label: r.querySelector('[name=label]').value.trim() })).filter((s) => s.cidr);
-    try {
-      const body = { name: name.value, description: desc.value, subnets };
-      if (loc) await put(`/locations/${loc.id}`, body); else await post('/locations', body);
-      m.close();
-      toast(t('saved'));
-      done();
-    } catch (e) { fail(e); }
+    await busy(saveBtn, async () => {
+      try {
+        const body = { name: name.value, description: desc.value, subnets };
+        if (loc) await put(`/locations/${loc.id}`, body); else await post('/locations', body);
+        m.close();
+        toast(t('saved'));
+        done();
+      } catch (e) { fail(e); }
+    });
   }
 }

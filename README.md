@@ -32,7 +32,7 @@ WhatsOnMyNet scannt dein Netzwerk, erkennt Hersteller und Gerätetyp selbst (Swi
 - **Tiefenprüfung** - für einzelne unklare Geräte, von Hand gestartet: rund 110 Ports und alle Weboberflächen.
 - **Standorte** - fassen Subnetze zusammen. Vor dem Scan nur noch Häkchen setzen, gefundene Geräte bekommen ihren Standort automatisch.
 - **Benutzer und Rollen** - Administrator, Bearbeiter, Nur lesen; Anmeldung auch über Active Directory, Rechte auf Standorte beschränkbar (ab 0.3).
-- **HTTPS ab dem ersten Start** - selbst erzeugtes Zertifikat, eigenes Zertifikat (PEM oder PFX) in der Oberfläche hochladbar, HTTP leitet immer auf HTTPS um.
+- **HTTPS ab dem ersten Start** - selbst erzeugtes Zertifikat, eigenes Zertifikat (PEM oder PFX) in der Oberfläche hochladbar, HTTP leitet auf HTTPS um (außer für einen vertrauten Reverse Proxy, siehe unten).
 - **Deutsch und Englisch**, hell und dunkel, auch am Handy bedienbar.
 
 ![Inventar](public/help/img/inventory-de.png)
@@ -63,7 +63,7 @@ Wie bei PRTG lässt sich jeder Wert, den ein Gerät liefert, als eigener Monitor
 
 - **Sensor (Gerätewert)**: auf der Geräteseite „Sensor anlegen“, dann Wert und Bedingung wählen - z. B. „Toner Cyan kleiner oder gleich 10 %“, „Volume 1 größer oder gleich 85 %“, „Temperatur Drive 2 über 50 °C“, „Port 10 (Uplink) verbunden“, „Festplatte/Speicherpool in Ordnung“, „Störungen am Drucker“. Gelesen wird der letzte Stand der Drucker-/Switch-/NAS-Abfrage, ohne zusätzliche Anfragen ans Gerät.
 - **SNMP-Wert (OID)**: jeder per SNMP lesbare Wert mit eigener Bedingung (kleiner, größer, gleich, enthält Text …) - z. B. Restlaufzeit einer USV, Temperatur einer Klimaanlage, Sitzungen einer Firewall.
-- Der Verlauf zeigt den gemessenen Wert über 24 Stunden bis 7 Tage.
+- Der Verlauf zeigt den gemessenen Wert über 24 Stunden bis zu einem Jahr (ab 30 Tagen als Stundenzusammenfassung).
 
 ### Netzlaufwerke (ab Version 0.4)
 
@@ -102,7 +102,7 @@ Danach `docker compose up -d`.
 
 ## Nächtlicher Leicht-Scan und neue Geräte (ab Version 0.3)
 
-Einmal pro Nacht (Standard 02:30 Uhr Ortszeit, `TZ` in der `.env`) sucht WhatsOnMyNet in allen Subnetzen deiner Standorte nur nach Geräten: ARP, NetBIOS und - wenn erlaubt - Ping, keine Ports, kein SNMP, keine Webanfragen. So bleibt der Scan unauffällig.
+Einmal pro Nacht (Standard 02:30 Uhr Ortszeit, `TZ` in der `.env`) sucht WhatsOnMyNet in allen Subnetzen deiner Standorte nur nach Geräten: ARP, NetBIOS und - wenn erlaubt - Ping; in gerouteten Subnetzen zusätzlich wenige TCP-Verbindungsversuche (Ports 443, 80, 22, 445, 3389) und die ARP-Tabelle der Router per SNMP. Keine Port-Prüfung der Geräte, keine Webanfragen. So bleibt der Scan unauffällig.
 
 - Bekannte Geräte bekommen ihre neue IP-Adresse automatisch (die MAC-Adresse ist die Identität), ihre Monitore ziehen mit.
 - Unbekannte Geräte landen im Scan-Ergebnis zum Übernehmen oder Ignorieren; die Übersicht zeigt, wie viele warten.
@@ -127,7 +127,7 @@ Geräte vom Typ *Switch* und *NAS* werden regelmäßig (Standard alle 15 Minuten
 - **Switch**: alle Ports als Kacheln wie an der Front (verbunden/getrennt, Geschwindigkeit, Bezeichnung), welche Geräte an welchem Port hängen (MAC-Tabelle, auch mit VLANs), Nachbarn per LLDP, Modell, Firmware und Seriennummer.
 - **Wo steckt das Gerät?** Auf der Seite jedes Geräts steht unter *Erkennung*, an welchem Switch und Port es angeschlossen ist. Hängen an einem Port viele Geräte, weist WhatsOnMyNet darauf hin, dass dazwischen vermutlich ein weiterer Switch oder Access Point steckt.
 - **NAS**: Volumes mit Füllstand (jedes NAS bzw. jeder Linux-Server mit SNMP), bei Synology zusätzlich Festplatten mit Status und Temperatur, Speicherpools/RAID, Systemstatus, Lüfter, Netzteil, DSM-Version und verfügbare Updates; bei QNAP Festplatten und Temperatur.
-- **Ins Inventar übernommen**: Seriennummer, Modell und Firmware (bzw. DSM-Version), die Drucker, Switches und NAS per SNMP melden, landen gleich in den Angaben des Geräts und bleiben aktuell; eigene abweichende Eingaben bleiben. Meldet ein Gerät unter derselben IP eine andere Seriennummer (Tausch), kommen Seriennummer, Modell und Firmware vom neuen Gerät und der nächste Scan übernimmt die neue MAC-Adresse; der Verlauf vermerkt den Tausch.
+- **Ins Inventar übernommen**: Seriennummer und Modell, die Drucker, Switches und NAS per SNMP melden, bei Switches und NAS zusätzlich die Firmware (bzw. DSM-Version), landen gleich in den Angaben des Geräts und bleiben aktuell; eigene abweichende Eingaben bleiben. Meldet ein Gerät unter derselben IP eine andere Seriennummer (Tausch), kommen Seriennummer, Modell und Firmware vom neuen Gerät und der nächste Scan übernimmt die neue MAC-Adresse; der Verlauf vermerkt den Tausch.
 - **Meldung** bei einer gestörten Festplatte, einem eingeschränkten RAID, Lüfter- oder Netzteilfehler und wenn ein Volume voll läuft (Standard 90 %) - einmal beim Auftreten und einmal, wenn alles wieder in Ordnung ist. Die Übersicht zeigt offene NAS-Probleme.
 
 Einstellungen unter *Einstellungen → Switches & NAS*. Einfache Switches ohne SNMP (z. B. TP-Link „Easy Smart“) liefern keine Daten; bei LANCOM, HP/Aruba, Cisco, Netgear Smart und Co. muss SNMP v1/v2c lesend aktiv sein.
@@ -168,7 +168,7 @@ ARP - und damit die MAC-Adresse - sieht man nur im eigenen Netz. Für eine Auße
 1. Zentrale: Standort der Außenstelle mit ihren Subnetzen anlegen, dann *Einstellungen → Scan-Agenten → Agent hinzufügen*. Angezeigt werden Schlüssel und - beim selbstsignierten Zertifikat - das Zertifikat der Zentrale als fertige `.env`.
 2. Außenstelle: `docker-compose.agent.yml` aus dem Release und die `.env` ablegen, `docker compose -f docker-compose.agent.yml up -d`.
 
-Der Agent hat keine Weboberfläche und öffnet keinen Port. Er fragt die Zentrale jede Minute nach Aufträgen (HTTPS; beim selbstsignierten Zertifikat vertraut er genau diesem einen Zertifikat - geprüft, bevor der Schlüssel gesendet wird. Erneuert sich das Zertifikat, braucht der Agent den neuen Wert), scannt dort genauso schonend und folgt der Uhrzeit des nächtlichen Leicht-Scans. Er darf nur Adressen aus den Subnetzen seines Standorts melden. „Scan starten“ für diesen Standort geht in der Zentrale automatisch als Auftrag an den Agenten; die Ergebnisse erscheinen wie gewohnt unter *Frühere Scans*.
+Der Agent hat keine Weboberfläche und öffnet keinen Port. Er fragt die Zentrale jede Minute nach Aufträgen (`WOMN_AGENT_INTERVAL` in Sekunden, 15 bis 3600, Standard 60; HTTPS; beim selbstsignierten Zertifikat vertraut er genau diesem einen Zertifikat - geprüft, bevor der Schlüssel gesendet wird. Erneuert sich das Zertifikat, braucht der Agent den neuen Wert), scannt dort genauso schonend und folgt der Uhrzeit des nächtlichen Leicht-Scans. Er darf nur Adressen aus den Subnetzen seines Standorts melden. „Scan starten“ für diesen Standort geht in der Zentrale automatisch als Auftrag an den Agenten; die Ergebnisse erscheinen wie gewohnt unter *Frühere Scans*.
 
 ## Proxmox VE und Backup Server (ab Version 0.4)
 
@@ -196,7 +196,7 @@ Unter *Überwachung → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Beric
 
 - Beim ersten Start erzeugt WhatsOnMyNet ein selbstsigniertes Zertifikat für den Hostnamen, `localhost`, alle IPv4-Adressen des Hosts und die Adresse aus `WOMN_BASE_URL`. Es wird 30 Tage vor Ablauf automatisch erneuert.
 - Unter *Einstellungen → HTTPS-Zertifikat* lädst du ein eigenes Zertifikat hoch: PEM (Zertifikat mit Kette + Schlüssel) oder PFX/P12 mit Kennwort. Es wird vorher geprüft (Schlüssel passt, nicht abgelaufen) und ohne Neustart aktiv.
-- HTTP auf `WOMN_HTTP_PORT` leitet immer auf HTTPS um.
+- HTTP auf `WOMN_HTTP_PORT` leitet auf HTTPS um - außer für einen vertrauten Reverse Proxy (siehe unten).
 - HSTS sendet WhatsOnMyNet nur mit eigenem Zertifikat und Hostnamen. Mit einem selbstsignierten Zertifikat würde HSTS dazu führen, dass der Browser die Warnung nicht mehr überspringen lässt - du kämst nicht mehr hinein.
 
 ### Hinter einem Reverse Proxy
@@ -214,7 +214,7 @@ Der Proxy leitet dann entweder an `https://<server>:8743` (selbstsigniert, beim 
 
 - Scanne nur Netze, für die du zuständig bist.
 - Der normale Scan ist bewusst schonend. Trotzdem: Trage den Server mit WhatsOnMyNet in Firewall, IDS oder Virenschutz als vertrauenswürdig ein, dann gibt es auch bei der Tiefenprüfung keinen Alarm.
-- Der Container läuft ohne Root, mit schreibgeschütztem Programmverzeichnis und ohne zusätzliche Rechte (`cap_drop: ALL`, `no-new-privileges`).
+- Das Programm läuft ohne Root, mit schreibgeschütztem Programmverzeichnis (`cap_drop: ALL`, `no-new-privileges`). Der Container bekommt nur die wenigen Rechte zurück, die der Start braucht: Rechte an `./data` setzen und per su-exec zu PUID/PGID wechseln (`CHOWN`, `FOWNER`, `DAC_OVERRIDE`, `SETUID`, `SETGID`) sowie `KILL`, damit das Stopp-Signal ankommt.
 - Passwörter werden mit scrypt gespeichert, SMTP-Passwort und SNMP-Communities mit AES-256-GCM verschlüsselt. Den Schlüssel (`data/secret.key`) bitte mitsichern.
 - Sicherheitslücken bitte vertraulich melden, siehe [SECURITY.md](SECURITY.md).
 
@@ -238,15 +238,7 @@ docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administ
 - In der Woche vor dem Patchday greift ein ZAP-Scan das Programm in einem Wegwerf-Container ohne Anmeldung an. Das Ergebnis wertet der monatliche Code-Audit aus.
 - WhatsOnMyNet legt jeden Tag eine Sicherung der Datenbank in `data/backups/` an (Anzahl unter *Einstellungen → Allgemein*). Sichere den ganzen Ordner `data/`, inklusive `secret.key` und `tls/`.
 
-Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle Sicherung herunter, legst eine an oder spielst eine ein - hochgeladen oder aus der Liste auf dem Server. Die Datei wird vorher geprüft (WhatsOnMyNet-Datenbank, passende Version, gleicher Schlüssel), der aktuelle Stand wird als `whatsonmynet-before-restore-…` gesichert, dann startet das Programm neu. **Bewahre `data/secret.key` (bzw. deinen `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
-
-## Was als Nächstes kommt
-
-| Version | Inhalt |
-| --- | --- |
-| 2 | ~~Monitoring wie Uptime Kuma~~ (ab 0.2), ~~nächtlicher leichter Scan mit Meldung unbekannter Geräte~~, ~~Druckerdaten per SNMP~~, ~~Docker- und Datenbanküberwachung~~ (ab 0.3) |
-| 3 | ~~Active Directory (LDAPS)~~, ~~Rechte pro Standort~~ (ab 0.3) |
-| später | ~~Scan-Agent für Außenstellen~~, ~~Topologie über LLDP~~, ~~MAC-Adressen entfernter Subnetze per SNMP vom Router~~ (ab 0.3) |
+Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle Sicherung herunter, legst eine an oder spielst eine ein - hochgeladen oder aus der Liste auf dem Server. Die Datei wird vorher geprüft (WhatsOnMyNet-Datenbank, nicht neuer als diese Version, gleicher Schlüssel), der aktuelle Stand wird als `whatsonmynet-before-restore-…` gesichert, dann startet das Programm neu. **Bewahre `data/secret.key` (bzw. deinen `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
 
 **Handbuch neu bauen** (nach Änderungen an `public/help/manual.*.md` oder den Bildern): `node tools/build-manual.mjs` - braucht Playwright mit Chromium, ImageMagick macht die PDFs kleiner.
 

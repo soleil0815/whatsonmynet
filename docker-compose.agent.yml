@@ -13,6 +13,8 @@
 #   TZ=Europe/Berlin
 #   PUID=1000
 #   PGID=1000
+# Optional: seconds between two questions to the central server for jobs (15-3600, default 60)
+#   WOMN_AGENT_INTERVAL=60
 
 services:
   whatsonmynet-agent:
