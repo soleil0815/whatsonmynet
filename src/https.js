@@ -135,10 +135,18 @@ export function proxyHttpsMiddleware(app, { baseUrl, hsts = 'on', hosts = null }
   };
 }
 
-/** HSTS for direct HTTPS access - only with a trusted (uploaded) certificate and a host name. */
-export function directHstsMiddleware({ hsts, certSource }) {
+/**
+ * May HSTS be sent with this certificate (tls.describe())? Only an uploaded one that is not itself self-signed, can be
+ * read and has not expired - HSTS with a certificate the browser does not trust would lock users out.
+ */
+export function hstsAllowed(info, now = Date.now()) {
+  return !!info && info.source === 'custom' && !info.error && info.selfSigned === false && Date.parse(info.validTo) > now;
+}
+
+/** HSTS for direct HTTPS access - only with a trusted (uploaded) certificate and a host name. cert() = tls.describe() */
+export function directHstsMiddleware({ hsts, cert }) {
   return (req, res, next) => {
-    if (hsts !== 'off' && req.socket?.encrypted && certSource() === 'custom') {
+    if (hsts !== 'off' && req.socket?.encrypted && hstsAllowed(cert())) {
       const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
       if (HOSTNAME.test(host)) res.setHeader('Strict-Transport-Security', hsts === 'preload' ? HSTS_PRELOAD : HSTS);
     }

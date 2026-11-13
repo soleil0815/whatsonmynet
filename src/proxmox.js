@@ -72,13 +72,21 @@ export function tlsRequest(host, method, path, { body = null, headers = {}, time
     const data = body === null ? null : Buffer.from(body);
     // timeout = silence on the socket; the whole request gets a deadline too (an answer trickling in byte by byte
     // would otherwise hold the polling of all hosts)
+    // https.request throws synchronously on a header it refuses (line break, character above U+00FF): the deadline
+    // timer is only started once the request exists, so it can never touch an uninitialised request
+    let req;
+    try {
+      req = https.request(u, { method, timeout: timeoutMs, agent: false, headers: { ...(data ? { 'Content-Length': data.length } : {}), ...headers }, ...tlsOptions(host) }, (res) => {
+        const chunks = []; let size = 0;
+        res.on('data', (d) => { size += d.length; if (size < maxBytes) chunks.push(d); else res.destroy(new Error('answer too large')); });
+        res.on('end', () => { clearTimeout(deadline); resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(chunks).toString('utf8') }); });
+        res.on('error', (e) => { clearTimeout(deadline); reject(netError(e)); });
+      });
+    } catch (e) {
+      reject(netError(e));
+      return;
+    }
     const deadline = setTimeout(() => req.destroy(new Error('timeout')), timeoutMs * 4);
-    const req = https.request(u, { method, timeout: timeoutMs, agent: false, headers: { ...(data ? { 'Content-Length': data.length } : {}), ...headers }, ...tlsOptions(host) }, (res) => {
-      const chunks = []; let size = 0;
-      res.on('data', (d) => { size += d.length; if (size < maxBytes) chunks.push(d); else res.destroy(new Error('answer too large')); });
-      res.on('end', () => { clearTimeout(deadline); resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(chunks).toString('utf8') }); });
-      res.on('error', (e) => { clearTimeout(deadline); reject(netError(e)); });
-    });
     req.on('timeout', () => req.destroy(new Error('timeout')));
     req.on('error', (e) => { clearTimeout(deadline); reject(netError(e)); });
     req.end(data || undefined);
@@ -286,7 +294,12 @@ export function createProxmox({ db, settings }) {
     const ca = str(input.ca, 20000).trim();
     if (ca) { try { new crypto.X509Certificate(ca); } catch { throw new HttpError(400, 'err.adCa'); } }
     let secret = old?.secret || '';
-    if (typeof input.secret === 'string' && input.secret.trim()) secret = encrypt(input.secret.trim().slice(0, 200));
+    if (typeof input.secret === 'string' && input.secret.trim()) {
+      const plain = input.secret.trim().slice(0, 200);
+      // Proxmox puts the token secret into the Authorization header as it is: only visible ASCII can go there
+      if (!ACCOUNT_KINDS.includes(kind) && !/^[\x21-\x7e]+$/.test(plain)) throw new HttpError(400, 'err.proxmoxSecret');
+      secret = encrypt(plain);
+    }
     // The stored token or password only goes to the address it was entered for (see keepSecret in monitor/index.js)
     else if (secret && old && hostPort(old.url) !== hostPort(url)) throw new HttpError(400, 'err.passwordAgain');
     if (!secret) throw new HttpError(400, ACCOUNT_KINDS.includes(kind) ? 'err.virtUser' : 'err.proxmoxToken');

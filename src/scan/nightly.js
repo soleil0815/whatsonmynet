@@ -13,16 +13,24 @@ export const validTime = (s) => TIME_RE.test(String(s || ''));
 const pad = (n) => String(n).padStart(2, '0');
 export const localDay = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-/** Is `now` inside the start window of today's run that has not run yet? */
-export function isDue(now, time, lastRun) {
+/**
+ * The day (local, YYYY-MM-DD) of the scheduled run whose start window `now` is in and that has not run yet - or null.
+ * The window may reach over midnight (22:30 + 4 hours): then the run belongs to yesterday. lastRun holds the day of
+ * the scheduled run (not the calendar day of the start), so a run after midnight does not block the next evening.
+ */
+export function dueDay(now, time, lastRun) {
   const m = TIME_RE.exec(time || '');
-  if (!m) return false;
-  if (lastRun === localDay(now)) return false;
-  const minutes = now.getHours() * 60 + now.getMinutes();
-  const start = Number(m[1]) * 60 + Number(m[2]);
-  const diff = minutes - start;
-  return diff >= 0 && diff < WINDOW_MIN;
+  if (!m) return null;
+  for (const back of [0, 1]) {
+    const scheduled = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back, Number(m[1]), Number(m[2]));
+    const diff = (now.getTime() - scheduled.getTime()) / 60000;
+    if (diff >= 0 && diff < WINDOW_MIN) return lastRun === localDay(scheduled) ? null : localDay(scheduled);
+  }
+  return null;
 }
+
+/** Is `now` inside the start window of a scheduled run that has not run yet? */
+export const isDue = (now, time, lastRun) => dueDay(now, time, lastRun) !== null;
 
 export function createNightly({ db, settings, scanner, channels }) {
   let timer = null;
@@ -41,10 +49,11 @@ export function createNightly({ db, settings, scanner, channels }) {
 
   function tick(now = new Date()) {
     if (!settings.get('lightscan.enabled')) return;
-    if (!isDue(now, settings.get('lightscan.time'), settings.get('lightscan.lastRun'))) return;
+    const day = dueDay(now, settings.get('lightscan.time'), settings.get('lightscan.lastRun'));
+    if (!day) return;
     if (scanner.isRunning()) return; // try again next minute
     if (!targets().length) return;
-    settings.set('lightscan.lastRun', localDay(now));
+    settings.set('lightscan.lastRun', day);
     try {
       const id = run();
       log.info(`Nightly light scan started (scan ${id})`);
