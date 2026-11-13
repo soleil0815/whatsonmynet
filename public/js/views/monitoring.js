@@ -6,6 +6,7 @@ import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, btn, formData } from './common.js';
+import { openHostScript } from './hostscripts.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const svgEl = (tag, attrs = {}) => { const el = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
@@ -352,11 +353,41 @@ function eventLine(e) {
 // Step 1 of "Add monitor": what should be watched? One tile per kind, with a sentence what it checks
 const PICK = [['http', 'open'], ['ping', 'radar'], ['tcp', 'switch'], ['smb', 'nas'], ['sensor', 'printer'], ['proxmox', 'hypervisor'], ['docker', 'server'], ['mysql', 'inventory'], ['snmp', 'router']];
 function pickKind(done, preset) {
+  const tile = (type, ico, onclick) => h('button', { type: 'button', class: 'pick', onclick },
+    h('span', { class: 'pick-ico', html: icon(ico) }), h('span', { class: 'pick-title' }, t(`mon.pick.${type}`)), h('span', { class: 'pick-text' }, t(`mon.pick.${type}.d`)));
   const dlg = modal(t('mon.add'), h('div', {},
     h('p', { class: 'muted', style: { marginTop: 0 } }, t('mon.pick.lead')),
-    h('div', { class: 'pick-grid' }, PICK.map(([type, ico]) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); openMonitorForm(null, done, { ...(preset || {}), type }); } },
-      h('span', { class: 'pick-ico', html: icon(ico) }), h('span', { class: 'pick-title' }, t(`mon.pick.${type}`)), h('span', { class: 'pick-text' }, t(`mon.pick.${type}.d`)))))),
+    h('div', { class: 'pick-grid' },
+      PICK.map(([type, ico]) => tile(type, ico, () => { dlg.close(); openMonitorForm(null, done, { ...(preset || {}), type }); })),
+      // Windows/Linux machines: no monitor of its own - a script reports load, drives and services (admins create the key)
+      state.user.isAdmin ? tile('script', 'computer', () => { dlg.close(); startHostScript(preset, done); }) : null)),
   { wide: true, actions: [btn(t('cancel'), { onclick: () => dlg.close() })] });
+}
+
+// Machines that a script may report for: everything that runs Windows or Linux
+const SCRIPT_TYPES = ['server', 'computer', 'vm', 'hypervisor', 'unknown'];
+
+/** "Machine by script": for one device the script with its own key; otherwise choose the device or take the shared script */
+async function startHostScript(preset, done) {
+  try {
+    if (preset?.device_id) { openHostScript(await get(`/devices/${preset.device_id}`), done); return; }
+    const all = await get('/devices');
+    const list = all.filter((d) => SCRIPT_TYPES.includes(d.type)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const devSel = select('device_id', [['', t('hs.pickDevice')], ...list.map((d) => [String(d.id), `${d.name}${d.ip ? ` (${d.ip})` : ''}`])], '', { required: true });
+    const form = h('form', { class: 'form', onsubmit: (e) => e.preventDefault() },
+      h('p', { style: { margin: 0 } }, t('hs.pickLead')),
+      list.length ? field(t('sens.device'), devSel) : h('p', { class: 'muted', style: { margin: 0 } }, t('hs.pickNone')),
+      h('div', { class: 'note', style: { margin: 0 } }, h('div', {},
+        h('strong', {}, t('hs.pickManyTitle')), h('p', { style: { margin: '4px 0 8px' } }, t('hs.pickMany')),
+        btn(t('hs.addShared'), { class: 'btn btn-sm', onclick: () => { dlg.close(); navigate('/settings/hostscripts'); } }, 'computer'))));
+    const dlg = modal(t('mon.pick.script'), form, { actions: [
+      btn(t('cancel'), { onclick: () => dlg.close() }),
+      list.length ? h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+        if (!form.reportValidity()) return;
+        const d = await get(`/devices/${devSel.value}`).catch((e) => { fail(e); return null; });
+        if (d) { dlg.close(); openHostScript(d, done); }
+      } }, t('hs.next')) : null] });
+  } catch (e) { fail(e); }
 }
 
 export async function openMonitorForm(m, done, preset = null) {
@@ -370,7 +401,9 @@ export async function openMonitorForm(m, done, preset = null) {
   const TYPES = ['http', 'tcp', 'ping', 'smb', 'sensor', 'snmp', 'proxmox', 'docker', 'mysql', 'postgres', 'redis'];
   const DBT = ['mysql', 'postgres', 'redis'];
   const DEF_PORT = { mysql: 3306, postgres: 5432, redis: 6379 };
-  const typeSel = select('type', TYPES.map((x) => [x, t(`mon.type.${x}`)]), v.type);
+  // New monitors: admins also find "machine by script" here - it is no monitor type, it opens the script dialog
+  const offerScript = !m && state.user.isAdmin;
+  const typeSel = select('type', [...TYPES.map((x) => [x, t(`mon.type.${x}`)]), ...(offerScript ? [['script', t('mon.pick.script')]] : [])], v.type);
   const target = input('target', v.target || '', { required: true, class: 'mono', placeholder: 'https://intranet.firma.local/', list: 'dl-containers' });
   const targetLabel = h('span', {}, t('mon.f.target'));
   const port = input('port', v.port || '', { type: 'number', min: 1, max: 65535, class: 'mono' });
@@ -546,6 +579,13 @@ export async function openMonitorForm(m, done, preset = null) {
   let lastUrl = prevType === 'http' ? target.value.trim() : '';
   const NO_HOST = ['sensor', 'proxmox'];
   typeSel.addEventListener('change', () => {
+    if (typeSel.value === 'script') {
+      typeSel.value = prevType;
+      const devId = v.device_id || (typeSel.value === 'sensor' && devSel.value ? Number(devSel.value) : null);
+      dlg.close();
+      startHostScript(devId ? { device_id: devId } : null, done);
+      return;
+    }
     const from = prevType; const to = typeSel.value;
     prevType = to;
     const raw = target.value.trim();
@@ -577,7 +617,7 @@ export async function openMonitorForm(m, done, preset = null) {
     : h('p', { class: 'full muted small' }, state.user.isAdmin ? t('mon.f.noChannelsAdmin') : t('mon.f.noChannels'));
   const form = h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); save(); } },
     h('div', { class: 'full' }, field(t('mon.f.name'), nameIn)),
-    field(t('mon.f.type'), typeSel),
+    field(t('mon.f.type'), typeSel, offerScript ? t('mon.f.typeScript') : null),
     targetWrap,
     portBox,
     sensorBox,
