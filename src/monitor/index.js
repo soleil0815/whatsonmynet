@@ -38,7 +38,7 @@ export function certStep(days, thresholds) {
 }
 
 export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb'];
-export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed', 'netOnline', 'netClients', 'netCpu', 'netMem', 'clientsTotal', 'netUpdates',
+export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'nodeTemp', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed', 'netOnline', 'netClients', 'netCpu', 'netMem', 'clientsTotal', 'netUpdates',
   'rfHealth', 'rfPower', 'rfFan', 'rfTemp', 'rfPsu', 'rfDrive', 'rfDriveLife', 'rfVolume', 'rfWatts'];
 export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service', 'upsPower', 'upsCharge', 'upsRuntime', 'upsLoad',
   'hostPdHealth', 'hostPdTemp', 'hostPdWear', 'hostUpdates', 'hostUpdatesSec', 'hostReboot', 'hostAv', 'hostFirewall', 'hostEvCritical', 'hostEvErrors', 'hostCert', 'hostTemp', 'hostTempMax'];
