@@ -107,6 +107,25 @@ export function pxLabel(x) {
   return t(`px.m.${x.metric}`, { name: x.name || '' });
 }
 
+// The values of a device in groups - a machine with script delivers dozens (every temperature, disk, certificate …)
+const METRIC_GROUP = {
+  hostOnline: 'machine', hostCpu: 'machine', hostMem: 'machine', hostDisk: 'drives', servicesFailed: 'services', service: 'services',
+  hostTempMax: 'temps', hostTemp: 'temps', temp: 'temps', diskTemp: 'temps',
+  hostPdHealth: 'disks', hostPdTemp: 'disks', hostPdWear: 'disks', disk: 'disks', raid: 'disks', volume: 'disks', health: 'machine',
+  hostUpdates: 'care', hostUpdatesSec: 'care', hostReboot: 'care', hostAv: 'care', hostFirewall: 'care', hostEvCritical: 'care', hostEvErrors: 'care', hostCert: 'care',
+  upsPower: 'ups', upsCharge: 'ups', upsRuntime: 'ups', upsLoad: 'ups', supply: 'printer', pages: 'printer', printerErrors: 'printer', port: 'ports', portErrors: 'ports',
+};
+const GROUP_ORDER = ['machine', 'temps', 'drives', 'disks', 'services', 'care', 'ups', 'printer', 'ports', 'other'];
+function metricOptions(metrics) {
+  const opt = (x) => h('option', { value: `${x.metric}|${x.key}` }, sensorLabel(x));
+  if (metrics.length <= 12) return metrics.map(opt);
+  const groups = new Map(GROUP_ORDER.map((g) => [g, []]));
+  for (const x of metrics) groups.get(METRIC_GROUP[x.metric] || 'other').push(x);
+  // Temperatures: the hottest of all first, then by name
+  groups.get('temps').sort((a, b) => (a.metric === 'hostTempMax' ? -1 : b.metric === 'hostTempMax' ? 1 : String(a.name).localeCompare(String(b.name), undefined, { numeric: true })));
+  return [...groups].filter(([, l]) => l.length).map(([g, l]) => h('optgroup', { label: t(`sens.g.${g}`) }, l.map(opt)));
+}
+
 export function sensorLabel(x) {
   const base = t(`sens.m.${x.metric}`, { name: x.name || '' });
   return x.receptacle ? `${base} (${t('sens.free')})` : base;
@@ -608,7 +627,7 @@ export async function openMonitorForm(m, done, preset = null) {
     metrics = [];
     if (!devSel.value) { syncMetric(); return; }
     try { metrics = await get(`/devices/${devSel.value}/sensors`); } catch { metrics = []; }
-    mount(metricSel, metrics.length ? metrics.map((x) => h('option', { value: `${x.metric}|${x.key}` }, sensorLabel(x))) : h('option', { value: '' }, t('sens.noValues')));
+    mount(metricSel, metrics.length ? metricOptions(metrics) : h('option', { value: '' }, t('sens.noValues')));
     if (so.metric) metricSel.value = `${so.metric}|${so.key || ''}`;
     syncMetric();
   }
