@@ -149,12 +149,12 @@ Standardmäßig fragt der Scan Geräte mit der Community `public` (SNMP v2c, son
 
 Unter *Einstellungen → Active Directory* meldest du dich mit dem Windows-Konto an:
 
-- Verbindung nur verschlüsselt: `ldaps://dc01.firma.local` (Port 636) oder `ldap://` mit StartTLS. Das Zertifikat des Domänencontrollers wird geprüft.
+- Aufbau wie in Helfi.Space: **Domänencontroller**, **Verschlüsselung** (LDAPS 636 oder StartTLS 389) und **Port** als eigene Felder; Vertrauen *abgerufenes Zertifikat*, *System-CAs* oder *nicht prüfen* (nur zum Testen); Servernamen prüfen abschaltbar (DC über IP).
 - **Zertifikat vom DC abrufen** (ab 0.4): WhatsOnMyNet holt die Zertifikatskette direkt vom Domänencontroller und ergänzt fehlende CAs über die AIA-Adresse im Zertifikat. Du vergleichst den Fingerabdruck (SHA-256 und SHA-1, wie in certlm.msc) und bestätigst. Fehlt die Stamm-CA danach noch, wird sie über die nun vertrauenswürdige Verbindung aus dem AD gelesen (*Public Key Services*). Jede ergänzte CA muss das Zertifikat darunter tatsächlich signiert haben. Mit Stamm-CA wird auch ein erneuertes DC-Zertifikat ohne neue Bestätigung angenommen. PEM selbst einfügen geht weiterhin.
 - Ein **Dienstkonto ohne besondere Rechte** sucht das Konto, das Passwort prüft der Domänencontroller selbst – WhatsOnMyNet speichert es nie.
-- **Rollen über Gruppen**: je eine Gruppe für Administrator, Bearbeiter und Nur lesen (vollständiger DN, verschachtelte Gruppen werden berücksichtigt). Wer in keiner Gruppe ist, kann sich nicht anmelden. Name, E-Mail und Rolle werden bei jeder Anmeldung aus dem AD übernommen.
+- **Rollen über Gruppen**: je eine Gruppe für Administrator, Bearbeiter und Nur lesen, einfach mit dem **Gruppennamen** (z. B. `WOMN-Admins`) oder als DN; gesucht wird in der ganzen Domäne, verschachtelte Gruppen werden berücksichtigt. Die **Basis-DN** darf leer bleiben, sie wird aus dem AD ermittelt. Wer in keiner Gruppe ist, kann sich nicht anmelden. Name, E-Mail und Rolle werden bei jeder Anmeldung aus dem AD übernommen.
 - Lokale Konten funktionieren weiter; bei gleichem Namen hat das **lokale Konto immer Vorrang** – so bleibt der lokale Admin der Notfallzugang.
-- „Verbindung testen“ zeigt für ein Konto die gefundenen Gruppen und die Rolle, die es bekäme.
+- **Verbindung testen** prüft mit den Werten im Formular (auch ungespeichert) Schritt für Schritt: Verbindung, Dienstkonto, Basis-DN, jede Gruppe, Benutzer, Rolle und Passwort, jeweils mit ✓/✗ und dem Grund. Die Schritt-für-Schritt-Anleitung steht im Handbuch.
 
 ## Rechte pro Standort (ab Version 0.3)
 

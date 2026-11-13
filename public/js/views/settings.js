@@ -760,52 +760,92 @@ async function agents(body, _s, reload) {
 
 async function ad(body, _s, reload) {
   const c = await get('/settings/ad');
+  // Server: domain controller, encryption and port (like Helfi.Space) – the port follows the encryption
+  const port = input('port', c.host ? c.port : '', { type: 'number', min: 1, max: 65535, placeholder: c.security === 'starttls' ? '389' : '636' });
+  const security = select('security', [['ldaps', t('ad.sec.ldaps')], ['starttls', t('ad.sec.starttls')]], c.security);
+  security.addEventListener('change', () => {
+    const def = security.value === 'starttls' ? '389' : '636';
+    if (!port.value || ['389', '636'].includes(port.value)) port.value = def;
+    port.placeholder = def;
+  });
+  const trust = select('trust', [['pinned', t('ad.trust.pinned')], ['system', t('ad.trust.system')], ['insecure', t('ad.trust.insecure')]], c.trust);
+  const baseDn = input('baseDn', c.baseDn, { class: 'mono', placeholder: t('ad.baseDnPh') });
+  const values = () => {
+    const d = formData(form);
+    const v = { ...d, trust: trust.value, verifyHostname: !!d.verifyHostname, nested: !!d.nested, enabled: !!d.enabled };
+    if (!d.bindPassword) delete v.bindPassword;
+    return v;
+  };
   const form = h('form', { class: 'form', onsubmit: async (e) => {
     e.preventDefault();
-    const d = formData(form);
-    const payload = { ...d, verify: d.verify, nested: d.nested };
-    if (!d.bindPassword) delete payload.bindPassword;
-    try { await put('/settings/ad', payload); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
+    try { await put('/settings/ad', values()); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
   } },
   h('p', { class: 'muted' }, t('ad.lead')),
   field(t('ad.enabled'), h('input', { type: 'checkbox', name: 'enabled', checked: c.enabled })),
+
+  h('h3', { class: 'ad-sec' }, t('ad.server')),
+  h('div', { class: 'ad-grid-3' },
+    field(t('ad.host'), input('host', c.host, { class: 'mono', placeholder: 'dc01.firma.local' }), t('ad.hostHint')),
+    field(t('ad.security'), security),
+    field(t('ad.port'), port)),
+
+  h('h3', { class: 'ad-sec' }, t('ad.certificate')),
   h('div', { class: 'form-grid' },
-    field(t('ad.url'), input('url', c.url, { class: 'mono', placeholder: 'ldaps://dc01.firma.local' }), t('ad.urlHint')),
-    field(t('ad.baseDn'), input('baseDn', c.baseDn, { class: 'mono', placeholder: 'DC=firma,DC=local' })),
+    field(t('ad.trust'), trust, t('ad.trustHint')),
+    field(t('ad.verifyHostname'), h('input', { type: 'checkbox', name: 'verifyHostname', checked: c.verifyHostname }), t('ad.verifyHostnameHint'))),
+  adCertBlock(c.cert, values, reload),
+
+  h('h3', { class: 'ad-sec' }, t('ad.directory')),
+  field(t('ad.baseDn'), baseDn, t('ad.baseDnHint')),
+  h('div', { class: 'form-grid' },
     field(t('ad.bindDn'), input('bindDn', c.bindDn, { class: 'mono', autocomplete: 'off', placeholder: 'svc-womn@firma.local' }), t('ad.bindDnHint')),
     field(t('ad.bindPassword'), input('bindPassword', '', { type: 'password', autocomplete: 'new-password', placeholder: c.bindPassword.set ? '••••••' : '' }), c.bindPassword.set ? t('set.smtpPasswordSet') : null)),
-  field(t('ad.startTls'), h('input', { type: 'checkbox', name: 'startTls', checked: c.startTls }), t('ad.startTlsHint')),
-  field(t('ad.verify'), h('input', { type: 'checkbox', name: 'verify', checked: c.verify }), t('ad.verifyHint')),
-  adCertBlock(c.cert, () => formData(form), reload),
-  h('h3', { class: 'sub-title' }, t('ad.groups')),
+
+  h('h3', { class: 'ad-sec' }, t('ad.groups')),
   h('p', { class: 'muted small', style: { marginTop: 0 } }, t('ad.groupsHint')),
-  field(t('role.admin'), input('groupAdmin', c.groupAdmin, { class: 'mono', placeholder: 'CN=WOMN-Admins,OU=Gruppen,DC=firma,DC=local' })),
-  field(t('role.editor'), input('groupEditor', c.groupEditor, { class: 'mono', placeholder: 'CN=WOMN-Bearbeiter,OU=Gruppen,DC=firma,DC=local' })),
-  field(t('role.viewer'), input('groupViewer', c.groupViewer, { class: 'mono', placeholder: 'CN=WOMN-Lesen,OU=Gruppen,DC=firma,DC=local' })),
+  h('div', { class: 'ad-grid-3' },
+    field(t('role.admin'), input('groupAdmin', c.groupAdmin, { class: 'mono', placeholder: 'WOMN-Admins' })),
+    field(t('role.editor'), input('groupEditor', c.groupEditor, { class: 'mono', placeholder: 'WOMN-Bearbeiter' })),
+    field(t('role.viewer'), input('groupViewer', c.groupViewer, { class: 'mono', placeholder: 'WOMN-Lesen' }))),
   field(t('ad.nested'), h('input', { type: 'checkbox', name: 'nested', checked: c.nested })),
-  field(t('ad.filter'), input('userFilter', c.userFilter, { class: 'mono', placeholder: c.defaultFilter }), t('ad.filterHint')),
+  h('details', { class: 'cert-manual' }, h('summary', {}, t('ad.advanced')),
+    field(t('ad.filter'), input('userFilter', c.userFilter, { class: 'mono', placeholder: c.defaultFilter }), t('ad.filterHint'))),
   saveBtn());
 
-  const out = h('div');
+  // Test with the values in the form (also before saving): every step with ✓ or ✗ and what to do
+  const out = h('div', { class: 'ad-steps' });
   const tu = input('username', '', { autocomplete: 'off', placeholder: 'max.mustermann' });
   const tp = input('password', '', { type: 'password', autocomplete: 'off' });
+  const stepText = (st) => {
+    if (st.key === 'connect') return st.ok ? t('adt.connect', { security: st.security }) : t('adt.connectFail');
+    if (st.key === 'bind') return st.ok ? t('adt.bind', { value: st.value }) : st.error === 'noBind' ? t('adt.noBind') : t('adt.bindFail');
+    if (st.key === 'baseDn') return st.ok ? t(st.auto ? 'adt.baseDnAuto' : 'adt.baseDn', { value: st.value }) : t('adt.noBase');
+    if (st.key === 'group') return st.error === 'noGroups' ? t('adt.noGroups') : st.ok ? t('adt.group', { role: t(`role.${st.role}`), value: st.value }) : t('adt.groupNotFound', { role: t(`role.${st.role}`), value: st.value });
+    if (st.key === 'user') return st.ok ? t('adt.user', { value: st.value, name: st.display_name || st.value }) : t(`adt.${st.error === 'disabled' ? 'userDisabled' : st.error === 'ambiguous' ? 'userAmbiguous' : 'userNotFound'}`, { value: st.value });
+    if (st.key === 'role') return st.ok ? t('adt.role', { role: t(`role.${st.role}`) }) : t('adt.noRole');
+    if (st.key === 'password') return st.ok ? t('adt.password') : t('adt.passwordFail');
+    return st.key;
+  };
   const test = h('form', { class: 'form', onsubmit: async (e) => {
     e.preventDefault();
     const b = test.querySelector('button[type=submit]'); b.disabled = true;
     try {
-      const r = await post('/settings/ad/test', { username: tu.value, password: tp.value });
-      mount(out, h('dl', { class: 'kv' },
-        h('dt', {}, 'DN'), h('dd', { class: 'mono small' }, r.dn),
-        h('dt', {}, t('user.display')), h('dd', {}, r.display_name || '–'),
-        h('dt', {}, t('user.email')), h('dd', {}, r.email || '–'),
-        h('dt', {}, t('user.role')), h('dd', {}, r.role ? h('span', { class: 'badge badge-ok' }, t(`role.${r.role}`)) : h('span', { class: 'badge badge-bad' }, t('ad.noRole'))),
-        h('dt', {}, t('ad.password')), h('dd', {}, r.passwordChecked ? t('ad.passwordOk') : t('ad.passwordSkipped')),
-        h('dt', {}, t('ad.foundGroups')), h('dd', { class: 'mono small' }, r.groups.length ? r.groups.map((g) => h('div', {}, g)) : '–')));
+      const r = await post('/settings/ad/test', { settings: values(), username: tu.value, password: tp.value });
+      if (r.baseDn && !baseDn.value) { baseDn.value = r.baseDn; }
+      mount(out, h('ul', {}, r.steps.map((st) => h('li', { class: st.ok ? 'ok' : st.error === 'noBind' ? 'warn' : 'bad' },
+        h('span', { class: 'ad-mark', 'aria-hidden': 'true' }, st.ok ? '✓' : st.error === 'noBind' ? '!' : '✗'),
+        h('div', {}, h('div', {}, stepText(st)),
+          !st.ok && st.error && !['noBind', 'noGroups', 'noRole', 'groupNotFound', 'userNotFound', 'userDisabled', 'ambiguous', 'noBase'].includes(st.error)
+            ? h('div', { class: 'muted small' }, t(`adt.err.${st.error}`), st.detail ? h('span', { class: 'mono' }, ` (${st.detail})`) : null) : null,
+          st.key === 'group' && st.dn ? h('div', { class: 'muted small mono' }, st.dn) : null,
+          st.key === 'user' && st.ok ? h('div', { class: 'muted small' }, [st.email, st.dn].filter(Boolean).join(' · ')) : null,
+          st.key === 'baseDn' && st.auto && r.baseDn ? h('div', { class: 'muted small' }, t('adt.baseDnSave')) : null)))),
+      r.ok ? h('p', { class: 'ad-result ok' }, t('adt.allOk')) : null);
     } catch (ex) { mount(out); fail(ex); }
     b.disabled = false;
   } },
   h('p', { class: 'muted', style: { marginTop: 0 } }, t('ad.testLead')),
-  h('div', { class: 'form-grid' }, field(t('user.username'), tu), field(t('ad.testPassword'), tp, t('ad.testPasswordHint'))),
+  h('div', { class: 'form-grid' }, field(t('ad.testUser'), tu, t('ad.testUserHint')), field(t('ad.testPassword'), tp, t('ad.testPasswordHint'))),
   h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'submit' }, t('ad.test'))), out);
   mount(body, panel(t('set.ad'), form), panel(t('ad.test'), test));
 }
@@ -836,7 +876,7 @@ function adCertBlock(cert, formValues, reload) {
   const out = h('div', { class: 'cert-block' });
   const form = () => {
     const d = formValues();
-    const v = { url: d.url, startTls: !!d.startTls, bindDn: d.bindDn };
+    const v = { host: d.host, security: d.security, port: d.port, bindDn: d.bindDn, trust: d.trust, verifyHostname: d.verifyHostname };
     if (d.bindPassword) v.bindPassword = d.bindPassword;
     return v;
   };
