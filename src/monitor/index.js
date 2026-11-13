@@ -360,6 +360,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const inMaintenance = !!maintenance.activeFor(m.id, at);
     const set = { last_check: iso(at), last_ms: res.ms ?? null, last_message: msg };
     if (res.data && typeof res.data === 'object') set.data = JSON.stringify({ ...res.data, at: iso(at) });
+    // Measured values: without a value in this check the old one must not stay on display
+    else if (['sensor', 'snmp', 'proxmox'].includes(m.type)) set.data = '{}';
     let notifyEv = null;
 
     if (inMaintenance) {
