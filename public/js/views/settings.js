@@ -30,7 +30,7 @@ export async function renderSettings(main, section = 'general') {
         list.map(([s, ico]) => h('a', { href: `/settings/${s}`, 'data-link': true,
           class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))])),
       body)));
-  const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev'].includes(section) ? await get('/settings') : null;
+  const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev', 'notify'].includes(section) ? await get('/settings') : null;
   const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), ad, agents, backup, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
@@ -1129,7 +1129,7 @@ function pickChannel(edit) {
         h('span', { class: 'pick-text' }, t(`ch.what.${ty}`)))))))), { wide: true });
 }
 
-async function notify(body, _s, reload) {
+async function notify(body, s, reload) {
   const list = await get('/channels');
   const edit = (c, type) => {
     const ty = c ? c.type : type;
@@ -1196,5 +1196,25 @@ async function notify(body, _s, reload) {
             if (!await confirmDialog(t('delete'), t('ch.deleteConfirm', { name: c.name }), t('delete'), t('cancel'), { danger: true })) return;
             try { await del(`/channels/${c.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
           } }))))))))
-      : h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('ch.empty'))));
+      : h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('ch.empty'))),
+    list.length ? escalationPanel(list, s?.escalate || { min: 0, channels: [] }) : null);
+}
+
+/** Escalation for all monitors: an outage not solved after X minutes also goes to these channels */
+function escalationPanel(chans, e) {
+  const picker = channelPicker(chans, e.channels, { hint: 'esc.channelsHint' });
+  const steps = [15, 30, 60, 120, 240, 480];
+  const minSel = select('min', [['0', t('mon.f.escOff')], ...[...new Set([...steps, ...(e.min ? [e.min] : [])])].sort((a, b) => a - b).map((n) => [String(n), t('mon.f.escAfter', { n })])], String(e.min || 0));
+  const form = h('form', { class: 'form', onsubmit: async (ev) => {
+    ev.preventDefault();
+    const ids = picker.value();
+    if (Number(minSel.value) > 0 && !ids.length) { toast(t('esc.needChannel'), 'error'); return; }
+    try { await put('/settings/escalate', { min: minSel.value, channels: ids }); state.meta.escalateMin = Number(minSel.value); toast(t('saved')); } catch (ex) { fail(ex); }
+  } },
+  h('p', { class: 'muted', style: { margin: 0 } }, t('esc.lead')),
+  field(t('esc.when'), minSel),
+  picker.el,
+  h('p', { class: 'muted small', style: { margin: 0 } }, t('esc.perMonitor')),
+  saveBtn());
+  return h('section', { class: 'panel panel-pad', style: { marginTop: '16px' } }, h('h2', { class: 'section-title' }, t('esc.title')), form);
 }

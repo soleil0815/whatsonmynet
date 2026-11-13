@@ -424,6 +424,7 @@ async function renderDetail(main, id) {
 function eventLine(e) {
   if (e.kind === 'cert') return t('mon.ev.cert', { n: e.message });
   if (e.kind === 'unreachable') return t('mon.ev.unreachable', { name: e.message });
+  if (e.kind === 'escalated') return t('mon.ev.escalated', { n: e.message });
   return `${t(`mon.ev.${e.kind}`)}${e.message && e.kind === 'down' ? ` - ${e.message}` : ''}`;
 }
 
@@ -727,6 +728,18 @@ export async function openMonitorForm(m, done, preset = null) {
       h('input', { type: 'checkbox', name: `ch_${c.id}`, checked: selected.size ? selected.has(c.id) : false }), `${c.name}${c.is_default ? ` (${t('mon.f.default')})` : ''}`))),
     h('span', { class: 'hint' }, t('mon.f.channelsHint')))
     : h('p', { class: 'full muted small' }, state.user.isAdmin ? t('mon.f.noChannelsAdmin') : t('mon.f.noChannels'));
+  // Escalation: still down after X minutes → also to these channels. Empty = the setting for all monitors
+  const escDefault = state.meta?.escalateMin ? t('mon.f.escDefaultOn', { n: state.meta.escalateMin }) : t('mon.f.escDefaultOff');
+  const escMin = v.escalate_min === null || v.escalate_min === undefined ? '' : String(v.escalate_min);
+  const ESC_STEPS = [15, 30, 60, 120, 240, 480];
+  const escSel = select('escalate_min', [['', escDefault], ['0', t('mon.f.escOff')],
+    ...[...new Set([...ESC_STEPS, ...(escMin && escMin !== '0' ? [Number(escMin)] : [])])].sort((a, b) => a - b).map((n) => [String(n), t('mon.f.escAfter', { n })])], escMin);
+  const escSelected = new Set(v.escalate_channels || []);
+  const escChans = h('div', { class: 'chips' }, chans.map((c) => h('label', { class: 'check', style: { marginRight: '14px' } },
+    h('input', { type: 'checkbox', name: `esc_${c.id}`, checked: escSelected.has(c.id) }), c.name)));
+  const escBox = h('div', { class: 'full field' }, t('mon.f.escalate'),
+    h('div', { class: 'esc-row' }, escSel),
+    chans.length ? [escChans, h('span', { class: 'hint' }, t('mon.f.escHint'))] : null);
   const form = h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); save(); } },
     h('div', { class: 'full' }, field(t('mon.f.name'), nameIn)),
     field(t('mon.f.type'), typeSel, offerScript ? t('mon.f.typeScript') : null),
@@ -742,13 +755,14 @@ export async function openMonitorForm(m, done, preset = null) {
     chanBox,
     parentBox,
     // Rarely changed: how often, when to alarm, HTTP details - folded away with sensible defaults
-    h('details', { class: 'adv full', open: !!m && m.type === 'http' && (m.http_keyword || m.http_status !== '200-399') },
+    h('details', { class: 'adv full', open: !!m && ((m.type === 'http' && (m.http_keyword || m.http_status !== '200-399')) || (m.escalate_min !== null && m.escalate_min !== undefined)) },
       h('summary', {}, t('mon.f.advanced')),
       h('div', { class: 'form-grid' },
         field(t('mon.f.interval'), input('interval_s', v.interval_s, { type: 'number', min: 20, max: 86400 }), t('mon.f.intervalHint')),
         field(t('mon.f.retries'), input('fail_threshold', v.fail_threshold, { type: 'number', min: 1, max: 10 }), t('mon.f.retriesHint')),
         field(t('mon.f.timeout'), input('timeout_s', v.timeout_s, { type: 'number', min: 1, max: 60 })),
         field(t('mon.f.resend'), input('resend_min', v.resend_min, { type: 'number', min: 0, max: 1440 }), t('mon.f.resendHint')),
+        escBox,
         httpBox)));
   sync();
   const dlg = modal(m ? m.name : t('mon.add'), form, { wide: true, actions: [
@@ -761,7 +775,8 @@ export async function openMonitorForm(m, done, preset = null) {
     const body = { name: d.name, type: d.type, target: d.target.trim(), port: d.port, interval_s: d.interval_s, timeout_s: d.timeout_s,
       fail_threshold: d.fail_threshold, resend_min: d.resend_min, http_status: d.http_status, http_keyword: d.http_keyword,
       tls_verify: d.tls_verify, cert_check: d.cert_check, cert_days: d.cert_days,
-      channels: chans.filter((c) => d[`ch_${c.id}`]).map((c) => c.id), parent_id: d.parent_id ? Number(d.parent_id) : null };
+      channels: chans.filter((c) => d[`ch_${c.id}`]).map((c) => c.id), parent_id: d.parent_id ? Number(d.parent_id) : null,
+      escalate_min: d.escalate_min ?? '', escalate_channels: chans.filter((c) => d[`esc_${c.id}`]).map((c) => c.id) };
     // An address typed as URL for a host check ("https://nas:5001" with ping) only needs the host
     if (!['http', 'docker', 'smb'].includes(d.type) && /^[a-z][a-z0-9+.-]*:\/\//i.test(body.target)) body.target = splitAddress(body.target).host;
     if (d.type === 'docker') body.docker_host_id = d.docker_host_id;

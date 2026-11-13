@@ -66,6 +66,20 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   const running = new Set();
   let timer = null;
 
+  // ---------------------------------------------------------------------------------------------------- escalation
+  /** { min, ids } for a monitor: its own values, otherwise the setting for all monitors */
+  function escalation(m) {
+    const own = parse(m.escalate_channels, []);
+    const min = m.escalate_min === null || m.escalate_min === undefined ? Number(settings?.get('escalate.min')) || 0 : m.escalate_min;
+    const ids = own.length ? own : (settings?.get('escalate.channels') || []);
+    return { min, ids: ids.map(Number).filter((x) => Number.isInteger(x) && x > 0) };
+  }
+  /** The channels the normal messages of a monitor go to (empty list = the default channels) */
+  function normalChannelIds(m) {
+    const own = parse(m.channels, []);
+    return own.length ? own : db.prepare('SELECT id FROM channels WHERE enabled=1 AND is_default=1').all().map((r) => r.id);
+  }
+
   // ---------------------------------------------------------------------------------------------------- dependencies
   const parentStmt = db.prepare('SELECT id, name, status, fail_count, enabled, parent_id FROM monitors WHERE id=?');
   /** "Depends on": an existing monitor, not itself, and no circle (A behind B behind A) */
@@ -158,6 +172,13 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       cert_check: (input.cert_check ?? old?.cert_check ?? 1) ? 1 : 0,
       cert_days: parseCertDays(input.cert_days ?? old?.cert_days).join(','),
       channels: JSON.stringify(ids(input.channels ?? parse(old?.channels, []), 50)),
+      // Escalation: '' / null = the setting for all monitors, 0 = never, otherwise minutes
+      escalate_min: (() => {
+        const raw = input.escalate_min !== undefined ? input.escalate_min : old?.escalate_min;
+        if (raw === null || raw === undefined || raw === '') return null;
+        return Math.min(1440, Math.max(0, int(String(raw)) || 0));
+      })(),
+      escalate_channels: JSON.stringify(ids(input.escalate_channels ?? parse(old?.escalate_channels, []), 50)),
     };
     if (!v.name) throw new HttpError(400, 'err.nameRequired');
     v.parent_id = cleanParent(input, old);
@@ -364,7 +385,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     if (!m) return null;
     const certDays = m.cert_valid_to ? Math.floor((Date.parse(m.cert_valid_to) - now().getTime()) / 86400000) : null;
     const { secret, data, ...rest } = m;
-    return { ...rest, data: parse(data, {}), channels: parse(m.channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
+    return { ...rest, data: parse(data, {}), channels: parse(m.channels, []), escalate_channels: parse(m.escalate_channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
       cert_check: !!m.cert_check, cert_days_left: certDays,
       docker_host: m.docker_host_id ? db.prepare('SELECT id, name FROM docker_hosts WHERE id=?').get(m.docker_host_id) || null : null };
   }
@@ -527,6 +548,18 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       }
     }
 
+    // Escalation: still down after the set time - once more, to further channels (e.g. the boss, a second team)
+    let escEv = null;
+    const esc = escalation(m);
+    const stillDown = (set.status ?? m.status) === 'down' && !inMaintenance;
+    if (!stillDown) {
+      if (m.escalated_at) set.escalated_at = null;
+    } else if (!m.escalated_at && esc.min > 0 && esc.ids.length && (m.notified_down || set.notified_down)) {
+      const since = Date.parse(set.status_since ?? m.status_since) || at.getTime();
+      const downMin = Math.floor((at.getTime() - since) / 60000);
+      if (downMin >= esc.min) { escEv = { kind: 'escalate', message: msg, downMin }; set.escalated_at = iso(at); }
+    }
+
     // Certificate expiry
     let certEv = null;
     if (res.cert?.validTo && m.cert_check) {
@@ -544,6 +577,16 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     db.prepare(`UPDATE monitors SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`).run(...keys.map((k) => set[k]), m.id);
 
     const mon = { id: m.id, name: m.name, target: m.type === 'tcp' ? `${m.target}:${m.port}` : m.target, channels: m.channels };
+    if (escEv) {
+      const reached = await channels.notifyIds(esc.ids, { ...escEv, monitor: mon, at: iso(at) });
+      event(m, 'escalated', String(escEv.downMin), reached);
+    }
+    // All clear after an escalation: also to the escalation channels that did not get the normal message
+    if (notifyEv?.kind === 'up' && m.escalated_at) {
+      const normal = new Set(normalChannelIds(m));
+      const extra = esc.ids.filter((id) => !normal.has(id));
+      if (extra.length) await channels.notifyIds(extra, { ...notifyEv, monitor: mon, at: iso(at) });
+    }
     for (const ev of [notifyEv, certEv].filter(Boolean)) {
       const reached = await channels.notify(mon, { ...ev, monitor: mon, at: iso(at) });
       if (ev.kind === 'down') event(m, 'down', msg, reached);

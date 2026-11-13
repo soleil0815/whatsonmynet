@@ -411,6 +411,8 @@ dialog.modal footer { display: flex; justify-content: flex-end; gap: 8px; paddin
 .timeline li.ev-up::before { background: var(--ok); }
 .timeline li.ev-cert::before { background: var(--new); }
 .timeline li.ev-maintenance::before { background: var(--ti); }
+.timeline li.ev-escalated::before { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+.esc-row { max-width: 320px; margin-bottom: 8px; }
 .history-list button .pill { flex: none; }
 
 /* Printer: supplies as bars in the colour of the toner/ink */

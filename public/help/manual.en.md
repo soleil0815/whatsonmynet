@@ -67,6 +67,15 @@ On the device page "Monitor" creates a fitting monitor. If the IP of a device ch
 
 Tokens, keys and webhook addresses are stored encrypted and never shown again. Outages arrive with high priority on push services. **Maintenance windows** (once or weekly) suppress alarms.
 
+### Escalation
+
+When an outage lasts too long, someone else should know as well, e.g. the management or a second on-call team. That is what **escalation** is for.
+
+- **For all monitors:** *Settings → Notifications → Escalation*. There you choose after how many minutes still down (15 min to 8 h) it escalates, and to which channels. You add those channels beforehand as usual, e.g. an extra e-mail or a second Telegram chat.
+- **Per monitor:** in the form under *Advanced → Escalation* you set another time, switch it off (*never escalate*) or choose own channels. Without an own choice the settings for all apply.
+- The escalation arrives **once per outage**, with high priority: "🚨 Escalation: Firewall has been down for 30 min". When the outage is solved, the all-clear also goes to the escalation channels.
+- Follow-up outages (see dependencies) and maintenance windows do not escalate. The history of the monitor shows *Escalated* with the channels that were reached.
+
 ### History over months
 
 On the page of a monitor you choose the range: **24 h, 3 d, 7 d** show every single check, **30 d, 90 d, 1 y** the summary.
