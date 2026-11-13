@@ -7,6 +7,7 @@ import { state, navigate, fail } from '../app.js';
 import { monitorDot, statusPill, openMonitorForm } from './monitoring.js';
 import { printerPanel } from './printer.js';
 import { systemPanel, openHostScript } from './hostscripts.js';
+import { hardwarePanel } from './hardware.js';
 import { switchPanel, nasPanel, upsPanel, pluggedLine } from './snmpdev.js';
 import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
 
@@ -190,7 +191,7 @@ export async function renderDevice(main, id) {
       case 'monitors': view = monPanel; break;
       case 'network': view = h('div', { class: 'stack' }, detection, meta); break;
       case 'history': view = hist; break;
-      default: view = h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || (d.host ? systemPanel(d.host) : facts), typePanel && d.host ? systemPanel(d.host) : null), h('div', { class: 'stack' }, monPanel, netShort));
+      default: view = h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || (d.host ? systemPanel(d.host) : d.hardware ? null : facts), typePanel && d.host ? systemPanel(d.host) : null, hardwarePanel(d.hardware)), h('div', { class: 'stack' }, monPanel, netShort));
     }
     mount(content, view);
   }
