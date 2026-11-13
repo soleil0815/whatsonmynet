@@ -1,4 +1,4 @@
-// Manufacturer from the MAC address (IEEE registry, package oui-data – updated by Dependabot).
+// Manufacturer from the MAC address (IEEE registry, package oui-data - updated by Dependabot).
 import { createRequire } from 'node:module';
 import { normalizeMac, isRandomMac } from '../lib/net.js';
 
@@ -77,7 +77,7 @@ export function shortVendor(name) {
 }
 
 /**
- * { vendor, vendorFull, random } – the longest registered prefix wins (MA-S 36 bit, MA-M 28 bit, MA-L 24 bit).
+ * { vendor, vendorFull, random } - the longest registered prefix wins (MA-S 36 bit, MA-M 28 bit, MA-L 24 bit).
  * Randomised MAC addresses (phones, laptops with "private address") have no manufacturer.
  */
 export function lookupVendor(mac) {

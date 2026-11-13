@@ -1,13 +1,26 @@
-// Overview: what is in the inventory, what the last scan found, what changed.
+// Overview: what needs attention first, then the state of everything at a glance.
 import { h, mount, fmtAgo, fmtDate } from '../dom.js';
 import { get } from '../api.js';
 import { t, getLang } from '../i18n.js';
-import { icon, LOGO_MARK } from '../icons.js';
+import { icon } from '../icons.js';
 import { state } from '../app.js';
-import { pageHead, TI } from './common.js';
 import { historyText } from './device.js';
-import { lowSuppliesPanel } from './printer.js';
-import { nasProblemsPanel } from './snmpdev.js';
+import { supplyName } from './printer.js';
+import { stText } from './snmpdev.js';
+
+/** One line of "Needs attention": icon, what, details, one action */
+function todo(kind, ico, title, detail, action, extra = null) {
+  return h('li', { class: `todo todo-${kind}` },
+    h('span', { class: 'todo-ico', html: icon(ico) }),
+    h('div', { class: 'todo-text' }, h('div', { class: 'todo-title' }, title), detail ? h('div', { class: 'todo-detail' }, detail) : null, extra),
+    action ? h('a', { class: 'btn btn-sm', href: action.href, 'data-link': true }, action.label) : null);
+}
+
+/** Line of the state card: dot, label, number, short state */
+function stateRow(href, tone, label, n, note) {
+  return h('a', { class: 'state-row', href, 'data-link': true },
+    h('span', { class: `dot dot-${tone}` }), h('span', { class: 'state-label' }, label), h('b', {}, n), h('span', { class: `state-note tone-${tone}` }, note));
+}
 
 export async function renderDashboard(main) {
   const d = await get('/dashboard');
@@ -15,70 +28,75 @@ export async function renderDashboard(main) {
   const mon = d.monitoring || { total: 0, up: 0, down: [], certs: [] };
   state.down = mon.down.length;
   const canScan = state.user.canEdit;
-  const scanBtn = canScan ? h('a', { class: 'btn btn-primary btn-big', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('dash.scanNow')) : null;
+  const lang = getLang();
 
-  const figures = h('div', { class: 'figures' },
-    h('a', { class: 'figure', href: '/inventory', 'data-link': true }, h('b', {}, d.devices), h('span', {}, t('dash.devices'))),
-    h('div', { class: 'figure' }, h('b', {}, d.online), h('span', {}, t('dash.online'))),
-    d.missing ? h('a', { class: 'figure bad', href: '/inventory', 'data-link': true }, h('b', {}, d.missing), h('span', {}, t('dash.missing'))) : null,
-    d.waiting ? h('a', { class: 'figure alert', href: d.lastScan ? `/scan/${d.lastScan.id}` : '/scan', 'data-link': true }, h('b', {}, d.waiting), h('span', {}, t('dash.waiting'))) : null,
-    d.telematik ? h('a', { class: 'figure ti', href: '/inventory?type=telematik', 'data-link': true }, h('b', {}, d.telematik), h('span', {}, t('dash.telematik'))) : null,
-    mon.total ? h('a', { class: `figure${mon.down.length ? ' bad' : ''}`, href: '/monitoring', 'data-link': true },
-      h('b', {}, mon.down.length ? mon.down.length : `${mon.up}/${mon.total}`), h('span', {}, mon.down.length ? t('mon.status.down') : t('mon.status.up'))) : null,
-  );
+  // Needs attention - most urgent first
+  const items = [];
+  if (mon.down.length) {
+    const shown = mon.down.slice(0, 4);
+    items.push(todo('bad', 'pulse', t('dash.monDown', { n: mon.down.length }), t('dash.monDownSince', { when: fmtAgo(mon.down[mon.down.length - 1].since, t) }),
+      { href: '/monitoring', label: t('dash.look') },
+      h('div', { class: 'todo-chips' }, shown.map((m) => h('a', { href: `/monitoring/${m.id}`, 'data-link': true, title: m.message }, m.name)),
+        mon.down.length > shown.length ? h('span', {}, t('dash.more', { n: mon.down.length - shown.length })) : null)));
+  }
+  if (d.missing) items.push(todo('bad', 'inventory', t('dash.missingN', { n: d.missing }), t('dash.missingDetail'), { href: '/inventory?filter=problems', label: t('dash.look') }));
+  if (d.waiting) {
+    items.push(todo('new', 'radar', t('dash.newN', { n: d.waiting }), d.lastScan ? t('dash.newDetail', { when: fmtDate(d.lastScan.started_at, lang) }) : null,
+      canScan ? { href: d.lastScan ? `/scan/${d.lastScan.id}` : '/scan', label: t('dash.adopt') } : null));
+  }
+  for (const s of d.printersLow || []) {
+    const value = s.state === 'empty' ? (s.receptacle ? t('sup.full') : t('sup.empty')) : s.receptacle ? t('sup.freePct', { pct: s.pct }) : `${s.pct} %`;
+    items.push(todo('new', 'printer', t('dash.supply', { name: supplyName(s), value }), s.device,
+      { href: `/devices/${s.deviceId}`, label: t('dash.toDevice') },
+      s.pct !== null && s.pct !== undefined && !s.receptacle ? h('div', { class: 'todo-bar' }, h('i', { style: { width: `${Math.max(2, s.pct)}%` } })) : null));
+  }
+  for (const p of d.nasProblems || []) {
+    const what = p.kind === 'volume' ? t('nas.volumeFull', { name: p.name, pct: p.pct }) : [t(`nas.k.${p.kind}`), p.name, p.status ? stText(p.status) : ''].filter(Boolean).join(': ');
+    items.push(todo('bad', 'nas', what, p.device, { href: `/devices/${p.deviceId}`, label: t('dash.toDevice') }));
+  }
+  for (const c of mon.certs || []) {
+    items.push(todo('ti', 'lock', t('dash.cert', { name: c.name }), t('dash.certUntil', { date: fmtDate(c.cert_valid_to, lang, false) }), { href: `/monitoring/${c.id}`, label: t('dash.look') }));
+  }
+  for (const w of d.warranty || []) {
+    items.push(todo('ti', 'history', t('dash.warrantyOf', { name: w.name }), t('dash.warrantyUntil', { date: fmtDate(w.warranty_until, lang, false) }), { href: `/devices/${w.id}`, label: t('dash.toDevice') }));
+  }
 
-  const types = Object.entries(d.byType).sort((a, b) => b[1] - a[1]);
-  const typePanel = h('section', { class: 'panel' },
-    h('h2', {}, t('dash.byType')),
-    types.length
-      ? h('div', { class: 'typegrid' }, types.map(([type, n]) => h('a', { href: `/inventory?type=${encodeURIComponent(type)}`, 'data-link': true, class: TI.has(type) ? 'ti' : '' },
-        h('span', { html: icon(type) }), h('span', { class: 'lbl' }, t(`type.${type}`)), h('b', {}, n))))
-      : h('div', { class: 'empty' },
-        h('h2', {}, t('dash.emptyTitle')), h('p', {}, t('dash.emptyText')), d.lastScan ? null : scanBtn));
+  const empty = !d.devices;
+  const attention = empty
+    ? h('section', { class: 'panel empty' }, h('h2', {}, t('dash.emptyTitle')), h('p', {}, t('dash.emptyText')),
+      canScan ? h('a', { class: 'btn btn-primary btn-big', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('dash.scanNow')) : null)
+    : h('section', { class: 'panel', 'aria-labelledby': 'todo-title' },
+      h('h2', { id: 'todo-title' }, t('dash.attention')),
+      items.length ? h('ul', { class: 'todo-list' }, items)
+        : h('div', { class: 'todo-none' }, h('span', { class: 'todo-ico ok', html: icon('check') }), h('div', {}, h('strong', {}, t('dash.allGood')), h('div', { class: 'muted' }, t('dash.allGoodDetail')))));
+
+  // State at a glance
+  const lowN = (d.printersLow || []).length;
+  const stateCard = h('section', { class: 'panel state-card', 'aria-label': t('dash.state') },
+    stateRow('/inventory', d.missing ? 'bad' : 'ok', t('dash.devicesShort'), d.devices, d.missing ? t('dash.notSeenN', { n: d.missing }) : t('dash.allSeen')),
+    mon.total ? stateRow('/monitoring', mon.down.length ? 'bad' : 'ok', t('nav.monitoring'), mon.total, mon.down.length ? t('dash.downN', { n: mon.down.length }) : t('dash.allUp')) : null,
+    d.byType?.printer ? stateRow('/inventory?type=printer', lowN ? 'new' : 'ok', t('type.printer'), d.byType.printer, lowN ? t('dash.lowN', { n: lowN }) : t('dash.suppliesOk')) : null,
+    d.telematik ? stateRow('/inventory?type=telematik', 'ti', t('dash.telematik'), d.telematik, t('dash.telematikNote')) : null);
+
+  const recent = h('section', { class: 'panel panel-pad recent-card', 'aria-labelledby': 'recent-title' },
+    h('h2', { id: 'recent-title', class: 'section-title' }, t('dash.recent')),
+    d.recent.length ? h('ul', { class: 'recent' }, d.recent.slice(0, 5).map((r) => h('li', {},
+      h('span', { class: 'when', title: fmtDate(r.at, lang) }, fmtAgo(r.at, t)),
+      h('span', {}, h('a', { href: `/devices/${r.device_id}`, 'data-link': true }, r.device_name), ': ', historyText(r)))))
+      : h('p', { class: 'muted', style: { margin: 0 } }, t('dash.noRecent')));
 
   const ls = d.lastScan;
-  const scanPanel = h('section', { class: 'panel' },
-    h('div', { class: 'scan-cta' },
-      h('span', { html: LOGO_MARK }),
-      h('div', {},
-        h('h2', {}, t('dash.lastScan')),
-        ls ? h('p', {}, `${fmtDate(ls.started_at, getLang())} · ${ls.kind === 'light' ? t('scan.kind.light') : ls.targets.map((x) => x.cidr).join(', ')}`, h('br'),
-          `${t('dash.found', { n: ls.stats.probed ?? 0 })} · ${t('dash.duration', { s: Math.round((ls.stats.durationMs || 0) / 1000) })}`)
-          : h('p', {}, t('dash.noScan')),
-        h('div', { class: 'actions' },
-          scanBtn ? h('a', { class: 'btn btn-primary', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('dash.scanNow')) : null,
-          ls && d.waiting ? h('a', { class: 'btn', href: `/scan/${ls.id}`, 'data-link': true }, t('dash.waitingAction'), h('span', { class: 'badge badge-new' }, d.waiting)) : null))));
+  const scanLine = h('p', { class: 'muted small scan-line' }, ls
+    ? t('dash.lastScanLine', { when: fmtDate(ls.started_at, lang), n: ls.stats.probed ?? 0, s: Math.round((ls.stats.durationMs || 0) / 1000) })
+    : t('dash.noScan'));
 
-  const recent = h('section', { class: 'panel' },
-    h('h2', {}, t('dash.recent')),
-    d.recent.length ? h('ul', { class: 'feed' }, d.recent.map((r) => h('li', {},
-      h('a', { href: `/devices/${r.device_id}`, 'data-link': true }, r.device_name),
-      h('span', { class: 'when', title: fmtDate(r.at, getLang()) }, fmtAgo(r.at, t)),
-      h('span', { class: 'what' }, historyText(r)))))
-      : h('p', { class: 'panel-pad muted' }, t('dash.noRecent')));
-
-  const monPanel = mon.total ? h('section', { class: 'panel' },
-    h('h2', {}, h('a', { href: '/monitoring', 'data-link': true, style: { color: 'inherit', textDecoration: 'none' } }, t('mon.dashTitle'))),
-    mon.down.length ? h('ul', { class: 'feed' }, mon.down.map((m) => h('li', {},
-      h('a', { href: `/monitoring/${m.id}`, 'data-link': true }, h('span', { class: 'dot mon-down', style: { marginRight: '8px' } }), m.name),
-      h('span', { class: 'when' }, fmtAgo(m.since, t)),
-      h('span', { class: 'what' }, m.message))))
-      : h('p', { class: 'panel-pad muted', style: { margin: 0 } }, h('span', { class: 'dot mon-up', style: { marginRight: '8px' } }), t('mon.dashAllUp')),
-    mon.certs.length ? [h('h2', { style: { paddingTop: '6px' } }, t('mon.dashCerts')), h('ul', { class: 'feed' }, mon.certs.map((c) => h('li', {},
-      h('a', { href: `/monitoring/${c.id}`, 'data-link': true }, c.name),
-      h('span', { class: 'when' }, fmtDate(c.cert_valid_to, getLang(), false)))))] : null) : null;
-
-  const warranty = d.warranty.length ? h('section', { class: 'panel' },
-    h('h2', {}, t('dash.warranty')),
-    h('ul', { class: 'feed' }, d.warranty.map((w) => h('li', {},
-      h('a', { href: `/devices/${w.id}`, 'data-link': true }, w.name),
-      h('span', { class: 'when' }, fmtDate(w.warranty_until, getLang(), false)))))) : null;
-
+  const n = items.length;
   mount(main, h('div', { class: 'page' },
-    pageHead(state.boot.title && state.boot.title !== 'WhatsOnMyNet' ? state.boot.title : t('dash.title'), null),
-    h('div', { class: 'stack' },
-      figures,
-      h('div', { class: 'dash' },
-        h('div', { class: 'stack' }, typePanel, recent),
-        h('div', { class: 'stack' }, monPanel, nasProblemsPanel(d.nasProblems), lowSuppliesPanel(d.printersLow), scanPanel, warranty)))));
+    h('div', { class: 'page-head' },
+      h('div', {}, h('h1', {}, state.boot.title && state.boot.title !== 'WhatsOnMyNet' ? state.boot.title : t('dash.title')),
+        empty ? null : h('p', { class: 'lead' }, n ? t(n === 1 ? 'dash.lead1' : 'dash.leadN', { n }) : t('dash.leadNone'))),
+      canScan && !empty ? h('div', { class: 'actions' }, h('a', { class: 'btn', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('dash.scanNow'))) : null),
+    h('div', { class: 'dash' },
+      attention,
+      empty ? null : h('div', { class: 'stack' }, stateCard, recent, scanLine))));
 }

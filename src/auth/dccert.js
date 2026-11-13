@@ -1,10 +1,10 @@
 // Certificate of the domain controller: fetch it, complete the chain up to the root CA, describe it.
 //
-// 1. fetchChain: asks the DC (LDAPS or LDAP + StartTLS) which certificates it presents – without trusting them yet.
+// 1. fetchChain: asks the DC (LDAPS or LDAP + StartTLS) which certificates it presents - without trusting them yet.
 //    Nothing is sent, no password.
 // 2. completeViaAia: a missing issuer is downloaded from the "CA Issuers" address (AIA) in the certificate.
 // 3. completeViaAd: after the admin has confirmed the fingerprint, the root CA can also come from AD itself
-//    (Configuration partition, Public Key Services) – this connection already trusts the confirmed certificate.
+//    (Configuration partition, Public Key Services) - this connection already trusts the confirmed certificate.
 // Every added CA must really have signed the certificate below it (signature check), otherwise it is ignored.
 import net from 'node:net';
 import tls from 'node:tls';
@@ -102,13 +102,13 @@ function opensslError(out) {
 }
 
 /**
- * Asks the DC for its certificates – "openssl s_client -showcerts", the usual tool to look at a server's certificate
+ * Asks the DC for its certificates - "openssl s_client -showcerts", the usual tool to look at a server's certificate
  * (LDAPS directly or with "-starttls ldap"). Nothing is sent and nothing is trusted here: the admin compares the
  * fingerprint and confirms; all real connections afterwards verify against the confirmed certificate.
  * Returns { certs (leaf first), nameOk, host }.
  */
 /**
- * Asks a TLS server for its certificates – "openssl s_client -showcerts", the usual tool to look at a server's
+ * Asks a TLS server for its certificates - "openssl s_client -showcerts", the usual tool to look at a server's
  * certificate (optionally after "-starttls ldap"). Nothing is sent and nothing is trusted here: the admin compares the
  * fingerprint and confirms; all real connections afterwards verify against the confirmed certificate.
  * Returns { certs (leaf first), nameOk, host }.
@@ -150,7 +150,7 @@ export function publiclyTrusted(chain) {
     systemRoots = [];
     for (const pem of tls.rootCertificates) { try { systemRoots.push(new X509Certificate(pem)); } catch { /* skip */ } }
   }
-  // the chain has to end in one of the system's root CAs – a self-signed certificate of its own does not count
+  // the chain has to end in one of the system's root CAs - a self-signed certificate of its own does not count
   const full = completeFrom(chain, systemRoots).chain;
   const top = full[full.length - 1];
   return !!top && complete(full) && systemRoots.some((r) => r.fingerprint256 === top.fingerprint256);

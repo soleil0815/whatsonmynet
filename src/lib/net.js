@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 
-// Largest subnet a single scan may cover (/20 = 4094 hosts) – larger ranges are split by the admin.
+// Largest subnet a single scan may cover (/20 = 4094 hosts) - larger ranges are split by the admin.
 export const MAX_PREFIX_HOSTS = 4094;
 
 export function ipToInt(ip) {
@@ -51,7 +51,7 @@ export function* hostsOf(cidr) {
   for (let n = c.first; n <= c.last; n++) yield intToIp(n);
 }
 
-/** aa:bb:cc:dd:ee:ff (lower case) or null – accepts -, :, . and no separators */
+/** aa:bb:cc:dd:ee:ff (lower case) or null - accepts -, :, . and no separators */
 export function normalizeMac(mac) {
   const hex = String(mac || '').toLowerCase().replace(/[^0-9a-f]/g, '');
   if (hex.length !== 12 || hex === '000000000000' || hex === 'ffffffffffff') return null;

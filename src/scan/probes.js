@@ -41,7 +41,7 @@ export async function pool(items, limit, fn, shouldStop = () => false) {
   await Promise.all(workers);
 }
 
-/** 'open' | 'closed' (host answered with a reset – it exists) | 'filtered' (no answer) */
+/** 'open' | 'closed' (host answered with a reset - it exists) | 'filtered' (no answer) */
 export function tcpProbe(ip, port, timeout = 900) {
   return new Promise((resolve) => {
     const s = net.connect({ host: ip, port, timeout });
@@ -63,7 +63,7 @@ export async function pingAvailable() {
   return pingState;
 }
 
-/** { alive, ttl } – null if ping is not available. */
+/** { alive, ttl } - null if ping is not available. */
 export function ping(ip, timeoutSec = 1, force = false) {
   if (pingState === false && !force) return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -195,7 +195,7 @@ export function extractTitle(html) {
     .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
 }
 
-/** { status, title, server, location, cert } of http(s)://ip:port/ – reads at most 64 KB. */
+/** { status, title, server, location, cert } of http(s)://ip:port/ - reads at most 64 KB. */
 export function httpProbe(ip, port, proto = 'http', timeout = 3000) {
   return new Promise((resolve) => {
     const lib = proto === 'https' ? https : http;
@@ -204,7 +204,7 @@ export function httpProbe(ip, port, proto = 'http', timeout = 3000) {
     const req = lib.request({
       host: ip, port, path: '/', method: 'GET', timeout,
       headers: { 'User-Agent': UA, Accept: 'text/html,*/*;q=0.5', Connection: 'close' },
-      // Devices in the LAN almost always have self-signed certificates – we only read, never send data
+      // Devices in the LAN almost always have self-signed certificates - we only read, never send data
       rejectUnauthorized: false,
       agent: false,
     }, (res) => {

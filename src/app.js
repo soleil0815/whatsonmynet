@@ -1,4 +1,4 @@
-// Assembles the Express application (without listening – so it can be tested).
+// Assembles the Express application (without listening - so it can be tested).
 import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
@@ -33,18 +33,18 @@ import { httpPortMiddleware, proxyHttpsMiddleware, directHstsMiddleware, createH
 
 /**
  * WOMN_TRUST_PROXY: addresses/networks of the reverse proxy. Empty = no proxy (nothing is trusted).
- * "true"/numbers are rejected – they would trust every X-Forwarded-For header.
+ * "true"/numbers are rejected - they would trust every X-Forwarded-For header.
  */
 export function applyTrustProxy(app, raw) {
   const value = String(raw ?? '').trim();
   if (!value) { app.set('trust proxy', false); return ''; }
   if (/^(true|false|yes|no|ja|nein|on|off|\d+)$/i.test(value)) {
-    log.warn(`WOMN_TRUST_PROXY="${value}" is not valid – enter the address of the reverse proxy, e.g. 10.0.10.5. No proxy is trusted.`);
+    log.warn(`WOMN_TRUST_PROXY="${value}" is not valid - enter the address of the reverse proxy, e.g. 10.0.10.5. No proxy is trusted.`);
     app.set('trust proxy', false);
     return '';
   }
   try { app.set('trust proxy', value); } catch (e) {
-    log.warn(`WOMN_TRUST_PROXY="${value}" is invalid (${e.message}) – no proxy is trusted.`);
+    log.warn(`WOMN_TRUST_PROXY="${value}" is invalid (${e.message}) - no proxy is trusted.`);
     app.set('trust proxy', false);
     return '';
   }
@@ -53,7 +53,7 @@ export function applyTrustProxy(app, raw) {
 
 /**
  * @param db open database
- * @param opts.tls certificate store (src/tls.js) – optional in tests
+ * @param opts.tls certificate store (src/tls.js) - optional in tests
  * @param opts.plainHttp tests only: serve the app on plain HTTP instead of redirecting
  */
 export function createApp(db, { tls = null, plainHttp = false } = {}) {
@@ -86,7 +86,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     setup.token = process.env.WOMN_SETUP_TOKEN || randomToken(9);
     const bar = '='.repeat(64);
     const where = config.baseUrl || `https://<address of this server>:${config.httpsPort}`;
-    console.log(`\n${bar}\n  WhatsOnMyNet – Ersteinrichtung / initial setup\n  Einrichtungscode / setup code:  ${setup.token}\n  ${where}/setup\n${bar}\n`);
+    console.log(`\n${bar}\n  WhatsOnMyNet - Ersteinrichtung / initial setup\n  Einrichtungscode / setup code:  ${setup.token}\n  ${where}/setup\n${bar}\n`);
   }
 
   const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, directory, agents, reports, proxmox, backups,
@@ -147,7 +147,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     validate: { xForwardedForHeader: false },
     handler: (_req, _res, next) => next(new HttpError(429, 'err.rateLimit')),
   }));
-  // CSRF protection: writing API calls need a custom header (only sent cross-site after a CORS grant – none exists)
+  // CSRF protection: writing API calls need a custom header (only sent cross-site after a CORS grant - none exists)
   app.use('/api', (req, _res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
     if (req.get('X-WOMN-Request') !== '1') return next(new HttpError(403, 'err.csrf'));

@@ -1,4 +1,4 @@
-// Checks of services: Docker containers (Docker API, read-only – best through a socket proxy) and databases
+// Checks of services: Docker containers (Docker API, read-only - best through a socket proxy) and databases
 // (MariaDB/MySQL, PostgreSQL, Redis: log in and run one harmless query). Every check returns { ok, ms, message }.
 import http from 'node:http';
 import https from 'node:https';

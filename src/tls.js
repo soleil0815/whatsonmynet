@@ -71,7 +71,7 @@ export function createTls(dir = paths.tlsDir) {
       writeFiles(fs.readFileSync(c, 'utf8'), fs.readFileSync(k, 'utf8'), { source: 'self-signed', names: { dns, ips }, installedAt: new Date().toISOString() });
       log.info(`Self-signed certificate created for ${[...dns, ...ips].join(', ')}`);
     } catch (e) {
-      if (e.code === 'ENOENT') throw new Error('OpenSSL is missing – it is needed to create the certificate.');
+      if (e.code === 'ENOENT') throw new Error('OpenSSL is missing - it is needed to create the certificate.');
       throw new Error(`Could not create the certificate: ${e.stderr || e.message}`);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -93,7 +93,7 @@ export function createTls(dir = paths.tlsDir) {
         tls.createSecureContext({ cert: cur.cert, key: cur.key });
         const daysLeft = (Date.parse(info.validTo) - Date.now()) / 86400000;
         if (cur.meta.source === 'custom') {
-          if (daysLeft < 0) log.warn('The uploaded certificate has expired – upload a new one under Settings → HTTPS.');
+          if (daysLeft < 0) log.warn('The uploaded certificate has expired - upload a new one under Settings → HTTPS.');
           return false;
         }
         // Self-signed: renew before it expires or when the base address names a host that is missing
@@ -101,9 +101,9 @@ export function createTls(dir = paths.tlsDir) {
         const have = new Set([...(cur.meta.names?.dns || []), ...(cur.meta.names?.ips || [])]);
         const missing = [...want.dns, ...want.ips].filter((n) => !have.has(n));
         if (daysLeft > RENEW_DAYS && !missing.length) return false;
-        log.info(daysLeft <= RENEW_DAYS ? 'Self-signed certificate expires soon – renewing' : `Self-signed certificate is missing ${missing.join(', ')} – renewing`);
+        log.info(daysLeft <= RENEW_DAYS ? 'Self-signed certificate expires soon - renewing' : `Self-signed certificate is missing ${missing.join(', ')} - renewing`);
       } catch (e) {
-        if (cur.meta.source === 'custom') { log.error(`Uploaded certificate cannot be used (${e.message}) – falling back to a self-signed one`); }
+        if (cur.meta.source === 'custom') { log.error(`Uploaded certificate cannot be used (${e.message}) - falling back to a self-signed one`); }
       }
     }
     await generateSelfSigned();
@@ -195,7 +195,7 @@ async function pfxToPem(pfx, passphrase) {
     try { cert = await conv('cert'); key = await conv('key'); } catch {
       cert = await conv('cert', true); key = await conv('key', true);
     }
-    // Leaf first: OpenSSL lists the certificate with the key ("localKeyID") – the order is kept as delivered
+    // Leaf first: OpenSSL lists the certificate with the key ("localKeyID") - the order is kept as delivered
     return { cert: splitPem(cert).join('\n'), key: (key.match(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/) || [''])[0] };
   } catch {
     throw new HttpError(400, 'err.tlsBadPfx');

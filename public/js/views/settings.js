@@ -7,24 +7,47 @@ import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
 import { openMonitorForm } from './monitoring.js';
 
-const SECTIONS = [
-  ['general', 'settings'], ['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['docker', 'server'], ['proxmox', 'hypervisor'], ['reports', 'inventory'], ['smtp', 'mail'], ['notify', 'bell'], ['https', 'lock'], ['users', 'users'], ['ad', 'user'], ['agents', 'location'],
-  ['backup', 'download'], ['ignored', 'eyeoff'], ['audit', 'history'], ['about', 'shield'],
+// Grouped so that related settings stand together; Proxmox and reports have their own pages under "Monitoring"
+const GROUPS = [
+  ['access', [['general', 'settings'], ['users', 'users'], ['ad', 'user']]],
+  ['scan', [['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['agents', 'location'], ['ignored', 'eyeoff']]],
+  ['connect', [['docker', 'server'], ['notify', 'bell'], ['smtp', 'mail']]],
+  ['system', [['https', 'lock'], ['backup', 'download'], ['audit', 'history'], ['about', 'shield']]],
 ];
+const SECTIONS = GROUPS.flatMap(([, list]) => list);
 
 export async function renderSettings(main, section = 'general') {
   if (!state.user.isAdmin) { navigate('/', { replace: true }); return; }
+  // moved to their own pages
+  if (section === 'proxmox' || section === 'reports') { navigate(`/${section}`, { replace: true }); return; }
   if (!SECTIONS.some(([s]) => s === section)) section = 'general';
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' },
     pageHead(t('set.title'), null),
     h('div', { class: 'settings' },
-      h('nav', { class: 'subnav', 'aria-label': t('set.title') }, SECTIONS.map(([s, ico]) => h('a', { href: `/settings/${s}`, 'data-link': true,
-        class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))),
+      h('nav', { class: 'subnav', 'aria-label': t('set.title') }, GROUPS.map(([g, list]) => [h('div', { class: 'subnav-group' }, t(`set.group.${g}`)),
+        list.map(([s, ico]) => h('a', { href: `/settings/${s}`, 'data-link': true,
+          class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))])),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, ad, agents, reports, proxmox, backup, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, ad, agents, backup, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
+}
+
+/** Proxmox VE / Backup Server: own page under "Monitoring" (editors see it, admins change it) */
+export async function renderProxmox(main) {
+  if (!state.user.canEdit) { navigate('/', { replace: true }); return; }
+  const body = h('div', { class: 'stack' });
+  mount(main, h('div', { class: 'page' }, body));
+  await proxmox(body, null, () => renderProxmox(main));
+}
+
+/** Planned reports: own page under "Monitoring" */
+export async function renderReports(main) {
+  if (!state.user.isAdmin) { navigate('/', { replace: true }); return; }
+  const body = h('div', { class: 'stack' });
+  mount(main, h('div', { class: 'page' }, body));
+  await reports(body, null, () => renderReports(main));
 }
 
 const panel = (title, ...content) => h('section', { class: 'panel panel-pad' }, title ? h('h2', { class: 'section-title' }, title) : null, content);
@@ -160,7 +183,7 @@ const PROXY_COMPOSE = `services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
-      - "2375:2375"   # only reachable from your LAN – better bind it to one address`;
+      - "2375:2375"   # only reachable from your LAN - better bind it to one address`;
 
 async function docker(body, _s, reload) {
   const list = await get('/docker/hosts');
@@ -304,7 +327,7 @@ async function https(body, _s, reload) {
 async function users(body, _s, reload) {
   const [list, locs] = await Promise.all([get('/users'), get('/locations')]);
   const locName = Object.fromEntries(locs.map((l) => [l.id, l.name]));
-  const roleSel = (v) => select('role', ['admin', 'editor', 'viewer'].map((r) => [r, `${t(`role.${r}`)} – ${t(`role.${r}.hint`)}`]), v);
+  const roleSel = (v) => select('role', ['admin', 'editor', 'viewer'].map((r) => [r, `${t(`role.${r}`)} - ${t(`role.${r}.hint`)}`]), v);
   const edit = (u) => {
     const fromAd = u?.source === 'ldap';
     const mine = new Set(u?.locations || []);
@@ -380,11 +403,11 @@ function proxmoxDetail(x) {
   const d = x.data || {};
   if (!x.last_at) return h('p', { class: 'muted' }, t('prn.none'));
   // never reached yet: only the error and what to do, no empty sections
-  const sensor = () => openMonitorForm(null, () => {}, { type: 'proxmox', name: `${x.name} – Sensor`, interval_s: 300, fail_threshold: 1, options: { host: x.id } });
+  const sensor = () => openMonitorForm(null, () => {}, { type: 'proxmox', name: `${x.name} - Sensor`, interval_s: 300, fail_threshold: 1, options: { host: x.id } });
   const head = h('div', { class: 'actions', style: { marginBottom: '10px' } },
     !x.last_ok ? h('span', { class: 'note warn', style: { margin: 0 } }, x.last_error) : h('span', { class: 'muted small' }, `${t('prn.checked')}: ${fmtDate(x.last_at, getLang())}`),
     btn(t('sens.add'), { class: 'btn btn-sm', onclick: sensor }, 'plus'));
-  // Token without read rights: Proxmox shows almost nothing instead of refusing – say what is missing and how to fix it
+  // Token without read rights: Proxmox shows almost nothing instead of refusing - say what is missing and how to fix it
   const user = String(x.token_id || '').split('!')[0];
   const rights = x.last_ok && (d.missing || []).length ? h('div', { class: 'note warn' }, h('div', { style: { minWidth: 0, flex: 1 } },
     h('strong', {}, t('px.missing', { privs: d.missing.join(', ') })),
@@ -444,7 +467,7 @@ const PX_FIX = {
 };
 const cmdBox = (lines) => h('div', { class: 'cmd-box' }, h('pre', { class: 'mono' }, lines.join('\n')), copyBtn(() => lines.join('\n')));
 
-/** Step 1 of the dialog: prepare Proxmox – with commands (recommended) or by clicking through the interface */
+/** Step 1 of the dialog: prepare Proxmox - with commands (recommended) or by clicking through the interface */
 function proxmoxSetup(kindSel) {
   const box = h('div', { class: 'px-setup' });
   let mode = 'cmd';
@@ -490,7 +513,7 @@ async function proxmox(body, _s, reload) {
       if (!x && /^whatsonmynet@pb?v?e?s?!womn$/.test(tokenId.value)) tokenId.value = defToken(kind.value);
       tokenId.placeholder = defToken(kind.value);
     });
-    // Certificate: fetch from the server and confirm the fingerprint – no file to look for
+    // Certificate: fetch from the server and confirm the fingerprint - no file to look for
     const certState = h('div', { class: 'px-cert-state' });
     const showCert = (info, publicTrust = false) => mount(certState, publicTrust ? h('span', { class: 'badge badge-ok' }, t('pxs.publicShort'))
       : info ? h('div', { class: 'cert-list', style: { margin: 0 } }, certRow(info)) : h('span', { class: 'muted small' }, t('pxs.noCert')));
@@ -529,14 +552,13 @@ async function proxmox(body, _s, reload) {
         try { const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d); m.close(); toast(r.last_ok ? t('px.connected') : r.last_error, r.last_ok ? undefined : 'error'); reload(); } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
       } }, t('pxs.save'))] });
   };
-  mount(body, h('section', { class: 'panel' },
-    h('div', { class: 'panel-head', style: { paddingBottom: '12px', flexWrap: 'wrap' } }, h('h2', {}, 'Proxmox'), btn(t('px.add'), { class: 'btn btn-sm', onclick: () => edit(null) }, 'plus')),
-    h('p', { class: 'muted', style: { padding: '0 20px' } }, t('px.lead')),
-    !list.length ? h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('px.none')) : null),
+  const admin = state.user.isAdmin;
+  mount(body, pageHead('Proxmox', t('px.lead'), admin ? btn(t('px.add'), { class: 'btn btn-primary', onclick: () => edit(null) }, 'plus') : null),
+  !list.length ? h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, admin ? t('px.none') : t('px.noHosts'))) : null,
   list.map((x) => h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '6px' } },
       h('div', {}, h('h2', { class: 'section-title', style: { margin: 0 } }, x.name), h('div', { class: 'muted small mono' }, `${x.kind === 'pbs' ? 'Backup Server' : 'VE'} · ${x.url}`)),
-      h('div', { class: 'actions' },
+      !admin ? null : h('div', { class: 'actions' },
         btn(t('prn.refresh'), { class: 'btn btn-sm', onclick: async (e) => { e.currentTarget.disabled = true; try { await post(`/proxmox/${x.id}/poll`, {}); reload(); } catch (ex) { fail(ex); } } }, 'refresh'),
         btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => edit(x) }),
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${x.name}`, html: icon('trash'), onclick: async () => {
@@ -672,9 +694,7 @@ async function reports(body, _s, reload) {
     try { const x = await post(`/reports/${r.id}/send`, { test }); toast(test ? t('rep.testSent', { email: state.user.email }) : t('rep.sent', { n: x.count })); reload(); } catch (ex) { fail(ex); }
     b.disabled = false;
   };
-  mount(body, h('section', { class: 'panel' },
-    h('div', { class: 'panel-head', style: { paddingBottom: '12px', flexWrap: 'wrap' } }, h('h2', {}, t('set.reports')), btn(t('rep.add'), { class: 'btn btn-sm', onclick: () => edit(null) }, 'plus')),
-    h('p', { class: 'muted', style: { padding: '0 20px' } }, t('rep.lead')),
+  mount(body, pageHead(t('set.reports'), t('rep.lead'), btn(t('rep.add'), { class: 'btn btn-primary', onclick: () => edit(null) }, 'plus')), h('section', { class: 'panel' },
     list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, h('th', {}, t('rep.name')), h('th', {}, t('rep.when')), h('th', { class: 'hide-sm' }, t('rep.recipients')), h('th', {}))),
       h('tbody', {}, list.map((r) => h('tr', {},
@@ -760,7 +780,7 @@ async function agents(body, _s, reload) {
 
 async function ad(body, _s, reload) {
   const c = await get('/settings/ad');
-  // Server: domain controller, encryption and port (like Helfi.Space) – the port follows the encryption
+  // Server: domain controller, encryption and port (like Helfi.Space) - the port follows the encryption
   const port = input('port', c.host ? c.port : '', { type: 'number', min: 1, max: 65535, placeholder: c.security === 'starttls' ? '389' : '636' });
   const security = select('security', [['ldaps', t('ad.sec.ldaps')], ['starttls', t('ad.sec.starttls')]], c.security);
   security.addEventListener('change', () => {
@@ -852,7 +872,7 @@ async function ad(body, _s, reload) {
 
 // ---------- TLS certificate of the domain controller ----------
 const shortFp = (fp) => `${String(fp).split(':').slice(0, 8).join(':')}…`;
-// 32 bytes in two lines of 16 – easier to compare than one wrapped line
+// 32 bytes in two lines of 16 - easier to compare than one wrapped line
 const fpLines = (fp) => { const p = String(fp).split(':'); return [p.slice(0, 16).join(':'), p.slice(16).join(':')].filter(Boolean).map((x) => h('div', {}, x)); };
 const certDate = (iso) => fmtDate(iso, getLang(), false);
 

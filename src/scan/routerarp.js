@@ -1,5 +1,5 @@
 // MAC addresses of routed subnets: ARP is only seen inside a subnet, but the router of that subnet knows every
-// device. Its ARP table is read via SNMP (IP-MIB ipNetToMedia / ipNetToPhysical) – read-only.
+// device. Its ARP table is read via SNMP (IP-MIB ipNetToMedia / ipNetToPhysical) - read-only.
 import { openSnmp, walk } from './snmpwalk.js';
 import { normalizeMac } from '../lib/net.js';
 

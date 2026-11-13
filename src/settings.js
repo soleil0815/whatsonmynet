@@ -21,13 +21,13 @@ export const DEFAULTS = {
   // Printers (SNMP): supplies, page counter, errors
   'printer.enabled': true,
   'printer.interval': 60,         // minutes between two queries of a printer
-  'printer.threshold': 15,        // % – report a supply at or below this
+  'printer.threshold': 15,        // % - report a supply at or below this
   'printer.notify': true,
   'printer.channels': [],
   // Switches and NAS (SNMP): ports, MAC table, volumes, disks
   'snmpdev.enabled': true,
   'snmpdev.interval': 15,         // minutes
-  'nas.threshold': 90,            // % – report a volume at or above this
+  'nas.threshold': 90,            // % - report a volume at or above this
   'nas.notify': true,
   'nas.channels': [],
   // Active Directory / LDAP sign-in

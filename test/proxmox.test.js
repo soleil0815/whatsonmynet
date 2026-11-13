@@ -67,7 +67,7 @@ test('Proxmox VE and Backup Server: read, metrics, sensors, pinned certificate',
     assert.equal(r.data.storages[0].pct, 87);
     assert.deepEqual(r.data.guests.map((g) => g.vmid), [101, 200], 'templates left out');
     assert.deepEqual(r.data.missing, [], 'all read rights there');
-    // Token without rights: Proxmox answers, but shows almost nothing – the missing rights are named
+    // Token without rights: Proxmox answers, but shows almost nothing - the missing rights are named
     const full = fake.routes['/api2/json/cluster/resources'];
     fake.routes['/api2/json/access/permissions'] = { '/': {}, '/vms': { 'VM.Audit': 0 } };
     fake.routes['/api2/json/cluster/resources'] = [{ type: 'node', node: 'pve1', status: 'online' }];

@@ -1,5 +1,5 @@
 // Sensors: monitors on values the devices already deliver (printer supplies, NAS volumes/disks/temperature,
-// switch ports) and on any SNMP value (OID) – like the sensors of PRTG. A sensor check reads the latest state the
+// switch ports) and on any SNMP value (OID) - like the sensors of PRTG. A sensor check reads the latest state the
 // pollers stored (no extra traffic to the device); the free SNMP sensor asks the device itself (read-only).
 import { openSnmp, getValues, text } from '../scan/snmpwalk.js';
 import { nasProblems } from '../scan/nas.js';
@@ -10,7 +10,7 @@ const OID = /^\.?([0-2])(\.\d{1,10}){2,40}$/;
 export const validOid = (s) => OID.test(String(s || '').trim());
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
 
-/** a op b – numbers compared as numbers, the rest as text */
+/** a op b - numbers compared as numbers, the rest as text */
 export function compare(op, actual, expected) {
   const a = Number(actual); const b = Number(expected);
   const num = actual !== '' && actual !== null && Number.isFinite(a) && Number.isFinite(b);
@@ -147,7 +147,7 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
   if (o.metric === 'nodeOnline') return x.value === 'online' ? { ok: true, ms: null, message: `${label}: online` } : { ok: false, ms: null, message: `${label}: offline` };
   if (o.metric === 'guestRunning') return x.value === 'running' ? { ok: true, ms: null, message: `${label}: running` } : { ok: false, ms: null, message: `${label}: ${x.value}` };
   if (x.value === null || x.value === undefined) {
-    return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found' : 'no value – the token probably lacks read rights (Settings → Proxmox)'}` };
+    return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found' : 'no value - the token probably lacks read rights (Monitoring → Proxmox)'}` };
   }
   const alarm = compare(o.op, x.value, o.threshold);
   return { ok: !alarm, ms: Math.round(Number(x.value)), message: `${label}: ${x.value}${x.unit ? ` ${x.unit}` : ''}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}` };

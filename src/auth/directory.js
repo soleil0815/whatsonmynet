@@ -1,7 +1,7 @@
 // Sign-in with Active Directory / LDAP (LDAPS or StartTLS).
 //
 // 1. A service account searches the user (filter with {username}).
-// 2. WhatsOnMyNet binds as that user with the password typed in – the password is never stored.
+// 2. WhatsOnMyNet binds as that user with the password typed in - the password is never stored.
 // 3. The role comes from group membership (nested groups in AD): admin group → admin, editor group → editor,
 //    viewer group → viewer. Without one of these groups the sign-in is refused.
 import fs from 'node:fs';
@@ -98,7 +98,7 @@ export function createDirectory(settings, { clientFactory = null } = {}) {
     const trust = cfg.trust || (cfg.verify === false ? 'insecure' : cfg.ca ? 'pinned' : 'system');
     const o = { rejectUnauthorized: trust !== 'insecure', minVersion: 'TLSv1.2' };
     // allowPartialTrustChain: a confirmed server or intermediate certificate is enough as trust anchor
-    // (the root CA is added when it can be found – then a renewed DC certificate keeps working)
+    // (the root CA is added when it can be found - then a renewed DC certificate keeps working)
     if (trust === 'pinned' && cfg.ca) Object.assign(o, { ca: [cfg.ca], allowPartialTrustChain: true });
     else if (process.env.NODE_EXTRA_CA_CERTS && fs.existsSync(process.env.NODE_EXTRA_CA_CERTS)) o.ca = [fs.readFileSync(process.env.NODE_EXTRA_CA_CERTS)];
     // Name check: off only on request (e.g. the DC is reached by its IP address); the chain is still checked
@@ -239,7 +239,7 @@ export function createDirectory(settings, { clientFactory = null } = {}) {
   }
 
   /** Form values for the certificate steps (the stored ones where the form has none) */
-  /** Server fields of the form (host, security, port – or an ldap(s):// address) → { url, startTls } */
+  /** Server fields of the form (host, security, port - or an ldap(s):// address) → { url, startTls } */
   function serverOf(b, cfg = config()) {
     if (b.host === undefined && b.url === undefined) return { url: cfg.url, startTls: cfg.startTls };
     let host = line(b.host ?? '', 253);
@@ -285,7 +285,7 @@ export function createDirectory(settings, { clientFactory = null } = {}) {
 
   /**
    * Test with the form values (also unsaved): connection, service account, base DN, groups, optionally a user and
-   * the password. Returns { ok, steps: [{ key, ok, … }], baseDn } – every step says what went wrong.
+   * the password. Returns { ok, steps: [{ key, ok, … }], baseDn } - every step says what went wrong.
    */
   async function test(form = {}, username = '', password = '') {
     const cfg = formCfg(form);
@@ -376,7 +376,7 @@ export function createDirectory(settings, { clientFactory = null } = {}) {
         pem: toPem(aia.chain),
       };
     },
-    /** Step 2: the admin confirmed – store; a missing root CA is then looked up in AD (over the now trusted connection) */
+    /** Step 2: the admin confirmed - store; a missing root CA is then looked up in AD (over the now trusted connection) */
     async confirmCert(form) {
       const pem = checkedPem(form?.pem);
       if (!pem) throw new HttpError(400, 'err.adCa');

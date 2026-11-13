@@ -1,4 +1,4 @@
-# WhatsOnMyNet – Handbuch
+# WhatsOnMyNet - Handbuch
 
 WhatsOnMyNet findet, was in deinem Netz läuft, und hält nur das im Inventar, was du übernimmst. Dazu überwacht es Geräte, Dienste und Webseiten, liest Drucker, Switches, NAS und Proxmox aus und meldet sich per E-Mail, Telegram oder Webhook, wenn etwas nicht stimmt.
 
@@ -6,11 +6,11 @@ WhatsOnMyNet findet, was in deinem Netz läuft, und hält nur das im Inventar, w
 
 ## Installation
 
-WhatsOnMyNet läuft als Docker-Container mit Host-Netzwerk – nur so sieht der Scan die MAC-Adressen der Geräte.
+WhatsOnMyNet läuft als Docker-Container mit Host-Netzwerk - nur so sieht der Scan die MAC-Adressen der Geräte.
 
 1. `docker-compose.yml` und `env.example` aus dem Release in einen Ordner legen, `env.example` in `.env` umbenennen.
 2. In der `.env` bei Bedarf Ports (`WOMN_HTTPS_PORT`, Standard 8743), Zeitzone (`TZ`) und Besitzer der Daten (`PUID`/`PGID`) anpassen.
-3. `docker compose up -d` – oder den Stack in Dockhand anlegen.
+3. `docker compose up -d` - oder den Stack in Dockhand anlegen.
 4. Den **Einrichtungscode** aus dem Log holen (`docker compose logs whatsonmynet`) und `https://<server>:8743/setup` öffnen. Dort legst du den ersten Administrator an.
 
 Die Oberfläche läuft immer über HTTPS. Beim ersten Start erzeugt WhatsOnMyNet ein selbstsigniertes Zertifikat; ein eigenes (PEM oder PFX) lädst du unter *Einstellungen → HTTPS-Zertifikat* hoch.
@@ -39,7 +39,7 @@ Die MAC-Adresse ist die Identität eines Geräts: Bekommt es eine neue IP, über
 
 ## Nächtlicher Leicht-Scan
 
-Jede Nacht (Standard 02:30) sucht WhatsOnMyNet in allen Subnetzen deiner Standorte nur nach Geräten – ohne Ports, ohne SNMP. Bekannte Geräte bekommen ihre neue IP; ein Gerät, das zum allerersten Mal auftaucht, wird einmal gemeldet. Einstellungen, Uhrzeit und „Jetzt ausführen“ findest du unter *Einstellungen → Scan*.
+Jede Nacht (Standard 02:30) sucht WhatsOnMyNet in allen Subnetzen deiner Standorte nur nach Geräten - ohne Ports, ohne SNMP. Bekannte Geräte bekommen ihre neue IP; ein Gerät, das zum allerersten Mal auftaucht, wird einmal gemeldet. Einstellungen, Uhrzeit und „Jetzt ausführen“ findest du unter *Einstellungen → Scan*.
 
 ## Monitoring
 
@@ -50,9 +50,9 @@ Ein Monitor prüft regelmäßig (20 Sekunden bis 24 Stunden) und meldet sich ers
 - **Web (HTTP/S)** mit Statuscodes, Stichwort und Ablaufdatum des Zertifikats (Warnung z. B. 30, 14 und 7 Tage vorher)
 - **TCP-Port** und **Ping**
 - **Docker-Container** (über einen Socket-Proxy, *Einstellungen → Docker*): läuft, startet ständig neu, Healthcheck „unhealthy“
-- **Datenbanken**: MariaDB/MySQL, PostgreSQL, Redis/Valkey – Anmeldung und eine harmlose Abfrage
-- **Netzlaufwerk (SMB)**: Windows-Freigaben und NAS – siehe unten
-- **Sensor (Gerätewert)**, **SNMP-Wert (OID)** und **Proxmox** – siehe unten
+- **Datenbanken**: MariaDB/MySQL, PostgreSQL, Redis/Valkey - Anmeldung und eine harmlose Abfrage
+- **Netzlaufwerk (SMB)**: Windows-Freigaben und NAS - siehe unten
+- **Sensor (Gerätewert)**, **SNMP-Wert (OID)** und **Proxmox** - siehe unten
 
 Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert sich die IP eines Geräts, ziehen seine Monitore mit.
 
@@ -66,9 +66,9 @@ Geräte vom Typ *Drucker*, *Switch* und *NAS* werden per SNMP gefragt (nur lesen
 
 ![Drucker](img/printer-de.png)
 
-- **Drucker**: Toner bzw. Tinte je Farbe, Trommel, Resttoner, Seitenzähler, Störungen und Display-Text. Unter 15 % kommt eine Meldung – einmal pro Kartusche.
+- **Drucker**: Toner bzw. Tinte je Farbe, Trommel, Resttoner, Seitenzähler, Störungen und Display-Text. Unter 15 % kommt eine Meldung - einmal pro Kartusche.
 - **Switch**: Ports als Kacheln, welche Geräte an welchem Port hängen (auch mit VLANs), LLDP-Nachbarn, Firmware. Jede Geräteseite zeigt „Angeschlossen an“.
-- **NAS**: Volumes, bei Synology auch Festplatten, RAID, Temperatur, Lüfter, Netzteil und DSM-Update. Probleme werden gemeldet – und wieder, wenn alles in Ordnung ist.
+- **NAS**: Volumes, bei Synology auch Festplatten, RAID, Temperatur, Lüfter, Netzteil und DSM-Update. Probleme werden gemeldet - und wieder, wenn alles in Ordnung ist.
 
 ![Switch](img/switch-de.png)
 
@@ -82,7 +82,7 @@ Der *Netzplan* zeigt aus den MAC-Tabellen und LLDP, welches Gerät an welchem Po
 
 ## Sensoren
 
-Jeder Wert, den ein Gerät liefert, kann ein eigener Monitor werden – mit Verlauf, Alarm und Wartungsfenstern. Auf der Geräteseite „Sensor anlegen“, dann Wert und Bedingung wählen, z. B.:
+Jeder Wert, den ein Gerät liefert, kann ein eigener Monitor werden - mit Verlauf, Alarm und Wartungsfenstern. Auf der Geräteseite „Sensor anlegen“, dann Wert und Bedingung wählen, z. B.:
 
 - „Toner Cyan kleiner oder gleich 10 %“
 - „Belegung /volume1 größer oder gleich 85 %“
@@ -95,10 +95,10 @@ Der Typ **SNMP-Wert (OID)** fragt jeden beliebigen SNMP-Wert ab (z. B. Restlaufz
 
 ![Netzlaufwerk](img/smb-de.png)
 
-Der Typ **Netzlaufwerk (SMB)** meldet sich wirklich an einer Freigabe an – nicht nur am offenen Port. So fällt auch auf, wenn das Passwort abgelaufen ist, die Rechte nicht mehr stimmen oder ein Ordner fehlt.
+Der Typ **Netzlaufwerk (SMB)** meldet sich wirklich an einer Freigabe an - nicht nur am offenen Port. So fällt auch auf, wenn das Passwort abgelaufen ist, die Rechte nicht mehr stimmen oder ein Ordner fehlt.
 
 1. Ein eigenes Konto nur mit **Leserecht** auf die Freigabe anlegen (im AD z. B. `FIRMA\monitor`, auf dem NAS ein lokaler Benutzer).
-2. *Monitor anlegen* → Art **Netzlaufwerk (SMB)**. Einfach den Pfad einfügen, z. B. `\\fs01\Abteilung\Projekte` – Server, Freigabe und Ordner werden daraus übernommen.
+2. *Monitor anlegen* → Art **Netzlaufwerk (SMB)**. Einfach den Pfad einfügen, z. B. `\\fs01\Abteilung\Projekte` - Server, Freigabe und Ordner werden daraus übernommen.
 3. Benutzer, Domäne (bei NAS-Konten leer) und Passwort eintragen. Optional: warnen unter … % oder … GB frei.
 
 Geprüft wird über SMB 2/3: anmelden, die Freigabe (oder den Ordner bzw. die Datei) lesen, den freien Platz abfragen. WhatsOnMyNet schreibt nichts auf die Freigabe. Die Detailseite zeigt den freien Platz; im Bericht gibt es dafür den Abschnitt *Netzlaufwerke*.
@@ -107,13 +107,13 @@ Geprüft wird über SMB 2/3: anmelden, die Freigabe (oder den Ordner bzw. die Da
 
 ![Proxmox](img/proxmox-de.png)
 
-WhatsOnMyNet liest Proxmox VE und den Proxmox Backup Server über deren eingebaute Schnittstelle (API). Auf Proxmox wird nichts installiert. WhatsOnMyNet bekommt dort einen eigenen Benutzer, der **nur lesen** darf, und einen Schlüssel dafür (API-Token). Der Dialog *Einstellungen → Proxmox → Proxmox-Server hinzufügen* zeigt dieselben Schritte, mit Knopf zum Kopieren.
+WhatsOnMyNet liest Proxmox VE und den Proxmox Backup Server über deren eingebaute Schnittstelle (API). Auf Proxmox wird nichts installiert. WhatsOnMyNet bekommt dort einen eigenen Benutzer, der **nur lesen** darf, und einen Schlüssel dafür (API-Token). Der Dialog *Überwachung → Proxmox → Proxmox-Server hinzufügen* zeigt dieselben Schritte, mit Knopf zum Kopieren.
 
 ### Schritt 1: Proxmox vorbereiten (einmalig)
 
-**Mit Befehlen (empfohlen) – Proxmox VE**
+**Mit Befehlen (empfohlen) - Proxmox VE**
 
-1. In Proxmox links auf einen Knoten klicken und oben **>_ Shell** öffnen. Ein Knoten genügt – im Cluster gilt es für alle.
+1. In Proxmox links auf einen Knoten klicken und oben **>_ Shell** öffnen. Ein Knoten genügt - im Cluster gilt es für alle.
 2. Diese drei Zeilen kopieren, in die Shell einfügen und Enter drücken:
 
 ```
@@ -122,9 +122,9 @@ pveum acl modify / --users whatsonmynet@pve --roles PVEAuditor
 pveum user token add whatsonmynet@pve womn --privsep 0
 ```
 
-3. Die Ausgabe zeigt eine Tabelle. In der Zeile `value` steht das **Geheimnis** (eine lange Zeichenkette mit Bindestrichen). Kopieren und aufheben – Proxmox zeigt es nur dieses eine Mal.
+3. Die Ausgabe zeigt eine Tabelle. In der Zeile `value` steht das **Geheimnis** (eine lange Zeichenkette mit Bindestrichen). Kopieren und aufheben - Proxmox zeigt es nur dieses eine Mal.
 
-**Mit Befehlen – Proxmox Backup Server**
+**Mit Befehlen - Proxmox Backup Server**
 
 1. Im Backup Server links *Administration → Shell* öffnen.
 2. Diese vier Zeilen einfügen und Enter drücken:
@@ -136,53 +136,53 @@ proxmox-backup-manager user generate-token whatsonmynet@pbs womn
 proxmox-backup-manager acl update / Audit --auth-id 'whatsonmynet@pbs!womn'
 ```
 
-3. Nach dem dritten Befehl steht bei `"value"` das **Geheimnis**. Kopieren – es wird nur einmal angezeigt.
+3. Nach dem dritten Befehl steht bei `"value"` das **Geheimnis**. Kopieren - es wird nur einmal angezeigt.
 
-**Per Mausklick – Proxmox VE**
+**Per Mausklick - Proxmox VE**
 
 1. *Rechenzentrum → Berechtigungen → Benutzer* → *Hinzufügen*: Benutzername `whatsonmynet`, Realm *Proxmox VE authentication server*, irgendein Passwort → *Hinzufügen*.
 2. *Rechenzentrum → Berechtigungen* → *Hinzufügen* → *Benutzer-Berechtigung*: Pfad `/`, Benutzer `whatsonmynet@pve`, Rolle `PVEAuditor` → *Hinzufügen*.
 3. *Rechenzentrum → Berechtigungen → API Tokens* → *Hinzufügen*: Benutzer `whatsonmynet@pve`, Token ID **nur** `womn` (ohne @ und !), den Haken bei *Privilege Separation* **entfernen** → *Hinzufügen*.
-4. Proxmox zeigt jetzt das *Secret* – nur dieses eine Mal. Kopieren und aufheben.
+4. Proxmox zeigt jetzt das *Secret* - nur dieses eine Mal. Kopieren und aufheben.
 
-Beim Backup Server geht es genauso unter *Konfiguration → Zugriffskontrolle*: Benutzer `whatsonmynet` (Realm *Proxmox Backup authentication server*), Reiter *API Token* mit Token Name `womn`, dann unter *Berechtigungen* zweimal die Rolle `Audit` auf den Pfad `/` – einmal für den Benutzer `whatsonmynet@pbs`, einmal für den Token `whatsonmynet@pbs!womn`.
+Beim Backup Server geht es genauso unter *Konfiguration → Zugriffskontrolle*: Benutzer `whatsonmynet` (Realm *Proxmox Backup authentication server*), Reiter *API Token* mit Token Name `womn`, dann unter *Berechtigungen* zweimal die Rolle `Audit` auf den Pfad `/` - einmal für den Benutzer `whatsonmynet@pbs`, einmal für den Token `whatsonmynet@pbs!womn`.
 
 ### Schritt 2: In WhatsOnMyNet eintragen
 
-1. *Einstellungen → Proxmox* → **Proxmox-Server hinzufügen**.
+1. *Überwachung → Proxmox* → **Proxmox-Server hinzufügen**.
 2. Einen Namen vergeben und die Art wählen (Proxmox VE oder Backup Server).
 3. **Adresse** so eintragen, wie du Proxmox im Browser öffnest, z. B. `https://192.168.1.10:8006` (Backup Server: Port `8007`).
-4. **Zertifikat abrufen** klicken. WhatsOnMyNet zeigt den Fingerabdruck des Proxmox-Zertifikats. Vergleiche ihn – Proxmox VE: Knoten anklicken → *System → Zertifikate* → Zeile `pve-ssl.pem`; Backup Server: *Dashboard* → *Fingerabdruck anzeigen*. Stimmt er, **Fingerabdruck stimmt – vertrauen**.
+4. **Zertifikat abrufen** klicken. WhatsOnMyNet zeigt den Fingerabdruck des Proxmox-Zertifikats. Vergleiche ihn - Proxmox VE: Knoten anklicken → *System → Zertifikate* → Zeile `pve-ssl.pem`; Backup Server: *Dashboard* → *Fingerabdruck anzeigen*. Stimmt er, **Fingerabdruck stimmt - vertrauen**.
 5. Die **Token-ID** ist schon ausgefüllt (`whatsonmynet@pve!womn` bzw. `whatsonmynet@pbs!womn`). Bei **Token-Geheimnis** das kopierte Geheimnis einfügen.
 6. **Speichern und verbinden.** Nach wenigen Sekunden erscheinen Knoten, Speicher, VMs und Container sowie die Sicherungen.
 
 ### Sensoren anlegen
 
-In der Detailansicht **Sensor anlegen** – z. B. „VM 101 läuft“, „Speicher local-lvm unter 85 %“ oder „letzte Sicherung älter als 26 Stunden“. Jeder Sensor ist ein Monitor mit Verlauf und Benachrichtigung.
+In der Detailansicht **Sensor anlegen** - z. B. „VM 101 läuft“, „Speicher local-lvm unter 85 %“ oder „letzte Sicherung älter als 26 Stunden“. Jeder Sensor ist ein Monitor mit Verlauf und Benachrichtigung.
 
 ### Wenn etwas nicht klappt
 
-- **„tokenid: value does not match the regex pattern“ in Proxmox**: Beim Anlegen des Tokens nur `womn` eintragen – ohne Benutzer, @ und !.
+- **„tokenid: value does not match the regex pattern“ in Proxmox**: Beim Anlegen des Tokens nur `womn` eintragen - ohne Benutzer, @ und !.
 - **„sign-in refused (401)“**: Token-ID oder Geheimnis stimmen nicht. Token in Proxmox löschen, neu anlegen und das neue Geheimnis eintragen.
-- **Hinweis „Dem Token fehlen Leserechte“**: Meist blieb beim Token *Privilege Separation* angehakt. Der Hinweis zeigt zwei Befehle – in der Proxmox-Shell einfügen, Enter, dann **Jetzt abfragen**.
+- **Hinweis „Dem Token fehlen Leserechte“**: Meist blieb beim Token *Privilege Separation* angehakt. Der Hinweis zeigt zwei Befehle - in der Proxmox-Shell einfügen, Enter, dann **Jetzt abfragen**.
 - **„certificate changed“**: Proxmox hat ein neues Zertifikat bekommen. *Bearbeiten* → **Zertifikat abrufen** → bestätigen.
 
 ## Berichte
 
 ![Bericht](img/report-de.png)
 
-Unter *Einstellungen → Berichte* gehen Berichte zu festen Zeiten per E-Mail raus – z. B. jeden Montag um 8 Uhr die Tonerstände ans Büro.
+Unter *Überwachung → Berichte* gehen Berichte zu festen Zeiten per E-Mail raus - z. B. jeden Montag um 8 Uhr die Tonerstände ans Büro.
 
 - Inhalt: Drucker, NAS, Switches, Netzlaufwerke; auf Standorte beschränkbar; wahlweise nur Geräte mit Handlungsbedarf.
-- **Geräte**: alle Geräte der gewählten Inhalte – oder nur ausgewählte, z. B. ein eigener Bericht für den Drucker im Sekretariat.
-- Drucker zeigen die **gedruckten Seiten** (gesamt und im Berichtszeitraum, z. B. „in den letzten 7 Tagen“) und – wenn der Drucker es meldet – wie viele Seiten der Toner noch reicht.
-- Die Mail ist **neutral**: kein Link, kein Programmname – nur dein Absendername, Betreff (`{kw}`, `{datum}`), Einleitung, die Geräte und dein Gruß.
+- **Geräte**: alle Geräte der gewählten Inhalte - oder nur ausgewählte, z. B. ein eigener Bericht für den Drucker im Sekretariat.
+- Drucker zeigen die **gedruckten Seiten** (gesamt und im Berichtszeitraum, z. B. „in den letzten 7 Tagen“) und - wenn der Drucker es meldet - wie viele Seiten der Toner noch reicht.
+- Die Mail ist **neutral**: kein Link, kein Programmname - nur dein Absendername, Betreff (`{kw}`, `{datum}`), Einleitung, die Geräte und dein Gruß.
 - „Vorschau“, „Test an mich“ und „Jetzt senden“ direkt in der Liste.
 
 ## Benutzer und Rechte
 
 - **Rollen**: *Administrator* (alles), *Bearbeiter* (scannen, übernehmen, pflegen, Monitore), *Nur lesen*.
-- **Standorte**: Bearbeiter und Leser lassen sich auf Standorte beschränken – sie sehen und ändern dann nur deren Geräte, Scans und Monitore.
+- **Standorte**: Bearbeiter und Leser lassen sich auf Standorte beschränken - sie sehen und ändern dann nur deren Geräte, Scans und Monitore.
 - **Active Directory**: Anmeldung mit dem Windows-Konto, siehe nächster Abschnitt.
 - **Zwei-Faktor-Anmeldung** (*Mein Konto*): QR-Code mit einer Authenticator-App scannen, Code bestätigen, Wiederherstellungscodes aufbewahren. Für Administratoren lässt sie sich unter *Einstellungen → Allgemein* verpflichtend machen.
 
@@ -221,13 +221,13 @@ Für eine Außenstelle läuft dort ein zweiter Container als Scan-Agent. Unter *
 
 - Jede Nacht sichert WhatsOnMyNet die Datenbank nach `data/backups/`; vor jedem Update der Datenbank zusätzlich.
 - *Einstellungen → Sicherung*: Sicherung herunterladen, jetzt sichern, Sicherung einspielen (der aktuelle Stand wird vorher gesichert, dann startet das Programm neu).
-- **Bewahre `data/secret.key` (bzw. `WOMN_SECRET`) mit auf** – ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
+- **Bewahre `data/secret.key` (bzw. `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
 - Updates: in Dockhand/Watchtower oder `docker compose pull && docker compose up -d`. Einmal im Monat erscheint ein Sicherheits-Update mit neuen Paketen.
 
 ## Fehlerbehebung
 
-- **Oberfläche nicht erreichbar**: Firewall des Hosts für den HTTPS-Port öffnen. Mit Host-Netzwerk zeigt Docker/Dockhand keine Port-Zuordnung – das ist richtig so.
+- **Oberfläche nicht erreichbar**: Firewall des Hosts für den HTTPS-Port öffnen. Mit Host-Netzwerk zeigt Docker/Dockhand keine Port-Zuordnung - das ist richtig so.
 - **Keine Drucker-/Switch-Daten**: SNMP am Gerät einschalten, Community unter *Einstellungen → Scan* prüfen, auf der Geräteseite „Jetzt abfragen“.
 - **Ausgesperrt**: `docker compose exec whatsonmynet womn-admin reset <benutzer>` setzt ein neues Passwort, macht das Konto wieder zum Administrator und schaltet die Zwei-Faktor-Anmeldung aus. `womn-admin create <benutzer>` legt einen neuen Administrator an.
-- **Netzlaufwerk meldet „protocol not supported“**: Das Gerät kann nur das alte SMB1 – das wird aus Sicherheitsgründen nicht verwendet. SMB2/3 am Gerät einschalten (bei Synology: *Dateidienste → SMB → Erweitert*).
+- **Netzlaufwerk meldet „protocol not supported“**: Das Gerät kann nur das alte SMB1 - das wird aus Sicherheitsgründen nicht verwendet. SMB2/3 am Gerät einschalten (bei Synology: *Dateidienste → SMB → Erweitert*).
 - **Protokoll**: *Einstellungen → Protokoll* zeigt, wer was geändert hat; technische Meldungen stehen im Container-Log.
