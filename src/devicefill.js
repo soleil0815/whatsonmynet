@@ -84,6 +84,7 @@ export function syncStoredFacts(db) {
 
 /** Facts of a switch / NAS poll in inventory terms */
 export function snmpFacts(kind, data) {
+  if (kind === 'ups') return { serial: data.serial, model: data.model, vendor: data.vendor, os: data.firmware };
   return kind === 'nas'
     ? { serial: data.serial, model: data.model, vendor: { synology: 'Synology', qnap: 'QNAP' }[data.vendor], os: data.version && data.vendor === 'qnap' && !/^Q/i.test(data.version) ? `QTS ${data.version}` : data.version }
     : { serial: data.serial, model: data.model, os: data.firmware };

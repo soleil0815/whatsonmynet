@@ -47,6 +47,21 @@ $units
 EOT
 fi
 
+# UPS: values of a NUT (upsc) or apcupsd (apcaccess) running here - read only, only when one is installed
+num() { case "$1" in ''|*[!0-9.]*) printf null ;; *) printf '%s' "$1" ;; esac; }
+uj=null
+if command -v upsc >/dev/null 2>&1 && u=$(upsc -l 2>/dev/null | head -n 1) && [ -n "$u" ]; then
+  uv=$(upsc "$u@localhost" 2>/dev/null)
+  get() { printf '%s\n' "$uv" | awk -F': ' -v k="$1" '$1==k {print $2; exit}'; }
+  m=$(get ups.model); [ -n "$m" ] || m=$(get device.model)
+  v=$(get ups.mfr); [ -n "$v" ] || v=$(get device.mfr)
+  uj="{\"status\":\"$(esc "$(get ups.status)")\",\"charge\":$(num "$(get battery.charge)"),\"runtime\":$(num "$(get battery.runtime)"),\"load\":$(num "$(get ups.load)"),\"model\":\"$(esc "$m")\",\"vendor\":\"$(esc "$v")\"}"
+elif command -v apcaccess >/dev/null 2>&1 && av=$(apcaccess status 2>/dev/null) && [ -n "$av" ]; then
+  get() { printf '%s\n' "$av" | awk -F' *: *' -v k="$1" '$1==k {split($2, a, " "); print (k=="STATUS" || k=="MODEL") ? $2 : a[1]; exit}'; }
+  left=$(get TIMELEFT); [ -n "$left" ] && left=$(awk -v m="$left" 'BEGIN {printf "%d", m*60}')
+  uj="{\"status\":\"$(esc "$(get STATUS)")\",\"charge\":$(num "$(get BCHARGE)"),\"runtime\":$(num "$left"),\"load\":$(num "$(get LOADPCT)"),\"model\":\"$(esc "$(get MODEL)")\",\"vendor\":\"APC\"}"
+fi
+
 macs=""
 for a in /sys/class/net/*/address; do
   [ -r "$a" ] || continue
@@ -56,7 +71,7 @@ for a in /sys/class/net/*/address; do
 done
 ips=$( (ip -o -4 addr show scope global 2>/dev/null || true) | awk '{split($4,a,"/"); printf "%s\"%s\"", (n++?",":""), a[1]}')
 
-body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips]}"
+body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj}"
 if [ -n "$PIN" ]; then TLS="-k --pinnedpubkey $PIN"; else TLS=""; fi
 # shellcheck disable=SC2086
 printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer $TOKEN" -H 'X-WOMN-Request: 1' -H 'Content-Type: application/json' --data-binary @- "$URL" >/dev/null

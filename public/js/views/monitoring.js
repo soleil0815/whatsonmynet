@@ -70,8 +70,11 @@ export function nowParts(m) {
     return { main: t('smb.free', { size: fmtBytes(d.free) }), sub: t('smb.of', { total: fmtBytes(d.total), pct: pct(d.pct) }), tone: d.low ? 'bad' : 'ok', bar: 100 - d.pct };
   }
   if (d.state) {
-    const up = d.state === 'online' || d.state === 'running';
+    const up = d.state === 'online' || d.state === 'running' || d.state === 'mains';
     if (d.uptime) parts.push(t('val.since', { time: fmtUptime(d.uptime) }));
+    // UPS: battery charge and how long it lasts
+    if (d.charge !== null && d.charge !== undefined) parts.push(t('ups.chargeShort', { n: d.charge }));
+    if (d.runtime !== null && d.runtime !== undefined) parts.push(t('ups.leftShort', { time: fmtUptime(d.runtime) }));
     if (d.node && m.options?.metric === 'guestRunning') parts.push(t('val.onNode', { node: d.node }));
     if (up && d.cpu !== null && d.cpu !== undefined) parts.push(`CPU ${d.cpu} %`);
     if (up && d.mem !== null && d.mem !== undefined) parts.push(`RAM ${d.mem} %`);
@@ -567,7 +570,7 @@ export async function openMonitorForm(m, done, preset = null) {
     // Devices with values to watch: printers, switches, NAS - and every machine whose host script reports
     const [all, reporting] = await Promise.all([get('/devices'), get('/hosts/devices').catch(() => [])]);
     const rep = new Set(reporting);
-    sensorDevices = all.filter((d) => ['printer', 'nas', 'switch'].includes(d.type) || rep.has(d.id));
+    sensorDevices = all.filter((d) => ['printer', 'nas', 'switch', 'ups'].includes(d.type) || rep.has(d.id));
   } catch { /* none */ }
   const devSel = select('device_id', [['', t('sens.chooseDevice')], ...sensorDevices.map((d) => [String(d.id), `${d.name}${d.ip ? ` (${d.ip})` : ''}`])],
     v.device_id ? String(v.device_id) : '', m ? { disabled: true } : {});
@@ -580,7 +583,9 @@ export async function openMonitorForm(m, done, preset = null) {
   const syncMetric = () => {
     const x = metrics.find((y) => `${y.metric}|${y.key}` === metricSel.value);
     condBox.hidden = typeSel.value === 'sensor' && (!x || x.kind === 'state');
-    metricHint.textContent = x ? t('sens.now', { value: x.value === null || x.value === undefined ? '–' : `${x.value}${x.unit ? ` ${x.unit}` : ''}` }) : '';
+    // State values in words ("on battery"), numbers with their unit
+    const st = x && x.kind === 'state' && t(`val.state.${x.value}`) !== `val.state.${x.value}` ? t(`val.state.${x.value}`) : null;
+    metricHint.textContent = x ? t('sens.now', { value: x.value === null || x.value === undefined ? '–' : st || `${x.value}${x.unit ? ` ${x.unit}` : ''}` }) : '';
     if (x && !m && x.kind === 'number' && !thr.dataset.touched) { opSel.value = x.op; thr.value = x.threshold; }
     const dev = sensorDevices.find((y) => String(y.id) === devSel.value);
     if (x && typeSel.value === 'sensor') autoName(`${dev ? `${dev.name}: ` : ''}${sensorLabel(x)}`);

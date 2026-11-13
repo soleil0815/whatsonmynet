@@ -7,7 +7,7 @@ import { state, navigate, fail } from '../app.js';
 import { monitorDot, statusPill, openMonitorForm } from './monitoring.js';
 import { printerPanel } from './printer.js';
 import { systemPanel, openHostScript } from './hostscripts.js';
-import { switchPanel, nasPanel, pluggedLine } from './snmpdev.js';
+import { switchPanel, nasPanel, upsPanel, pluggedLine } from './snmpdev.js';
 import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
 
 const FIELD_LABEL = (f) => t(`f.${f}`) !== `f.${f}` ? t(`f.${f}`) : f;
@@ -129,7 +129,7 @@ export async function renderDevice(main, id) {
   const monPanel = h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('mon.device')),
       h('div', { class: 'actions' },
-        edit && (['printer', 'nas', 'switch'].includes(d.type) || d.host) ? btn(t('sens.add'), { class: 'btn btn-sm btn-ghost', onclick: () =>
+        edit && (['printer', 'nas', 'switch', 'ups'].includes(d.type) || d.host) ? btn(t('sens.add'), { class: 'btn btn-sm btn-ghost', onclick: () =>
           openMonitorForm(null, () => renderDevice(main, id), { type: 'sensor', device_id: d.id, name: `${d.name} - Sensor`, interval_s: 300, fail_threshold: 1 }) }, 'plus') : null,
         edit && d.ip ? btn(t('mon.watch'), { class: 'btn btn-sm', onclick: async () => {
           try { const preset = await get(`/monitors/suggest/${d.id}`); openMonitorForm(null, () => renderDevice(main, id), preset); } catch (e) { fail(e); }
@@ -171,7 +171,7 @@ export async function renderDevice(main, id) {
     h('dl', { class: 'kv' }, val('vendor', d.vendor), val('model', d.model), val('os', d.os), val('owner', d.owner),
       val('warranty_until', d.warranty_until ? fmtDate(d.warranty_until, getLang(), false) : ''),
       [h('dt', {}, t('dev.lastSeen')), h('dd', {}, d.last_seen ? fmtAgo(d.last_seen, t) : t('never'))]), notes);
-  const typePanel = d.type === 'printer' ? printerPanel(d) : d.type === 'switch' ? switchPanel(d) : d.type === 'nas' ? nasPanel(d) : null;
+  const typePanel = d.type === 'printer' ? printerPanel(d) : d.type === 'switch' ? switchPanel(d) : d.type === 'nas' ? nasPanel(d) : d.type === 'ups' ? upsPanel(d) : null;
   const netShort = !(d.plugged || d.mac || f.ports?.length || webRow) ? null : h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('dev.net')),
     h('dl', { class: 'kv' }, pluggedLine(d.plugged), val('mac', d.mac),
       f.ports?.length ? [h('dt', {}, t('dev.ports')), h('dd', {}, portList(f.ports, services))] : null, webRow));

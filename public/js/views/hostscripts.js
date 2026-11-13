@@ -6,6 +6,7 @@ import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { fail } from '../app.js';
 import { field, input, select, btn } from './common.js';
+import { upsBlock } from './snmpdev.js';
 
 // Text with `code` and **bold** → nodes (no HTML from translations)
 const rich = (text) => String(text).split('`').flatMap((part, i) => (i % 2 ? [h('code', {}, part)]
@@ -91,7 +92,8 @@ export function systemPanel(x) {
       (x.disks || []).map((dk) => meter(dk.label ? `${dk.name} ${dk.label}` : dk.name, dk.pct, `${bytes(dk.used)} / ${bytes(dk.total)}`))),
     (x.services || []).length ? [h('h3', { class: 'sub-title' }, t('hs.services')),
       failed.length ? h('ul', { class: 'port-macs' }, failed.map((s) => h('li', {}, h('span', { class: 'badge badge-bad' }, t('val.state.failed')), h('span', {}, s.display || s.name), h('span', { class: 'muted small mono' }, s.name))))
-        : h('p', { class: 'muted small', style: { margin: 0 } }, t('hs.servicesOk', { n: running }))] : null);
+        : h('p', { class: 'muted small', style: { margin: 0 } }, t('hs.servicesOk', { n: running }))] : null,
+    x.ups ? [h('h3', { class: 'sub-title' }, x.ups.source === 'battery' ? t('ups.titleBattery') : t('ups.title')), upsBlock(x.ups)] : null);
 }
 
 /** Settings → Host scripts: shared scripts for many machines, scripts of single devices, unknown machines */
