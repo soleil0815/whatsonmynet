@@ -86,9 +86,19 @@ test('Proxmox VE and Backup Server: read, metrics, sensors, pinned certificate',
     const mk = (metric, key, op, threshold) => monitoring.create({ name: metric, type: 'proxmox', options: { host: strict.id, metric, key, op, threshold, label: metric } });
     assert.equal((await monitoring.checkNow((await mk('nodeOnline', 'pve2')).id)).status === 'up', false);
     const st = await mk('storage', 'pve1/local-zfs', 'ge', '85');
-    assert.match((await monitoring.checkNow(st.id)).last_message, /87 % \(≥ 85\)/);
+    const stRes = await monitoring.checkNow(st.id);
+    assert.match(stRes.last_message, /87 % \(≥ 85\)/);
+    // The list shows the value with its unit, limit and size - not only "%"
+    assert.deepEqual(stRes.data && { v: stRes.data.v, unit: stRes.data.unit, op: stRes.data.op, threshold: stRes.data.threshold, used: stRes.data.used, total: stRes.data.total },
+      { v: 87, unit: '%', op: 'ge', threshold: '85', used: 870, total: 1000 });
+    const mem = await monitoring.checkNow((await mk('nodeMem', 'pve1', 'ge', '90')).id);
+    assert.deepEqual([mem.data.v, mem.data.used, mem.data.total], [30, 30, 100]);
+    const node = await monitoring.checkNow((await mk('nodeOnline', 'pve1')).id);
+    assert.deepEqual([node.data.state, node.data.cpu, node.data.mem], ['online', 12, 30]);
     const vm = await mk('guestRunning', '101');
-    assert.equal((await monitoring.checkNow(vm.id)).last_message, 'guestRunning: running');
+    const vmRes = await monitoring.checkNow(vm.id);
+    assert.equal(vmRes.last_message, 'guestRunning: running');
+    assert.deepEqual([vmRes.data.state, vmRes.data.node, vmRes.data.cpu, vmRes.data.mem], ['running', 'pve1', 5, 50]);
     assert.throws(() => px.remove(strict.id), { code: 'err.proxmoxInUse' });
 
     // Backup Server

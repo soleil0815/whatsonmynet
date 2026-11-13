@@ -584,3 +584,17 @@ pre.code.wrap { white-space: pre-wrap; word-break: break-all; }
 .adv { border-top: 1px solid var(--line); padding-top: 10px; }
 .adv > summary { cursor: pointer; color: var(--ink-2); font-weight: 500; padding: 4px 0; }
 .adv[open] > summary { margin-bottom: 12px; }
+
+/* Monitoring list: what a monitor shows now (value, usage bar, limit) */
+.now { min-width: 150px; }
+.now-main { display: flex; align-items: center; gap: 8px; }
+.now-main b { font-family: var(--display); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.now-main b.tone-ok { color: var(--ink); }
+.now.plain .now-main b { font-family: var(--font); font-size: 14px; font-weight: 400; }
+.now-bar { flex: none; width: 64px; height: 6px; background: var(--line); border-radius: 1px; overflow: hidden; }
+.now-bar i { display: block; height: 100%; background: var(--ok); }
+.now-warn i { background: var(--new-fill); }
+.now-bad i { background: var(--bad); }
+.now-sub span { white-space: nowrap; }
+.now-sub { font-size: 12.5px; color: var(--muted); line-height: 1.35; margin-top: 2px; }
+.tone-warn { color: var(--new); }
