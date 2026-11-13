@@ -56,7 +56,7 @@ export function fillDevice(db, deviceId, facts, source = 'SNMP') {
   const autoChanged = JSON.stringify(nextAuto) !== JSON.stringify(auto);
   if (!changes.length && !autoChanged && !set.mac) return { fields: [], replaced: false };
   const at = new Date().toISOString();
-  const who = { script: 'Skript', controller: 'Controller' }[source] || 'SNMP';
+  const who = { script: 'Skript', controller: 'Controller', redfish: 'Redfish' }[source] || 'SNMP';
   db.transaction(() => {
     const cols = { ...set, auto_fields: JSON.stringify(nextAuto) };
     if (changes.length || replaced) cols.updated_at = at;

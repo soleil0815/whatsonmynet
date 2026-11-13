@@ -263,6 +263,23 @@ The page shows all access points, switches and gateways of each controller with 
 
 The **scan** now also recognises these devices better by their model names: UniFi (USW = switch, UAP/U6/U7 = access point, UDM/UCG/USG = gateway, Network app = server), Omada (EAP = access point, ER = gateway, OC200/OC300 = controller), MikroTik (CRS = switch, cAP/wAP = access point) and Aruba Instant On.
 
+## Server hardware: iDRAC, iLO, XClarity, Supermicro (Redfish)
+
+Fans, power supplies, temperatures, RAID controllers and the drives behind them are usually unknown to the operating system. The management chip of the server knows them, even while the server is switched off. All current chips speak the standard **Redfish**: Dell iDRAC, HPE iLO, Lenovo XClarity Controller, Supermicro, Fujitsu iRMC, Cisco CIMC.
+
+1. Add an account of its own in the management chip that may **only read**: iDRAC role *Read Only*, iLO only the right *Login*, XClarity role *ReadOnly*, Supermicro role *User*.
+2. *Monitoring → Server hardware* → **Connect management chip**: the address of the chip (not of the server), **Fetch certificate** and confirm the fingerprint, user and password.
+
+Shown are:
+- overall health and power state, consumption
+- model, serial number (at Dell the service tag), BIOS, processors, memory, firmware of the chip
+- fans, temperatures with warning limit, power supplies
+- RAID controllers, volumes and drives, with life left and predicted failure
+
+Whatever is not fine is listed at the top. WhatsOnMyNet matches the server to **its device in the inventory** by the MAC addresses of its network cards or by the serial number. Its page then shows the *Server hardware* area, and manufacturer, model and serial number are taken over.
+
+Sensors (*Add sensor*): overall health, server switched on, every fan, temperature, power supply, drive (also life left), volume, and power consumption. It is asked every few minutes like Proxmox (*Settings → General*), read only.
+
 ## Windows and Linux machines by script (without agent)
 
 Servers and PCs can be monitored without an agent: a small script on the machine reports **CPU, RAM, drives, uptime and services** every 5 minutes, plus a connected **UPS** (see above).
@@ -275,7 +292,9 @@ On top comes what an administrator wants to know about a server. Everything is o
 - **Certificates** of the machine (Windows, store "Personal" of the computer), with days until they expire.
 - **Hardware:** manufacturer, model, serial number, BIOS, processors, memory modules and network cards. Manufacturer, model and serial number also go into the inventory. On Linux, serial number and memory modules only come as root (`dmidecode`).
 
-Fans, power supplies, mainboard temperatures and RAID controllers are usually unknown to the operating system. They come from the management chip of the server (iDRAC, iLO, XClarity …). It installs nothing, loads nothing, opens no port and needs no account - it only talks to WhatsOnMyNet. On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
+Fans, power supplies, mainboard temperatures and RAID controllers are usually unknown to the operating system. They come from the management chip of the server (see *Server hardware* above).
+
+The script installs nothing, loads nothing, opens no port and needs no account - it only talks to WhatsOnMyNet. On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
 
 **A single machine:** *Monitoring* → **Add monitor** → **Machine by script (Windows/Linux)** → choose the machine. On the device page the same works with **Monitor** (kind of check *Machine by script*) or *More* → **Monitor with script**. Then Windows or Linux → **Create script**.
 
