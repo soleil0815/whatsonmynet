@@ -61,7 +61,7 @@ export function confidenceBar(c) {
 }
 
 export function portList(ports, services = {}) {
-  return h('span', { class: 'ports' }, (ports || []).map((p) => h('span', { class: 'port', title: services[p] || '' }, p)));
+  return h('span', { class: 'ports' }, (Array.isArray(ports) ? ports : []).map((p) => h('span', { class: 'port', title: services[p] || '' }, p)));
 }
 
 /** <datalist> elements with values already used in the inventory (suggestions while typing) */

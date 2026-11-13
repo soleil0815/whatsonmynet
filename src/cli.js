@@ -26,7 +26,7 @@ try {
     users.disableTotp(u.id);
     db.prepare("UPDATE users SET active=1, role='admin' WHERE id=?").run(u.id);
     db.prepare('DELETE FROM sessions WHERE user_id=?').run(u.id);
-    out(`New password for ${name}: ${pw}\nChange it after signing in (top right → My account).`);
+    out(`New password for ${name}: ${pw}\nChange it after signing in (menu at the bottom left → My account).`);
   } else if (cmd === 'create' && name) {
     const pw = randomToken(12);
     users.create({ username: name, password: pw, role: 'admin' });

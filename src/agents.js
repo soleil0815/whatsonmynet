@@ -6,6 +6,7 @@ import { HttpError, line, str } from './lib/http.js';
 import { parseCidr, cidrContains, isIPv4, normalizeMac } from './lib/net.js';
 import { TYPES } from './scan/classify.js';
 import { randomToken } from './lib/crypto.js';
+import { cleanScanFacts } from './scanfacts.js';
 
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const MAX_RESULTS = 4096;
@@ -64,13 +65,12 @@ export function createAgents({ db, settings, inventory, scanner }) {
       const ip = line(r?.ip, 15);
       // Only addresses of the agent's own location - an agent can never write into another network
       if (!isIPv4(ip) || !subnets.some((c) => cidrContains(c, ip))) { rejected++; continue; }
-      let facts = r.facts && typeof r.facts === 'object' && !Array.isArray(r.facts) ? r.facts : {};
-      facts = JSON.stringify({ ...facts, agent: agent.name });
+      let facts = JSON.stringify({ ...cleanScanFacts(r.facts), agent: agent.name });
       if (facts.length > 64 * 1024) facts = JSON.stringify({ agent: agent.name });
       const id = insertResult.run({ scan_id: scanId, ip, mac: normalizeMac(r.mac) || null, hostname: line(r.hostname, 200), vendor: line(r.vendor, 120),
         detected_type: TYPES.includes(r.detected_type) ? r.detected_type : 'unknown', confidence: Math.max(0, Math.min(1, Number(r.confidence) || 0)),
         facts, location_id: agent.location_id }).lastInsertRowid;
-      inventory.applyResult(id, { deep: false });
+      inventory.applyResult(id, { deep: false, onlyLocation: agent.location_id });
       n++;
     }
     db.prepare('UPDATE scans SET stats=? WHERE id=?').run(JSON.stringify({ probed: n, rejected, durationMs: Math.max(0, Date.parse(ts) - Date.parse(startedAt)), agent: agent.name }), scanId);

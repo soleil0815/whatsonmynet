@@ -153,7 +153,7 @@ test('monitors: docker and database types, password never returned', async () =>
   assert.ok(raw && !raw.includes('Sehr-Geheim'), 'stored encrypted');
   const u = await monitoring.update(m.id, { name: 'DB 2' });
   assert.equal(u.has_password, true, 'kept when no new password is sent');
-  assert.deepEqual(u.options, { user: 'monitor', database: 'app', tls: true });
+  assert.deepEqual(u.options, { user: 'monitor', database: 'app', tls: true, verify: false });
   const p = await monitoring.update(m.id, { type: 'ping', target: '127.0.0.1' }).catch((e) => e);
   if (!(p instanceof Error)) assert.equal(p.has_password, false, 'switching the type drops the password');
   srv.close();

@@ -976,6 +976,7 @@ async function agents(body, _s, reload) {
       h('p', { class: 'note warn', style: { margin: 0 } }, t('agent.tokenOnce')),
       h('p', { class: 'muted', style: { margin: 0 } }, t('agent.envLead')),
       h('pre', { class: 'code wrap' }, env),
+      cert.source === 'custom' ? h('p', { class: 'muted small', style: { margin: 0 } }, t('agent.customCaHint')) : null,
       h('p', { class: 'muted small', style: { margin: 0 } }, t('agent.composeHint'))), { wide: true, actions: [
       btn(t('agent.copy'), { onclick: async () => { try { await navigator.clipboard.writeText(env); toast(t('agent.copied')); } catch { /* not allowed */ } } }),
       h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { m.close(); reload(); } }, t('agent.done'))] });

@@ -41,9 +41,12 @@ export function createMonitoringApi(ctx) {
     const pid = int(String(req.body?.parent_id ?? ''));
     if (pid) monitorOk(req, pid);
   };
+  // Docker hosts and hypervisors belong to no location: a user limited to locations cannot read them elsewhere either
+  const typeOk = (req, type) => { if (req.scope && ['docker', 'proxmox'].includes(type)) throw new HttpError(403, 'err.scope'); };
   r.post('/monitors', editor, async (req, res) => {
     if (!deviceOk(req, req.body.device_id ? Number(req.body.device_id) : null)) throw new HttpError(403, 'err.scope');
     parentOk(req);
+    typeOk(req, req.body.type);
     const m = await monitoring.create(req.body);
     audit(req, 'monitor.create', `${m.name} (${m.type} ${m.target})`);
     res.status(201).json(m);
@@ -51,6 +54,7 @@ export function createMonitoringApi(ctx) {
   r.put('/monitors/:id', editor, async (req, res) => {
     monitorOk(req, idParam(req));
     parentOk(req);
+    typeOk(req, req.body.type ?? monitoring.get(idParam(req))?.type);
     const m = await monitoring.update(idParam(req), req.body);
     audit(req, 'monitor.update', m.name);
     res.json(m);

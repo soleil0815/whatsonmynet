@@ -29,7 +29,7 @@ WhatsOnMyNet scans your network, recognises manufacturer and device type by itse
 - **Inventory** - search across everything, filter by type and location, view as list, by subnet or by type, "seen in the last scan" status, export as CSV (Excel) and JSON.
 - **Quick access** - one click opens the device's web interface (Proxmox on 8006, Synology on 5001, printers …). The scan suggests the address.
 - **Purchase, warranty, maintenance** - optional fields, with a notice on the overview when a warranty ends soon.
-- **Deep check** - for single unclear devices, started by hand: about 120 ports and all web interfaces.
+- **Deep check** - for single unclear devices, started by hand: about 110 ports and all web interfaces.
 - **Locations** - group subnets. Before a scan you just tick them; devices found get their location automatically.
 - **Users and roles** - administrator, editor, read only; sign-in with Active Directory too, rights can be limited to locations (from 0.3).
 - **HTTPS from the first start** - generated certificate, own certificate (PEM or PFX) uploadable in the interface, HTTP always redirects to HTTPS.
@@ -54,7 +54,7 @@ Check results are kept in detail for 7 days and hourly for a year.
 ### Docker containers and databases (from version 0.3)
 
 - **Docker**: add your Docker hosts under *Settings → Docker*. A monitor of type *Docker container* reports when a container is not running, keeps restarting or its health check says "unhealthy". "Watch all running" creates a monitor for every container with one click.
-  Recommended is a **socket proxy** on the Docker host that only allows read-only container queries (e.g. `tecnativa/docker-socket-proxy` with `CONTAINERS=1`, `POST=0`; address `http://<host>:2375`). The template is shown in the settings. Passing the Docker socket directly also works (`unix:///var/run/docker.sock`, mounted `:ro` in `docker-compose.yml` plus `group_add` with the group ID of `docker`) - but that grants more rights than needed.
+  Recommended is a **socket proxy** on the Docker host that only allows read-only container queries (e.g. `tecnativa/docker-socket-proxy` with `CONTAINERS=1`, `POST=0`; address `http://<host>:2375`). The template is shown in the settings. Mounting the Docker socket directly into the container is not intended: WhatsOnMyNet runs there as a normal user without the group `docker` (and the socket would grant more rights than needed) - use the socket proxy.
 - **Databases**: MariaDB/MySQL, PostgreSQL and Redis/Valkey. The check logs in and runs one harmless query (version or `PING`), optionally over TLS. Best create a user of its own with login rights only. The password is stored encrypted and never sent back to the browser.
 
 ### Sensors (from version 0.4)
@@ -172,7 +172,7 @@ The agent has no web interface and opens no port. It asks the central server for
 
 ## Proxmox VE and Backup Server (from version 0.4)
 
-Under *Monitoring → Virtualization* WhatsOnMyNet reads Proxmox VE and Proxmox Backup Server through their built-in API - nothing is installed there. A user of its own with an API token that may only read is enough (VE: role *PVEAuditor* on `/`, Backup Server: role *Audit*). The dialog *Add host → Proxmox VE* guides through two steps: the three commands to copy (or the clicks in the Proxmox interface), then address, **Fetch certificate** with fingerprint comparison and the secret. If the token lacks rights, the detail view names them with a command to fix it; the secret is stored encrypted.
+Under *Monitoring → Virtualization* WhatsOnMyNet reads Proxmox VE and Proxmox Backup Server through their built-in API - nothing is installed there. A user of its own with an API token that may only read is enough (VE: role *PVEAuditor* on `/`, Backup Server: role *Audit*). The dialog *Add host → Proxmox VE* guides through two steps: the commands to copy (or the clicks in the Proxmox interface), then address, **Fetch certificate** with fingerprint comparison and the secret. If the token lacks rights, the detail view names them with a command to fix it; the secret is stored encrypted.
 
 More hypervisors on the same page: **VMware ESXi/vCenter** (vSphere API), **XCP-ng/XenServer** (XAPI), **Nutanix AHV** (Prism API v2) and **oVirt/RHV/OLVM** (REST API) are asked with an account that may only read. **Hyper-V** and **KVM/libvirt** report on their own: a small script (PowerShell or POSIX sh with `virsh -r`) sends hosts, storage and VMs every 5 minutes - with a key of its own, without an open port on the host. All appear the same way and offer the same sensors.
 

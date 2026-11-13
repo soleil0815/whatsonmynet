@@ -133,7 +133,11 @@ export async function render() {
   try {
     cleanup = await view(main, ...params) || null;
   } catch (e) {
-    fail(e);
+    // A page that could not be built: a plain note with a way to try again instead of an empty page,
+    // and a program error (TypeError …) to the console instead of a cryptic toast
+    if (e instanceof ApiError) fail(e); else console.error(e);
+    mount(main, h('div', { class: 'empty' }, h('p', {}, t(e instanceof ApiError ? 'err.pageLoad' : 'err.pageBroken')),
+      h('button', { class: 'btn', type: 'button', onclick: () => render() }, t('retry'))));
   }
 }
 

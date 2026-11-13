@@ -11,7 +11,7 @@ import Database from 'better-sqlite3';
 import { HttpError } from './lib/http.js';
 import { decrypt } from './lib/crypto.js';
 import { log } from './lib/log.js';
-import { backupDatabase, MIGRATIONS } from './db.js';
+import { backupDatabase, MIGRATIONS, migrate } from './db.js';
 
 const SQLITE_MAGIC = Buffer.from('SQLite format 3\0', 'latin1');
 const NAME = /^whatsonmynet-[\w.-]+\.sqlite$/;
@@ -38,12 +38,32 @@ export function inspect(file) {
       if (!same) throw new HttpError(400, 'err.backupKey');
     }
     if (db.pragma('integrity_check', { simple: true }) !== 'ok') throw new HttpError(400, 'err.backupBroken');
+    // Schema 0 is no backup of ours; and without an active admin nobody could sign in afterwards
+    if (version < 1) throw new HttpError(400, 'err.backupFile');
+    if (!db.prepare("SELECT 1 FROM users WHERE role='admin' AND active=1").get()) throw new HttpError(400, 'err.backupNoAdmin');
+    trialMigration(file);
     return {
       schema: version,
       devices: db.prepare('SELECT COUNT(*) n FROM devices').get().n,
       users: db.prepare('SELECT COUNT(*) n FROM users').get().n,
     };
   } finally { db.close(); }
+}
+
+/** The schema updates must run on the file - tried on a copy, so that a restore can never leave a server that does not start */
+function trialMigration(file) {
+  const copy = `${file}.trial`;
+  try {
+    fs.copyFileSync(file, copy);
+    const t = new Database(copy);
+    try { t.pragma('foreign_keys = ON'); migrate(t, { quiet: true }); } finally { t.close(); }
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    log.warn(`Restore refused: the schema update fails on this file (${e.message})`);
+    throw new HttpError(400, 'err.backupBroken');
+  } finally {
+    for (const f of [copy, `${copy}-wal`, `${copy}-shm`, `${copy}-journal`]) fs.rmSync(f, { force: true });
+  }
 }
 
 /** At startup, before the database is opened: put a waiting restore in place */
@@ -54,6 +74,8 @@ export function applyPendingRestore(dbFile, backupsDir) {
   const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
   if (fs.existsSync(dbFile)) {
     const keep = path.join(backupsDir, `whatsonmynet-before-restore-${stamp}.sqlite`);
+    // The latest changes may still be in the -wal file only: write them into the database first, then copy
+    try { const old = new Database(dbFile); try { old.pragma('wal_checkpoint(TRUNCATE)'); } finally { old.close(); } } catch (e) { log.warn(`Restore: checkpoint of the previous database failed: ${e.message}`); }
     fs.copyFileSync(dbFile, keep);
     fs.chmodSync(keep, 0o600);
     log.info(`Restore: the previous database was kept as ${keep}`);
@@ -65,7 +87,7 @@ export function applyPendingRestore(dbFile, backupsDir) {
   return true;
 }
 
-export function createBackups({ db, settings, dbFile, backupsDir, restart = () => setTimeout(() => process.exit(0), 500).unref() }) {
+export function createBackups({ db, settings, dbFile, backupsDir, restart = () => setTimeout(() => { try { db.close(); } catch { /* closed already */ } process.exit(0); }, 500).unref() }) {
   return {
     list() {
       if (!fs.existsSync(backupsDir)) return [];

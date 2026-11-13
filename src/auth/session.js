@@ -113,5 +113,7 @@ export function createLoginLimiter({ max = 8, ipMax = 40, windowMs = 15 * 60 * 1
       if (hits.size > 10000) for (const [k, v] of hits) if (v.until < Date.now()) hits.delete(k);
     },
     success(_ip, user) { hits.delete(nameKey(user)); },
+    /** Takes back an attempt of this address that was counted in advance and then succeeded */
+    undo(ip) { const e = hits.get(`i|${ip}`); if (e && e.count > 0) e.count--; },
   };
 }

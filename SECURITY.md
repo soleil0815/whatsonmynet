@@ -44,7 +44,7 @@ Du bekommst innerhalb weniger Tage eine Antwort. Korrekturen erscheinen als neue
 
 ## Unterstützte Versionen
 
-Korrekturen gibt es nur für das **neueste Release**. Das Update geht schnell: `docker compose pull && docker compose up -d` oder die Container-Verwaltung (siehe README).
+Korrekturen gibt es nur für das **neueste Release** - auch seine Sicherheitsupdates (`<version>-s<n>`, dasselbe Programm mit neueren Paketen), einmal im Monat am Patchday (zweiter Dienstag). Das Update geht schnell: `docker compose pull && docker compose up -d` oder die Container-Verwaltung (siehe README).
 
 ## Releases prüfen
 

@@ -28,9 +28,12 @@ const link = (x) => {
 function client(host) {
   const auth = `Basic ${Buffer.from(`${host.token_id}:${host.secretPlain}`).toString('base64')}`;
   let calls = 0;
+  const started = Date.now();
   async function get(path, optional = false) {
     if (!path) return null;
     if (++calls > 250) throw new Error('too many requests - is this a Redfish service?');
+    // One reading must not take for ever (the polling of all hosts waits for it)
+    if (Date.now() - started > 5 * 60 * 1000) throw new Error('no complete answer within 5 minutes');
     const r = await tlsRequest(host, 'GET', path, { headers: { Authorization: auth, Accept: 'application/json', 'OData-Version': '4.0' } });
     if (r.status === 401) throw new Error('sign-in refused - user or password wrong (or the account is locked)');
     if (r.status === 403) { if (optional) return null; throw new Error('the account may not read this - give it at least the read-only role'); }

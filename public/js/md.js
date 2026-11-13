@@ -1,5 +1,5 @@
 // Small Markdown renderer for the manual (our own text): headings, paragraphs, lists, images, **bold**, `code`,
-// ``` code blocks ```.
+// ``` code blocks ``` and simple | pipe | tables |.
 // Everything is escaped first; only these few constructs become HTML. Used by the help page and the PDF build.
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -24,6 +24,15 @@ export function mdToHtml(text, { imgBase = '' } = {}) {
     list = null;
   };
   let code = null;
+  let table = null;
+  const cells = (l) => l.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map((c) => c.trim());
+  const flushTable = () => {
+    if (!table) return;
+    const [head, ...rows] = table;
+    out.push(`<div class="md-table"><table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join('')}</tr></thead>`
+      + `<tbody>${rows.map((r) => `<tr>${head.map((_, i) => `<td>${inline(r[i] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`);
+    table = null;
+  };
   for (const raw of String(text).split('\n')) {
     const line = raw.trimEnd();
     let m;
@@ -33,6 +42,12 @@ export function mdToHtml(text, { imgBase = '' } = {}) {
       continue;
     }
     if (code) { code.push(raw.replace(/^ {0,3}/, '')); continue; }
+    // | a | b | with a |---|---| line under the head
+    if (/^\s*\|.*\|\s*$/.test(line)) {
+      if (table) { if (!/^\s*\|[\s:|-]+\|\s*$/.test(line)) table.push(cells(line)); continue; }
+      flushPara(); flushList(); table = [cells(line)]; continue;
+    }
+    flushTable();
     if (!line.trim()) { flushPara(); flushList(); continue; }
     if ((m = /^(#{1,3})\s+(.*)$/.exec(line))) {
       flushPara(); flushList();
@@ -53,7 +68,7 @@ export function mdToHtml(text, { imgBase = '' } = {}) {
       para.push(line.trim());
     }
   }
-  flushPara(); flushList();
+  flushPara(); flushList(); flushTable();
   return out.join('\n');
 }
 
