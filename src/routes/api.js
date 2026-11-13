@@ -282,7 +282,7 @@ export function createApi(ctx) {
     if (!d) throw new HttpError(404, 'err.notFound');
     const presence = inventory.list({}).find((x) => x.id === d.id)?.presence || 'unknown';
     const monitors = db.prepare('SELECT id FROM monitors WHERE device_id=? ORDER BY name').all(d.id).map((m) => ctx.monitoring.get(m.id));
-    res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null, host: ctx.hosts.report(d.id), hardware: ctx.proxmox.hardwareOf(d.id),
+    res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null, host: ctx.hosts.report(d.id), hardware: ctx.proxmox.hardwareOf(d.id), hasSensors: ctx.sensorChoices.hasValues(d.id, { withHosts: !req.scope }),
       hostScript: req.user.role === 'admin' ? ctx.hosts.list().find((t) => t.device_id === d.id) || null : undefined,
       snmp: ['switch', 'nas', 'ups'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: d.mac ? ctx.snmpDevices.locate(d.mac) : null, history: inventory.historyOf(d.id) });
   });

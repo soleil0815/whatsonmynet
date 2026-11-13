@@ -107,23 +107,43 @@ export function pxLabel(x) {
   return t(`px.m.${x.metric}`, { name: x.name || '' });
 }
 
-// The values of a device in groups - a machine with script delivers dozens (every temperature, disk, certificate …)
+// The values in groups - a machine with script delivers dozens (every temperature, disk, certificate …)
 const METRIC_GROUP = {
   hostOnline: 'machine', hostCpu: 'machine', hostMem: 'machine', hostDisk: 'drives', servicesFailed: 'services', service: 'services',
-  hostTempMax: 'temps', hostTemp: 'temps', temp: 'temps', diskTemp: 'temps',
+  hostTempMax: 'temps', hostTemp: 'temps', temp: 'temps', diskTemp: 'temps', rfTemp: 'temps',
   hostPdHealth: 'disks', hostPdTemp: 'disks', hostPdWear: 'disks', disk: 'disks', raid: 'disks', volume: 'disks', health: 'machine',
   hostUpdates: 'care', hostUpdatesSec: 'care', hostReboot: 'care', hostAv: 'care', hostFirewall: 'care', hostEvCritical: 'care', hostEvErrors: 'care', hostCert: 'care',
   upsPower: 'ups', upsCharge: 'ups', upsRuntime: 'ups', upsLoad: 'ups', supply: 'printer', pages: 'printer', printerErrors: 'printer', port: 'ports', portErrors: 'ports',
+  // hypervisor and controller values
+  nodeOnline: 'machine', nodeCpu: 'machine', nodeMem: 'machine', nodeTemp: 'temps', storage: 'drives', datastore: 'drives',
+  guestRunning: 'guests', backupAge: 'backup', backupFailed: 'backup', groupAge: 'backup', tasksFailed: 'backup',
+  rfHealth: 'hardware', rfPower: 'hardware', rfFan: 'hardware', rfPsu: 'hardware', rfDrive: 'hardware', rfVolume: 'hardware', rfDriveLife: 'hardware', rfWatts: 'hardware',
+  netOnline: 'network', netClients: 'network', netCpu: 'network', netMem: 'network', clientsTotal: 'network', netUpdates: 'network',
 };
-const GROUP_ORDER = ['machine', 'temps', 'drives', 'disks', 'services', 'care', 'ups', 'printer', 'ports', 'other'];
-function metricOptions(metrics) {
-  const opt = (x) => h('option', { value: `${x.metric}|${x.key}` }, sensorLabel(x));
-  if (metrics.length <= 12) return metrics.map(opt);
-  const groups = new Map(GROUP_ORDER.map((g) => [g, []]));
-  for (const x of metrics) groups.get(METRIC_GROUP[x.metric] || 'other').push(x);
-  // Temperatures: the hottest of all first, then by name
-  groups.get('temps').sort((a, b) => (a.metric === 'hostTempMax' ? -1 : b.metric === 'hostTempMax' ? 1 : String(a.name).localeCompare(String(b.name), undefined, { numeric: true })));
-  return [...groups].filter(([, l]) => l.length).map(([g, l]) => h('optgroup', { label: t(`sens.g.${g}`) }, l.map(opt)));
+const GROUP_ORDER = ['machine', 'temps', 'drives', 'disks', 'services', 'care', 'guests', 'backup', 'hardware', 'network', 'ups', 'printer', 'ports', 'other'];
+const groupRank = (x) => { const i = GROUP_ORDER.indexOf(METRIC_GROUP[x.metric] || 'other'); return i < 0 ? GROUP_ORDER.length : i; };
+// within a group: by kind of value, the hottest of all first, temperatures and the like by name
+const byKind = (a, b) => groupRank(a) - groupRank(b) || (a.metric === 'hostTempMax' ? -1 : b.metric === 'hostTempMax' ? 1 : 0)
+  || (METRIC_GROUP[a.metric] === 'temps' && a.metric === b.metric ? String(a.name).localeCompare(String(b.name), undefined, { numeric: true }) : 0);
+
+/** Name of a value in the sensor list: a device value ("Temperatur: CPU Core 0") or a hypervisor value ("CPU pve2") */
+export function choiceLabel(x) {
+  if (x.current) return x.label;
+  return x.src === 'host' ? pxLabel(x) : sensorLabel(x);
+}
+
+/**
+ * The <option>s of the sensor list (value = index in the list). Few values: plain. Many: in groups -
+ * under Virtualization one group per node (Proxmox and script values of that node together), then VMs, storage …
+ */
+function choiceOptions(list) {
+  const opt = (x) => h('option', { value: String(list.indexOf(x)) }, choiceLabel(x));
+  const nodes = [...new Set(list.map((x) => x.group).filter((g) => g && g.startsWith('node:')))];
+  if (list.length <= 12 && !nodes.length) return list.map(opt);
+  const groups = new Map([['current', []], ...nodes.map((g) => [g, []]), ...GROUP_ORDER.map((g) => [g, []])]);
+  for (const x of list) groups.get(x.current ? 'current' : x.group && groups.has(x.group) ? x.group : METRIC_GROUP[x.metric] || 'other').push(x);
+  const label = (g) => (g === 'current' ? t('sens.g.current') : g.startsWith('node:') ? t('sens.g.node', { name: g.slice(5) }) : t(`sens.g.${g}`));
+  return [...groups].filter(([, l]) => l.length).map(([g, l]) => h('optgroup', { label: label(g) }, [...l].sort(byKind).map(opt)));
 }
 
 export function sensorLabel(x) {
@@ -480,7 +500,7 @@ function depPanel(m, edit, reload) {
 
 /** Form to add or edit a monitor. `preset` fills a new one (e.g. from a device). */
 // Step 1 of "Add monitor": what should be watched? One tile per kind, with a sentence what it checks
-const PICK = [['http', 'open'], ['ping', 'radar'], ['tcp', 'switch'], ['smb', 'nas'], ['sensor', 'printer'], ['proxmox', 'hypervisor'], ['docker', 'server'], ['mysql', 'inventory'], ['snmp', 'router']];
+const PICK = [['http', 'open'], ['ping', 'radar'], ['tcp', 'switch'], ['smb', 'nas'], ['sensor', 'gauge'], ['docker', 'server'], ['mysql', 'inventory'], ['snmp', 'router']];
 function pickKind(done, preset) {
   const tile = (type, ico, onclick) => h('button', { type: 'button', class: 'pick', onclick },
     h('span', { class: 'pick-ico', html: icon(ico) }), h('span', { class: 'pick-title' }, t(`mon.pick.${type}`)), h('span', { class: 'pick-text' }, t(`mon.pick.${type}.d`)));
@@ -521,18 +541,20 @@ async function startHostScript(preset, done) {
 
 export async function openMonitorForm(m, done, preset = null) {
   if (!m && !preset?.type) { pickKind(done, preset); return; }
+  // Device values and hypervisor values are one kind for the user: "Sensor"
+  if (preset?.type === 'proxmox') preset = { ...preset, type: 'sensor' };
   let chans = [];
   try { chans = await get('/channels'); } catch { /* list stays empty */ }
   const v = m || { type: 'http', interval_s: 60, timeout_s: 10, fail_threshold: 3, resend_min: 0, http_status: '200-399', http_keyword: '',
     tls_verify: false, cert_check: true, cert_days: '30,14,7', channels: [], ...(preset || {}) };
   let dockerHosts = [];
   try { dockerHosts = await get('/docker/hosts'); } catch { /* none or no right */ }
-  const TYPES = ['http', 'tcp', 'ping', 'smb', 'sensor', 'snmp', 'proxmox', 'docker', 'mysql', 'postgres', 'redis'];
+  const TYPES = ['http', 'tcp', 'ping', 'smb', 'sensor', 'snmp', 'docker', 'mysql', 'postgres', 'redis'];
   const DBT = ['mysql', 'postgres', 'redis'];
   const DEF_PORT = { mysql: 3306, postgres: 5432, redis: 6379 };
   // New monitors: admins also find "machine by script" here - it is no monitor type, it opens the script dialog
   const offerScript = !m && state.user.isAdmin;
-  const typeSel = select('type', [...TYPES.map((x) => [x, t(`mon.type.${x}`)]), ...(offerScript ? [['script', t('mon.pick.script')]] : [])], v.type);
+  const typeSel = select('type', [...TYPES.map((x) => [x, t(`mon.type.${x}`)]), ...(offerScript ? [['script', t('mon.pick.script')]] : [])], v.type === 'proxmox' ? 'sensor' : v.type);
   const target = input('target', v.target || '', { required: true, class: 'mono', placeholder: 'https://intranet.firma.local/', list: 'dl-containers' });
   const targetLabel = h('span', {}, t('mon.f.target'));
   const port = input('port', v.port || '', { type: 'number', min: 1, max: 65535, class: 'mono' });
@@ -595,77 +617,64 @@ export async function openMonitorForm(m, done, preset = null) {
   const nameIn = input('name', v.name || '', { required: true, maxlength: 120 });
   nameIn.addEventListener('input', () => { nameIn.dataset.touched = '1'; });
   const autoName = (text) => { if (!m && text && !nameIn.dataset.touched) nameIn.value = text; };
-  let sensorDevices = [];
-  try {
-    // Devices with values to watch: printers, switches, NAS - and every machine whose host script reports
-    const [all, reporting] = await Promise.all([get('/devices'), get('/hosts/devices').catch(() => [])]);
-    const rep = new Set(reporting);
-    sensorDevices = all.filter((d) => ['printer', 'nas', 'switch', 'ups'].includes(d.type) || rep.has(d.id));
-  } catch { /* none */ }
-  const devSel = select('device_id', [['', t('sens.chooseDevice')], ...sensorDevices.map((d) => [String(d.id), `${d.name}${d.ip ? ` (${d.ip})` : ''}`])],
-    v.device_id ? String(v.device_id) : '', m ? { disabled: true } : {});
-  let metrics = [];
+  // Sensor: one list of values, the same whether opened from a device or from a host under Virtualization.
+  // A Proxmox node shows the values of Proxmox and of the Linux script on it together; the source decides nothing.
+  let sources = { devices: [], hosts: [] };
+  try { sources = await get('/sensors/sources'); } catch { /* none or no right */ }
+  const srcOf = (x) => (x.type === 'sensor' && x.device_id ? `device:${x.device_id}` : x.type === 'proxmox' && x.options?.host ? `host:${x.options.host}` : '');
+  const startSrc = m ? srcOf(m) : preset?.device_id ? `device:${preset.device_id}` : preset?.options?.host ? `host:${preset.options.host}` : '';
+  const srcSel = h('select', { name: 'src' }, h('option', { value: '' }, t('sens.chooseSource')),
+    sources.devices.length ? h('optgroup', { label: t('sens.srcDevices') }, sources.devices.map((d) => h('option', { value: `device:${d.id}` }, `${d.name}${d.ip ? ` (${d.ip})` : ''}`))) : null,
+    sources.hosts.length ? h('optgroup', { label: t('sens.srcHosts') }, sources.hosts.map((x) => h('option', { value: `host:${x.id}` }, x.name))) : null);
+  // A device or host not in the list (no values yet, or deleted values): keep it choosable
+  if (startSrc && ![...srcSel.options].some((o) => o.value === startSrc)) srcSel.append(h('option', { value: startSrc }, m?.device_name || so.label || preset?.name || startSrc));
+  srcSel.value = startSrc;
+  const deviceName = (id) => sources.devices.find((d) => d.id === id)?.name || '';
+  let choices = [];
   const metricSel = h('select', { name: 'metric' });
   const opSel = select('op', OPS.map((x) => [x, t(`sens.op.${x}`)]), so.op || 'le');
   const thr = input('threshold', so.threshold ?? '', { maxlength: 60, class: 'mono' });
   const condBox = h('div', { class: 'form-grid full' }, field(t('sens.op'), opSel), field(t('sens.threshold'), thr));
   const metricHint = h('span', { class: 'hint' });
+  const chosen = () => choices[Number(metricSel.value)] || null;
   const syncMetric = () => {
-    const x = metrics.find((y) => `${y.metric}|${y.key}` === metricSel.value);
+    const x = chosen();
     condBox.hidden = typeSel.value === 'sensor' && (!x || x.kind === 'state');
+    if (!x || x.current) { metricHint.textContent = ''; return; }
     // State values in words ("on battery"), numbers with their unit
-    const st = x && x.kind === 'state' && t(`val.state.${x.value}`) !== `val.state.${x.value}` ? t(`val.state.${x.value}`) : null;
-    metricHint.textContent = x ? t('sens.now', { value: x.value === null || x.value === undefined ? '–' : st || `${x.value}${x.unit ? ` ${x.unit}` : ''}` }) : '';
-    if (x && !m && x.kind === 'number' && !thr.dataset.touched) { opSel.value = x.op; thr.value = x.threshold; }
-    const dev = sensorDevices.find((y) => String(y.id) === devSel.value);
-    if (x && typeSel.value === 'sensor') autoName(`${dev ? `${dev.name}: ` : ''}${sensorLabel(x)}`);
+    const st = x.kind === 'state' && t(`val.state.${x.value}`) !== `val.state.${x.value}` ? t(`val.state.${x.value}`) : null;
+    metricHint.textContent = x.value === null || x.value === undefined
+      ? (x.src === 'host' && x.kind === 'number' && !/Age$/.test(x.metric) ? t('px.noValue') : t('sens.now', { value: '–' }))
+      : t('sens.now', { value: st || `${x.value}${x.unit ? ` ${x.unit}` : ''}` });
+    if (!m && x.kind === 'number' && !thr.dataset.touched) { opSel.value = x.op; thr.value = x.threshold; }
+    if (typeSel.value !== 'sensor') return;
+    const owner = x.src === 'device' ? deviceName(x.device) || (x.group || '').replace(/^node:/, '') : sources.hosts.length > 1 ? x.hostName : '';
+    autoName(`${owner ? `${owner}: ` : ''}${choiceLabel(x)}`);
   };
   thr.addEventListener('input', () => { thr.dataset.touched = '1'; });
   metricSel.addEventListener('change', syncMetric);
+  // The value this sensor watches now - also when the list no longer offers it (e.g. the temperature of a node at the
+  // hypervisor, which the script of the node now delivers itself)
+  const isCurrent = (x) => !!m && srcOf(m) === srcSel.value && x.metric === so.metric && String(x.key ?? '') === String(so.key ?? '');
   async function loadMetrics() {
     mount(metricSel);
-    metrics = [];
-    if (!devSel.value) { syncMetric(); return; }
-    try { metrics = await get(`/devices/${devSel.value}/sensors`); } catch { metrics = []; }
-    mount(metricSel, metrics.length ? metricOptions(metrics) : h('option', { value: '' }, t('sens.noValues')));
-    if (so.metric) metricSel.value = `${so.metric}|${so.key || ''}`;
+    choices = [];
+    const [kind, id] = srcSel.value.split(':');
+    if (!id) { syncMetric(); return; }
+    try { choices = await get(`/sensors/choices?${kind}=${id}`); } catch { choices = []; }
+    if (m && srcOf(m) === srcSel.value && !choices.some(isCurrent)) {
+      choices.unshift({ src: m.type === 'sensor' ? 'device' : 'host', device: m.device_id, host: Number(so.host), hostName: '', metric: so.metric, key: so.key || '', name: '',
+        kind: ['eq'].includes(so.op) && so.threshold === '' ? 'state' : 'number', current: true, label: so.label || so.metric, group: 'current' });
+    }
+    mount(metricSel, choices.length ? choiceOptions(choices) : h('option', { value: '' }, t('sens.noValues')));
+    const cur = choices.findIndex(isCurrent);
+    if (cur >= 0) metricSel.value = String(cur);
     syncMetric();
   }
-  devSel.addEventListener('change', loadMetrics);
+  srcSel.addEventListener('change', loadMetrics);
   const sensorBox = h('div', { class: 'form-grid full' },
-    field(t('sens.device'), devSel),
+    sources.devices.length || sources.hosts.length || startSrc ? field(t('sens.source'), srcSel, t('sens.sourceHint')) : h('p', { class: 'full muted small' }, t('sens.noSources')),
     h('div', {}, h('label', { class: 'field' }, t('sens.metric'), metricSel, metricHint)));
-  // Proxmox: a value of a PVE/PBS host
-  let pxHosts = [];
-  try { pxHosts = await get('/proxmox'); } catch { /* none or no right */ }
-  const pxSel = select('px_host', [['', t('px.chooseHost')], ...pxHosts.map((x) => [String(x.id), x.name])], so.host ? String(so.host) : (pxHosts.length === 1 ? String(pxHosts[0].id) : ''));
-  let pxMetrics = [];
-  const pxMetricSel = h('select', { name: 'px_metric' });
-  const pxHint = h('span', { class: 'hint' });
-  const syncPx = () => {
-    const x = pxMetrics.find((y) => `${y.metric}|${y.key}` === pxMetricSel.value);
-    if (typeSel.value === 'proxmox') condBox.hidden = !x || x.kind === 'state';
-    pxHint.textContent = !x ? '' : x.value === null || x.value === undefined
-      ? (x.kind === 'number' && !/Age$/.test(x.metric) ? t('px.noValue') : t('sens.now', { value: '–' }))
-      : t('sens.now', { value: `${x.value}${x.unit ? ` ${x.unit}` : ''}` });
-    if (x && !m && x.kind === 'number' && !thr.dataset.touched) { opSel.value = x.op; thr.value = x.threshold; }
-    const host = pxHosts.find((y) => String(y.id) === pxSel.value);
-    if (x && typeSel.value === 'proxmox') autoName(`${pxHosts.length > 1 && host ? `${host.name}: ` : ''}${pxLabel(x)}`);
-  };
-  pxMetricSel.addEventListener('change', syncPx);
-  async function loadPx() {
-    mount(pxMetricSel);
-    pxMetrics = [];
-    if (!pxSel.value) { syncPx(); return; }
-    try { pxMetrics = await get(`/proxmox/${pxSel.value}/metrics`); } catch { pxMetrics = []; }
-    mount(pxMetricSel, pxMetrics.length ? pxMetrics.map((x) => h('option', { value: `${x.metric}|${x.key}` }, pxLabel(x))) : h('option', { value: '' }, t('sens.noValues')));
-    if (so.metric && so.host) pxMetricSel.value = `${so.metric}|${so.key || ''}`;
-    syncPx();
-  }
-  pxSel.addEventListener('change', loadPx);
-  const pxBox = h('div', { class: 'form-grid full' },
-    pxHosts.length ? field(t('px.host'), pxSel) : h('p', { class: 'full muted small' }, t('px.noHosts')),
-    h('div', {}, h('label', { class: 'field' }, t('sens.metric'), pxMetricSel, pxHint)));
   // Free SNMP value
   const oid = input('oid', so.oid || '', { class: 'mono', placeholder: '1.3.6.1.2.1.33.1.2.4.0' });
   const snmpBox = h('div', { class: 'form-grid full' },
@@ -680,17 +689,14 @@ export async function openMonitorForm(m, done, preset = null) {
     const ty = typeSel.value;
     const isDb = DBT.includes(ty);
     sensorBox.hidden = ty !== 'sensor';
-    pxBox.hidden = ty !== 'proxmox';
-    pxSel.required = ty === 'proxmox';
     snmpBox.hidden = ty !== 'snmp';
-    targetWrap.hidden = ty === 'sensor' || ty === 'proxmox';
-    target.required = ty !== 'sensor' && ty !== 'proxmox';
-    devSel.required = ty === 'sensor';
+    targetWrap.hidden = ty === 'sensor';
+    target.required = ty !== 'sensor';
+    srcSel.required = ty === 'sensor';
     oid.required = ty === 'snmp';
-    condBox.hidden = !(ty === 'snmp' || ty === 'sensor' || ty === 'proxmox');
+    condBox.hidden = !(ty === 'snmp' || ty === 'sensor');
     if (ty === 'sensor') syncMetric();
-    if (ty === 'proxmox') { if (!pxMetrics.length && pxSel.value) loadPx(); else syncPx(); }
-    if (ty === 'sensor' && !metrics.length && devSel.value) loadMetrics();
+    if (ty === 'sensor' && !choices.length && srcSel.value) loadMetrics();
     portBox.hidden = ty !== 'tcp' && ty !== 'snmp' && ty !== 'smb' && !isDb;
     smbBox.hidden = ty !== 'smb';
     smbShare.required = ty === 'smb';
@@ -709,11 +715,11 @@ export async function openMonitorForm(m, done, preset = null) {
   // check, 10.0.0.5 for ping/SMB/SNMP/databases, 10.0.0.5 + port 8443 for a TCP port. Back to web gives the old URL again.
   let prevType = typeSel.value;
   let lastUrl = prevType === 'http' ? target.value.trim() : '';
-  const NO_HOST = ['sensor', 'proxmox'];
+  const NO_HOST = ['sensor'];
   typeSel.addEventListener('change', () => {
     if (typeSel.value === 'script') {
       typeSel.value = prevType;
-      const devId = v.device_id || (typeSel.value === 'sensor' && devSel.value ? Number(devSel.value) : null);
+      const devId = v.device_id || (typeSel.value === 'sensor' && srcSel.value.startsWith('device:') ? Number(srcSel.value.slice(7)) : null);
       dlg.close();
       startHostScript(devId ? { device_id: devId } : null, done);
       return;
@@ -775,7 +781,6 @@ export async function openMonitorForm(m, done, preset = null) {
     targetWrap,
     portBox,
     sensorBox,
-    pxBox,
     snmpBox,
     condBox,
     dockerBox,
@@ -810,19 +815,18 @@ export async function openMonitorForm(m, done, preset = null) {
     if (!['http', 'docker', 'smb'].includes(d.type) && /^[a-z][a-z0-9+.-]*:\/\//i.test(body.target)) body.target = splitAddress(body.target).host;
     if (d.type === 'docker') body.docker_host_id = d.docker_host_id;
     if (d.type === 'sensor') {
-      const x = metrics.find((y) => `${y.metric}|${y.key}` === d.metric);
-      if (!x && !m) { toast(t('err.sensorMetric'), 'error'); return; }
-      const [metric, key] = (d.metric || `${so.metric}|${so.key || ''}`).split('|');
-      body.device_id = Number(d.device_id || v.device_id);
+      // The chosen value decides what is stored: a value of the device or one of the hypervisor
+      const x = chosen();
+      if (!x) { toast(t('err.sensorMetric'), 'error'); return; }
       body.target = '';
-      body.options = { metric, key, op: d.op, threshold: d.threshold, label: x ? sensorLabel(x) : so.label };
-    }
-    if (d.type === 'proxmox') {
-      const x = pxMetrics.find((y) => `${y.metric}|${y.key}` === d.px_metric);
-      if (!x && !m) { toast(t('err.sensorMetric'), 'error'); return; }
-      const [metric, key] = (d.px_metric || `${so.metric}|${so.key || ''}`).split('|');
-      body.target = '';
-      body.options = { host: Number(d.px_host), metric, key, op: d.op, threshold: d.threshold, label: x ? pxLabel(x) : so.label };
+      const label = choiceLabel(x);
+      if (x.src === 'device') {
+        body.device_id = x.device;
+        body.options = { metric: x.metric, key: x.key ?? '', op: d.op, threshold: d.threshold, label };
+      } else {
+        body.type = 'proxmox';
+        body.options = { host: x.host, metric: x.metric, key: x.key ?? '', op: d.op, threshold: d.threshold, label };
+      }
     }
     if (d.type === 'snmp') body.options = { oid: d.oid.trim(), op: d.op, threshold: d.threshold, label: '' };
     if (d.type === 'smb') {
@@ -836,7 +840,7 @@ export async function openMonitorForm(m, done, preset = null) {
       body.options = { user: d.db_user, database: d.database, tls: d.db_tls, verify: d.db_verify };
       if (d.password) body.password = d.password;
     }
-    if (!m && preset?.device_id) body.device_id = preset.device_id;
+    if (!m && preset?.device_id && body.type !== 'proxmox' && body.device_id === undefined) body.device_id = preset.device_id;
     try {
       const r = m ? await put(`/monitors/${m.id}`, body) : await post('/monitors', body);
       dlg.close();

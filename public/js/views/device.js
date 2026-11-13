@@ -130,7 +130,7 @@ export async function renderDevice(main, id) {
   const monPanel = h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('mon.device')),
       h('div', { class: 'actions' },
-        edit && (['printer', 'nas', 'switch', 'ups'].includes(d.type) || d.host) ? btn(t('sens.add'), { class: 'btn btn-sm btn-ghost', onclick: () =>
+        edit && (['printer', 'nas', 'switch', 'ups'].includes(d.type) || d.host || d.hasSensors) ? btn(t('sens.add'), { class: 'btn btn-sm btn-ghost', onclick: () =>
           openMonitorForm(null, () => renderDevice(main, id), { type: 'sensor', device_id: d.id, name: `${d.name} - Sensor`, interval_s: 300, fail_threshold: 1 }) }, 'plus') : null,
         edit && d.ip ? btn(t('mon.watch'), { class: 'btn btn-sm', onclick: async () => {
           try { const preset = await get(`/monitors/suggest/${d.id}`); openMonitorForm(null, () => renderDevice(main, id), preset); } catch (e) { fail(e); }

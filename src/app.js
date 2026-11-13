@@ -32,6 +32,7 @@ import { randomToken } from './lib/crypto.js';
 import { t, langFromHeader, normalizeLang, hasKey } from './i18n.js';
 import { log } from './lib/log.js';
 import { httpPortMiddleware, proxyHttpsMiddleware, directHstsMiddleware, createHttpsHosts } from './https.js';
+import { createSensorChoices } from './monitor/choices.js';
 
 /**
  * WOMN_TRUST_PROXY: addresses/networks of the reverse proxy. Empty = no proxy (nothing is trusted).
@@ -94,7 +95,8 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     console.log(`\n${bar}\n  WhatsOnMyNet - Ersteinrichtung / initial setup\n  Einrichtungscode / setup code:  ${setup.token}\n  ${where}/setup\n${bar}\n`);
   }
 
-  const ctx = { db, settings, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
+  const sensorChoices = createSensorChoices({ db, settings });
+  const ctx = { db, settings, sensorChoices, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 
