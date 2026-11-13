@@ -5,6 +5,7 @@ import { openSnmp, getValues, text } from '../scan/snmpwalk.js';
 import { nasProblems } from '../scan/nas.js';
 import { proxmoxMetrics } from '../proxmox.js';
 import { certName, daysLeft } from '../hostfacts.js';
+import { RF_STATE } from '../redfish.js';
 
 export const OPS = ['lt', 'le', 'gt', 'ge', 'eq', 'ne', 'contains', 'notcontains'];
 const OID = /^\.?([0-2])(\.\d{1,10}){2,40}$/;
@@ -251,6 +252,12 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
   if (o.metric === 'nodeOnline') {
     const data = { state: x.value, uptime: x.uptime || 0, cpu: x.cpu ?? null, mem: x.mem ?? null };
     return x.value === 'online' ? { ok: true, ms: null, message: `${label}: online`, data } : { ok: false, ms: null, message: `${label}: offline`, data: { state: x.value } };
+  }
+  // Server hardware (Redfish): a part is fine when its health is OK - fans also tell their speed
+  if (RF_STATE.includes(o.metric)) {
+    const good = o.metric === 'rfPower' ? x.value === 'on' : x.value === 'ok';
+    const speed = x.rpm ? ` · ${x.rpm} RPM` : x.pct !== null && x.pct !== undefined ? ` · ${x.pct} %` : '';
+    return { ok: good, ms: null, message: `${label}: ${x.value}${speed}`, data: { state: x.value } };
   }
   if (o.metric === 'guestRunning') {
     const data = { state: x.value, node: x.node || '', cpu: x.cpu ?? null, mem: x.mem ?? null };

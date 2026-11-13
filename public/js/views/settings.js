@@ -8,6 +8,7 @@ import { pageHead, field, input, select, formData, btn, channelPicker } from './
 import { openMonitorForm } from './monitoring.js';
 import { scriptDialog, hostScriptsSettings } from './hostscripts.js';
 import { aboutContent } from './about.js';
+import { hardwareDetail } from './hardware.js';
 
 // Grouped so that related settings stand together; Proxmox and reports have their own pages under "Monitoring"
 const GROUPS = [
@@ -50,6 +51,14 @@ export async function renderControllers(main) {
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderControllers(main), 'net');
+}
+
+/** Server hardware through the management chip (Redfish): own page under "Monitoring" */
+export async function renderHardware(main) {
+  if (!state.user.canEdit) { navigate('/', { replace: true }); return; }
+  const body = h('div', { class: 'stack' });
+  mount(main, h('div', { class: 'page' }, body));
+  await proxmox(body, null, () => renderHardware(main), 'hw');
 }
 
 /** Planned reports: own page under "Monitoring" */
@@ -426,6 +435,7 @@ function proxmoxDetail(x) {
     h('p', { class: 'small', style: { margin: '6px 0 0' } }, t('px.missingThen')))) : null;
   if (!d.kind) return head;
   if (d.netdevices) return netDetail(d, head);
+  if (d.kind === 'redfish') return h('div', {}, head, hardwareDetail(d, { inventory: true }));
   if (d.kind !== 'pbs') {
     const running = (d.guests || []).filter((g) => g.status === 'running').length;
     const pve = d.kind === 'pve';
@@ -534,11 +544,13 @@ function confirmServerCert(r, kind) {
 const VIRT = ['pve', 'pbs', 'vmware', 'xcpng', 'hyperv', 'nutanix', 'ovirt', 'libvirt'];
 const PUSH = ['hyperv', 'libvirt'];
 const NET = ['unifi', 'omada', 'mikrotik'];
-const VIRT_URL = { unifi: 'https://unifi.firma.local', omada: 'https://omada.firma.local:8043', mikrotik: 'https://router.firma.local', vmware: 'https://vcenter.firma.local', xcpng: 'https://xcp-master.firma.local', nutanix: 'https://prism.firma.local:9440', ovirt: 'https://engine.firma.local' };
-const VIRT_USER = { unifi: 'whatsonmynet', omada: 'whatsonmynet', mikrotik: 'whatsonmynet', vmware: 'whatsonmynet@vsphere.local', xcpng: 'root', nutanix: 'whatsonmynet', ovirt: 'whatsonmynet@internal' };
+const HW = ['redfish'];
+const VIRT_URL = { redfish: 'https://idrac-srv01.firma.local', unifi: 'https://unifi.firma.local', omada: 'https://omada.firma.local:8043', mikrotik: 'https://router.firma.local', vmware: 'https://vcenter.firma.local', xcpng: 'https://xcp-master.firma.local', nutanix: 'https://prism.firma.local:9440', ovirt: 'https://engine.firma.local' };
+const VIRT_USER = { redfish: 'whatsonmynet', unifi: 'whatsonmynet', omada: 'whatsonmynet', mikrotik: 'whatsonmynet', vmware: 'whatsonmynet@vsphere.local', xcpng: 'root', nutanix: 'whatsonmynet', ovirt: 'whatsonmynet@internal' };
 
 /** Step 1: what kind of host */
 function pickVirt(then, kinds = VIRT) {
+  if (kinds.length === 1) { then(kinds[0]); return; }
   const dlg = modal(t(kinds === NET ? 'net.add' : 'virt.add'), h('div', { class: 'pick-grid' }, kinds.map((k) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); then(k); } },
     h('span', { class: 'pick-ico', html: icon(k === 'pbs' ? 'download' : NET.includes(k) ? 'accesspoint' : 'hypervisor') }),
     h('span', { class: 'pick-title' }, t(`virt.k.${k}`)),
@@ -585,7 +597,7 @@ function editVirt(x, kind, reload) {
         field(t('px.ca'), ca, t('virt.caHint')),
         field(t('px.verify'), verify, t('px.verifyHint'))));
   }
-  const m = modal(x ? x.name : `${t(NET.includes(kind) ? 'net.add' : 'virt.add')}: ${t(`virt.k.${kind}`)}`, form, { wide: true, actions: [
+  const m = modal(x ? x.name : HW.includes(kind) ? t('hw.add') : `${t(NET.includes(kind) ? 'net.add' : 'virt.add')}: ${t(`virt.k.${kind}`)}`, form, { wide: true, actions: [
     btn(t('cancel'), { onclick: () => m.close() }),
     h('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
       if (!form.reportValidity()) return;
@@ -611,7 +623,7 @@ async function showScript(x, reload) {
 }
 
 async function proxmox(body, _s, reload, scope = 'virt') {
-  const kinds = scope === 'net' ? NET : VIRT;
+  const kinds = scope === 'net' ? NET : scope === 'hw' ? HW : VIRT;
   const list = (await get('/proxmox')).filter((x) => kinds.includes(x.kind));
   const edit = (x, preset = 'pve') => {
     const kind = select('kind', [['pve', 'Proxmox VE'], ['pbs', 'Proxmox Backup Server']], x?.kind || preset);
@@ -667,9 +679,9 @@ async function proxmox(body, _s, reload, scope = 'virt') {
   };
   const admin = state.user.isAdmin;
   const add = () => pickVirt((kind) => (kind === 'pve' || kind === 'pbs' ? edit(null, kind) : editVirt(null, kind, reload)), kinds);
-  const net = scope === 'net';
-  mount(body, pageHead(t(net ? 'net.title' : 'virt.title'), t(net ? 'net.lead' : 'virt.lead'), admin ? btn(t(net ? 'net.add' : 'virt.add'), { class: 'btn btn-primary', onclick: add }, 'plus') : null),
-  !list.length ? h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, admin ? t(net ? 'net.none' : 'px.none') : t('px.noHosts'))) : null,
+  const p = { net: 'net', hw: 'hw' }[scope] || 'virt';
+  mount(body, pageHead(t(`${p}.title`), t(`${p}.lead`), admin ? btn(t(`${p}.add`), { class: 'btn btn-primary', onclick: add }, 'plus') : null),
+  !list.length ? h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, admin ? t(p === 'virt' ? 'px.none' : `${p}.none`) : t('px.noHosts'))) : null,
   list.map((x) => h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '6px' } },
       h('div', {}, h('h2', { class: 'section-title', style: { margin: 0 } }, x.name), h('div', { class: 'muted small mono' }, [t(`virt.k.${x.kind}`), x.url].filter(Boolean).join(' · '))),

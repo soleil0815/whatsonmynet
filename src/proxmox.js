@@ -11,12 +11,13 @@ import { log } from './lib/log.js';
 import { fetchTlsChain, describe, publiclyTrusted, toPem } from './auth/dccert.js';
 import { NET_KINDS, NET_READERS } from './netctl.js';
 import { fillDevice } from './devicefill.js';
+import { readRedfish, redfishMetrics, labelSerial } from './redfish.js';
 import { READERS, API_KINDS, PUSH_KINDS, newPushToken, pushTokenOk, cleanPush, mergePush, markStale, pushScript } from './virt.js';
 
 /** Every kind of host on the page: Proxmox, hypervisors asked through their API, hypervisors that send on their own */
-export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS, ...NET_KINDS];
+export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS, ...NET_KINDS, 'redfish'];
 // Asked with user and password (everything but Proxmox and the hosts that send on their own)
-const ACCOUNT_KINDS = [...API_KINDS, ...NET_KINDS];
+const ACCOUNT_KINDS = [...API_KINDS, ...NET_KINDS, 'redfish'];
 
 const URL_RE = /^https:\/\/[a-z0-9.\-[\]:]+(:\d{1,5})?$/i;
 const PVE_TOKEN = /^[\w.@-]+![\w.-]+$/;   // user@realm!tokenid
@@ -145,6 +146,8 @@ export async function readPbs(host) {
 export function proxmoxMetrics(data) {
   const out = [];
   if (!data) return out;
+  // Server hardware through its management chip (iDRAC, iLO, XClarity …)
+  if (data.kind === 'redfish') return redfishMetrics(data);
   if (data.netdevices) {
     // Network controller: per device online, clients, load; all clients together
     for (const x of data.netdevices) {
@@ -222,9 +225,10 @@ export function createProxmox({ db, settings }) {
     // A host that sends on its own is not asked: only check whether its nodes still report
     if (PUSH_KINDS.includes(h.kind)) return checkPush(h);
     try {
-      const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : NET_READERS[h.kind] ? await NET_READERS[h.kind](withSecret(h))
+      const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : h.kind === 'redfish' ? await readRedfish(withSecret(h)) : NET_READERS[h.kind] ? await NET_READERS[h.kind](withSecret(h))
         : READERS[h.kind] ? await READERS[h.kind](withSecret(h)) : await readPve(withSecret(h));
       if (data.netdevices) syncNetDevices(data);
+      if (data.kind === 'redfish') syncRedfish(data);
       db.prepare("UPDATE proxmox_hosts SET last_at=?, last_ok=1, last_error='', data=? WHERE id=?").run(at, JSON.stringify(data), id);
     } catch (e) {
       db.prepare('UPDATE proxmox_hosts SET last_at=?, last_ok=0, last_error=? WHERE id=?').run(at, String(e.message).slice(0, 300), id);
@@ -244,6 +248,25 @@ export function createProxmox({ db, settings }) {
       x.deviceId = dev?.id || null;
       if (dev) fillDevice(db, dev.id, { serial: x.serial, model: x.model, os: x.firmware, vendor, type: x.type }, 'controller');
     }
+  }
+
+  /**
+   * The server behind a management chip → its inventory entry: found by the MAC addresses of its network cards (as the
+   * scan saw them) or by its serial number; manufacturer, model and serial number by the usual rules.
+   */
+  function syncRedfish(data) {
+    const serial = labelSerial(data);
+    let dev = null;
+    for (const mac of data.macs || []) { dev = db.prepare('SELECT id FROM devices WHERE mac=?').get(mac); if (dev) break; }
+    if (!dev && serial) dev = db.prepare('SELECT id FROM devices WHERE serial=? COLLATE NOCASE').get(serial);
+    data.deviceId = dev?.id || null;
+    if (dev) fillDevice(db, dev.id, { serial, model: data.model, vendor: data.vendor, type: 'server' }, 'redfish');
+  }
+
+  /** The hardware of the server of a device, when a management chip reports it */
+  function hardwareOf(deviceId) {
+    const h = db.prepare("SELECT id, name, url, last_at, last_ok, last_error, data FROM proxmox_hosts WHERE kind='redfish' AND json_extract(data, '$.deviceId')=?").get(deviceId);
+    return h ? { id: h.id, name: h.name, url: h.url, last_at: h.last_at, last_ok: !!h.last_ok, last_error: h.last_error, data: parse(h.data, {}) } : null;
   }
 
   /** Push hosts: nodes silent for 15 minutes count as offline; without any node that reports the host has an error */
@@ -312,7 +335,7 @@ export function createProxmox({ db, settings }) {
   }
 
   return {
-    fetchCert,
+    fetchCert, hardwareOf,
     list: () => db.prepare('SELECT * FROM proxmox_hosts ORDER BY name').all().map(shape),
     get: (id) => shape(rowOf(id)),
     create(input) {
