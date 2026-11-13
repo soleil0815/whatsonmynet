@@ -129,7 +129,7 @@ Unter *Einstellungen → Berichte* gehen Berichte zu festen Zeiten per E-Mail ra
 
 - **Rollen**: *Administrator* (alles), *Bearbeiter* (scannen, übernehmen, pflegen, Monitore), *Nur lesen*.
 - **Standorte**: Bearbeiter und Leser lassen sich auf Standorte beschränken – sie sehen und ändern dann nur deren Geräte, Scans und Monitore.
-- **Active Directory** (*Einstellungen → Active Directory*): Anmeldung mit dem Windows-Konto über LDAPS oder StartTLS. Die Rolle kommt aus AD-Gruppen; wer in keiner Gruppe ist, kommt nicht herein. Lokale Konten haben bei gleichem Namen Vorrang.
+- **Active Directory** (*Einstellungen → Active Directory*): Anmeldung mit dem Windows-Konto über LDAPS oder StartTLS. Die Rolle kommt aus AD-Gruppen; wer in keiner Gruppe ist, kommt nicht herein. Lokale Konten haben bei gleichem Namen Vorrang. Unter *TLS-Zertifikat* holt „Zertifikat vom DC abrufen“ die Kette vom Domänencontroller (fehlende CAs über AIA oder aus dem AD); du vergleichst den Fingerabdruck mit certlm.msc und bestätigst.
 - **Zwei-Faktor-Anmeldung** (*Mein Konto*): QR-Code mit einer Authenticator-App scannen, Code bestätigen, Wiederherstellungscodes aufbewahren. Für Administratoren lässt sie sich unter *Einstellungen → Allgemein* verpflichtend machen.
 
 ## Scan-Agent für Außenstellen

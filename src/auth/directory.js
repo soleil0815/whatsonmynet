@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import { Client } from 'ldapts';
 import { HttpError, line, str } from '../lib/http.js';
 import { log } from '../lib/log.js';
+import { parsePem, toPem, orderChain, complete, describe, fetchChain, completeViaAia, domainCAs, completeFrom } from './dccert.js';
 
 export const DEFAULT_FILTER = '(&(objectClass=user)(|(sAMAccountName={username})(userPrincipalName={username})))';
 const AD_IN_CHAIN = '1.2.840.113556.1.4.1941';
@@ -60,7 +61,9 @@ export function createDirectory(settings, { clientFactory = null } = {}) {
 
   function tlsOptions(cfg) {
     const o = { rejectUnauthorized: cfg.verify, minVersion: 'TLSv1.2' };
-    if (cfg.ca) o.ca = [cfg.ca];
+    // allowPartialTrustChain: a confirmed server or intermediate certificate is enough as trust anchor
+    // (the root CA is added when it can be found – then a renewed DC certificate keeps working)
+    if (cfg.ca) Object.assign(o, { ca: [cfg.ca], allowPartialTrustChain: true });
     else if (process.env.NODE_EXTRA_CA_CERTS && fs.existsSync(process.env.NODE_EXTRA_CA_CERTS)) o.ca = [fs.readFileSync(process.env.NODE_EXTRA_CA_CERTS)];
     return o;
   }
@@ -131,9 +134,96 @@ export function createDirectory(settings, { clientFactory = null } = {}) {
     }
   }
 
+  /** PEM from outside: only certificates, at most 10; returned as a clean, ordered bundle ('' = none) */
+  function checkedPem(input) {
+    const text = str(input, 60000).trim();
+    if (!text) return '';
+    let certs;
+    try { certs = parsePem(text); } catch { throw new HttpError(400, 'err.adCa'); }
+    if (!certs.length || certs.length > 10 || text.replace(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g, '').trim()) throw new HttpError(400, 'err.adCa');
+    return toPem(ordered(certs));
+  }
+
+  /** Chain first (server → root), then any further CAs that were pasted */
+  function ordered(certs) {
+    const chain = orderChain(certs);
+    return chain.concat(certs.filter((c) => !chain.includes(c)));
+  }
+
+  function certInfo(pem = config().ca) {
+    let certs = [];
+    try { certs = parsePem(pem); } catch { certs = []; }
+    const all = certs.length ? ordered(certs) : [];
+    return { certs: all.map((c, i) => describe(c, { role: i === 0 && !c.ca ? 'server' : null })), complete: certs.length > 0 && complete(orderChain(certs)) };
+  }
+
+  /** Form values for the certificate steps (the stored ones where the form has none) */
+  function formCfg(form = {}) {
+    const cfg = config();
+    const url = line(form.url, 300) || cfg.url;
+    if (!/^ldaps?:\/\/[^\s/]+(:\d{1,5})?\/?$/i.test(url)) throw new HttpError(400, 'err.adUrl');
+    return { ...cfg, url: url.replace(/\/$/, ''), startTls: 'startTls' in form ? !!form.startTls : cfg.startTls,
+      bindDn: 'bindDn' in form ? line(form.bindDn, 500) : cfg.bindDn,
+      bindPassword: typeof form.bindPassword === 'string' && form.bindPassword ? form.bindPassword.slice(0, 512) : cfg.bindPassword };
+  }
+
   return {
     config,
     enabled: () => config().enabled,
+    certInfo,
+    /** Step 1: what does the DC present? (not trusted yet; completed via AIA) */
+    async fetchCert(form) {
+      const cfg = formCfg(form);
+      let got;
+      try {
+        got = await fetchChain({ url: cfg.url, startTls: cfg.startTls });
+      } catch (e) {
+        if (e.code) throw new HttpError(400, e.code);
+        throw new HttpError(502, 'err.adFailed', e.message.slice(0, 200));
+      }
+      const fromServer = new Set(got.certs.map((c) => c.fingerprint256));
+      const aia = complete(got.certs) ? { chain: got.certs, tried: [] } : await completeViaAia(got.certs);
+      return {
+        certs: aia.chain.map((c, i) => describe(c, { role: i === 0 && !c.ca ? 'server' : null, source: fromServer.has(c.fingerprint256) ? 'server' : 'aia' })),
+        complete: complete(aia.chain),
+        nameOk: got.nameOk,
+        host: got.host,
+        aiaTried: aia.tried,
+        pem: toPem(aia.chain),
+      };
+    },
+    /** Step 2: the admin confirmed – store; a missing root CA is then looked up in AD (over the now trusted connection) */
+    async confirmCert(form) {
+      const pem = checkedPem(form?.pem);
+      if (!pem) throw new HttpError(400, 'err.adCa');
+      settings.set('ad.ca', pem);
+      settings.set('ad.verify', true);
+      const result = { added: 0, adError: null };
+      let chain = orderChain(parsePem(pem));
+      if (!complete(chain)) {
+        let client;
+        try {
+          const cfg = { ...formCfg(form), ca: pem, verify: true };
+          client = await connect(cfg);
+          if (cfg.bindDn) await client.bind(cfg.bindDn, cfg.bindPassword);
+          const r = completeFrom(chain, await domainCAs(client));
+          if (r.added.length) {
+            chain = r.chain;
+            settings.set('ad.ca', toPem(chain));
+            result.added = r.added.length;
+          } else {
+            result.adError = 'none';
+          }
+        } catch (e) {
+          result.adError = String(e.message || e).slice(0, 200);
+          log.debug(`AD certificate authorities: ${result.adError}`);
+        } finally {
+          if (client) await client.unbind().catch(() => {});
+        }
+      }
+      return { ...certInfo(), ...result };
+    },
+    removeCert() { settings.set('ad.ca', ''); return certInfo(''); },
     verify,
     /** Values from the settings form (admin) */
     save(input) {
@@ -143,15 +233,13 @@ export function createDirectory(settings, { clientFactory = null } = {}) {
       if (b.enabled && (!url || !line(b.baseDn, 500))) throw new HttpError(400, 'err.adConfig');
       // Passwords never go over the network unencrypted: ldap:// only with StartTLS
       if (url && /^ldap:\/\//i.test(url) && !b.startTls) throw new HttpError(400, 'err.adPlain');
-      const ca = str(b.ca, 20000).trim();
-      if (ca && !/^-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----$/.test(ca)) throw new HttpError(400, 'err.adCa');
       const filter = line(b.userFilter, 500) || DEFAULT_FILTER;
       if (!filter.includes('{username}') || !/^\(.*\)$/.test(filter)) throw new HttpError(400, 'err.adFilter');
       settings.set('ad.enabled', !!b.enabled);
       settings.set('ad.url', url.replace(/\/$/, ''));
       settings.set('ad.startTls', !!b.startTls);
       settings.set('ad.verify', b.verify !== false);
-      settings.set('ad.ca', ca);
+      if ('ca' in b) settings.set('ad.ca', checkedPem(b.ca));
       settings.set('ad.bindDn', line(b.bindDn, 500));
       if (typeof b.bindPassword === 'string' && b.bindPassword) settings.set('ad.bindPassword', b.bindPassword.slice(0, 512));
       if (b.clearBindPassword) settings.set('ad.bindPassword', '');

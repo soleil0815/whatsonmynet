@@ -538,9 +538,23 @@ export function createApi(ctx) {
     res.json({ dn: info.dn, username: info.username, display_name: info.display_name, email: info.email, role: info.role, groups: info.groups.slice(0, 200), passwordChecked: !!password });
   });
   const adPublic = () => {
-    const { bindPassword, ...cfg } = ctx.directory.config();
-    return { ...cfg, bindPassword: { set: !!bindPassword }, defaultFilter: DEFAULT_FILTER, userFilter: settings.get('ad.userFilter') || '' };
+    const { bindPassword, ca, ...cfg } = ctx.directory.config();
+    return { ...cfg, bindPassword: { set: !!bindPassword }, cert: ctx.directory.certInfo(ca), defaultFilter: DEFAULT_FILTER, userFilter: settings.get('ad.userFilter') || '' };
   };
+  // TLS certificate of the domain controller: fetch (not trusted yet), confirm (store; root CA from AD), remove
+  r.post('/settings/ad/cert/fetch', admin, async (req, res) => {
+    res.json(await ctx.directory.fetchCert(req.body || {}));
+  });
+  r.put('/settings/ad/cert', admin, async (req, res) => {
+    const out = await ctx.directory.confirmCert(req.body || {});
+    audit(req, 'settings.ad.cert', out.certs.map((c) => `${c.cn} ${c.fingerprint256.slice(0, 23)}`).join('; ').slice(0, 400));
+    res.json(out);
+  });
+  r.delete('/settings/ad/cert', admin, (req, res) => {
+    const out = ctx.directory.removeCert();
+    audit(req, 'settings.ad.cert', 'removed');
+    res.json(out);
+  });
   r.put('/settings/smtp', admin, (req, res) => {
     const b = req.body;
     settings.set('smtp.host', line(b.host, 253));
