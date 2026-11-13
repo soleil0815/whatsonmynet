@@ -1,6 +1,6 @@
 # WhatsOnMyNet - Handbuch
 
-WhatsOnMyNet findet, was in deinem Netz läuft, und hält nur das im Inventar, was du übernimmst. Dazu überwacht es Geräte, Dienste und Webseiten, liest Drucker, Switches, NAS und Proxmox aus und meldet sich per E-Mail, Messenger, Push aufs Handy oder Webhook, wenn etwas nicht stimmt.
+WhatsOnMyNet findet, was in deinem Netz läuft, und hält nur das im Inventar, was du übernimmst. Dazu überwacht es Geräte, Dienste und Webseiten, liest Drucker, Switches, NAS und Hypervisoren (Proxmox, VMware, Hyper-V …) aus und meldet sich per E-Mail, Messenger, Push aufs Handy oder Webhook, wenn etwas nicht stimmt.
 
 ![Übersicht](img/dashboard-de.png)
 
@@ -52,7 +52,7 @@ Ein Monitor prüft regelmäßig (20 Sekunden bis 24 Stunden) und meldet sich ers
 - **Docker-Container** (über einen Socket-Proxy, *Einstellungen → Docker*): läuft, startet ständig neu, Healthcheck „unhealthy“
 - **Datenbanken**: MariaDB/MySQL, PostgreSQL, Redis/Valkey - Anmeldung und eine harmlose Abfrage
 - **Netzlaufwerk (SMB)**: Windows-Freigaben und NAS - siehe unten
-- **Sensor (Gerätewert)**, **SNMP-Wert (OID)** und **Proxmox** - siehe unten
+- **Sensor (Gerätewert)**, **SNMP-Wert (OID)** und **Virtualisierung** (Proxmox, VMware, Hyper-V …) - siehe unten
 
 Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert sich die IP eines Geräts, ziehen seine Monitore mit. Benennst du das Gerät um, heißen seine Monitore und Sensoren auch gleich so, damit ein Alarm den aktuellen Namen nennt (ein Monitor mit selbst vergebenem Namen ohne den Gerätenamen bleibt, wie er ist).
 
@@ -116,7 +116,7 @@ Geprüft wird über SMB 2/3: anmelden, die Freigabe (oder den Ordner bzw. die Da
 
 ![Proxmox](img/proxmox-de.png)
 
-WhatsOnMyNet liest Proxmox VE und den Proxmox Backup Server über deren eingebaute Schnittstelle (API). Auf Proxmox wird nichts installiert. WhatsOnMyNet bekommt dort einen eigenen Benutzer, der **nur lesen** darf, und einen Schlüssel dafür (API-Token). Der Dialog *Überwachung → Proxmox → Proxmox-Server hinzufügen* zeigt dieselben Schritte, mit Knopf zum Kopieren.
+WhatsOnMyNet liest Proxmox VE und den Proxmox Backup Server über deren eingebaute Schnittstelle (API). Auf Proxmox wird nichts installiert. WhatsOnMyNet bekommt dort einen eigenen Benutzer, der **nur lesen** darf, und einen Schlüssel dafür (API-Token). Der Dialog *Überwachung → Virtualisierung → Host hinzufügen → Proxmox VE* zeigt dieselben Schritte, mit Knopf zum Kopieren.
 
 ### Schritt 1: Proxmox vorbereiten (einmalig)
 
@@ -158,8 +158,8 @@ Beim Backup Server geht es genauso unter *Konfiguration → Zugriffskontrolle*: 
 
 ### Schritt 2: In WhatsOnMyNet eintragen
 
-1. *Überwachung → Proxmox* → **Proxmox-Server hinzufügen**.
-2. Einen Namen vergeben und die Art wählen (Proxmox VE oder Backup Server).
+1. *Überwachung → Virtualisierung* → **Host hinzufügen** → *Proxmox VE* bzw. *Proxmox Backup Server*.
+2. Einen Namen vergeben.
 3. **Adresse** so eintragen, wie du Proxmox im Browser öffnest, z. B. `https://192.168.1.10:8006` (Backup Server: Port `8007`).
 4. **Zertifikat abrufen** klicken. WhatsOnMyNet zeigt den Fingerabdruck des Proxmox-Zertifikats. Vergleiche ihn - Proxmox VE: Knoten anklicken → *System → Zertifikate* → Zeile `pve-ssl.pem`; Backup Server: *Dashboard* → *Fingerabdruck anzeigen*. Stimmt er, **Fingerabdruck stimmt - vertrauen**.
 5. Die **Token-ID** ist schon ausgefüllt (`whatsonmynet@pve!womn` bzw. `whatsonmynet@pbs!womn`). Bei **Token-Geheimnis** das kopierte Geheimnis einfügen.
@@ -175,6 +175,31 @@ In der Detailansicht **Sensor anlegen** - z. B. „VM 101 läuft“, „Speicher
 - **„sign-in refused (401)“**: Token-ID oder Geheimnis stimmen nicht. Token in Proxmox löschen, neu anlegen und das neue Geheimnis eintragen.
 - **Hinweis „Dem Token fehlen Leserechte“**: Meist blieb beim Token *Privilege Separation* angehakt. Der Hinweis zeigt zwei Befehle - in der Proxmox-Shell einfügen, Enter, dann **Jetzt abfragen**.
 - **„certificate changed“**: Proxmox hat ein neues Zertifikat bekommen. *Bearbeiten* → **Zertifikat abrufen** → bestätigen.
+
+## Weitere Hypervisoren: VMware, XCP-ng, Hyper-V, Nutanix, oVirt, KVM
+
+Unter *Überwachung → Virtualisierung → Host hinzufügen* stehen neben Proxmox weitere Hypervisoren zur Wahl. Alle erscheinen gleich: Hosts mit CPU und RAM, Speicher, VMs - und aus allem lassen sich Sensoren anlegen („Host online“, „CPU esx01“, „Speicher vsan“, „VM dc01 läuft“). Gelesen wird nur.
+
+**Über die Schnittstelle abgefragt** - ein Konto, das nur lesen darf, genügt; Adresse eintragen, **Zertifikat abrufen**, Fingerabdruck vergleichen, Konto eintragen:
+
+| Hypervisor | Konto mit Leserechten | Adresse |
+|---|---|---|
+| **VMware ESXi / vCenter** | Benutzer mit Rolle *Nur Lesen* (Read-only), oben in der Bestandsliste vergeben, „an untergeordnete Objekte weitergeben“ | vCenter oder ESXi, z. B. `https://vcenter.firma.local` |
+| **XCP-ng / XenServer** | mit AD: Rolle *read-only*; ohne AD gibt es nur `root` | Pool-Master, z. B. `https://xcp01.firma.local` |
+| **Nutanix AHV** | Prism-Benutzer mit Rolle *Viewer* | Prism mit Port, z. B. `https://prism.firma.local:9440` |
+| **oVirt / RHV / OLVM** | `whatsonmynet@internal` mit Rolle *ReadOnlyAdmin* (Befehle stehen im Dialog) | Engine, z. B. `https://engine.firma.local` |
+
+**Hyper-V und KVM/libvirt melden sich selbst.** Beide haben keine Schnittstelle zum Abfragen. Stattdessen schickt ein kleines Skript auf dem Host alle 5 Minuten Auslastung, Laufwerke bzw. Speicherpools und VMs. Es liest nur und braucht keinen offenen Port auf dem Host.
+
+1. *Host hinzufügen* → **Microsoft Hyper-V** bzw. **KVM / libvirt**, Namen vergeben, speichern.
+2. Der Dialog zeigt das Skript mit einem eigenen Schlüssel (nur dieses eine Mal) - **Skript herunterladen**.
+3. **Hyper-V:** auf dem Host *PowerShell als Administrator* öffnen und die angezeigten Zeilen ausführen. Sie legen das Skript nach `C:\ProgramData\WhatsOnMyNet` und eine geplante Aufgabe an, die es alle 5 Minuten als SYSTEM startet. Im Cluster auf jedem Knoten - alle Knoten landen im selben Eintrag.
+   **KVM:** das Skript auf den Host kopieren und als root die angezeigten Zeilen ausführen (installiert es und legt einen cron-Eintrag an). Nötig sind `virsh`, `awk` und `curl`; gelesen wird mit `virsh -r`.
+4. Nach ein paar Sekunden erscheint der Host. Meldet er sich länger als 15 Minuten nicht, gilt er als offline - ein Sensor „Host online“ schlägt dann Alarm.
+
+Ist der Schlüssel weg oder soll er erneuert werden: **Neues Skript** - das alte hört dann auf zu funktionieren.
+
+Mit dem selbstsignierten Zertifikat von WhatsOnMyNet vertraut das Skript genau diesem Zertifikat (fest hinterlegt); mit einem Zertifikat einer echten CA wird ganz normal geprüft.
 
 ## Berichte
 
