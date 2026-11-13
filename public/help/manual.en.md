@@ -161,6 +161,8 @@ The check runs over SMB 2/3: sign in, read the share (or the folder or file), as
 
 WhatsOnMyNet reads Proxmox VE and the Proxmox Backup Server through their built-in interface (API). Nothing is installed on Proxmox. WhatsOnMyNet gets a user of its own there that may **only read**, and a key for it (API token). The dialog *Monitoring → Virtualization → Add host → Proxmox VE* shows the same steps, with a button to copy.
 
+**Cluster:** entering one node is enough. WhatsOnMyNet asks the cluster which nodes there are, at which address they are reachable and which certificate they have (again every 6 hours). If the entered node does not answer, the next node is asked - with the same token (it is valid in the whole cluster) and only after its certificate has been checked. The virtualisation page then shows "read through node pve2". The Proxmox Backup Server knows no cluster: each one is entered on its own.
+
 **Temperatures of the nodes:** the Proxmox interface knows no temperatures. If a node also runs the Linux script (see *Windows and Linux machines by script*), its highest temperature is shown at the node on the virtualisation page. A sensor for it: at the Proxmox host **Add sensor** → *Temperature pve1* (alarm from the chip's warning limit, can be changed); single sensors (CPU, NVMe …) are on the device of the node. They are matched by name: node `pve1` ↔ machine `pve1` or `pve1.firma.local`.
 
 ### Step 1: prepare Proxmox (once)
