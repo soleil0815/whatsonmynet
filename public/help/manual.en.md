@@ -219,6 +219,12 @@ In the detail view **Add sensor** - e.g. "VM 101 running", "storage local-lvm be
 - **Notice "The token lacks read rights"**: usually *Privilege Separation* stayed ticked on the token. The notice shows two commands - paste them into the Proxmox shell, Enter, then **Query now**.
 - **"certificate changed"**: Proxmox got a new certificate. *Edit* → **Fetch certificate** → confirm.
 
+### Many hosts at a glance
+
+From four hosts on, the page *Virtualization* (as well as *Network controllers* and *Server hardware*) shows the situation in numbers at the top: hosts with problems, nodes online, running VMs, full storage, backup problems. Below there is **one line per host** with the key values and what is wrong. Hosts with problems come first. A click on the line unfolds the details (the browser remembers that until the tab is closed).
+
+The **search** finds hosts, nodes, VMs (name or ID), datastores and backup groups. The buttons filter by *Problems* or by kind (Proxmox VE, Backup Server …).
+
 ## More hypervisors: VMware, XCP-ng, Hyper-V, Nutanix, oVirt, KVM
 
 Under *Monitoring → Virtualization → Add host* further hypervisors are offered beside Proxmox. All appear the same way: hosts with CPU and RAM, storage, VMs - and sensors can be added from everything ("host online", "CPU esx01", "storage vsan", "VM dc01 running"). It only reads.
