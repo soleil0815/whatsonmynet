@@ -456,3 +456,7 @@ pre.code.wrap { white-space: pre-wrap; word-break: break-all; }
 .cert-manual summary { cursor: pointer; font-size: 13px; color: var(--ink-2); }
 .cert-manual textarea { width: 100%; }
 @media (max-width: 560px) { .cert-row { grid-template-columns: 1fr; gap: 2px; } }
+/* Report: chosen devices */
+.rep-devices { border: 1px solid var(--line); border-radius: var(--r-s); padding: 10px 12px; margin-top: 8px; max-height: 300px; overflow: auto; display: grid; gap: 10px; }
+.rep-dev-head { font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.rep-dev { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; flex-wrap: wrap; }

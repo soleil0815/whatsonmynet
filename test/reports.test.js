@@ -70,3 +70,39 @@ test('scheduler sends once when due and records the result', async () => {
   assert.equal(sent.length, 1);
   assert.equal(db.prepare('SELECT last_status FROM reports WHERE id=?').get(r.id).last_status, 'ok');
 });
+
+test('report for chosen devices; page counter and pages in the period', () => {
+  const { db, reports } = setup();
+  const [p1, p2] = db.prepare("SELECT id FROM devices WHERE type='printer' ORDER BY id").all().map((x) => x.id);
+  // daily counter: 12 000 a week ago, 12 345 today
+  const day = (d) => { const x = new Date(2026, 10, 16 - d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  db.prepare('INSERT INTO printer_pages(device_id,day,count) VALUES(?,?,?)').run(p1, day(8), 11900);
+  db.prepare('INSERT INTO printer_pages(device_id,day,count) VALUES(?,?,?)').run(p1, day(7), 12000);
+  db.prepare('INSERT INTO printer_pages(device_id,day,count) VALUES(?,?,?)').run(p1, day(0), 12345);
+  // toner counted in pages
+  const data = JSON.parse(db.prepare('SELECT data FROM printer_status WHERE device_id=?').get(p1).data);
+  data.supplies[0] = { ...data.supplies[0], level: 480, max: 6000, unit: 7 };
+  db.prepare('UPDATE printer_status SET data=? WHERE device_id=?').run(JSON.stringify(data), p1);
+
+  const base = { name: 'Sekretariat', sections: ['printers', 'nas'], recipients: 'sek@firma.de', schedule: { freq: 'weekly', weekday: 1, time: '08:00' } };
+  assert.throws(() => reports.create({ ...base, pick: 'some', device_ids: [] }), { code: 'err.reportDevices' });
+  const nas = db.prepare("INSERT INTO devices(name,type,created_at,updated_at) VALUES('NAS','nas','x','x')").run().lastInsertRowid;
+  const sw = db.prepare("INSERT INTO devices(name,type,created_at,updated_at) VALUES('SW','switch','x','x')").run().lastInsertRowid;
+  // a switch does not fit the chosen content and is dropped; unknown ids too
+  const r = reports.create({ ...base, pick: 'some', device_ids: [p1, sw, 9999] });
+  assert.deepEqual(r.device_ids, [p1]);
+  const m = reports.render(r, new Date(2026, 10, 16, 8, 0));
+  assert.equal(m.count, 1, 'only the chosen printer');
+  assert.ok(!m.text.includes('Drucker OG'));
+  assert.ok(!/SPEICHERSYSTEME/.test(m.text), 'kinds without a chosen device are left out');
+  assert.match(m.text, /Seiten gedruckt \(gesamt\): 12\.345/);
+  assert.match(m.text, /Seiten in den letzten 7 Tagen: 345/);
+  assert.match(m.text, /Toner Schwarz: 8 % · noch ca\. 480 Seiten/);
+  assert.match(m.html, /Seiten gedruckt \(gesamt\)<\/td><td[^>]*>12\.345</);
+  // back to all devices
+  const all = reports.update(r.id, { ...base, pick: 'all', device_ids: [p1] });
+  assert.deepEqual(all.device_ids, []);
+  assert.equal(reports.render(all).count, 3);
+  assert.ok(reports.candidates().printers.some((x) => x.id === p2));
+  assert.ok(reports.candidates().nas.some((x) => x.id === nas));
+});

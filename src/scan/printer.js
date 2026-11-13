@@ -74,7 +74,9 @@ export function parseSupplies(supplies, colorants = new Map()) {
     else state = 'unknown';
     if (pct === 0 || (max === -2 && level === 0)) state = 'empty';
     const colorant = r[3] ? text(colorants.get(`${r.key.split('.')[0]}.${r[3]}`), 40) : '';
-    out.push({ key: r.key, description: description || type, type, color: supplyColor(colorant, description), receptacle, pct, state });
+    // level/max with unit (prtMarkerSuppliesSupplyUnit): 7 = impressions, 8 = sheets → "about n pages left"
+    out.push({ key: r.key, description: description || type, type, color: supplyColor(colorant, description), receptacle, pct, state,
+      level: Number.isFinite(level) && level >= 0 ? level : null, max: Number.isFinite(max) && max > 0 ? max : null, unit: Number(r[7]) || null });
   }
   // Order: colours first (K, C, M, Y), then the rest
   const order = { black: 0, cyan: 1, magenta: 2, yellow: 3 };

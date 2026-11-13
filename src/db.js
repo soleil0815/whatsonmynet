@@ -488,6 +488,9 @@ export const MIGRATIONS = [
   ALTER TABLE monitors_new RENAME TO monitors;
   CREATE INDEX monitors_device ON monitors(device_id);
   ` },
+  // 14: reports for chosen devices only (empty = all devices of the chosen kinds)
+  `ALTER TABLE reports ADD COLUMN device_ids TEXT NOT NULL DEFAULT '[]';
+   ALTER TABLE reports ADD COLUMN monitor_ids TEXT NOT NULL DEFAULT '[]';`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -181,7 +181,7 @@ Unter *Einstellungen → Proxmox* liest WhatsOnMyNet Proxmox VE und Proxmox Back
 
 Unter *Einstellungen → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Berichte per E-Mail – zum Beispiel jeden Montag um 8 Uhr die Tonerstände aller Drucker ans Büro, oder monatlich den Zustand der NAS.
 
-- **Inhalt**: Drucker (Toner je Farbe, Trommel, Resttoner, Seitenzähler, Störungen), NAS (Belegung, Platten, Temperatur), Switches und Netzlaufwerke (freier Platz); auf Standorte beschränkbar, wahlweise nur Geräte mit Handlungsbedarf. Was bald nachbestellt werden muss, ist rot markiert.
+- **Inhalt**: Drucker (Toner je Farbe, Trommel, Resttoner, Seitenzähler, Störungen), NAS (Belegung, Platten, Temperatur), Switches und Netzlaufwerke (freier Platz); auf Standorte oder **einzelne Geräte** beschränkbar (z. B. ein Bericht nur für den Drucker im Sekretariat), wahlweise nur Geräte mit Handlungsbedarf. Drucker zeigen die gedruckten Seiten gesamt und im Berichtszeitraum. Was bald nachbestellt werden muss, ist rot markiert.
 - **Neutral**: Die Mail enthält keinen Link und keinen Programmnamen – nur deinen Absendernamen, Betreff (`{kw}`, `{datum}`), Einleitung, die Geräte und deinen Gruß, z. B. „Ihre freundliche IT“.
 - Zeitplan täglich, wöchentlich oder monatlich; Vorschau, „Test an mich“ und „Jetzt senden“ direkt in den Einstellungen.
 
