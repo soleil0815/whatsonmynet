@@ -9,12 +9,30 @@ import { normalizeMac, isIPv4, ipSortKey, cidrContains } from './lib/net.js';
 import { TYPES, isTelematik, suggestName } from './scan/classify.js';
 import { bestWebUrl } from './scan/engine.js';
 import { forgetDevices } from './lib/idlists.js';
+import { log } from './lib/log.js';
 
 const EDITABLE = ['name', 'type', 'vendor', 'model', 'ip', 'mac', 'hostname', 'os', 'location_id', 'owner', 'notes', 'tags',
   'web_url', 'serial', 'supplier', 'purchase_date', 'warranty_until', 'maintenance_until'];
 
 const now = () => new Date().toISOString();
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
+
+/**
+ * A device link (web interface, ssh://, rdp:// ...) after an IP change: only when its host is exactly the old address
+ * (192.168.1.1 → .77 must leave https://192.168.1.10/ alone). Returns the new link or null.
+ */
+export function followUrl(url, from, to) {
+  if (!url || !from || !to) return null;
+  let host;
+  try { host = new URL(url).hostname; } catch { return null; }
+  if (host !== from) return null;
+  const esc = from.replace(/\./g, '\\.');
+  const out = String(url).replace(new RegExp(`^([a-z][a-z0-9+.-]*://(?:[^@/?#]*@)?)${esc}(?=[:/?#]|$)`, 'i'), `$1${to}`);
+  return out === url ? null : out;
+}
+
+// Monitors whose target is the address of the device itself
+const ADDRESS_MONITORS = ['ping', 'tcp', 'snmp', 'smb', 'mysql', 'postgres', 'redis'];
 
 export function createInventory(db) {
   const getDevice = db.prepare('SELECT * FROM devices WHERE id=?');
@@ -70,26 +88,42 @@ export function createInventory(db) {
     if (!device.vendor && r.vendor) set.vendor = r.vendor;
     if (!device.os && facts.classification?.os && !facts.light) set.os = facts.classification.os;
     if (!device.web_url) { const u = bestWebUrl(r.ip, facts, device.type); if (u) set.web_url = u; }
-    else if (set.ip && device.web_url.includes(`//${device.ip}`)) set.web_url = device.web_url.replace(`//${device.ip}`, `//${r.ip}`);
+    else if (set.ip) { const u = followUrl(device.web_url, device.ip, r.ip); if (u) set.web_url = u; }
     const keys = Object.keys(set);
     db.transaction(() => {
       db.prepare(`UPDATE devices SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`).run(...keys.map((k) => set[k]), device.id);
       for (const c of changes) history(device.id, c.field === 'ip' ? 'ip' : 'change', c, 'scan');
       // Monitors of this device follow the new address
-      if (set.ip && device.ip) {
-        db.prepare("UPDATE monitors SET target=?, updated_at=? WHERE device_id=? AND type IN ('ping','tcp') AND target=?").run(set.ip, ts, device.id, device.ip);
-        for (const mon of db.prepare("SELECT id, target FROM monitors WHERE device_id=? AND type='http'").all(device.id)) {
-          try {
-            const u = new URL(mon.target);
-            if (u.hostname !== device.ip) continue;
-            u.hostname = set.ip;
-            db.prepare('UPDATE monitors SET target=?, updated_at=? WHERE id=?').run(u.toString(), ts, mon.id);
-          } catch { /* not a URL */ }
-        }
-      }
+      if (set.ip && device.ip) moveMonitors(device.id, device.ip, set.ip, ts);
       if (deep) history(device.id, 'deep', { ports: facts.ports?.length || 0 }, 'scan');
       db.prepare('UPDATE scan_results SET status=?, device_id=? WHERE id=?').run(changes.some((c) => c.field === 'ip' || c.field === 'mac') ? 'changed' : 'known', device.id, resultId);
     })();
+  }
+
+  /**
+   * Monitors of a device follow it to its new address: every monitor whose target is the old address and web checks
+   * whose URL points at it. A monitor with a stored password stays where it is - the password was entered for that
+   * address and is never sent to another one without being typed in again (a spoofed MAC or an edited address must
+   * not lure it elsewhere). Returns { moved, kept }.
+   */
+  function moveMonitors(deviceId, from, to, ts = now()) {
+    let moved = 0;
+    const kept = [];
+    for (const mon of db.prepare('SELECT id, name, type, target, secret FROM monitors WHERE device_id=?').all(deviceId)) {
+      let target = null;
+      if (ADDRESS_MONITORS.includes(mon.type) && String(mon.target).toLowerCase() === from) target = to;
+      else if (mon.type === 'http') {
+        try {
+          const u = new URL(mon.target);
+          if (u.hostname === from) { u.hostname = to; target = u.toString(); }
+        } catch { /* not a URL */ }
+      }
+      if (!target) continue;
+      if (mon.secret) { kept.push(mon.name); continue; }
+      moved += db.prepare('UPDATE monitors SET target=?, updated_at=? WHERE id=?').run(target, ts, mon.id).changes;
+    }
+    if (kept.length) log.info(`Device ${deviceId} moved from ${from} to ${to}: ${kept.length} monitor(s) with a stored password stay at the old address`);
+    return { moved, kept: kept.length };
   }
 
   function finishScan(scanId) {
@@ -165,11 +199,24 @@ export function createInventory(db) {
     if (!changed.length) return get(id);
     let renamed = 0;
     db.transaction(() => {
-      db.prepare(`UPDATE devices SET ${changed.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...changed.map((k) => v[k]), now(), id);
+      const ts = now();
+      db.prepare(`UPDATE devices SET ${changed.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...changed.map((k) => v[k]), ts, id);
       history(id, 'edit', { fields: changed.map((k) => ({ field: k, from: k === 'notes' ? undefined : cur[k], to: k === 'notes' ? undefined : v[k] })) }, user);
       // Monitors and sensors of the device carry its name ("NAS", "NAS - Sensor") - they follow a new name, so an alarm
       // names the device as it is called now. A monitor named by hand without the old name stays as it is.
       if (changed.includes('name') && cur.name) renamed = renameMonitors(id, cur.name, v.name);
+      // A new address typed in: monitors and the web link (unless changed in the same edit) follow, as after a scan
+      if (changed.includes('ip') && cur.ip && v.ip) {
+        moveMonitors(id, cur.ip, v.ip, ts);
+        const u = !changed.includes('web_url') ? followUrl(cur.web_url, cur.ip, v.ip) : null;
+        if (u) db.prepare('UPDATE devices SET web_url=? WHERE id=?').run(u, id);
+      }
+      // Another type: what SNMP read for the old type (NAS problems, MAC table of a switch) no longer applies - it
+      // would stay on the dashboard for good. The next poll reads it again if the device is of such a type.
+      if (changed.includes('type')) {
+        db.prepare('DELETE FROM snmp_status WHERE device_id=?').run(id);
+        db.prepare('DELETE FROM switch_macs WHERE switch_id=?').run(id);
+      }
     })();
     return renamed ? { ...get(id), renamedMonitors: renamed } : get(id);
   }
@@ -177,8 +224,10 @@ export function createInventory(db) {
   function renameMonitors(deviceId, from, to) {
     let n = 0;
     for (const m of db.prepare('SELECT id, name FROM monitors WHERE device_id=?').all(deviceId)) {
-      if (!m.name.includes(from)) continue;
-      const name = m.name.split(from).join(to).slice(0, 120);
+      // Only the device name at the start, as a whole word ("NAS", "NAS: Web", "NAS - Sensor") - never inside
+      // another word ("SNAS Web", "NASA")
+      if (!m.name.startsWith(from) || !(m.name.length === from.length || /^[\s:-]/.test(m.name.slice(from.length)))) continue;
+      const name = (to + m.name.slice(from.length)).slice(0, 120);
       if (name === m.name) continue;
       n += db.prepare('UPDATE monitors SET name=?, updated_at=? WHERE id=?').run(name, now(), m.id).changes;
     }
@@ -231,6 +280,18 @@ export function createInventory(db) {
     return db.prepare('SELECT * FROM device_history WHERE device_id=? ORDER BY id DESC LIMIT 200').all(id).map((h) => ({ ...h, detail: parse(h.detail) }));
   }
 
+  /**
+   * When was this device seen by the scans? Not "now": adopted from an older scan it would count as online although
+   * the newest scan did not see it. First and last scan that found it (by MAC, without MAC by address).
+   */
+  function seenTimes(r, mac) {
+    const own = db.prepare('SELECT started_at FROM scans WHERE id=?').get(r.scan_id)?.started_at || now();
+    const row = mac
+      ? db.prepare('SELECT MIN(s.started_at) first, MAX(s.started_at) last FROM scan_results x JOIN scans s ON s.id=x.scan_id WHERE x.mac IN (?,?)').get(mac, r.mac || mac)
+      : db.prepare('SELECT MIN(s.started_at) first, MAX(s.started_at) last FROM scan_results x JOIN scans s ON s.id=x.scan_id WHERE x.mac IS NULL AND x.ip=?').get(r.ip);
+    return { first: row?.first && row.first < own ? row.first : own, last: row?.last && row.last > own ? row.last : own };
+  }
+
   /** Adopts scan results into the inventory (optional type/name per result chosen in the UI). */
   function adopt(resultIds, overrides = {}, user = '') {
     const created = [];
@@ -241,14 +302,17 @@ export function createInventory(db) {
         const facts = parse(r.facts);
         const mac = normalizeMac(r.mac);
         if (mac && byMac.get(mac)) continue;
+        // Without MAC the address is the identity: the same device from another scan (or twice in this call) is no
+        // second device
+        if (!mac && byIpNoMac.get(r.ip)) continue;
         const o = overrides[rid] || {};
         const type = TYPES.includes(o.type) ? o.type : r.detected_type;
-        const ts = now();
+        const seen = seenTimes(r, mac);
         const d = create({
           name: line(o.name, 120) || suggestName({ ...r, facts, model: facts.classification?.model }),
           type, vendor: r.vendor, model: facts.classification?.model || '', ip: r.ip, mac, hostname: r.hostname,
           os: facts.classification?.os || '', location_id: r.location_id, web_url: bestWebUrl(r.ip, facts, type),
-          facts, first_seen: ts, last_seen: ts, source: 'scan',
+          facts, first_seen: seen.first, last_seen: seen.last, source: 'scan',
         }, user);
         db.prepare("UPDATE scan_results SET device_id=?, handled='adopted', status='known' WHERE id=?").run(d.id, rid);
         // What the scan guessed (model, OS, manufacturer from the MAC) may be replaced by what the device itself reports
@@ -269,6 +333,8 @@ export function createInventory(db) {
         const r = getResult.get(rid);
         if (!r || r.device_id) continue;
         const mac = normalizeMac(r.mac);
+        // A stale result of a device that is in the inventory by now: ignoring it must not put that device on the list
+        if (mac ? byMac.get(mac) : byIpNoMac.get(r.ip)) continue;
         const label = [r.hostname, r.vendor].filter(Boolean).join(' - ').slice(0, 200);
         if (mac) db.prepare('INSERT INTO ignored(mac,ip,label,created_at,created_by) VALUES(?,?,?,?,?) ON CONFLICT(mac) DO UPDATE SET ip=excluded.ip').run(mac, r.ip, label, now(), user);
         else if (!isIgnored.get(null, r.ip)) db.prepare('INSERT INTO ignored(mac,ip,label,created_at,created_by) VALUES(NULL,?,?,?,?)').run(r.ip, label, now(), user);

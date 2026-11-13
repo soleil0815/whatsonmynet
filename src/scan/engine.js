@@ -339,6 +339,8 @@ export function createScanner({ db, settings, inventory }) {
       const list = validateTargets(targets, MAX_TOTAL_HOSTS * 4);
       return launch('light', list, user, (id) => runLight(id, list));
     },
+    /** Removes old scans (also after results of a scan agent) */
+    pruneOld,
     /** fn({ id, kind, status }) runs after every scan */
     onFinished(fn) { finishedHooks.push(fn); },
     /** Runs the hooks for a scan that did not run here (results of a scan agent) */

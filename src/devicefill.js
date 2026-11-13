@@ -21,11 +21,17 @@ const JUNK = /^(|0+|n\/?a|none|null|unknown|not available|not specified|default 
 const parse = (s) => { try { return JSON.parse(s) || {}; } catch { return {}; } };
 const same = (a, b) => String(a ?? '').trim().toLowerCase().replace(/\s+/g, ' ') === String(b ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
+// Sources whose type is only a rough hint (a management chip says "server" also for a hypervisor or a NAS):
+// their type only fills an empty/unknown type, it never replaces one
+const TYPE_FILL_ONLY = ['redfish'];
+
 /**
  * facts: { serial, model, vendor, os, hostname }; source: 'SNMP' or 'script'.
+ * mayReplace: false when the report was matched to the device only by name or address - then another serial number
+ * does not mean "exchanged hardware" (it may be another machine): the hardware fields are left alone.
  * Returns { fields: [changed field names], replaced: boolean }.
  */
-export function fillDevice(db, deviceId, facts, source = 'SNMP') {
+export function fillDevice(db, deviceId, facts, source = 'SNMP', { mayReplace = true } = {}) {
   const d = db.prepare(`SELECT ${FIELDS.join(',')}, mac, auto_fields FROM devices WHERE id=?`).get(deviceId);
   if (!d) return { fields: [], replaced: false };
   const auto = parse(d.auto_fields);
@@ -39,17 +45,21 @@ export function fillDevice(db, deviceId, facts, source = 'SNMP') {
   // Only when the serial number in the inventory came from the device itself (a typed one may be written differently:
   // SG2-ABC123 / SG2ABC123), and compared without dashes, spaces and case
   const serialKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const replaced = !!(got.serial && serialKey(d.serial) && auto.serial !== undefined && same(auto.serial, d.serial) && serialKey(d.serial) !== serialKey(got.serial));
+  const otherSerial = !!(got.serial && serialKey(d.serial) && auto.serial !== undefined && same(auto.serial, d.serial) && serialKey(d.serial) !== serialKey(got.serial));
+  const replaced = otherSerial && mayReplace;
   const set = {};
   const changes = [];
   const nextAuto = { ...auto };
   for (const k of FIELDS) {
     const v = got[k];
     if (!v) continue;
+    // Another serial number from a report that may belong to another machine: its hardware facts are not taken
+    if (otherSerial && !mayReplace && HARDWARE.includes(k)) continue;
     // "unknown" is no real type - like an empty field
     const cur = k === 'type' && d[k] === 'unknown' ? '' : String(d[k] ?? '').trim();
     if (same(cur, v)) { nextAuto[k] = cur; continue; }
-    const followsDevice = !cur || (!FILL_ONLY.includes(k) && auto[k] !== undefined && same(auto[k], cur)) || (replaced && HARDWARE.includes(k));
+    const fillOnly = FILL_ONLY.includes(k) || (k === 'type' && TYPE_FILL_ONLY.includes(source));
+    const followsDevice = !cur || (!fillOnly && auto[k] !== undefined && same(auto[k], cur)) || (replaced && HARDWARE.includes(k) && !fillOnly);
     if (!followsDevice) continue;
     set[k] = v;
     nextAuto[k] = v;
