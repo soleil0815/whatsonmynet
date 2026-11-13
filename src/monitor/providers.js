@@ -9,7 +9,16 @@ import https from 'node:https';
 import { config } from '../config.js';
 
 const HTTP_URL = /^https?:\/\/[^\s"'<>]+$/i;
-const HTTPS_ON = (host) => new RegExp(`^https://([a-z0-9-]+\\.)*${host.replace(/\./g, '\\.')}/[^\\s"'<>]+$`, 'i');
+/** Address check for a service: https, the host is the service's domain (or a subdomain of it), and a path follows */
+const HTTPS_ON = (...domains) => ({
+  test(v) {
+    let u;
+    try { u = new URL(v); } catch { return false; }
+    const host = u.hostname.toLowerCase();
+    return u.protocol === 'https:' && !u.username && !u.password && u.pathname.length > 1 && /^[^\s"'<>]+$/.test(v)
+      && domains.some((d) => host === d || host.endsWith(`.${d}`));
+  },
+});
 
 /** Fixed addresses of the cloud services; tests point them at a local server */
 const API = {
@@ -60,7 +69,7 @@ function reason(e) {
 export const PROVIDERS = {
   // ---------------------------------------------------------------- chat
   discord: {
-    fields: { url: { kind: 'secret', re: HTTPS_ON('discord.com'), alt: HTTPS_ON('discordapp.com') } },
+    fields: { url: { kind: 'secret', re: HTTPS_ON('discord.com', 'discordapp.com') } },
     send: (c, m) => request('POST', c.url, { body: { content: m.full.slice(0, 1990), username: 'WhatsOnMyNet' } }),
   },
   slack: {
@@ -175,7 +184,7 @@ export function cleanProviderConfig(type, input, old = {}) {
     if (/[\r\n]/.test(v)) return { bad: k };
     if (!v) { if (f.optional) { out[k] = ''; continue; } return { bad: k }; }
     if (f.kind === 'url' && !HTTP_URL.test(v)) return { bad: k };
-    if (f.re && !f.re.test(v) && !(f.alt && f.alt.test(v))) return { bad: k };
+    if (f.re && !f.re.test(v)) return { bad: k };
     out[k] = f.kind === 'url' ? base(v) : v;
   }
   return { config: out };

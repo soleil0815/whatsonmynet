@@ -69,6 +69,9 @@ test('notification services: request shape, stored secrets, readable errors', as
 
     // Webhook addresses of chat services are checked against the service, so a typo shows at once
     assert.throws(() => ch.create({ name: 'x', type: 'discord', config: { url: 'https://example.com/hook' } }), /err.chField.url/);
+    assert.throws(() => ch.create({ name: 'x', type: 'discord', config: { url: 'https://discord.com.evil.example/api/webhooks/1/x' } }), /err.chField.url/, 'only the real domain');
+    assert.equal(cleanProviderConfig('discord', { url: 'https://discord.com/api/webhooks/1/abc' }).config.url, 'https://discord.com/api/webhooks/1/abc');
+    assert.equal(cleanProviderConfig('slack', { url: 'https://hooksXslack.com/services/x' }).bad, 'url');
     assert.throws(() => ch.create({ name: 'x', type: 'matrix', config: { server: cap.url, room: 'general', token: 'syt_abcdefghijk' } }), /err.chField.room/);
     assert.throws(() => ch.create({ name: 'x', type: 'ntfy', config: { topic: 'a b' } }), /err.chField.topic/);
     assert.equal(cleanProviderConfig('ntfy', { topic: 'womn' }).config.server, 'https://ntfy.sh', 'default server');
