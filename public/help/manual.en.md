@@ -91,6 +91,8 @@ Every value a device delivers can become a monitor of its own - with history, al
 
 The kind **SNMP value (OID)** reads any SNMP value (e.g. runtime left of a UPS) and compares with less, greater, equal or "contains text".
 
+In the monitor list the column **Now** shows the value right away: number and unit, a small bar for percentages, "used of total" for storage and RAM, and the alarm limit ("alarm from 90 %"). Close to the limit the value turns yellow, at the alarm red. Nodes and VMs show their state with CPU and RAM, network drives the free space.
+
 ## Network drives (SMB)
 
 ![Network drive](img/smb-en.png)

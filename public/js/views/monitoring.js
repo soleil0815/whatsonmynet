@@ -26,6 +26,76 @@ const unitOf = (m) => (m.type === 'proxmox' ? PX_UNIT[m.options?.metric] || '' :
 /** Last measured value with its unit, '–' while there is none */
 const valueText = (m) => (m.last_ms === null || m.last_ms === undefined ? '–' : `${m.last_ms}${unitOf(m)}`);
 const OPS = ['lt', 'le', 'gt', 'ge', 'eq', 'ne', 'contains', 'notcontains'];
+const loc = () => (getLang() === 'en' ? 'en-GB' : 'de-DE');
+const num = (v) => (typeof v === 'number' ? v.toLocaleString(loc(), { maximumFractionDigits: 1 }) : String(v));
+/** "21 %", "5 Std.", "41 °C" */
+function withUnit(v, unit) {
+  if (unit === 'h') return t('val.hours', { n: num(v) }).replace(' ', '\u00a0');
+  return `${num(v)}${unit ? `\u00a0${unit}` : ''}`;
+}
+/** Running time of a node: "3 Tage", "5 Std." */
+function fmtUptime(sec) {
+  const hrs = Math.floor((Number(sec) || 0) / 3600);
+  return hrs >= 48 ? t('val.days', { n: Math.floor(hrs / 24) }) : t('val.hours', { n: hrs });
+}
+
+/**
+ * How a measured value stands against its alarm limit: ok, warn (close to the limit) or bad (limit reached).
+ * Close = within 10 points for percentages, otherwise within 10 % of the limit.
+ */
+export function valueTone(d) {
+  const v = Number(d?.v); const thr = Number(d?.threshold);
+  if (!d || d.threshold === '' || d.threshold === null || d.threshold === undefined || !Number.isFinite(v) || !Number.isFinite(thr)) return 'ok';
+  const near = d.unit === '%' ? 10 : Math.abs(thr) * 0.1;
+  switch (d.op) {
+    case 'ge': return v >= thr ? 'bad' : thr > near && v >= thr - near ? 'warn' : 'ok';
+    case 'gt': return v > thr ? 'bad' : thr > near && v > thr - near ? 'warn' : 'ok';
+    case 'le': return v <= thr ? 'bad' : v <= thr + near ? 'warn' : 'ok';
+    case 'lt': return v < thr ? 'bad' : v < thr + near ? 'warn' : 'ok';
+    case 'eq': return v === thr ? 'bad' : 'ok';
+    case 'ne': return v !== thr ? 'bad' : 'ok';
+    default: return 'ok';
+  }
+}
+
+/**
+ * What a monitor shows "now", readable without opening it:
+ * { main, sub, tone, bar } - bar is a percentage for a small usage bar.
+ */
+export function nowParts(m) {
+  const d = m.data || {};
+  const parts = [];
+  if (m.type === 'smb' && d.total) {
+    return { main: t('smb.free', { size: fmtBytes(d.free) }), sub: t('smb.of', { total: fmtBytes(d.total), pct: pct(d.pct) }), tone: d.low ? 'bad' : 'ok', bar: 100 - d.pct };
+  }
+  if (d.state) {
+    const up = d.state === 'online' || d.state === 'running';
+    if (d.uptime) parts.push(t('val.since', { time: fmtUptime(d.uptime) }));
+    if (d.node && m.options?.metric === 'guestRunning') parts.push(t('val.onNode', { node: d.node }));
+    if (up && d.cpu !== null && d.cpu !== undefined) parts.push(`CPU ${d.cpu} %`);
+    if (up && d.mem !== null && d.mem !== undefined) parts.push(`RAM ${d.mem} %`);
+    return { main: t(`val.state.${d.state}`) === `val.state.${d.state}` ? d.state : t(`val.state.${d.state}`), sub: parts.join(' · '), tone: up ? 'ok' : 'bad' };
+  }
+  if (d.v !== undefined && d.v !== null && d.v !== '') {
+    const tone = valueTone(d);
+    if (d.total) parts.push(t('val.usedOf', { used: fmtBytes(d.used).replace(' ', '\u00a0'), total: fmtBytes(d.total).replace(' ', '\u00a0') }));
+    if (d.op && d.threshold !== '' && d.threshold !== undefined) parts.push(t(`val.limit.${d.op}`, { v: withUnit(Number.isFinite(Number(d.threshold)) ? Number(d.threshold) : d.threshold, d.unit) }));
+    const main = `${withUnit(d.v, d.unit)}${d.free ? ` ${t('val.free')}` : ''}`;
+    return { main, sub: parts.join(' · '), tone, bar: d.unit === '%' && typeof d.v === 'number' ? d.v : null };
+  }
+  if (m.type === 'sensor' && m.status === 'up' && m.last_message) return { main: m.last_message.replace(/^[^:]*:\s*/, ''), sub: '', tone: 'ok' };
+  if (isValueType(m)) return { main: valueText(m), sub: '', tone: m.status === 'down' ? 'bad' : 'ok' };
+  if (m.status === 'up' && m.last_ms !== null && m.last_ms !== undefined) return { main: `${m.last_ms} ms`, sub: '', tone: 'ok', plain: true };
+  return { main: '–', sub: '', tone: 'muted', plain: true };
+}
+
+function nowCell(m) {
+  const n = nowParts(m);
+  return h('div', { class: `now${n.plain ? ' plain' : ''}` },
+    h('div', { class: 'now-main' }, h('b', { class: `tone-${n.tone}` }, n.main),
+      n.bar !== null && n.bar !== undefined ? h('span', { class: `now-bar now-${n.tone}`, 'aria-hidden': 'true' }, h('i', { style: { width: `${Math.max(2, Math.min(100, n.bar))}%` } })) : null),
+    n.sub ? h('div', { class: 'now-sub' }, n.sub.split(' · ').map((x, i) => [i ? ' · ' : null, h('span', {}, x)])) : null);
+}
 
 /** Readable name of a sensor value, e.g. "Toner: Black Toner (free %)" */
 export function pxLabel(x) {
@@ -37,9 +107,11 @@ export function sensorLabel(x) {
   return x.receptacle ? `${base} (${t('sens.free')})` : base;
 }
 
+const noUnit = (s) => String(s || '').replace(/\s\((%|h|°C)\)$/, '');
 export function targetText(m) {
+  if (m.type === 'proxmox') return noUnit(m.target);
   if (m.type === 'docker') return m.docker_host ? `${m.target} @ ${m.docker_host.name}` : m.target;
-  if (m.type === 'sensor') return m.device_name ? `${m.device_name} · ${m.target}` : m.target;
+  if (m.type === 'sensor') return m.device_name ? `${m.device_name} · ${noUnit(m.target)}` : noUnit(m.target);
   if (m.type === 'snmp') return `${m.target}:${m.port} · ${m.options?.oid || ''}`;
   if (m.type === 'smb') return `\\\\${m.target}${m.port && m.port !== 445 ? `:${m.port}` : ''}\\${m.options?.share || ''}${m.options?.path ? `\\${m.options.path}` : ''}`;
   return ['tcp', 'mysql', 'postgres', 'redis'].includes(m.type) ? `${m.target}:${m.port}` : m.target;
@@ -91,7 +163,7 @@ export async function renderMonitoring(main, id, sub) {
           h('div', { class: 'sub' }, m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, m.last_message) : h('span', { class: 'mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`))))),
       h('td', { class: 'hide-sm' }, beatsBar(m.beats, 40, isValueType(m))),
       h('td', {}, pct(m.uptime24)),
-      h('td', { class: 'hide-sm' }, isValueType(m) ? valueText(m) : m.last_ms !== null && m.status === 'up' ? `${m.last_ms} ms` : '–'),
+      h('td', { class: 'hide-sm' }, nowCell(m)),
       h('td', { class: 'hide-sm' }, certBadge(m)));
   }
 
@@ -114,7 +186,7 @@ export async function renderMonitoring(main, id, sub) {
     }
     mount(body, h('div', { class: 'table-wrap' }, rows.length ? h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, h('th', {}, t('mon.col.name')), h('th', { class: 'hide-sm' }, t('mon.col.beats')),
-        h('th', {}, t('mon.col.uptime')), h('th', { class: 'hide-sm' }, t('mon.col.ms')), h('th', { class: 'hide-sm' }, t('mon.col.cert')))),
+        h('th', {}, t('mon.col.uptime')), h('th', { class: 'hide-sm' }, t('mon.col.now')), h('th', { class: 'hide-sm' }, t('mon.col.cert')))),
       h('tbody', {}, rows)) : h('div', { class: 'empty' }, t('mon.noMatch'))));
   }
 
@@ -232,7 +304,7 @@ async function renderDetail(main, id) {
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.h24.pct)), h('span', {}, t('mon.uptime24'))),
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d7.pct)), h('span', {}, t('mon.uptime7'))),
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d30.pct)), h('span', {}, t('mon.uptime30'))),
-        isValueType(m) ? h('div', { class: 'figure' }, h('b', {}, valueText(m)), h('span', {}, t('sens.current')))
+        isValueType(m) || m.data?.state ? (() => { const n = nowParts(m); return h('div', { class: `figure${n.tone === 'bad' ? ' bad' : n.tone === 'warn' ? ' alert' : ''}` }, h('b', {}, n.main), h('span', {}, n.sub || t('sens.current'))); })()
           : h('div', { class: 'figure' }, h('b', {}, m.uptime.h24.avgMs !== null ? `${m.uptime.h24.avgMs} ms` : '–'), h('span', {}, t('mon.avgMs'))),
         m.type === 'smb' && m.data && m.data.total ? h('div', { class: `figure${m.data.low ? ' alert' : ''}` }, h('b', {}, t('smb.free', { size: fmtBytes(m.data.free) })),
           h('span', {}, t('smb.of', { total: fmtBytes(m.data.total), pct: pct(m.data.pct) }))) : null,
@@ -338,6 +410,10 @@ export async function openMonitorForm(m, done, preset = null) {
   });
   // Sensor: a value a device already delivers (printer supplies, NAS volumes, switch ports …)
   const so = v.options || {};
+  // A new sensor is named after what it watches until the name is typed by hand
+  const nameIn = input('name', v.name || '', { required: true, maxlength: 120 });
+  nameIn.addEventListener('input', () => { nameIn.dataset.touched = '1'; });
+  const autoName = (text) => { if (!m && text && !nameIn.dataset.touched) nameIn.value = text; };
   let sensorDevices = [];
   try { sensorDevices = (await get('/devices')).filter((d) => ['printer', 'nas', 'switch'].includes(d.type)); } catch { /* none */ }
   const devSel = select('device_id', [['', t('sens.chooseDevice')], ...sensorDevices.map((d) => [String(d.id), `${d.name}${d.ip ? ` (${d.ip})` : ''}`])],
@@ -353,6 +429,8 @@ export async function openMonitorForm(m, done, preset = null) {
     condBox.hidden = typeSel.value === 'sensor' && (!x || x.kind === 'state');
     metricHint.textContent = x ? t('sens.now', { value: x.value === null || x.value === undefined ? '–' : `${x.value}${x.unit ? ` ${x.unit}` : ''}` }) : '';
     if (x && !m && x.kind === 'number' && !thr.dataset.touched) { opSel.value = x.op; thr.value = x.threshold; }
+    const dev = sensorDevices.find((y) => String(y.id) === devSel.value);
+    if (x && typeSel.value === 'sensor') autoName(`${dev ? `${dev.name}: ` : ''}${sensorLabel(x)}`);
   };
   thr.addEventListener('input', () => { thr.dataset.touched = '1'; });
   metricSel.addEventListener('change', syncMetric);
@@ -383,6 +461,8 @@ export async function openMonitorForm(m, done, preset = null) {
       ? (x.kind === 'number' && !/Age$/.test(x.metric) ? t('px.noValue') : t('sens.now', { value: '–' }))
       : t('sens.now', { value: `${x.value}${x.unit ? ` ${x.unit}` : ''}` });
     if (x && !m && x.kind === 'number' && !thr.dataset.touched) { opSel.value = x.op; thr.value = x.threshold; }
+    const host = pxHosts.find((y) => String(y.id) === pxSel.value);
+    if (x && typeSel.value === 'proxmox') autoName(`${pxHosts.length > 1 && host ? `${host.name}: ` : ''}${pxLabel(x)}`);
   };
   pxMetricSel.addEventListener('change', syncPx);
   async function loadPx() {
@@ -445,7 +525,7 @@ export async function openMonitorForm(m, done, preset = null) {
     h('span', { class: 'hint' }, t('mon.f.channelsHint')))
     : h('p', { class: 'full muted small' }, state.user.isAdmin ? t('mon.f.noChannelsAdmin') : t('mon.f.noChannels'));
   const form = h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); save(); } },
-    h('div', { class: 'full' }, field(t('mon.f.name'), input('name', v.name || '', { required: true, maxlength: 120 }))),
+    h('div', { class: 'full' }, field(t('mon.f.name'), nameIn)),
     field(t('mon.f.type'), typeSel),
     targetWrap,
     portBox,

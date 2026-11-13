@@ -87,13 +87,13 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
   if (!s.ok) return { ok: false, ms: null, message: 'device does not answer SNMP' };
   if (Date.now() - Date.parse(s.at) > staleMin * 60 * 1000) return { ok: false, ms: null, message: 'no current data' };
   const label = o.label || o.metric;
-  const num = (v, unit = '') => ({ v, text: `${v}${unit ? ` ${unit}` : ''}` });
+  const num = (v, unit = '', extra = {}) => ({ v, unit, extra, text: `${v}${unit ? ` ${unit}` : ''}` });
   let val = null;
   switch (o.metric) {
     case 'supply': { const x = (s.data.supplies || []).find((y) => y.key === o.key); if (!x) return { ok: false, ms: null, message: `${label}: not found` };
       if (x.state === 'empty') return { ok: false, ms: 0, message: `${label}: empty` };
       if (x.pct === null || x.pct === undefined) return { ok: true, ms: null, message: `${label}: ${x.state}` };
-      val = num(x.pct, '%'); break; }
+      val = num(x.pct, '%', x.receptacle ? { free: true } : {}); break; }
     case 'pages': val = num(s.data.pages); break;
     case 'printerErrors': { const e = s.data.errors || []; return e.length ? { ok: false, ms: e.length, message: e.join(', ') } : { ok: true, ms: 0, message: 'no faults' }; }
     case 'volume': { const v = (s.data.volumes || []).find((y) => y.name === o.key); if (!v) return { ok: false, ms: null, message: `${label}: not found` }; val = num(v.pct, '%'); break; }
@@ -113,7 +113,14 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
   if (val.v === null || val.v === undefined) return { ok: false, ms: null, message: `${label}: no value` };
   // The sensor is "down" when the alarm condition is met
   const alarm = compare(o.op, val.v, o.threshold);
-  return { ok: !alarm, ms: Number.isFinite(Number(val.v)) ? Math.round(Number(val.v)) : null, message: `${label}: ${val.text}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}` };
+  return { ok: !alarm, ms: Number.isFinite(Number(val.v)) ? Math.round(Number(val.v)) : null, message: `${label}: ${val.text}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}`,
+    data: valueData(val.v, val.unit, o, val.extra) };
+}
+
+/** What the overview shows next to a measured value: the value, its unit and the alarm limit (plus used/total etc.) */
+export function valueData(v, unit, o, extra = {}) {
+  const n = Number(v);
+  return { v: Number.isFinite(n) ? n : String(v), unit: unit || '', op: o.op || '', threshold: o.threshold ?? '', ...extra };
 }
 
 /** Free SNMP sensor: GET one OID. options: { oid, op, threshold, label } */
@@ -129,7 +136,7 @@ export async function snmpCheck(host, port, communities, o, timeoutS = 10) {
     const alarm = compare(o.op, value, o.threshold);
     const n = Number(value);
     return { ok: !alarm, ms: Number.isFinite(n) && String(value) !== '' ? Math.round(n) : Date.now() - t0,
-      message: `${o.label || oid}: ${value}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}` };
+      message: `${o.label || oid}: ${value}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}`, data: valueData(value, o.unit, o) };
   } finally { s.close(); }
 }
 
@@ -144,11 +151,19 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
   const label = o.label || o.metric;
   const x = proxmoxMetrics(parse(h.data, {})).find((y) => y.metric === o.metric && String(y.key) === String(o.key || ''));
   if (!x) return { ok: false, ms: null, message: `${label}: not found` };
-  if (o.metric === 'nodeOnline') return x.value === 'online' ? { ok: true, ms: null, message: `${label}: online` } : { ok: false, ms: null, message: `${label}: offline` };
-  if (o.metric === 'guestRunning') return x.value === 'running' ? { ok: true, ms: null, message: `${label}: running` } : { ok: false, ms: null, message: `${label}: ${x.value}` };
+  if (o.metric === 'nodeOnline') {
+    const data = { state: x.value, uptime: x.uptime || 0, cpu: x.cpu ?? null, mem: x.mem ?? null };
+    return x.value === 'online' ? { ok: true, ms: null, message: `${label}: online`, data } : { ok: false, ms: null, message: `${label}: offline`, data: { state: x.value } };
+  }
+  if (o.metric === 'guestRunning') {
+    const data = { state: x.value, node: x.node || '', cpu: x.cpu ?? null, mem: x.mem ?? null };
+    return x.value === 'running' ? { ok: true, ms: null, message: `${label}: running`, data } : { ok: false, ms: null, message: `${label}: ${x.value}`, data: { state: x.value, node: x.node || '' } };
+  }
   if (x.value === null || x.value === undefined) {
     return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found' : 'no value - the token probably lacks read rights (Monitoring → Proxmox)'}` };
   }
   const alarm = compare(o.op, x.value, o.threshold);
-  return { ok: !alarm, ms: Math.round(Number(x.value)), message: `${label}: ${x.value}${x.unit ? ` ${x.unit}` : ''}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}` };
+  const extra = x.total ? { used: x.used, total: x.total } : {};
+  return { ok: !alarm, ms: Math.round(Number(x.value)), message: `${label}: ${x.value}${x.unit ? ` ${x.unit}` : ''}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}`,
+    data: valueData(x.value, x.unit, o, extra) };
 }

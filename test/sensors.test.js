@@ -32,7 +32,7 @@ test('metrics of a device and sensor checks on stored values', () => {
   const pm = metricsFor(db, prn);
   assert.deepEqual(pm.map((x) => x.metric), ['supply', 'printerErrors', 'pages']);
   const mon = (deviceId, options) => ({ device_id: deviceId, options: JSON.stringify(options) });
-  assert.deepEqual(sensorCheck(db, mon(prn, { metric: 'supply', key: '1.1', op: 'le', threshold: '10', label: 'Cyan' })), { ok: false, ms: 9, message: 'Cyan: 9 % (≤ 10)' });
+  assert.deepEqual(sensorCheck(db, mon(prn, { metric: 'supply', key: '1.1', op: 'le', threshold: '10', label: 'Cyan' })), { ok: false, ms: 9, message: 'Cyan: 9 % (≤ 10)', data: { v: 9, unit: '%', op: 'le', threshold: '10' } });
   assert.equal(sensorCheck(db, mon(prn, { metric: 'supply', key: '1.1', op: 'le', threshold: '5' })).ok, true);
   assert.equal(sensorCheck(db, mon(prn, { metric: 'printerErrors' })).ok, true);
   assert.equal(sensorCheck(db, mon(nas, { metric: 'volume', key: '/volume1', op: 'ge', threshold: '85' })).ok, false);
