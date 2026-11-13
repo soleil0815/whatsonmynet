@@ -111,6 +111,9 @@ export function fetchChain({ url, startTls = false, timeoutMs = 8000 }) {
       if (err) reject(err); else resolve(val);
     };
     const timer = setTimeout(() => finish(new Error(`timeout (${Math.round(timeoutMs / 1000)} s)`)), timeoutMs);
+    // Deliberately unverified: this connection only READS the certificate the server presents, so that the admin can
+    // compare its fingerprint (nothing is sent, no password, the socket is closed right away). Trust comes only from
+    // that confirmation – every real connection afterwards verifies against the confirmed certificate.
     const opts = { host: u.host, servername: net.isIP(u.host) ? undefined : u.host, rejectUnauthorized: false, minVersion: 'TLSv1.2' };
     const onSecure = (s) => {
       const peer = s.getPeerCertificate(true);
