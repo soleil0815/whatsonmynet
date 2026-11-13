@@ -1,5 +1,5 @@
 // Simple logging to stdout (ends up in the Docker log).
-// Passwords, tokens and community strings are never logged – redact() removes them from objects.
+// Passwords, tokens and community strings are never logged - redact() removes them from objects.
 const levels = { debug: 10, info: 20, warn: 30, error: 40 };
 const current = levels[process.env.WOMN_LOG_LEVEL || 'info'] ?? 20;
 

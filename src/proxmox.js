@@ -1,4 +1,4 @@
-// Proxmox VE and Proxmox Backup Server via their REST API – nothing is installed there. An API token with read-only
+// Proxmox VE and Proxmox Backup Server via their REST API - nothing is installed there. An API token with read-only
 // rights is enough (PVE: role PVEAuditor; PBS: role Audit/DatastoreAudit). The token secret is stored encrypted.
 //
 // PVE: nodes (online, CPU, RAM), storages (usage), VMs/containers (running/stopped), backup jobs (vzdump tasks).
@@ -28,7 +28,7 @@ function chainFingerprints(cert) {
 
 /**
  * GET on the API. TLS: with a pasted certificate (the self-signed one of the host or the Proxmox CA) exactly this one
- * is trusted and has to be in the chain – the name does not matter then; otherwise the normal check, or none if the
+ * is trusted and has to be in the chain - the name does not matter then; otherwise the normal check, or none if the
  * admin switched it off for this host.
  */
 export function apiGet(host, path, timeoutMs = 15000) {
@@ -48,24 +48,24 @@ export function apiGet(host, path, timeoutMs = 15000) {
       res.on('data', (d) => { size += d.length; if (size < 8 * 1024 * 1024) chunks.push(d); else res.destroy(); });
       res.on('end', () => {
         const body = parse(Buffer.concat(chunks).toString('utf8'), null);
-        if (res.statusCode === 401) return reject(Object.assign(new Error('sign-in refused (401) – token ID or secret wrong'), { status: 401 }));
-        if (res.statusCode === 403) return reject(Object.assign(new Error('access denied (403) – the token lacks the role PVEAuditor/Audit'), { status: 403 }));
+        if (res.statusCode === 401) return reject(Object.assign(new Error('sign-in refused (401) - token ID or secret wrong'), { status: 401 }));
+        if (res.statusCode === 403) return reject(Object.assign(new Error('access denied (403) - the token lacks the role PVEAuditor/Audit'), { status: 403 }));
         if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
         resolve(body?.data);
       });
     });
     req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', (e) => reject(new Error({ DEPTH_ZERO_SELF_SIGNED_CERT: 'self-signed certificate – Edit → Fetch certificate',
-      SELF_SIGNED_CERT_IN_CHAIN: 'certificate of an unknown CA – paste the Proxmox CA', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate cannot be verified – paste the CA',
+    req.on('error', (e) => reject(new Error({ DEPTH_ZERO_SELF_SIGNED_CERT: 'self-signed certificate - Edit → Fetch certificate',
+      SELF_SIGNED_CERT_IN_CHAIN: 'certificate of an unknown CA - paste the Proxmox CA', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate cannot be verified - paste the CA',
       ECONNREFUSED: 'connection refused', ENOTFOUND: 'name not found (DNS)', EHOSTUNREACH: 'host unreachable' }[e.code]
-      || (/not the pasted one/.test(e.message) ? 'certificate changed – fetch it again (Edit → Fetch certificate)' : e.message))));
+      || (/not the pasted one/.test(e.message) ? 'certificate changed - fetch it again (Edit → Fetch certificate)' : e.message))));
     req.end();
   });
 }
 
 /** Reads a PVE cluster/node */
-// Read rights a monitoring token needs (roles PVEAuditor / Audit). Proxmox does not refuse a token without them – it
-// just shows almost nothing (nodes without values, no VMs, no storage) – so the missing ones are named in the interface.
+// Read rights a monitoring token needs (roles PVEAuditor / Audit). Proxmox does not refuse a token without them - it
+// just shows almost nothing (nodes without values, no VMs, no storage) - so the missing ones are named in the interface.
 const NEEDED = { pve: ['Sys.Audit', 'VM.Audit', 'Datastore.Audit'], pbs: ['Sys.Audit', 'Datastore.Audit'] };
 
 /** Effective rights of the token (GET /access/permissions) → missing ones, or null if they cannot be read */
@@ -141,7 +141,7 @@ export function proxmoxMetrics(data) {
   } else {
     for (const d of data.datastores || []) out.push({ metric: 'datastore', key: d.name, name: d.name, value: d.pct, unit: '%', kind: 'number', op: 'ge', threshold: 85 });
     for (const g of data.groups || []) {
-      out.push({ metric: 'groupAge', key: `${g.store}/${g.type}/${g.id}`, name: `${g.type}/${g.id}${g.comment ? ` (${g.comment})` : ''} – ${g.store}`,
+      out.push({ metric: 'groupAge', key: `${g.store}/${g.type}/${g.id}`, name: `${g.type}/${g.id}${g.comment ? ` (${g.comment})` : ''} - ${g.store}`,
         value: g.last ? Math.round((Date.now() / 1000 - g.last) / 3600) : null, unit: 'h', kind: 'number', op: 'gt', threshold: 26 });
     }
     out.push({ metric: 'tasksFailed', key: '', name: '', value: (data.failed || []).length, kind: 'number', op: 'gt', threshold: 0 });
@@ -206,7 +206,7 @@ export function createProxmox({ db, settings }) {
   }
 
   /**
-   * Certificate of the server for the admin to confirm: { certs, publicTrust, pem }. pem is what gets pinned – the
+   * Certificate of the server for the admin to confirm: { certs, publicTrust, pem }. pem is what gets pinned - the
    * top of the chain the server sends (its own CA if it sends it, otherwise its own certificate); '' if a public CA
    * (e.g. Let's Encrypt via ACME) vouches for it anyway.
    */

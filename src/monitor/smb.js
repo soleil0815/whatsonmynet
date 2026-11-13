@@ -1,5 +1,5 @@
 // Network drive (SMB share, e.g. \\fs01\Abteilung on Windows or a NAS): signs in with a read-only account, lists the
-// share (or one folder/file in it) and reads the free space. Uses smbclient (Samba) – read-only commands only.
+// share (or one folder/file in it) and reads the free space. Uses smbclient (Samba) - read-only commands only.
 //
 // Security: the password goes to smbclient through the environment (PASSWD), never on the command line (visible in
 // the process list). The command string only ever contains "ls" or "du" with a strictly checked path, so no other

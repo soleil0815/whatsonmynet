@@ -1,5 +1,5 @@
 // Read-only SNMP helpers for the device pollers (printers, later switches and NAS): open a session with the first
-// community that answers, read single values and whole tables. Only GET/GETNEXT/GETBULK – never SET.
+// community that answers, read single values and whole tables. Only GET/GETNEXT/GETBULK - never SET.
 import snmp from 'net-snmp';
 
 const SYS_DESCR = '1.3.6.1.2.1.1.1.0';

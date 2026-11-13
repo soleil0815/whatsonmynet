@@ -45,7 +45,7 @@ export function parseStorage(map) {
     if (size < 1024 ** 3) continue; // under 1 GB: system partitions
     out.push({ name, size, used, pct: Math.round((used / size) * 100) });
   }
-  // Synology lists the same volume under several mount points – keep the shortest name per size
+  // Synology lists the same volume under several mount points - keep the shortest name per size
   const bySize = new Map();
   for (const v of out) { const k = `${v.size}`; if (!bySize.has(k) || v.name.length < bySize.get(k).name.length) bySize.set(k, v); }
   return [...bySize.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -126,7 +126,7 @@ export async function readNas(ip, communities, { port = 161 } = {}) {
   }
 }
 
-/** Problems worth a notice: { key, kind, text-vars } – used by the poller to report each once */
+/** Problems worth a notice: { key, kind, text-vars } - used by the poller to report each once */
 export function nasProblems(d, usageThreshold = 90) {
   const p = [];
   if (d.system === 'failed') p.push({ key: 'system', kind: 'system' });

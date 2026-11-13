@@ -109,7 +109,7 @@ test('directory accounts: created at sign-in, no local password, role follows AD
   assert.throws(() => users.upsertDirectory({ username: 'admin', role: 'viewer', dn: 'CN=Admin' }), { code: 'err.userExists' });
 });
 
-// Real LDAP server – only where the CI provides one (osixia/openldap, LDAPS with self-signed certificate)
+// Real LDAP server - only where the CI provides one (osixia/openldap, LDAPS with self-signed certificate)
 const LDAP = process.env.WOMN_TEST_LDAP; // host:ldapsPort:adminPassword
 test('real LDAPS server', { skip: !LDAP }, async () => {
   const [host, port, adminPw] = LDAP.split(':');

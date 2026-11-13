@@ -1,4 +1,4 @@
-// Line icons (24×24, stroke = currentColor). Fixed markup – never built from data.
+// Line icons (24×24, stroke = currentColor). Fixed markup - never built from data.
 const svg = (body, cls = 'ico') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 
 const P = {

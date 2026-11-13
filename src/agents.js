@@ -62,7 +62,7 @@ export function createAgents({ db, settings, inventory, scanner }) {
     let n = 0; let rejected = 0;
     for (const r of list) {
       const ip = line(r?.ip, 15);
-      // Only addresses of the agent's own location – an agent can never write into another network
+      // Only addresses of the agent's own location - an agent can never write into another network
       if (!isIPv4(ip) || !subnets.some((c) => cidrContains(c, ip))) { rejected++; continue; }
       let facts = r.facts && typeof r.facts === 'object' && !Array.isArray(r.facts) ? r.facts : {};
       facts = JSON.stringify({ ...facts, agent: agent.name });

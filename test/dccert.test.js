@@ -37,7 +37,7 @@ function makeCa(name, subj, { signer = null, aiaPath = null } = {}) {
   ossl('x509', '-in', f(`${name}.pem`), '-outform', 'DER', '-out', f(`${name}.der`));
 }
 makeCa('root', '/O=Firma/CN=Firma Root CA');
-makeCa('evil', '/O=Firma/CN=Firma Root CA'); // same name, other key – must never be accepted
+makeCa('evil', '/O=Firma/CN=Firma Root CA'); // same name, other key - must never be accepted
 makeCa('inter', '/O=Firma/CN=Firma Issuing CA', { signer: 'root', aiaPath: '/root.crt' });
 ossl('req', '-new', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-subj', '/O=Firma/OU=IT/CN=dc01.firma.local', '-keyout', f('dc.key'), '-out', f('dc.csr'));
 fs.writeFileSync(f('dc.ext'), `basicConstraints=CA:false\nsubjectAltName=DNS:dc01.firma.local,DNS:localhost,IP:127.0.0.1\nauthorityKeyIdentifier=keyid\nauthorityInfoAccess=caIssuers;URI:${base}/inter.crt\n`);
@@ -46,7 +46,7 @@ const cert = (n) => new X509Certificate(fs.readFileSync(f(`${n}.pem`)));
 const [rootC, interC, dcC, evilC] = ['root', 'inter', 'dc', 'evil'].map(cert);
 const key = fs.readFileSync(f('dc.key'));
 
-// LDAPS server (only the DC certificate is sent – like a DC without the chain configured)
+// LDAPS server (only the DC certificate is sent - like a DC without the chain configured)
 const ldaps = tls.createServer({ key, cert: fs.readFileSync(f('dc.pem')) }, (s) => s.end());
 await new Promise((r) => ldaps.listen(0, '0.0.0.0', r));
 // LDAP with StartTLS: answers the ExtendedRequest with success, then speaks TLS

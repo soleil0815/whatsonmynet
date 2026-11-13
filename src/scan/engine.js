@@ -1,11 +1,11 @@
 // Runs scans: finds the devices of one or more subnets and checks each one gently.
 //
 // Finding devices (no root rights, no raw sockets):
-// * Local subnets: one NetBIOS status query (UDP 137) per address – a normal Windows network request. To send it,
+// * Local subnets: one NetBIOS status query (UDP 137) per address - a normal Windows network request. To send it,
 //   the kernel has to ask for the MAC address (ARP); every device answers ARP, even one with a closed firewall.
 //   The kernel's ARP table then lists all devices with their MAC address.
 // * Routed subnets (no ARP across routers): ping (if the host allows it) and a TCP connection attempt to a few ports
-//   – a reset ("closed") also proves that the device exists.
+//   - a reset ("closed") also proves that the device exists.
 // Checking each device: a short list of typical ports, reverse DNS, SNMP (read-only), title of the web interface.
 // A deep check of one device (by hand) uses a longer port list; Telematik devices always get the gentle list.
 import os from 'node:os';
@@ -69,7 +69,7 @@ export function createScanner({ db, settings, inventory }) {
   }
 
   /**
-   * Routed subnets have no ARP here – ask the routers/firewalls of the inventory for their ARP table instead.
+   * Routed subnets have no ARP here - ask the routers/firewalls of the inventory for their ARP table instead.
    * Returns Map ip → mac (empty if switched off, no router or no SNMP).
    */
   async function routerArp(targets) {
@@ -225,7 +225,7 @@ export function createScanner({ db, settings, inventory }) {
   }
 
   /**
-   * Light scan (nightly): only finds the devices – ARP/NetBIOS/ping, plus the name from DNS. No port checks, no SNMP,
+   * Light scan (nightly): only finds the devices - ARP/NetBIOS/ping, plus the name from DNS. No port checks, no SNMP,
    * no web requests. Known devices get their new IP, unknown ones land in the scan result for the admin.
    */
   async function runLight(scanId, targets) {

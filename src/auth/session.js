@@ -5,7 +5,7 @@ import { config } from '../config.js';
 import { HttpError } from '../lib/http.js';
 
 export const COOKIE = 'womn_sid';
-// Maximum lifetime from sign-in – after that sign in again, even with constant use
+// Maximum lifetime from sign-in - after that sign in again, even with constant use
 export const SESSION_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const TOUCH_EVERY_MS = 60 * 1000;
 
@@ -20,7 +20,7 @@ export function createSessions(db, { idleMs = config.sessionHours * 3600 * 1000 
   const del = db.prepare('DELETE FROM sessions WHERE id=?');
   const touch = db.prepare('UPDATE sessions SET last_seen=?, expires_at=? WHERE id=?');
 
-  // Cookies only over HTTPS – WhatsOnMyNet always speaks HTTPS (directly or through the proxy)
+  // Cookies only over HTTPS - WhatsOnMyNet always speaks HTTPS (directly or through the proxy)
   const cookieOpts = (req) => ({ httpOnly: true, sameSite: 'strict', secure: req.secure || !!req.socket?.encrypted, path: '/' });
 
   return {
