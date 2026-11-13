@@ -28,17 +28,18 @@ export const WEB_PORTS = new Map([
   [3000, 'http'], [631, 'http'],
 ]);
 
+// Shown as they are in both languages: protocol and product names only, no English words
 export const SERVICE_NAMES = {
-  20: 'FTP data', 21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS', 80: 'HTTP', 81: 'HTTP', 88: 'Kerberos',
+  20: 'FTP-Data', 21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS', 80: 'HTTP', 81: 'HTTP', 88: 'Kerberos',
   110: 'POP3', 111: 'RPC', 119: 'NNTP', 135: 'MS RPC', 139: 'NetBIOS', 143: 'IMAP', 161: 'SNMP', 179: 'BGP',
   389: 'LDAP', 427: 'SLP', 443: 'HTTPS', 445: 'SMB', 465: 'SMTPS', 500: 'IKE', 515: 'LPD', 548: 'AFP', 554: 'RTSP',
   587: 'SMTP Submission', 631: 'IPP', 636: 'LDAPS', 873: 'rsync', 902: 'VMware', 993: 'IMAPS', 995: 'POP3S',
   1433: 'MS SQL', 1521: 'Oracle', 1723: 'PPTP', 1883: 'MQTT', 1900: 'UPnP', 2049: 'NFS', 2375: 'Docker',
   2376: 'Docker TLS', 3000: 'HTTP', 3128: 'Proxy', 3260: 'iSCSI', 3268: 'Global Catalog', 3306: 'MySQL/MariaDB',
-  3389: 'RDP', 4742: 'SICCT (card terminal)', 5000: 'HTTP (Synology)', 5001: 'HTTPS (Synology)', 5060: 'SIP',
+  3389: 'RDP', 4742: 'SICCT', 5000: 'HTTP (Synology)', 5001: 'HTTPS (Synology)', 5060: 'SIP',
   5061: 'SIP TLS', 5432: 'PostgreSQL', 5900: 'VNC', 5985: 'WinRM', 5986: 'WinRM TLS', 6379: 'Redis',
-  6443: 'Kubernetes', 8006: 'Proxmox VE', 8007: 'Proxmox Backup', 8080: 'HTTP alt', 8081: 'HTTP alt',
-  8123: 'Home Assistant', 8291: 'MikroTik Winbox', 8443: 'HTTPS alt', 9000: 'HTTP alt', 9090: 'Cockpit',
-  9100: 'Raw printing (JetDirect)', 9200: 'Elasticsearch', 9443: 'HTTPS alt', 10000: 'Webmin', 10050: 'Zabbix agent',
+  6443: 'Kubernetes', 8006: 'Proxmox VE', 8007: 'Proxmox Backup', 8080: 'HTTP', 8081: 'HTTP',
+  8123: 'Home Assistant', 8291: 'MikroTik Winbox', 8443: 'HTTPS', 9000: 'HTTP', 9090: 'Cockpit',
+  9100: 'JetDirect', 9200: 'Elasticsearch', 9443: 'HTTPS', 10000: 'Webmin', 10050: 'Zabbix',
   11211: 'Memcached', 27017: 'MongoDB', 32400: 'Plex',
 };

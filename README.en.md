@@ -32,7 +32,7 @@ WhatsOnMyNet scans your network, recognises manufacturer and device type by itse
 - **Deep check** - for single unclear devices, started by hand: about 110 ports and all web interfaces.
 - **Locations** - group subnets. Before a scan you just tick them; devices found get their location automatically.
 - **Users and roles** - administrator, editor, read only; sign-in with Active Directory too, rights can be limited to locations (from 0.3).
-- **HTTPS from the first start** - generated certificate, own certificate (PEM or PFX) uploadable in the interface, HTTP always redirects to HTTPS.
+- **HTTPS from the first start** - generated certificate, own certificate (PEM or PFX) uploadable in the interface, HTTP redirects to HTTPS (except for a trusted reverse proxy, see below).
 - **German and English**, light and dark, usable on a phone.
 
 ![Inventory](public/help/img/inventory-en.png)
@@ -63,7 +63,7 @@ Like in PRTG, every value a device delivers can be watched as a monitor of its o
 
 - **Sensor (device value)**: "Add sensor" on the device page, then choose value and condition - e.g. "toner cyan less than or equal 10 %", "volume 1 at least 85 %", "temperature drive 2 above 50 °C", "port 10 (uplink) connected", "disk/storage pool fine", "faults at the printer". It reads the latest state of the printer/switch/NAS query, without extra requests to the device.
 - **SNMP value (OID)**: any value readable via SNMP with its own condition (less, greater, equal, contains text …) - e.g. runtime left of a UPS, temperature of an air conditioner, sessions of a firewall.
-- The history shows the measured value over 24 hours up to 7 days.
+- The history shows the measured value over 24 hours up to one year (from 30 days as an hourly summary).
 
 ### Network drives (from version 0.4)
 
@@ -102,7 +102,7 @@ Then `docker compose up -d`.
 
 ## Nightly light scan and new devices (from version 0.3)
 
-Once a night (default 02:30 local time, `TZ` in `.env`) WhatsOnMyNet looks for devices in all subnets of your locations: ARP, NetBIOS and - if allowed - ping only. No ports, no SNMP, no web requests, so the scan stays inconspicuous.
+Once a night (default 02:30 local time, `TZ` in `.env`) WhatsOnMyNet only looks for devices in all subnets of your locations: ARP, NetBIOS and - if allowed - ping; in routed subnets also a few TCP connection attempts (ports 443, 80, 22, 445, 3389) and the ARP table of the routers via SNMP. No port check of the devices, no web requests, so the scan stays inconspicuous.
 
 - Known devices get their new IP address automatically (the MAC address is the identity), their monitors follow.
 - Unknown devices wait in the scan result to be adopted or ignored; the overview shows how many are waiting.
@@ -127,7 +127,7 @@ Devices of type *Switch* and *NAS* are queried regularly (default every 15 minut
 - **Switch**: all ports as tiles like on the front (connected/disconnected, speed, label), which devices are plugged into which port (MAC table, VLAN-aware), LLDP neighbours, model, firmware and serial number.
 - **Where is the device plugged in?** The page of every device shows under *Detection* the switch and port it is connected to. If many devices share a port, WhatsOnMyNet points out that another switch or access point is probably in between.
 - **NAS**: volumes with usage (any NAS or Linux server with SNMP); on Synology also disks with state and temperature, storage pools/RAID, system state, fans, power supply, DSM version and available updates; on QNAP disks and temperature.
-- **Taken into the inventory**: serial number, model and firmware (or DSM version) that printers, switches and NAS report via SNMP go right into the details of the device and stay current; your own different entries stay. If a device at the same IP reports another serial number (exchange), serial number, model and firmware come from the new device and the next scan takes the new MAC address; the history notes the exchange.
+- **Taken into the inventory**: serial number and model that printers, switches and NAS report via SNMP, for switches and NAS also the firmware (or DSM version), go right into the details of the device and stay current; your own different entries stay. If a device at the same IP reports another serial number (exchange), serial number, model and firmware come from the new device and the next scan takes the new MAC address; the history notes the exchange.
 - **Notice** for a failing disk, a degraded RAID, fan or power supply failure and a volume running full (default 90 %) - once when it happens and once when everything is fine again. The overview lists open NAS problems.
 
 Settings under *Settings → Switches & NAS*. Simple switches without SNMP (e.g. TP-Link "Easy Smart") give no data; on LANCOM, HP/Aruba, Cisco, Netgear Smart and others SNMP v1/v2c has to be enabled read-only.
@@ -168,7 +168,7 @@ ARP - and so the MAC address - is only visible inside the own network. For a bra
 1. Central server: add the location of the branch office with its subnets, then *Settings → Scan agents → Add agent*. Key and - with the self-signed certificate - the certificate of the central server are shown as a ready `.env`.
 2. Branch office: put `docker-compose.agent.yml` from the release and the `.env` there, `docker compose -f docker-compose.agent.yml up -d`.
 
-The agent has no web interface and opens no port. It asks the central server for jobs every minute (HTTPS; with the self-signed certificate it trusts exactly this one certificate - checked before the key is sent. When the certificate is renewed, the agent needs the new value), scans there just as gently and follows the time of the nightly light scan. It may only report addresses from the subnets of its location. "Start scan" for that location is handed to the agent automatically; the results show up under *Earlier scans* as usual.
+The agent has no web interface and opens no port. It asks the central server for jobs every minute (`WOMN_AGENT_INTERVAL` in seconds, 15 to 3600, default 60; HTTPS; with the self-signed certificate it trusts exactly this one certificate - checked before the key is sent. When the certificate is renewed, the agent needs the new value), scans there just as gently and follows the time of the nightly light scan. It may only report addresses from the subnets of its location. "Start scan" for that location is handed to the agent automatically; the results show up under *Earlier scans* as usual.
 
 ## Proxmox VE and Backup Server (from version 0.4)
 
@@ -196,7 +196,7 @@ Under *Monitoring → Reports* WhatsOnMyNet sends reports by e-mail at set times
 
 - On first start WhatsOnMyNet creates a self-signed certificate for the host name, `localhost`, all IPv4 addresses of the host and the address in `WOMN_BASE_URL`. It is renewed automatically 30 days before it expires.
 - Under *Settings → HTTPS certificate* you upload your own certificate: PEM (certificate with chain + key) or PFX/P12 with password. It is checked first (key matches, not expired) and becomes active without a restart.
-- HTTP on `WOMN_HTTP_PORT` always redirects to HTTPS.
+- HTTP on `WOMN_HTTP_PORT` redirects to HTTPS - except for a trusted reverse proxy (see below).
 - WhatsOnMyNet only sends HSTS with an own certificate and a host name. With a self-signed certificate HSTS would stop the browser from letting you past the warning - you would be locked out.
 
 ### Behind a reverse proxy
@@ -214,7 +214,7 @@ The proxy then forwards either to `https://<server>:8743` (self-signed - "do not
 
 - Only scan networks you are responsible for.
 - The normal scan is deliberately gentle. Still: add the server running WhatsOnMyNet as trusted in your firewall, IDS or antivirus, then even the deep check raises no alarm.
-- The container runs without root, with read-only program files and without extra rights (`cap_drop: ALL`, `no-new-privileges`).
+- The program runs without root, with read-only program files (`cap_drop: ALL`, `no-new-privileges`). The container only gets back the few rights the start needs: setting the permissions of `./data` and switching to PUID/PGID with su-exec (`CHOWN`, `FOWNER`, `DAC_OVERRIDE`, `SETUID`, `SETGID`), plus `KILL` so the stop signal arrives.
 - Passwords are stored with scrypt, the SMTP password and SNMP communities encrypted with AES-256-GCM. Back up the key (`data/secret.key`).
 - Please report vulnerabilities confidentially, see [SECURITY.md](SECURITY.md).
 
@@ -238,15 +238,7 @@ docker compose exec whatsonmynet womn-admin create <user>   # new administrator
 - In the week before patch day a ZAP scan attacks the program in a throwaway container without login. The monthly code audit evaluates the result.
 - WhatsOnMyNet writes a daily database backup to `data/backups/` (number under *Settings → General*). Back up the whole `data/` folder, including `secret.key` and `tls/`.
 
-Under *Settings → Backup* (from 0.4) you download a current backup at any time, create one or restore one - uploaded or from the list on the server. The file is checked first (WhatsOnMyNet database, matching version, same key), the current state is kept as `whatsonmynet-before-restore-…`, then the program restarts. **Keep `data/secret.key` (or your `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
-
-## What comes next
-
-| Version | Content |
-| --- | --- |
-| 2 | ~~Monitoring like Uptime Kuma~~ (from 0.2), ~~nightly light scan with notice of unknown devices~~, ~~printer data via SNMP~~, ~~Docker and database monitoring~~ (from 0.3) |
-| 3 | ~~Active Directory (LDAPS)~~, ~~rights per location~~ (from 0.3) |
-| later | ~~Scan agent for branch offices~~, ~~topology via LLDP~~, ~~MAC addresses of remote subnets via SNMP from the router~~ (from 0.3) |
+Under *Settings → Backup* (from 0.4) you download a current backup at any time, create one or restore one - uploaded or from the list on the server. The file is checked first (WhatsOnMyNet database, not newer than this version, same key), the current state is kept as `whatsonmynet-before-restore-…`, then the program restarts. **Keep `data/secret.key` (or your `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 
 **Rebuild the manual** (after changes to `public/help/manual.*.md` or the images): `node tools/build-manual.mjs` - needs Playwright with Chromium, ImageMagick makes the PDFs smaller.
 

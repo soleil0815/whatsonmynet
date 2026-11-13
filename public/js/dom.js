@@ -1,4 +1,6 @@
 // Small DOM helpers. Text is always set as text (never as HTML) - only the fixed icons are SVG markup.
+import { t as tr } from './i18n.js';
+
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
@@ -30,7 +32,11 @@ export function mount(el, ...children) { clear(el); append(el, children); return
 
 let toastBox;
 export function toast(message, kind = 'ok') {
-  if (!toastBox) { toastBox = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' }); document.body.append(toastBox); }
+  if (!toastBox) toastBox = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
+  // An open modal <dialog> makes the rest of the page inert and covers it: show the message inside the topmost dialog.
+  const open = [...document.querySelectorAll('dialog[open]')].pop();
+  const host = open || document.body;
+  if (toastBox.parentNode !== host) host.append(toastBox);
   const t = h('div', { class: `toast toast-${kind}` }, message);
   toastBox.append(t);
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, kind === 'error' ? 6000 : 3200);
@@ -40,15 +46,30 @@ export function toast(message, kind = 'ok') {
 export function modal(title, body, { actions = [], wide = false, onClose } = {}) {
   const dlg = h('dialog', { class: `modal${wide ? ' wide' : ''}`, 'aria-label': title });
   const close = () => { dlg.close(); };
-  dlg.addEventListener('close', () => { dlg.remove(); onClose?.(); });
+  dlg.addEventListener('close', () => {
+    if (toastBox?.parentNode === dlg) document.body.append(toastBox); // keep running messages visible after the dialog closes
+    dlg.remove(); onClose?.();
+  });
   dlg.append(
-    h('header', {}, h('h2', {}, title), h('button', { class: 'icon-btn', type: 'button', 'aria-label': '×', onclick: close }, '×')),
+    h('header', {}, h('h2', {}, title), h('button', { class: 'icon-btn', type: 'button', 'aria-label': tr('close'), onclick: close }, '×')),
     h('div', { class: 'modal-body' }, body),
     ...(actions.length ? [h('footer', {}, actions)] : []), // a dialog without buttons must not show the text "null"
   );
   document.body.append(dlg);
   dlg.showModal();
   return { close, el: dlg };
+}
+
+/**
+ * Runs fn while button is disabled, so a double or triple click cannot send the same request twice.
+ * The button is enabled again afterwards, also after an error. Returns fn's result (undefined if already busy).
+ */
+export async function busy(button, fn) {
+  if (!button) return fn();
+  if (button.disabled) return undefined;
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  try { return await fn(); } finally { button.disabled = false; button.removeAttribute('aria-busy'); }
 }
 
 export function confirmDialog(title, text, okLabel, cancelLabel, { danger = false } = {}) {

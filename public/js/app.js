@@ -100,6 +100,20 @@ function sidebar(active) {
   );
 }
 
+/** Opens or closes the menu on narrow screens (on wide screens the sidebar is always shown) */
+function setMenu(open, { restoreFocus = false } = {}) {
+  const side = document.getElementById('side');
+  const button = document.querySelector('.menu-btn');
+  if (!side) return;
+  side.classList.toggle('open', open);
+  button?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) side.querySelector('a')?.focus();
+  else if (restoreFocus) button?.focus();
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('side')?.classList.contains('open') && !document.querySelector('dialog[open]')) setMenu(false, { restoreFocus: true });
+});
+
 async function refreshBadge() {
   try {
     const d = await get('/dashboard');
@@ -129,12 +143,16 @@ export async function render() {
   const params = path.match(re).slice(1);
   const main = h('main', { class: 'main', id: 'main' });
   const side = sidebar(key);
-  const topbar = h('div', { class: 'topbar' },
-    h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('nav.menu'), onclick: () => side.classList.toggle('open'), html: icon('menu') }),
-    h('span', { html: LOGO_MARK }), wordmark());
-  mount(root, h('div', { class: 'shell' }, side, h('div', {}, topbar, main)));
-  side.addEventListener('click', (e) => { if (e.target.closest('a')) side.classList.remove('open'); });
+  main.tabIndex = -1;
+  const menuBtn = h('button', { class: 'icon-btn menu-btn', type: 'button', 'aria-label': t('nav.menu'), 'aria-controls': 'side', 'aria-expanded': 'false',
+    onclick: () => setMenu(!side.classList.contains('open')), html: icon('menu') });
+  const topbar = h('div', { class: 'topbar' }, menuBtn, h('span', { html: LOGO_MARK }), wordmark());
+  const skip = h('a', { class: 'skip-link', href: '#main', onclick: (e) => { e.preventDefault(); main.focus(); } }, t('nav.skip'));
+  mount(root, h('div', { class: 'shell' }, skip, side, h('div', {}, topbar, main)));
+  side.addEventListener('click', (e) => { if (e.target.closest('a')) setMenu(false); });
   document.title = `${t(`nav.${key}`)} · ${state.boot.title || 'WhatsOnMyNet'}`;
+  // Screen readers and keyboard users start on the new page, not on the (redrawn) sidebar; views may focus a field afterwards
+  main.focus({ preventScroll: true });
   try {
     cleanup = await view(main, ...params) || null;
   } catch (e) {
