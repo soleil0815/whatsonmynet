@@ -122,6 +122,8 @@ Angezeigt werden Knoten, Speicher, VMs und Container, Sicherungen, Datastores un
 Unter *Einstellungen → Berichte* gehen Berichte zu festen Zeiten per E-Mail raus – z. B. jeden Montag um 8 Uhr die Tonerstände ans Büro.
 
 - Inhalt: Drucker, NAS, Switches, Netzlaufwerke; auf Standorte beschränkbar; wahlweise nur Geräte mit Handlungsbedarf.
+- **Geräte**: alle Geräte der gewählten Inhalte – oder nur ausgewählte, z. B. ein eigener Bericht für den Drucker im Sekretariat.
+- Drucker zeigen die **gedruckten Seiten** (gesamt und im Berichtszeitraum, z. B. „in den letzten 7 Tagen“) und – wenn der Drucker es meldet – wie viele Seiten der Toner noch reicht.
 - Die Mail ist **neutral**: kein Link, kein Programmname – nur dein Absendername, Betreff (`{kw}`, `{datum}`), Einleitung, die Geräte und dein Gruß.
 - „Vorschau“, „Test an mich“ und „Jetzt senden“ direkt in der Liste.
 

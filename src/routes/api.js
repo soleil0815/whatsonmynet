@@ -396,6 +396,7 @@ export function createApi(ctx) {
 
   // Planned reports (admin): neutral mails, e.g. printer supplies for the office
   r.get('/reports', admin, (_req, res) => res.json(ctx.reports.list()));
+  r.get('/reports/candidates', admin, (_req, res) => res.json(ctx.reports.candidates()));
   r.post('/reports', admin, (req, res) => { const x = ctx.reports.create(req.body); audit(req, 'report.create', x.name); res.status(201).json(x); });
   r.put('/reports/:id', admin, (req, res) => { const x = ctx.reports.update(idParam(req), req.body); audit(req, 'report.update', x.name); res.json(x); });
   r.delete('/reports/:id', admin, (req, res) => { ctx.reports.remove(idParam(req)); audit(req, 'report.delete', req.params.id); res.json({ ok: true }); });

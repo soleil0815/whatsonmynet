@@ -503,7 +503,7 @@ async function backup(body, _s, reload) {
 }
 
 async function reports(body, _s, reload) {
-  const [list, locs] = await Promise.all([get('/reports'), get('/locations')]);
+  const [list, locs, cand] = await Promise.all([get('/reports'), get('/locations'), get('/reports/candidates')]);
   const SECS = ['printers', 'nas', 'switches', 'shares'];
   const DAYS = [1, 2, 3, 4, 5, 6, 7];
   const when = (s) => {
@@ -518,7 +518,29 @@ async function reports(body, _s, reload) {
     const md = h('div', {}, field(t('rep.day'), input('day', v.schedule.day || 1, { type: 'number', min: 1, max: 28 })));
     const syncFreq = () => { wd.hidden = freq.value !== 'weekly'; md.hidden = freq.value !== 'monthly'; };
     freq.addEventListener('change', syncFreq);
-    const form = h('form', { class: 'form-grid' },
+    // Devices: all of the chosen kinds, or only the ticked ones (e.g. one report per printer)
+    const chosen = new Set([...(v.device_ids || []).map((x) => `d${x}`), ...(v.monitor_ids || []).map((x) => `m${x}`)]);
+    const pickSel = select('pick', [['all', t('rep.pickAll')], ['some', t('rep.pickSome')]], chosen.size ? 'some' : 'all');
+    const devList = h('div', { class: 'rep-devices' });
+    let form = null;
+    const renderDevices = () => {
+      devList.hidden = pickSel.value !== 'some';
+      if (devList.hidden || !form) return;
+      const secs = SECS.filter((x) => form.querySelector(`[name=sec_${x}]`)?.checked);
+      const locSel = locs.filter((l) => form.querySelector(`[name=loc_${l.id}]`)?.checked).map((l) => l.id);
+      const groups = secs.map((sec) => {
+        const items = (cand[sec] || []).filter((x) => !locSel.length || locSel.includes(x.location_id));
+        const key = (x) => `${sec === 'shares' ? 'm' : 'd'}${x.id}`;
+        return h('div', { class: 'rep-dev-group' }, h('div', { class: 'rep-dev-head' }, t(`rep.sec.${sec}`)),
+          items.length ? items.map((x) => h('label', { class: 'check rep-dev' },
+            h('input', { type: 'checkbox', checked: chosen.has(key(x)), onchange: (e) => { if (e.target.checked) chosen.add(key(x)); else chosen.delete(key(x)); } }),
+            h('span', {}, x.name), h('span', { class: 'muted small' }, [x.ip, x.location].filter(Boolean).join(' · '))))
+            : h('div', { class: 'muted small' }, t('rep.noDevices')));
+      });
+      mount(devList, secs.length ? groups : h('div', { class: 'muted small' }, t('rep.pickSections')));
+    };
+    pickSel.addEventListener('change', renderDevices);
+    form = h('form', { class: 'form-grid' },
       h('div', { class: 'full' }, field(t('rep.name'), input('name', v.name, { required: true, maxlength: 100, placeholder: t('rep.namePh') }))),
       h('div', { class: 'full field' }, t('rep.sections'), h('div', { class: 'chips' }, SECS.map((x) => h('label', { class: 'check', style: { marginRight: '14px' } },
         h('input', { type: 'checkbox', name: `sec_${x}`, checked: v.sections.includes(x) }), t(`rep.sec.${x}`))))),
@@ -527,6 +549,7 @@ async function reports(body, _s, reload) {
       field(t('rep.time'), input('time', v.schedule.time, { type: 'time', required: true })),
       locs.length > 1 ? h('div', { class: 'full field' }, t('rep.locations'), h('div', { class: 'chips' }, locs.map((l) => h('label', { class: 'check', style: { marginRight: '14px' } },
         h('input', { type: 'checkbox', name: `loc_${l.id}`, checked: v.location_ids.includes(l.id) }), l.name))), h('span', { class: 'hint' }, t('rep.locationsHint'))) : null,
+      h('div', { class: 'full' }, field(t('rep.devices'), pickSel, t('rep.devicesHint')), devList),
       h('div', { class: 'full' }, h('h3', { class: 'sub-title' }, t('rep.mail')), h('p', { class: 'muted small', style: { margin: 0 } }, t('rep.neutral'))),
       field(t('rep.fromName'), input('from_name', v.from_name, { maxlength: 100, placeholder: t('rep.fromNamePh') }), t('rep.fromNameHint')),
       field(t('rep.subject'), input('subject', v.subject, { maxlength: 200, placeholder: t('rep.subjectPh') }), t('rep.subjectHint')),
@@ -536,6 +559,8 @@ async function reports(body, _s, reload) {
       h('div', {}, field(t('rep.onlyAttention'), h('input', { type: 'checkbox', name: 'only_attention', checked: v.only_attention }), t('rep.onlyAttentionHint'))),
       r ? field(t('user.active'), h('input', { type: 'checkbox', name: 'enabled', checked: v.enabled })) : null);
     syncFreq();
+    form.addEventListener('change', (e) => { if (/^(sec|loc)_/.test(e.target.name || '')) renderDevices(); });
+    renderDevices();
     const m = modal(r ? r.name : t('rep.add'), form, { wide: true, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
       h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
@@ -543,7 +568,8 @@ async function reports(body, _s, reload) {
         const d = formData(form);
         const payload = { name: d.name, sections: SECS.filter((x) => d[`sec_${x}`]), recipients: d.recipients,
           schedule: { freq: d.freq, weekday: Number(d.weekday), day: Number(d.day), time: d.time }, location_ids: locs.filter((l) => d[`loc_${l.id}`]).map((l) => l.id),
-          subject: d.subject, intro: d.intro, signature: d.signature, from_name: d.from_name, language: d.language, only_attention: d.only_attention, enabled: r ? d.enabled : true };
+          subject: d.subject, intro: d.intro, signature: d.signature, from_name: d.from_name, language: d.language, only_attention: d.only_attention, enabled: r ? d.enabled : true,
+          pick: pickSel.value, device_ids: [...chosen].filter((x) => x[0] === 'd').map((x) => Number(x.slice(1))), monitor_ids: [...chosen].filter((x) => x[0] === 'm').map((x) => Number(x.slice(1))) };
         try { if (r) await put(`/reports/${r.id}`, payload); else await post('/reports', payload); m.close(); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
       } }, t('save'))] });
   };
@@ -563,7 +589,8 @@ async function reports(body, _s, reload) {
       h('thead', {}, h('tr', {}, h('th', {}, t('rep.name')), h('th', {}, t('rep.when')), h('th', { class: 'hide-sm' }, t('rep.recipients')), h('th', {}))),
       h('tbody', {}, list.map((r) => h('tr', {},
         h('td', {}, h('span', { class: 'name' }, r.name), r.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('user.inactive')),
-          h('div', { class: 'sub' }, r.sections.map((x) => t(`rep.sec.${x}`)).join(', '))),
+          h('div', { class: 'sub' }, r.sections.map((x) => t(`rep.sec.${x}`)).join(', '),
+            r.device_ids.length + r.monitor_ids.length ? ` · ${t('rep.pickedN', { n: r.device_ids.length + r.monitor_ids.length })}` : '')),
         h('td', {}, when(r.schedule), r.last_run ? h('div', { class: 'sub' }, `${t('rep.last')}: ${fmtDate(r.last_run, getLang())}`,
           r.last_status && r.last_status !== 'ok' ? h('span', { class: 'badge badge-bad', style: { marginLeft: '6px' }, title: r.last_status }, t('rep.failed')) : null) : null),
         h('td', { class: 'hide-sm small' }, r.recipients.join(', ')),
