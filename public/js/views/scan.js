@@ -15,7 +15,7 @@ function createRadar() {
   const svg = s('svg', { class: 'radar idle', viewBox: '0 0 400 400', role: 'img', 'aria-label': t('scan.radarEmpty') });
   const defs = s('defs');
   const grad = s('linearGradient', { id: 'sweepGrad', x1: '0', y1: '0', x2: '1', y2: '0' });
-  grad.append(s('stop', { offset: '0', 'stop-color': '#2EC4B6', 'stop-opacity': '0' }), s('stop', { offset: '1', 'stop-color': '#2EC4B6', 'stop-opacity': '.35' }));
+  grad.append(s('stop', { offset: '0', 'stop-color': '#7DB3EC', 'stop-opacity': '0' }), s('stop', { offset: '1', 'stop-color': '#7DB3EC', 'stop-opacity': '.35' }));
   defs.append(grad);
   svg.append(defs);
   for (const r of [62, 124, 186]) svg.append(s('circle', { class: 'ring', cx: 200, cy: 200, r }));
@@ -60,7 +60,7 @@ function radarPanel(radar) {
   const panel = h('aside', { class: 'radar-panel' }, radar.el, status, bar,
     h('div', { class: 'radar-legend' },
       h('span', {}, h('i', { style: { background: '#F2B544' } }), t('scan.tab.new')),
-      h('span', {}, h('i', { style: { background: '#2EC4B6' } }), t('scan.tab.known')),
+      h('span', {}, h('i', { style: { background: '#7DB3EC' } }), t('scan.tab.known')),
       h('span', {}, h('i', { style: { background: '#A99BF5' } }), t('telematik'))));
   return {
     el: panel,

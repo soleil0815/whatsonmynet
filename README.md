@@ -247,4 +247,4 @@ Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle S
 
 WhatsOnMyNet ist Open Source unter der [GNU Affero General Public License 3.0](LICENSE) (AGPL-3.0-or-later). Wer eine veränderte Fassung im Netz anbietet, muss deren Quellcode zugänglich machen (`WOMN_SOURCE_URL`).
 
-Schrift: IBM Plex (SIL Open Font License, `public/fonts/OFL.txt`). Herstellerliste: IEEE über das Paket `oui-data` (BSD-2-Clause).
+Schriften: IBM Plex und Barlow Semi Condensed (SIL Open Font License, `public/fonts/OFL.txt`). Herstellerliste: IEEE über das Paket `oui-data` (BSD-2-Clause).
