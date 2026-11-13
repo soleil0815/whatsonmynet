@@ -6,6 +6,7 @@
 import crypto from 'node:crypto';
 import https from 'node:https';
 import tls from 'node:tls';
+import net from 'node:net';
 import { HttpError, line, str } from './lib/http.js';
 import { encrypt, decrypt } from './lib/crypto.js';
 import { log } from './lib/log.js';
@@ -132,6 +133,64 @@ export async function readPve(host) {
   return { kind: 'pve', missing: await missingRights(host, 'pve'), nodes, storages: storages.sort((a, b) => a.name.localeCompare(b.name)), guests: guests.filter((g) => !g.template).sort((a, b) => a.vmid - b.vmid), backups: backups.slice(0, 100) };
 }
 
+/**
+ * The nodes of a Proxmox VE cluster with their address and certificate - asked through the node that answers, with the
+ * same token. Used as fallbacks when the entered node is down (a cluster answers the same on every node).
+ * prev: the list of the last time (a node that is offline now keeps its certificate from then).
+ * Returns null for a single node (no cluster).
+ */
+export async function readClusterNodes(host, prev = []) {
+  const status = await apiGet(host, '/cluster/status');
+  const list = (Array.isArray(status) ? status : []).filter((x) => x?.type === 'node' && x.name && net.isIP(String(x.ip || ''))).slice(0, 32);
+  if (list.length < 2) return null;
+  const out = [];
+  for (const n of list) {
+    const old = (prev || []).find((x) => x.name === n.name && x.ip === n.ip);
+    let pem = old?.pem || '';
+    if (n.online) {
+      try {
+        // The certificate the node shows: an own one (pveproxy-ssl.pem, e.g. ACME) or the one of the cluster CA
+        const certs = await apiGet(host, `/nodes/${encodeURIComponent(n.name)}/certificates/info`);
+        const c = (certs || []).find((x) => x?.filename === 'pveproxy-ssl.pem') || (certs || []).find((x) => x?.filename === 'pve-ssl.pem');
+        if (c?.pem) pem = new crypto.X509Certificate(c.pem).toString();
+      } catch (e) { log.debug(`Proxmox ${host.name}: certificate of ${n.name}: ${e.message}`); }
+    }
+    out.push({ name: String(n.name).slice(0, 80), ip: String(n.ip), pem });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Where else the cluster can be asked: the other nodes, at the port of the entered address. TLS as entered - a pinned
+ * company CA stays (it vouches for every node); a pinned certificate of the entered node is replaced by the node's
+ * own one from the cluster (read through the API); without one that node is left out.
+ */
+export function fallbackHosts(host, cluster) {
+  if (!Array.isArray(cluster) || !cluster.length) return [];
+  let u;
+  try { u = new URL(host.url); } catch { return []; }
+  const here = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  // A pinned CA vouches for every node; a pinned certificate of one node (also a self-signed one marked as CA) only
+  // for that node
+  let pinnedCa = false;
+  if (host.ca) {
+    try {
+      const x = new crypto.X509Certificate(host.ca);
+      const fp = (pem) => { try { return new crypto.X509Certificate(pem).fingerprint256; } catch { return ''; } };
+      pinnedCa = x.ca && !cluster.some((n) => n.pem && fp(n.pem) === x.fingerprint256);
+    } catch { return []; }
+  }
+  const out = [];
+  for (const n of cluster) {
+    if (n.ip.toLowerCase() === here || n.name.toLowerCase() === here.split('.')[0]) continue;
+    if (host.ca && !pinnedCa && !n.pem) continue;
+    const alt = new URL(host.url);
+    alt.hostname = net.isIPv6(n.ip) ? `[${n.ip}]` : n.ip;
+    out.push({ ...host, url: alt.toString().replace(/\/+$/, ''), ca: host.ca && !pinnedCa ? n.pem : host.ca, viaNode: n.name });
+  }
+  return out;
+}
+
 /** Reads a Proxmox Backup Server */
 export async function readPbs(host) {
   const usage = await apiGet(host, '/status/datastore-usage');
@@ -234,6 +293,33 @@ export function createProxmox({ db, settings }) {
     return { name, kind, url, token_id: tokenId, secret, verify: input.verify === false ? 0 : 1, ca };
   }
 
+  /**
+   * Proxmox VE: the entered node first; does it not answer, the other nodes of the cluster one after the other (their
+   * addresses and certificates come from the cluster itself, refreshed every 6 hours through the node that answers).
+   */
+  async function readPveCluster(h) {
+    const prevData = parse(h.data, {});
+    let data = null; let via = null; let first = null;
+    let answering = withSecret(h);
+    try {
+      data = await readPve(answering);
+    } catch (e) {
+      first = e;
+      for (const alt of fallbackHosts(h, prevData.cluster)) {
+        try { answering = withSecret(alt); data = await readPve(answering); via = { node: alt.viaNode, url: alt.url, error: String(e.message).slice(0, 200) }; break; } catch { /* the next one */ }
+      }
+      if (!data) throw first;
+      log.warn(`Proxmox ${h.name}: ${h.url} does not answer (${e.message}) - read through node ${via.node}`);
+    }
+    let cluster = Array.isArray(prevData.cluster) ? prevData.cluster : null;
+    const age = Date.now() - Date.parse(prevData.clusterAt || 0);
+    let clusterAt = prevData.clusterAt || null;
+    if (!cluster || !(age < 6 * 3600 * 1000)) {
+      try { cluster = await readClusterNodes(answering, cluster || []); clusterAt = new Date().toISOString(); } catch (e) { log.debug(`Proxmox ${h.name}: cluster nodes: ${e.message}`); }
+    }
+    return { ...data, via, cluster, clusterAt };
+  }
+
   async function poll(id) {
     const h = rowOf(id);
     if (!h) throw new HttpError(404, 'err.notFound');
@@ -242,7 +328,7 @@ export function createProxmox({ db, settings }) {
     if (PUSH_KINDS.includes(h.kind)) return checkPush(h);
     try {
       const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : h.kind === 'redfish' ? await readRedfish(withSecret(h)) : NET_READERS[h.kind] ? await NET_READERS[h.kind](withSecret(h))
-        : READERS[h.kind] ? await READERS[h.kind](withSecret(h)) : await readPve(withSecret(h));
+        : READERS[h.kind] ? await READERS[h.kind](withSecret(h)) : await readPveCluster(h);
       if (data.netdevices) syncNetDevices(data);
       if (data.kind === 'redfish') syncRedfish(data);
       db.prepare("UPDATE proxmox_hosts SET last_at=?, last_ok=1, last_error='', data=? WHERE id=?").run(at, JSON.stringify(data), id);

@@ -435,12 +435,16 @@ function proxmoxDetail(x) {
     h('p', { class: 'small', style: { margin: '6px 0 0' } }, t('px.missingThen')))) : null;
   if (!d.kind) return head;
   if (d.netdevices) return netDetail(d, head);
+  // Cluster: which node answered, and which nodes can stand in
+  const via = x.last_ok && d.via ? h('div', { class: 'note warn' }, t('px.via', { node: d.via.node, url: x.url, error: d.via.error || '' })) : null;
+  const others = Array.isArray(d.cluster) && d.cluster.length ? h('p', { class: 'muted small', style: { margin: '0 0 10px' } },
+    t('px.cluster', { list: d.cluster.map((c) => `${c.name} (${c.ip})`).join(' · ') })) : null;
   if (d.kind === 'redfish') return h('div', {}, head, hardwareDetail(d, { inventory: true }));
   if (d.kind !== 'pbs') {
     const running = (d.guests || []).filter((g) => g.status === 'running').length;
     const pve = d.kind === 'pve';
-    return h('div', {}, head, rights,
-      h('h3', { class: 'sub-title' }, pve ? t('px.nodes') : t('virt.hosts')),
+    return h('div', {}, head, via, rights,
+      h('h3', { class: 'sub-title' }, pve ? t('px.nodes') : t('virt.hosts')), pve ? others : null,
       h('ul', { class: 'port-macs' }, (d.nodes || []).map((n) => h('li', {}, h('strong', {}, n.name),
         h('span', { class: `badge ${n.online ? 'badge-ok' : 'badge-bad'}` }, n.stale ? t('virt.silent') : n.online ? 'online' : 'offline'),
         n.online && (n.cpu !== null || n.mem !== null) ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu ?? '–'} % · RAM ${n.mem ?? '–'} %`) : null,
@@ -770,6 +774,8 @@ function hostSummary(x) {
   if (!x.last_at) figures.push(PUSH.includes(x.kind) ? t('virt.waiting') : t('prn.none'));
   else if (!x.last_ok) bad(x.last_error || t('vo.error'));
   if (x.last_ok && (d.missing || []).length) warn(t('vo.rights'));
+  // Cluster: the entered node does not answer, another one did
+  if (x.last_ok && d.via) warn(t('vo.via', { node: d.via.node }));
   if (d.netdevices) {
     const off = d.netdevices.filter((y) => !y.online).length;
     if (off) bad(t('vo.devOffline', { n: off }));
