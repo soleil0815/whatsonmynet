@@ -208,8 +208,10 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       const o = input.options && typeof input.options === 'object' ? input.options : {};
       const metric = o.metric ?? prev.metric;
       if (!SENSOR_METRICS.includes(metric)) throw new HttpError(400, 'err.sensorMetric');
-      const deviceId = old ? old.device_id : Number(input.device_id);
+      // On a change the sensor may move to another value of another device (also from a hypervisor value to the script of a node)
+      const deviceId = input.device_id !== undefined && input.device_id !== null && input.device_id !== '' ? Number(input.device_id) : old?.device_id;
       if (!deviceId || !db.prepare('SELECT 1 FROM devices WHERE id=?').get(deviceId)) throw new HttpError(400, 'err.sensorDevice');
+      if (old) v.device_id = deviceId;
       const base = ['printerErrors', 'health', 'disk', 'raid', 'port', 'hostOnline', 'service', 'upsPower', 'hostPdHealth', 'hostReboot', 'hostAv', 'hostFirewall'].includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'sensor' ? old : null);
       v.options = JSON.stringify({ metric, key: line(o.key ?? prev.key ?? '', 120), ...base });
       v.target = (base.label || metric).slice(0, 200);
@@ -223,6 +225,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       if (!PROXMOX_METRICS.includes(metric)) throw new HttpError(400, 'err.sensorMetric');
       const base = ['nodeOnline', 'guestRunning', 'netOnline', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume'].includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'proxmox' ? old : null);
       v.options = JSON.stringify({ host, metric, key: line(o.key ?? prev.key ?? '', 200), ...base });
+      // A device sensor that becomes a hypervisor value no longer belongs to the device (hypervisors have no location)
+      if (old && old.type === 'sensor') v.device_id = null;
       v.target = (base.label || metric).slice(0, 200);
       v.port = null;
     } else if (type === 'snmp') {
@@ -351,7 +355,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const v = await clean(input, old);
     const keys = Object.keys(v);
     db.prepare(`UPDATE monitors SET ${keys.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...keys.map((k) => v[k]), iso(), id);
-    if (v.target !== old.target || v.type !== old.type || v.port !== old.port || v.docker_host_id !== old.docker_host_id) {
+    if (v.target !== old.target || v.type !== old.type || v.port !== old.port || v.docker_host_id !== old.docker_host_id || ('device_id' in v && v.device_id !== old.device_id)) {
       db.prepare("UPDATE monitors SET status='pending', status_since=?, fail_count=0, cert_valid_to=NULL, cert_alert_days=NULL, data='{}' WHERE id=?").run(iso(), id);
     }
     nextRun.set(id, 0);

@@ -8,6 +8,7 @@ import { inScope } from '../auth/scope.js';
 export function createMonitoringApi(ctx) {
   const { db, monitoring, channels, maintenance, dockerHosts } = ctx;
   const r = express.Router();
+  const choices = ctx.sensorChoices;
   const editor = requireRole('editor');
   const admin = requireRole('admin');
   const who = (req) => req.user?.username || '';
@@ -53,6 +54,8 @@ export function createMonitoringApi(ctx) {
   });
   r.put('/monitors/:id', editor, async (req, res) => {
     monitorOk(req, idParam(req));
+    // a sensor moved to another device: that one must be his as well
+    if (req.body?.device_id !== undefined && req.body.device_id !== null && !deviceOk(req, Number(req.body.device_id))) throw new HttpError(403, 'err.scope');
     parentOk(req);
     typeOk(req, req.body.type ?? monitoring.get(idParam(req))?.type);
     const m = await monitoring.update(idParam(req), req.body);
@@ -77,6 +80,28 @@ export function createMonitoringApi(ctx) {
     monitoring.remove(id);
     audit(req, 'monitor.delete', m?.name);
     res.json({ ok: true });
+  });
+
+  // Sensors: what can be watched - one list per device or per host under Virtualization (the same values both ways)
+  r.get('/sensors/sources', editor, (req, res) => {
+    const ids = choices.deviceIds();
+    const devices = db.prepare('SELECT id, name, ip, location_id FROM devices ORDER BY name COLLATE NOCASE').all()
+      .filter((d) => ids.has(d.id) && (!req.scope || inScope(req.scope, d.location_id))).map(({ id, name, ip }) => ({ id, name, ip }));
+    const hosts = req.scope ? [] : db.prepare('SELECT id, name, kind FROM proxmox_hosts ORDER BY name COLLATE NOCASE').all();
+    res.json({ devices, hosts });
+  });
+  r.get('/sensors/choices', editor, (req, res) => {
+    const device = int(str(req.query.device, 12));
+    const host = int(str(req.query.host, 12));
+    if (device) {
+      if (!db.prepare('SELECT 1 FROM devices WHERE id=?').get(device) || !deviceOk(req, device)) throw new HttpError(404, 'err.notFound');
+      return res.json(choices.forDevice(device, { withHosts: !req.scope }));
+    }
+    if (host) {
+      if (req.scope) throw new HttpError(403, 'err.scope');
+      return res.json(choices.forHost(host));
+    }
+    throw new HttpError(400, 'err.notFound');
   });
 
   // Docker hosts: names for editors (monitor form), addresses and changes for admins
