@@ -1,6 +1,6 @@
 # WhatsOnMyNet - Handbuch
 
-WhatsOnMyNet findet, was in deinem Netz läuft, und hält nur das im Inventar, was du übernimmst. Dazu überwacht es Geräte, Dienste und Webseiten, liest Drucker, Switches, NAS und Proxmox aus und meldet sich per E-Mail, Telegram oder Webhook, wenn etwas nicht stimmt.
+WhatsOnMyNet findet, was in deinem Netz läuft, und hält nur das im Inventar, was du übernimmst. Dazu überwacht es Geräte, Dienste und Webseiten, liest Drucker, Switches, NAS und Proxmox aus und meldet sich per E-Mail, Messenger, Push aufs Handy oder Webhook, wenn etwas nicht stimmt.
 
 ![Übersicht](img/dashboard-de.png)
 
@@ -58,7 +58,14 @@ Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert 
 
 ![Monitor mit Verlauf](img/monitor-de.png)
 
-**Benachrichtigungen** (*Einstellungen → Benachrichtigungen*): E-Mail (über den SMTP-Server), Telegram-Bot und Webhook mit eigener JSON-Vorlage. Jeder Kanal hat eine Testnachricht. **Wartungsfenster** (einmalig oder wöchentlich) unterdrücken Alarme.
+**Benachrichtigungen** (*Einstellungen → Benachrichtigungen → Kanal hinzufügen*): Dienst wählen, die kurze Anleitung im Formular befolgen, speichern und mit **Testnachricht** prüfen.
+
+- **Häufig:** E-Mail (über den SMTP-Server), Telegram-Bot, Webhook mit eigener JSON-Vorlage (z. B. für n8n oder ein Skript)
+- **Chat und Messenger:** Discord, Slack, Microsoft Teams (Workflows), Google Chat, Mattermost, Rocket.Chat, Matrix/Element, Signal (über signal-cli-rest-api), WhatsApp (CallMeBot, an die eigene Nummer)
+- **Push aufs Handy:** ntfy, Gotify, Pushover, Pushbullet, Home Assistant (Companion-App)
+- **Alles andere:** Apprise - eine Brücke zu über 100 weiteren Diensten (SMS, Threema …)
+
+Tokens, Schlüssel und Webhook-Adressen werden verschlüsselt gespeichert und nie wieder angezeigt. Störungen kommen bei Push-Diensten mit hoher Priorität. **Wartungsfenster** (einmalig oder wöchentlich) unterdrücken Alarme.
 
 ## Drucker, Switches und NAS
 
