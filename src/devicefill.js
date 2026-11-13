@@ -17,7 +17,7 @@ const HARDWARE = ['serial', 'model', 'vendor', 'os', 'type'];
 // Host names also come from the scan (DNS) - they are only filled in, never kept "up to date" against it
 const FILL_ONLY = ['hostname'];
 // Placeholders some devices answer instead of a value
-const JUNK = /^(|0+|n\/?a|none|null|unknown|not available|default string|to be filled by o\.e\.m\.|123456789|serial ?number|x+)$/i;
+const JUNK = /^(|0+|n\/?a|none|null|unknown|not available|not specified|default string|to be filled by o\.e\.m\.|o\.e\.m\.?|oem|123456789|serial ?number|x+|system (serial number|product name|manufacturer|version)|chassis serial number|base board serial number|invalid)$/i;
 const parse = (s) => { try { return JSON.parse(s) || {}; } catch { return {}; } };
 const same = (a, b) => String(a ?? '').trim().toLowerCase().replace(/\s+/g, ' ') === String(b ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 

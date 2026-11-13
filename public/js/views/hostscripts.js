@@ -93,7 +93,91 @@ export function systemPanel(x) {
     (x.services || []).length ? [h('h3', { class: 'sub-title' }, t('hs.services')),
       failed.length ? h('ul', { class: 'port-macs' }, failed.map((s) => h('li', {}, h('span', { class: 'badge badge-bad' }, t('val.state.failed')), h('span', {}, s.display || s.name), h('span', { class: 'muted small mono' }, s.name))))
         : h('p', { class: 'muted small', style: { margin: 0 } }, t('hs.servicesOk', { n: running }))] : null,
-    x.ups ? [h('h3', { class: 'sub-title' }, x.ups.source === 'battery' ? t('ups.titleBattery') : t('ups.title')), upsBlock(x.ups)] : null);
+    x.ups ? [h('h3', { class: 'sub-title' }, x.ups.source === 'battery' ? t('ups.titleBattery') : t('ups.title')), upsBlock(x.ups)] : null,
+    careBlock(x),
+    pdisksBlock(x.pdisks),
+    eventsBlock(x.events),
+    certsBlock(x.certs),
+    hwBlock(x.hw));
+}
+
+const badge = (tone, text) => h('span', { class: `badge ${tone ? `badge-${tone}` : ''}` }, text);
+const kv = (rows) => h('dl', { class: 'kv' }, rows.filter(Boolean).map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));
+const sub = (text) => h('h3', { class: 'sub-title' }, text);
+
+/** Updates, restart, virus protection, firewall: what an admin wants to see at a glance */
+function careBlock(x) {
+  const u = x.updates; const a = x.antivirus; const f = x.firewall;
+  if (!u && !a && !f) return null;
+  const updText = !u ? null : u.pending === null ? h('span', { class: 'muted' }, t('host.updNotYet'))
+    : u.pending === 0 ? [badge('ok', t('host.updNone')), u.checkedAt ? h('span', { class: 'muted small' }, ` ${t('host.checked', { when: fmtAgo(u.checkedAt, t) })}`) : null]
+      : [badge(u.security ? 'bad' : 'new', t('host.updPending', { n: u.pending })), u.security ? ` ${t('host.updSecurity', { n: u.security })}` : '',
+        u.checkedAt ? h('span', { class: 'muted small' }, ` ${t('host.checked', { when: fmtAgo(u.checkedAt, t) })}`) : null];
+  const avTone = { ok: 'ok', outdated: 'new', off: 'bad' };
+  const fwTone = { on: 'ok', partial: 'new', off: 'bad' };
+  const offProfiles = f?.profiles ? Object.entries(f.profiles).filter(([, v]) => !v).map(([k]) => t(`host.fw.${k}`)) : [];
+  return [sub(t('host.care')), kv([
+    u ? [t('host.updates'), updText] : null,
+    u?.lastInstalled ? [t('host.lastInstalled'), fmtDate(u.lastInstalled, getLang(), false)] : null,
+    u ? [t('host.reboot'), u.reboot ? badge('new', t('host.rebootYes')) : t('host.rebootNo')] : null,
+    a ? [t('host.av'), [badge(avTone[a.state], t(`host.av.${a.state}`)), ` ${a.name}`, a.sigAge !== null && a.sigAge !== undefined ? h('span', { class: 'muted small' }, ` · ${t('host.sigAge', { n: a.sigAge })}`) : null]] : null,
+    f ? [t('host.fw'), [badge(fwTone[f.state], t(`host.fw.${f.state}`)), f.name && f.name !== 'Windows' ? ` ${f.name}` : '', offProfiles.length && f.state !== 'off' ? h('span', { class: 'muted small' }, ` · ${t('host.fwOff', { list: offProfiles.join(', ') })}`) : null]] : null,
+  ])];
+}
+
+function eventsBlock(e) {
+  if (!e) return null;
+  const head = sub(t('host.events', { h: e.hours }));
+  if (!e.critical && !e.errors) return [head, h('p', { class: 'muted small', style: { margin: 0 } }, t('host.eventsNone'))];
+  return [head,
+    h('p', { style: { margin: '0 0 8px' } }, e.critical ? badge('bad', t('host.evCritical', { n: e.critical })) : null, ' ', e.errors ? badge('new', t('host.evErrors', { n: e.errors })) : null),
+    e.items?.length ? h('ul', { class: 'ev-list' }, e.items.map((i) => h('li', {},
+      h('span', { class: 'muted small mono' }, i.at ? fmtDate(i.at, getLang()) : ''),
+      h('span', { class: `badge ${i.level === 'critical' ? 'badge-bad' : 'badge-new'}` }, t(`host.lv.${i.level}`)),
+      h('span', { class: 'small' }, h('b', {}, `${i.source}${i.id ? ` ${i.id}` : ''}`), i.message ? `: ${i.message}` : '')))) : null];
+}
+
+function certsBlock(certs) {
+  if (!certs?.length) return null;
+  const list = certs.map((c) => ({ ...c, days: Math.floor((Date.parse(c.notAfter) - Date.now()) / 86400000) })).sort((a, b) => a.days - b.days);
+  return [sub(t('host.certs')), h('ul', { class: 'ev-list' }, list.map((c) => h('li', {},
+    badge(c.days < 0 ? 'bad' : c.days <= 21 ? 'new' : 'ok', c.days < 0 ? t('host.certExpired') : t('host.certDays', { n: c.days })),
+    h('span', {}, /CN=([^,]+)/i.exec(c.subject)?.[1] || c.name || c.subject),
+    h('span', { class: 'muted small' }, `${fmtDate(c.notAfter, getLang(), false)} · ${/CN=([^,]+)/i.exec(c.issuer)?.[1] || c.issuer}`))))];
+}
+
+function hwBlock(hw) {
+  if (!hw) return null;
+  const cpu = hw.cpu ? `${hw.sockets > 1 ? `${hw.sockets} × ` : ''}${hw.cpu}${hw.cores ? ` · ${t('host.cores', { c: hw.cores, t: hw.threads || hw.cores })}` : ''}` : '';
+  const ram = hw.ram || [];
+  return [sub(t('host.hw')), kv([
+    hw.vendor || hw.model ? [t('host.model'), [[hw.vendor, hw.model].filter(Boolean).join(' '), hw.virtual ? [' ', badge('', t('host.virtual'))] : null]] : null,
+    hw.serial ? [t('f.serial'), h('span', { class: 'mono' }, hw.serial)] : null,
+    hw.bios ? [t('host.bios'), `${hw.bios}${hw.biosDate ? ` (${fmtDate(hw.biosDate, getLang(), false)})` : ''}`] : null,
+    cpu ? [t('host.cpu'), cpu] : null,
+    ram.length ? [t('host.ram'), [`${bytes(hw.ramTotal)} · ${t('host.modules', { n: ram.length })}`,
+      h('details', { class: 'inline-more' }, h('summary', {}, t('host.showModules')), h('ul', { class: 'ev-list' }, ram.map((m) => h('li', {},
+        h('span', { class: 'mono small' }, m.slot || '–'), h('span', {}, bytes(m.size)), h('span', { class: 'muted small' }, [m.speed ? `${m.speed} MT/s` : '', m.vendor, m.part].filter(Boolean).join(' · '))))))]] : null,
+    hw.nics?.length ? [t('host.nics'), h('ul', { class: 'ev-list' }, hw.nics.map((n) => h('li', {},
+      badge(n.up ? 'ok' : '', n.up ? (n.speed ? speedText(n.speed) : t('host.up')) : t('host.down')),
+      h('span', {}, n.name), h('span', { class: 'muted small' }, [n.desc, n.mac].filter(Boolean).join(' · ')))))] : null,
+  ])];
+}
+const speedText = (mbit) => (mbit >= 1000 ? `${mbit / 1000} Gbit/s` : `${mbit} Mbit/s`);
+
+function pdisksBlock(list) {
+  if (!list?.length) return null;
+  const tone = { ok: 'ok', warning: 'new', failed: 'bad', unknown: '' };
+  return [sub(t('host.pdisks')), h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+    h('thead', {}, h('tr', {}, h('th', {}, t('host.disk')), h('th', {}, t('host.state')), h('th', { class: 'num' }, t('host.size')), h('th', { class: 'num' }, t('host.temp')),
+      h('th', { class: 'num hide-sm' }, t('host.wear')), h('th', { class: 'num hide-sm' }, t('host.hours')))),
+    h('tbody', {}, list.map((d) => h('tr', {},
+      h('td', {}, h('span', { class: 'name' }, d.model || d.name), h('span', { class: 'muted small mono', style: { display: 'block' } }, [d.media, d.bus, d.serial].filter(Boolean).join(' · '))),
+      h('td', {}, badge(tone[d.health], t(`host.h.${d.health}`)), d.realloc ? h('span', { class: 'muted small', style: { display: 'block' } }, t('host.realloc', { n: d.realloc })) : null),
+      h('td', { class: 'num' }, d.size ? bytes(d.size) : '–'),
+      h('td', { class: 'num' }, d.temp !== null && d.temp !== undefined ? `${d.temp} °C` : '–'),
+      h('td', { class: 'num hide-sm' }, d.wear !== null && d.wear !== undefined ? `${d.wear} %` : '–'),
+      h('td', { class: 'num hide-sm' }, d.hours !== null && d.hours !== undefined ? d.hours.toLocaleString(getLang()) : '–'))))))];
 }
 
 /** Settings → Host scripts: shared scripts for many machines, scripts of single devices, unknown machines */
