@@ -18,7 +18,13 @@ export function monitorDot(status) {
   return h('span', { class: `dot mon-${status}`, title: t(`mon.status.${status}`), role: 'img', 'aria-label': t(`mon.status.${status}`) });
 }
 
-export const isValueType = (m) => m.type === 'sensor' || m.type === 'snmp';
+// Monitors that measure a value (not a response time): device sensors, SNMP values and Proxmox values
+const PX_STATE = ['nodeOnline', 'guestRunning'];
+const PX_UNIT = { nodeCpu: ' %', nodeMem: ' %', storage: ' %', datastore: ' %', backupAge: ' h', groupAge: ' h' };
+export const isValueType = (m) => m.type === 'sensor' || m.type === 'snmp' || (m.type === 'proxmox' && !PX_STATE.includes(m.options?.metric));
+const unitOf = (m) => (m.type === 'proxmox' ? PX_UNIT[m.options?.metric] || '' : m.options?.unit ? ` ${m.options.unit}` : '');
+/** Last measured value with its unit, '–' while there is none */
+const valueText = (m) => (m.last_ms === null || m.last_ms === undefined ? '–' : `${m.last_ms}${unitOf(m)}`);
 const OPS = ['lt', 'le', 'gt', 'ge', 'eq', 'ne', 'contains', 'notcontains'];
 
 /** Readable name of a sensor value, e.g. "Toner: Black Toner (free %)" */
@@ -93,7 +99,7 @@ export async function renderMonitoring(main, id, sub) {
                 h('div', { class: 'sub mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`)))),
             h('td', { class: 'hide-sm' }, beatsBar(m.beats, 40, isValueType(m))),
             h('td', {}, pct(m.uptime24)),
-            h('td', { class: 'hide-sm' }, isValueType(m) ? (m.last_ms ?? '–') : m.last_ms !== null && m.status === 'up' ? `${m.last_ms} ms` : '–'),
+            h('td', { class: 'hide-sm' }, isValueType(m) ? valueText(m) : m.last_ms !== null && m.status === 'up' ? `${m.last_ms} ms` : '–'),
             h('td', { class: 'hide-sm' }, certBadge(m))))))));
     }
     timer = setTimeout(load, 15000);
@@ -199,7 +205,7 @@ async function renderDetail(main, id) {
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.h24.pct)), h('span', {}, t('mon.uptime24'))),
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d7.pct)), h('span', {}, t('mon.uptime7'))),
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d30.pct)), h('span', {}, t('mon.uptime30'))),
-        isValueType(m) ? h('div', { class: 'figure' }, h('b', {}, m.last_ms ?? '–'), h('span', {}, t('sens.current')))
+        isValueType(m) ? h('div', { class: 'figure' }, h('b', {}, valueText(m)), h('span', {}, t('sens.current')))
           : h('div', { class: 'figure' }, h('b', {}, m.uptime.h24.avgMs !== null ? `${m.uptime.h24.avgMs} ms` : '–'), h('span', {}, t('mon.avgMs'))),
         m.type === 'smb' && m.data && m.data.total ? h('div', { class: `figure${m.data.low ? ' alert' : ''}` }, h('b', {}, t('smb.free', { size: fmtBytes(m.data.free) })),
           h('span', {}, t('smb.of', { total: fmtBytes(m.data.total), pct: pct(m.data.pct) }))) : null,
@@ -335,7 +341,9 @@ export async function openMonitorForm(m, done, preset = null) {
   const syncPx = () => {
     const x = pxMetrics.find((y) => `${y.metric}|${y.key}` === pxMetricSel.value);
     if (typeSel.value === 'proxmox') condBox.hidden = !x || x.kind === 'state';
-    pxHint.textContent = x ? t('sens.now', { value: x.value === null || x.value === undefined ? '–' : `${x.value}${x.unit ? ` ${x.unit}` : ''}` }) : '';
+    pxHint.textContent = !x ? '' : x.value === null || x.value === undefined
+      ? (x.kind === 'number' && !/Age$/.test(x.metric) ? t('px.noValue') : t('sens.now', { value: '–' }))
+      : t('sens.now', { value: `${x.value}${x.unit ? ` ${x.unit}` : ''}` });
     if (x && !m && x.kind === 'number' && !thr.dataset.touched) { opSel.value = x.op; thr.value = x.threshold; }
   };
   pxMetricSel.addEventListener('change', syncPx);
