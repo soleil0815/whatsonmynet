@@ -178,7 +178,9 @@ test('Linux script: POSIX sh, sets itself up in cron, reports what the server ac
 const pwsh = ['pwsh', process.env.PWSH].filter(Boolean).find((p) => { try { execFileSync(p, ['-NoProfile', '-Command', '1'], { stdio: 'ignore' }); return true; } catch { return false; } });
 test('Windows script: reports hardware, disks, updates, protection, events and certificates', { skip: !pwsh && 'pwsh missing' }, () => {
   const dir = fs.mkdtempSync(path.join(tmp, 'win-'));
-  const s = hostScript('windows', { url: 'https://womn:8443/api/hosts/push', token: 'tok', pin: { sha1: 'AB:CD' } });
+  // Without certificate pinning: its Add-Type needs Windows PowerShell 5.1 (the scheduled task uses powershell.exe);
+  // PowerShell 7.5 refuses the old ServicePointManager at compile time
+  const s = hostScript('windows', { url: 'https://womn:8443/api/hosts/push', token: 'tok' });
   const home = path.join(dir, 'WhatsOnMyNet');
   fs.mkdirSync(home);
   const file = path.join(home, s.file);
