@@ -36,20 +36,35 @@ export function createMonitoringApi(ctx) {
     res.json(await monitoring.suggestionFor(idParam(req)));
   });
   r.get('/monitors/:id', (req, res) => { monitorOk(req, idParam(req)); res.json(monitoring.detail(idParam(req), int(str(req.query.hours, 4)) || 24)); });
+  // A limited user may only put a monitor behind one he can see
+  const parentOk = (req) => {
+    const pid = int(String(req.body?.parent_id ?? ''));
+    if (pid) monitorOk(req, pid);
+  };
   r.post('/monitors', editor, async (req, res) => {
     if (!deviceOk(req, req.body.device_id ? Number(req.body.device_id) : null)) throw new HttpError(403, 'err.scope');
+    parentOk(req);
     const m = await monitoring.create(req.body);
     audit(req, 'monitor.create', `${m.name} (${m.type} ${m.target})`);
     res.status(201).json(m);
   });
   r.put('/monitors/:id', editor, async (req, res) => {
     monitorOk(req, idParam(req));
+    parentOk(req);
     const m = await monitoring.update(idParam(req), req.body);
     audit(req, 'monitor.update', m.name);
     res.json(m);
   });
   r.post('/monitors/:id/pause', editor, (req, res) => { monitorOk(req, idParam(req)); const m = monitoring.pause(idParam(req)); audit(req, 'monitor.pause', m.name); res.json(m); });
   r.post('/monitors/:id/resume', editor, (req, res) => { monitorOk(req, idParam(req)); const m = monitoring.resume(idParam(req)); audit(req, 'monitor.resume', m.name); res.json(m); });
+  // Everything plugged in at the switch of this monitor: put it behind this monitor (no alarm flood when the switch fails)
+  r.post('/monitors/:id/children', editor, (req, res) => {
+    const id = idParam(req);
+    monitorOk(req, id);
+    const n = monitoring.adoptChildren(id, (c) => deviceOk(req, c.device_id));
+    audit(req, 'monitor.children', `${monitoring.get(id)?.name} (${n})`);
+    res.json({ count: n });
+  });
   r.post('/monitors/:id/check', editor, async (req, res) => { monitorOk(req, idParam(req)); res.json(await monitoring.checkNow(idParam(req))); });
   r.delete('/monitors/:id', editor, (req, res) => {
     const id = idParam(req);

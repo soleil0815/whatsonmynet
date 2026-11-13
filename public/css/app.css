@@ -370,18 +370,25 @@ dialog.modal footer { display: flex; justify-content: flex-end; gap: 8px; paddin
 .dot.mon-pending { background: var(--new-fill); }
 .dot.mon-maintenance { background: var(--ti); }
 .dot.mon-paused { background: var(--line-2); }
+/* Follow-up outage: hollow - something in front of it is down, it is not reported on its own */
+.dot.mon-unreachable { background: transparent; box-shadow: inset 0 0 0 2px var(--bad); }
 .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 7px; border-radius: 2px; font-size: 12.5px; font-weight: 600; white-space: nowrap; background: var(--bg-2); color: var(--ink-2); }
 .pill i { width: 7px; height: 7px; border-radius: 1px; background: currentColor; }
 .pill-up { background: var(--ok-soft); color: var(--ok); }
 .pill-down { background: var(--bad-soft); color: var(--bad); }
 .pill-pending { background: var(--new-soft); color: var(--new); }
 .pill-maintenance { background: var(--ti-soft); color: var(--ti); }
+.pill-unreachable { background: transparent; color: var(--bad); box-shadow: inset 0 0 0 1px var(--bad-soft); }
+.pill-unreachable i { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
 .device-head h1 .pill { font-size: 13px; }
 .mon-icon.mon-up { background: var(--ok-soft); color: var(--ok); }
 .mon-icon.mon-down { background: var(--bad-soft); color: var(--bad); }
 .mon-icon.mon-pending { background: var(--new-soft); color: var(--new); }
 .mon-icon.mon-maintenance { background: var(--ti-soft); color: var(--ti); }
 .mon-icon.mon-paused { background: var(--bg-2); color: var(--muted); }
+.mon-icon.mon-unreachable { background: var(--bg-2); color: var(--bad); }
+.dep-list { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.dep-link { display: inline-flex; align-items: center; gap: 6px; }
 .beats { display: inline-flex; gap: 2px; align-items: stretch; height: 22px; }
 .beats i { width: 4px; border-radius: 1px; background: var(--ok); }
 .beats i.bad { background: var(--bad); }

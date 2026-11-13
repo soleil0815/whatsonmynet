@@ -102,7 +102,7 @@ export async function renderInventory(main) {
       onchange: (e) => { if (e.target.checked) selected.add(d.id); else selected.delete(d.id); e.target.closest('tr').classList.toggle('sel', e.target.checked); renderBulk(); } }) : null;
     // State in words: what a person wants to know at a glance
     const st = d.monitor === 'down' ? ['bad', t('inv.st.monitorDown')] : d.presence === 'missing' ? ['bad', t('inv.st.missing')]
-      : d.monitor === 'paused' ? ['muted', t('mon.status.paused')] : d.presence === 'online' || d.monitor === 'up' ? ['ok', t('inv.st.ok')] : ['muted', t(`presence.${d.presence}`)];
+      : d.monitor === 'unreachable' ? ['muted', t('mon.status.unreachable')] : d.monitor === 'paused' ? ['muted', t('mon.status.paused')] : d.presence === 'online' || d.monitor === 'up' ? ['ok', t('inv.st.ok')] : ['muted', t(`presence.${d.presence}`)];
     const sub = [t(`type.${d.type}`), d.model && d.model !== d.name ? d.model : d.vendor && d.vendor !== d.name ? d.vendor : ''].filter(Boolean).join(' · ');
     return h('tr', { class: `click${selected.has(d.id) ? ' sel' : ''}`, onclick: (e) => { if (!e.target.closest('a,input,label')) open(); } },
       edit ? h('td', { class: 'min' }, box) : null,
