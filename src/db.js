@@ -557,6 +557,8 @@ export const MIGRATIONS = [
     at TEXT NOT NULL
   );
   `,
+  // 18: which device fields hold what the device itself reported (kept up to date; replaced on an exchanged device)
+  `ALTER TABLE devices ADD COLUMN auto_fields TEXT NOT NULL DEFAULT '{}';`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

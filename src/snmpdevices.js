@@ -2,7 +2,7 @@
 // Switch: ports, MAC table (→ "plugged in at switch X, port Y" for every device), LLDP neighbours, firmware.
 // NAS: volumes, disks, RAID, temperature, health - problems are reported once and again when they are solved.
 import { readSwitch } from './scan/switch.js';
-import { fillDevice } from './devicefill.js';
+import { fillDevice, snmpFacts } from './devicefill.js';
 import { readNas, nasProblems } from './scan/nas.js';
 import { HttpError } from './lib/http.js';
 import { log } from './lib/log.js';
@@ -111,9 +111,7 @@ export function createSnmpDevices({ db, settings, channels }) {
       }
       if (data && kind === 'nas') alerts = await notifyNas(d, alerts, data, at);
       // Serial number, model, firmware from the device itself into the inventory (only empty fields)
-      if (data) fillDevice(db, d.id, kind === 'nas'
-        ? { serial: data.serial, model: data.model, vendor: { synology: 'Synology', qnap: 'QNAP' }[data.vendor], os: data.version && data.vendor === 'qnap' && !/^Q/i.test(data.version) ? `QTS ${data.version}` : data.version }
-        : { serial: data.serial, model: data.model, os: data.firmware });
+      if (data) fillDevice(db, d.id, snmpFacts(kind, data));
       upsert.run({ device_id: d.id, kind, at, ok: data ? 1 : 0, error, data: JSON.stringify(data || {}), alerts: JSON.stringify(alerts) });
       return status(d.id);
     } finally {
