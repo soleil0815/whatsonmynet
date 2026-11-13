@@ -8,6 +8,7 @@ import { HttpError, line, str, oneOf } from '../lib/http.js';
 import { log } from '../lib/log.js';
 import { config } from '../config.js';
 import { PROVIDERS, PROVIDER_TYPES, publicConfig, cleanProviderConfig, sendProvider } from './providers.js';
+import { forgetChannel } from '../lib/idlists.js';
 
 export const CHANNEL_TYPES = ['email', 'telegram', 'webhook', ...PROVIDER_TYPES];
 let telegramApi = 'https://api.telegram.org';
@@ -119,15 +120,22 @@ function postJson(url, body, { headers = {}, timeoutMs = 10_000 } = {}) {
     const req = lib.request(u, { method: 'POST', timeout: timeoutMs, agent: false,
       headers: { 'Content-Type': 'application/json', 'Content-Length': data.length, 'User-Agent': `WhatsOnMyNet/${config.version}`, ...headers } }, (res) => {
       const chunks = []; let size = 0;
-      res.on('data', (d) => { if (size < 16384) { chunks.push(d); size += d.length; } });
-      res.on('end', () => {
+      const settle = () => {
+        clearTimeout(deadline);
         const text = Buffer.concat(chunks).toString('utf8');
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(text);
         else reject(Object.assign(new Error(`HTTP ${res.statusCode}`), { body: text.slice(0, 300) }));
-      });
+      };
+      // At most 16 KB are read; a longer answer is cut, never read on for ever
+      res.on('data', (d) => { chunks.push(d); size += d.length; if (size >= 16384) { settle(); res.destroy(); } });
+      res.on('end', settle);
+      res.on('error', () => settle());
     });
+    // timeout = silence on the socket; a deadline for the whole request too (a trickling answer would hold the
+    // monitor that wants to send this alarm)
+    const deadline = setTimeout(() => req.destroy(new Error('timeout')), timeoutMs + 2000);
     req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', (e) => reject(e));
+    req.on('error', (e) => { clearTimeout(deadline); reject(e); });
     req.end(data);
   });
 }
@@ -135,7 +143,7 @@ function postJson(url, body, { headers = {}, timeoutMs = 10_000 } = {}) {
 const URL_RE = /^https?:\/\/[^\s"'<>]+$/i;
 const EMAILS_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
 
-export function createChannels(db, mailer) {
+export function createChannels(db, mailer, settings = null) {
   const now = () => new Date().toISOString();
   const readConfig = (row) => { try { return JSON.parse(decrypt(row.config) || '{}'); } catch { return {}; } };
 
@@ -252,7 +260,12 @@ export function createChannels(db, mailer) {
     get,
     create: (input) => save(null, input),
     update: (id, input) => save(id, input),
-    remove(id) { if (!db.prepare('DELETE FROM channels WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound'); },
+    remove(id) {
+      db.transaction(() => {
+        if (!db.prepare('DELETE FROM channels WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound');
+        forgetChannel(db, settings, id);
+      })();
+    },
     async test(id) {
       const row = db.prepare('SELECT * FROM channels WHERE id=?').get(id);
       if (!row) throw new HttpError(404, 'err.notFound');
@@ -272,7 +285,10 @@ export function createChannels(db, mailer) {
         : db.prepare('SELECT * FROM channels WHERE enabled=1 AND is_default=1').all();
       const reached = [];
       await Promise.all(rows.map(async (row) => {
-        try { await sendTo(row, ev); reached.push(row.name); } catch (e) { log.warn(`Notification via "${row.name}" failed: ${e.detail || e.message}`); }
+        // A hard limit per channel: the monitor that raises this alarm waits for it and is not checked meanwhile
+        let timer;
+        const limit = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('no answer within 60 s')), 60_000); timer.unref?.(); });
+        try { await Promise.race([sendTo(row, ev), limit]); reached.push(row.name); } catch (e) { log.warn(`Notification via "${row.name}" failed: ${e.detail || e.message}`); } finally { clearTimeout(timer); }
       }));
       return reached;
     },

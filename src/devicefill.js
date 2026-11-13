@@ -36,7 +36,10 @@ export function fillDevice(db, deviceId, facts, source = 'SNMP') {
     if (v && !JUNK.test(v)) got[k] = v;
   }
   // Another serial number than the one in the inventory: other hardware at this address
-  const replaced = !!(got.serial && String(d.serial ?? '').trim() && !same(d.serial, got.serial));
+  // Only when the serial number in the inventory came from the device itself (a typed one may be written differently:
+  // SG2-ABC123 / SG2ABC123), and compared without dashes, spaces and case
+  const serialKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const replaced = !!(got.serial && serialKey(d.serial) && auto.serial !== undefined && same(auto.serial, d.serial) && serialKey(d.serial) !== serialKey(got.serial));
   const set = {};
   const changes = [];
   const nextAuto = { ...auto };

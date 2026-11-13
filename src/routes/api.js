@@ -21,6 +21,7 @@ import { SERVICE_NAMES, GENTLE_PORTS } from '../scan/ports.js';
 import { toCsv } from '../inventory.js';
 import { t } from '../i18n.js';
 import { log } from '../lib/log.js';
+import { keyPin } from '../tls.js';
 
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
 
@@ -73,43 +74,52 @@ export function createApi(ctx) {
   r.post('/login', async (req, res) => {
     const name = line(req.body.username, 64);
     const password = str(req.body.password, 1024);
-    limiter.check(req.ip, name);
+    // One counter per account, whatever way the name is written (FIRMA\carol, OTHER\carol, carol@firma.de, Carol)
+    const key = plainName(name).toLowerCase().replace(/@.*$/, '');
+    limiter.check(req.ip, key);
     let u = users.authenticate(name, password);
+    let counted = false;
     // Active Directory: only for names that are not a local account (a local admin can never be taken over)
     if (!u && ctx.directory.enabled() && users.sourceOf(plainName(name)) !== 'local' && users.sourceOf(name) !== 'local') {
+      // Counted before asking the directory: many requests at the same time must not all get past the limit
+      // while the domain controller is still answering the first one
+      limiter.fail(req.ip, key);
+      counted = true;
       try {
         const info = await ctx.directory.verify(name, password);
         if (!info.role) {
+          // To the outside like a wrong password: otherwise the sign-in page would tell whether an AD password is right
           log.warn(`Directory sign-in of "${name}" refused: in none of the WhatsOnMyNet groups`);
-          limiter.fail(req.ip, name);
-          throw new HttpError(403, 'err.adNoGroup');
+          throw new HttpError(401, 'err.login');
         }
         u = users.upsertDirectory(info);
         if (u) db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), u.username, 'login.ad', `role ${info.role}`);
       } catch (e) {
-        // 401 = unknown user or wrong password → normal failed sign-in below; anything else is shown as it is
+        // 401 = unknown user or wrong password → normal failed sign-in below; other errors without details
+        // (addresses, certificate texts of the domain controller are for the log, not for whoever opens the page)
         if (e.status !== 401) {
-          if (e.status === 502) log.warn(`Directory sign-in failed: ${e.detail || e.message}`);
-          throw e;
+          log.warn(`Directory sign-in failed: ${e.detail || e.message}`);
+          throw new HttpError(e.status || 502, e.status ? e.code : 'err.internal');
         }
       }
     }
     if (!u) {
-      limiter.fail(req.ip, name);
+      if (!counted) limiter.fail(req.ip, key);
       log.warn(`Failed sign-in for "${name}" from ${req.ip}`);
       throw new HttpError(401, 'err.login');
     }
+    if (counted) limiter.undo(req.ip);
     // Second factor: the browser sends name + password again together with the code
     if (u.source === 'local' && u.totp_enabled) {
       const code = str(req.body.code, 40).trim();
       if (!code) throw new HttpError(401, 'err.totpRequired');
       if (!users.checkSecondFactor(u.id, code)) {
-        limiter.fail(req.ip, name);
+        limiter.fail(req.ip, key);
         log.warn(`Wrong second factor for "${name}" from ${req.ip}`);
         throw new HttpError(401, 'err.totpWrong');
       }
     }
-    limiter.success(req.ip, name);
+    limiter.success(req.ip, key);
     sessions.create(req, res, u.id);
     res.json({ user: userOut(u) });
   });
@@ -242,9 +252,10 @@ export function createApi(ctx) {
     res.json(inventory.list({ q: str(req.query.q, 100), type: str(req.query.type, 30), location: str(req.query.location, 12), tag: str(req.query.tag, 60), allowed: req.scope })
       .map((d) => ({ ...d, monitor: mon[d.id] || null })));
   });
-  r.get('/devices/suggestions', (_req, res) => res.json(inventory.suggestions()));
+  r.get('/devices/suggestions', (req, res) => res.json(inventory.suggestions(req.scope)));
   r.post('/devices/bulk', editor, (req, res) => {
     const list = ids(req.body.ids, 2000).filter((id) => seeDeviceId(req, id));
+    if (req.body.set !== undefined && (!req.body.set || typeof req.body.set !== 'object' || Array.isArray(req.body.set))) throw new HttpError(400, 'err.badRequest');
     if (req.scope && req.body.set && 'location_id' in req.body.set && !inScope(req.scope, req.body.set.location_id)) throw new HttpError(403, 'err.scope');
     const n = inventory.bulkUpdate(list, { set: req.body.set, tagsAdd: req.body.tagsAdd, tagsRemove: req.body.tagsRemove }, who(req));
     if (n) audit(req, 'device.bulkUpdate', `${n} device(s): ${Object.keys(req.body.set || {}).join(', ')}`);
@@ -337,7 +348,7 @@ export function createApi(ctx) {
     return t.length > 0 && t.every((x) => inScope(req.scope, x.locationId));
   };
   r.get('/scans', (req, res) => {
-    res.json(db.prepare('SELECT * FROM scans ORDER BY id DESC LIMIT 100').all().filter((s) => scanVisible(req, s)).slice(0, 30).map((s) => ({ ...s, targets: parse(s.targets, []), stats: parse(s.stats),
+    res.json(db.prepare(`SELECT * FROM scans ORDER BY id DESC LIMIT ${req.scope ? 500 : 30}`).all().filter((s) => scanVisible(req, s)).slice(0, 30).map((s) => ({ ...s, targets: parse(s.targets, []), stats: parse(s.stats),
       counts: db.prepare('SELECT status, COUNT(*) n FROM scan_results WHERE scan_id=? GROUP BY status').all(s.id) })));
   });
   r.get('/scans/:id', (req, res) => {
@@ -487,6 +498,7 @@ export function createApi(ctx) {
       const c = new crypto.X509Certificate(pem);
       pin.sha1 = c.fingerprint.replace(/:/g, '');
       pin.spki = crypto.createHash('sha256').update(c.publicKey.export({ type: 'spki', format: 'der' })).digest('base64');
+      pin.key = keyPin(c.publicKey);
     }
     return pin;
   };

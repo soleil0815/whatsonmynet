@@ -68,7 +68,10 @@ export function httpCheck(url, { timeoutS = 10, status = '200-399', keyword = ''
     const t0 = Date.now();
     let done = false;
     let cert = null;
-    const end = (r) => { if (!done) { done = true; resolve({ ...r, cert }); } };
+    // timeout counts silence on the socket only; a device that keeps sending a few bytes (a camera stream) would hold
+    // the check for ever. So one deadline for the whole check as well.
+    const deadline = setTimeout(() => { req.destroy(); end({ ok: false, ms: null, message: `timeout (${timeoutS} s)` }); }, timeoutS * 1000 + 500);
+    const end = (r) => { if (!done) { done = true; clearTimeout(deadline); resolve({ ...r, cert }); } };
     const req = lib.request(u, {
       method: 'GET',
       timeout: timeoutS * 1000,
@@ -88,7 +91,8 @@ export function httpCheck(url, { timeoutS = 10, status = '200-399', keyword = ''
         }
         end({ ok: true, ms, message: `status ${res.statusCode}` });
       };
-      if (!keyword) { res.resume(); res.once('end', finish); res.once('close', finish); return; }
+      // Without a keyword the status is all we need: no reason to read the rest
+      if (!keyword) { finish(); res.destroy(); return; }
       res.on('data', (d) => { if (size < MAX_BODY) { chunks.push(d); size += d.length; } else res.destroy(); });
       res.once('end', finish);
       res.once('close', finish);
@@ -141,7 +145,7 @@ export function runCheck(m, ctx = {}) {
   if (m.type === 'mysql' || m.type === 'postgres' || m.type === 'redis') {
     let o = {};
     try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
-    const opts = { host: m.target, port: m.port || DEFAULT_PORTS[m.type], user: o.user || '', database: o.database || '', tls: !!o.tls, password: ctx.secret?.(m) || '' };
+    const opts = { host: m.target, port: m.port || DEFAULT_PORTS[m.type], user: o.user || '', database: o.database || '', tls: !!o.tls, verify: !!o.verify, password: ctx.secret?.(m) || '' };
     if (m.type === 'mysql') return mysqlCheck(opts, m.timeout_s);
     if (m.type === 'postgres') return postgresCheck(opts, m.timeout_s);
     return redisCheck(opts, m.timeout_s);

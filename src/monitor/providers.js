@@ -38,15 +38,22 @@ export function request(method, url, { body = null, headers = {}, timeoutMs = 10
     const req = lib.request(u, { method, timeout: timeoutMs, agent: false,
       headers: { 'User-Agent': `WhatsOnMyNet/${config.version}`, ...(data ? { 'Content-Type': 'application/json', 'Content-Length': data.length } : {}), ...headers } }, (res) => {
       const chunks = []; let size = 0;
-      res.on('data', (d) => { if (size < 16384) { chunks.push(d); size += d.length; } });
-      res.on('end', () => {
+      const settle = () => {
+        clearTimeout(deadline);
         const text = Buffer.concat(chunks).toString('utf8');
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(text);
         else reject(Object.assign(new Error(`HTTP ${res.statusCode}`), { body: text.slice(0, 300) }));
-      });
+      };
+      // At most 16 KB are read; a longer answer is cut, never read on for ever
+      res.on('data', (d) => { chunks.push(d); size += d.length; if (size >= 16384) { settle(); res.destroy(); } });
+      res.on('end', settle);
+      res.on('error', () => settle());
     });
+    // timeout = silence on the socket; a deadline for the whole request too (a trickling answer would hold the
+    // monitor that wants to send this alarm)
+    const deadline = setTimeout(() => req.destroy(new Error('timeout')), timeoutMs + 2000);
     req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', (e) => reject(e));
+    req.on('error', (e) => { clearTimeout(deadline); reject(e); });
     req.end(data || undefined);
   });
 }

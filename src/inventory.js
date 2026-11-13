@@ -8,6 +8,7 @@ import { HttpError, line, str, isoDate, oneOf } from './lib/http.js';
 import { normalizeMac, isIPv4, ipSortKey, cidrContains } from './lib/net.js';
 import { TYPES, isTelematik, suggestName } from './scan/classify.js';
 import { bestWebUrl } from './scan/engine.js';
+import { forgetDevices } from './lib/idlists.js';
 
 const EDITABLE = ['name', 'type', 'vendor', 'model', 'ip', 'mac', 'hostname', 'os', 'location_id', 'owner', 'notes', 'tags',
   'web_url', 'serial', 'supplier', 'purchase_date', 'warranty_until', 'maintenance_until'];
@@ -40,12 +41,15 @@ export function createInventory(db) {
   }
 
   /** Matches one scan result against the inventory and updates the device if it is known. */
-  function applyResult(resultId, { deep = false } = {}) {
+  function applyResult(resultId, { deep = false, onlyLocation = null } = {}) {
     const r = getResult.get(resultId);
     if (!r) return;
     const mac = normalizeMac(r.mac);
     let device = mac ? byMac.get(mac) : null;
     if (!device) device = byIpNoMac.get(r.ip) || null;
+    // Results of a scan agent only ever change devices of its own location (a branch office must not be able to move
+    // the firewall of the head office to an address of its own by reporting that MAC)
+    if (device && onlyLocation !== null && device.location_id !== onlyLocation) device = null;
     if (!device) {
       const ign = isIgnored.get(mac, r.ip);
       db.prepare('UPDATE scan_results SET status=? WHERE id=?').run(ign ? 'ignored' : 'new', resultId);
@@ -182,7 +186,11 @@ export function createInventory(db) {
   }
 
   function remove(id) {
-    if (!db.prepare('DELETE FROM devices WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound');
+    db.transaction(() => {
+      const mons = db.prepare('SELECT id FROM monitors WHERE device_id=?').all(id).map((m) => m.id);
+      if (!db.prepare('DELETE FROM devices WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound');
+      forgetDevices(db, [id], mons);
+    })();
   }
 
   /** Last finished network scans with their subnets - to tell whether a device was seen in the latest scan */
@@ -311,10 +319,12 @@ export function createInventory(db) {
   }
 
   /** Values already used in the inventory - for suggestions while typing (most used first) */
-  function suggestions() {
-    const top = (col) => db.prepare(`SELECT ${col} v, COUNT(*) n FROM devices WHERE ${col} <> '' GROUP BY ${col} COLLATE NOCASE ORDER BY n DESC, v LIMIT 300`).all().map((r) => r.v);
+  function suggestions(allowed = null) {
+    // A user limited to locations only gets values of the devices he may see
+    const where = allowed ? ` AND location_id IN (${[...allowed].map(Number).filter(Number.isInteger).join(',') || 'NULL'})` : '';
+    const top = (col) => db.prepare(`SELECT ${col} v, COUNT(*) n FROM devices WHERE ${col} <> ''${where} GROUP BY ${col} COLLATE NOCASE ORDER BY n DESC, v LIMIT 300`).all().map((r) => r.v);
     const tags = new Map();
-    for (const r of db.prepare("SELECT tags FROM devices WHERE tags <> ''").all()) {
+    for (const r of db.prepare(`SELECT tags FROM devices WHERE tags <> ''${where}`).all()) {
       for (const tg of r.tags.split(',').map((x) => x.trim()).filter(Boolean)) {
         const k = tg.toLowerCase();
         const e = tags.get(k) || { v: tg, n: 0 };
@@ -323,7 +333,7 @@ export function createInventory(db) {
       }
     }
     // Model → most common manufacturer and type (to fill them in when a known model is chosen)
-    const models = db.prepare(`SELECT model, vendor, type, COUNT(*) n FROM devices WHERE model <> '' GROUP BY model COLLATE NOCASE, vendor, type ORDER BY n DESC`).all();
+    const models = db.prepare(`SELECT model, vendor, type, COUNT(*) n FROM devices WHERE model <> ''${where} GROUP BY model COLLATE NOCASE, vendor, type ORDER BY n DESC`).all();
     const byModel = {};
     for (const m of models) if (!byModel[m.model.toLowerCase()]) byModel[m.model.toLowerCase()] = { vendor: m.vendor, type: m.type };
     return {
@@ -364,11 +374,18 @@ export function createInventory(db) {
 
   function bulkRemove(deviceIds) {
     let n = 0;
-    db.transaction(() => { for (const id of deviceIds) n += db.prepare('DELETE FROM devices WHERE id=?').run(id).changes; })();
+    db.transaction(() => {
+      for (const id of deviceIds) {
+        const mons = db.prepare('SELECT id FROM monitors WHERE device_id=?').all(id).map((m) => m.id);
+        if (db.prepare('DELETE FROM devices WHERE id=?').run(id).changes) { n++; forgetDevices(db, [id], mons); }
+      }
+    })();
     return n;
   }
 
-  return { applyResult, finishScan, create, update, remove, get, list, historyOf, adopt, ignore, unignore, stats, history, suggestions, bulkUpdate, bulkRemove };
+  // From a form only the fields a person may set: facts, first/last seen and the source come from scans alone
+  const createFromForm = (input, user) => create(Object.fromEntries(EDITABLE.filter((k) => input && typeof input === 'object' && k in input).map((k) => [k, input[k]])), user);
+  return { applyResult, finishScan, create: createFromForm, update, remove, get, list, historyOf, adopt, ignore, unignore, stats, history, suggestions, bulkUpdate, bulkRemove };
 }
 
 /** CSV export (semicolon, UTF-8 with BOM - opens correctly in Excel) */

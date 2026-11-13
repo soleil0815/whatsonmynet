@@ -10,6 +10,7 @@ import { SHARE, SMB_USER, SMB_DOMAIN, smbPath } from './smb.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { pingAvailable } from '../scan/probes.js';
 import { bestWebUrl } from '../scan/engine.js';
+import { forgetMonitors } from '../lib/idlists.js';
 
 const HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 const MAX_PARALLEL = 25;
@@ -42,6 +43,14 @@ export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'storage', '
 export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service', 'upsPower', 'upsCharge', 'upsRuntime', 'upsLoad',
   'hostPdHealth', 'hostPdTemp', 'hostPdWear', 'hostUpdates', 'hostUpdatesSec', 'hostReboot', 'hostAv', 'hostFirewall', 'hostEvCritical', 'hostEvErrors', 'hostCert'];
 const DB_TYPES = ['mysql', 'postgres', 'redis'];
+
+/** A stored password only stays with the address it was entered for: whoever moves the monitor to another host or port
+ *  must type it again - otherwise an editor could have it sent to a machine of his own */
+function keepSecret(old, v) {
+  if (!old.secret) return '';
+  if (String(old.target || '').toLowerCase() !== String(v.target || '').toLowerCase() || Number(old.port) !== Number(v.port)) throw new HttpError(400, 'err.passwordAgain');
+  return old.secret;
+}
 const SECRET_TYPES = [...DB_TYPES, 'smb'];
 // Monitors that say whether a device is reachable at all - only these make sense as "everything behind it" parent
 export const REACH_TYPES = ['ping', 'tcp', 'http', 'snmp'];
@@ -111,7 +120,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       seen.add(id);
       const p = parentStmt.get(id);
       if (!p) break;
-      if (p.enabled && (p.status === 'down' || p.status === 'unreachable')) return { state: 'down', mon: p };
+      // In maintenance counts like down: the work on the switch is the reason, not the NAS behind it
+      if (p.enabled && (p.status === 'down' || p.status === 'unreachable' || p.status === 'maintenance')) return { state: 'down', mon: p };
       if (p.enabled && p.fail_count > 0) return { state: 'wait', mon: p };
       id = p.parent_id;
     }
@@ -246,7 +256,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       v.options = JSON.stringify({ share, path, user, domain, minFreePct: Math.round(pct * 10) / 10, minFreeGb: Math.round(gb * 10) / 10 });
       if (typeof input.password === 'string' && input.password !== '') v.secret = encrypt(input.password.slice(0, 512));
       else if (input.clearPassword || !user) v.secret = '';
-      else if (old && old.type === 'smb') v.secret = old.secret || '';
+      else if (old && old.type === 'smb') v.secret = keepSecret(old, v);
       else v.secret = '';
     } else if (type === 'docker') {
       if (!CONTAINER_NAME.test(target)) throw new HttpError(400, 'err.container');
@@ -267,11 +277,13 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
         user: line(o.user ?? oldOpts.user ?? '', 120),
         database: type === 'redis' ? '' : line(o.database ?? oldOpts.database ?? '', 120),
         tls: !!(o.tls ?? oldOpts.tls),
+        // Check the server's certificate too (otherwise TLS encrypts, but anyone in between could pose as the server)
+        verify: !!(o.tls ?? oldOpts.tls) && !!(o.verify ?? oldOpts.verify),
       });
       // Password: only replaced when a new one is sent; kept otherwise (never sent back to the browser)
       if (typeof input.password === 'string' && input.password !== '') v.secret = encrypt(input.password.slice(0, 512));
       else if (input.clearPassword) v.secret = '';
-      else if (old && old.type === type) v.secret = old.secret || '';
+      else if (old && old.type === type) v.secret = keepSecret(old, v);
       else v.secret = '';
     } else if (type === 'http') {
       let u;
@@ -353,7 +365,10 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   }
 
   function remove(id) {
-    if (!db.prepare('DELETE FROM monitors WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound');
+    db.transaction(() => {
+      if (!db.prepare('DELETE FROM monitors WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound');
+      forgetMonitors(db, [id]);
+    })();
     nextRun.delete(id);
   }
 
@@ -475,7 +490,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       log.warn(`Monitor ${m.id} (${m.name}): ${e.message}`);
     } finally {
       running.delete(m.id);
-      nextRun.set(m.id, Date.now() + m.interval_s * 1000);
+      nextRun.set(m.id, performance.now() + m.interval_s * 1000);
     }
   }
 
@@ -496,6 +511,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
           v_max=CASE WHEN excluded.v_max IS NULL THEN v_max WHEN v_max IS NULL OR excluded.v_max>v_max THEN excluded.v_max ELSE v_max END`)
         .run(m.id, hourOf(at), ok, ok ? (res.ms || 0) : 0, v === null ? 0 : 1, v ?? 0, v, v);
     })();
+    // Paused while this check was running: the result is kept, but no state change and no alarm
+    if (!m.enabled) return;
 
     const inMaintenance = !!maintenance.activeFor(m.id, at);
     const set = { last_check: iso(at), last_ms: res.ms ?? null, last_message: msg };
@@ -554,8 +571,10 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     let escEv = null;
     const esc = escalation(m);
     const stillDown = (set.status ?? m.status) === 'down' && !inMaintenance;
+    // Reset only when it is up again: an outage that went into a maintenance window still gets its all clear
+    // to the escalation channels afterwards
     if (!stillDown) {
-      if (m.escalated_at) set.escalated_at = null;
+      if (m.escalated_at && (set.status ?? m.status) === 'up') set.escalated_at = null;
     } else if (!m.escalated_at && esc.min > 0 && esc.ids.length && (m.notified_down || set.notified_down)) {
       const since = Date.parse(set.status_since ?? m.status_since) || at.getTime();
       const downMin = Math.floor((at.getTime() - since) / 60000);
@@ -569,9 +588,10 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       const days = Math.floor((Date.parse(res.cert.validTo) - at.getTime()) / 86400000);
       const step = certStep(days, parseCertDays(m.cert_days));
       if (step === null) set.cert_alert_days = null;
-      else if (m.cert_alert_days === null || step < m.cert_alert_days) {
+      // During maintenance the warning waits (stored only once it was sent - otherwise it would be lost for good)
+      else if ((m.cert_alert_days === null || step < m.cert_alert_days) && !inMaintenance) {
         set.cert_alert_days = step;
-        if (!inMaintenance) certEv = { kind: 'cert', certDays: days, certValidTo: res.cert.validTo };
+        certEv = { kind: 'cert', certDays: days, certValidTo: res.cert.validTo };
       }
     }
 
@@ -598,7 +618,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   }
 
   function tick() {
-    const t = Date.now();
+    // Planned on the monotonic clock: setting the system time back (NTP, snapshot) must not pause the checks
+    const t = performance.now();
     const due = db.prepare('SELECT * FROM monitors WHERE enabled=1').all()
       .filter((m) => !running.has(m.id) && (nextRun.get(m.id) ?? 0) <= t);
     for (const m of due.slice(0, Math.max(0, MAX_PARALLEL - running.size))) {
@@ -615,7 +636,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     start() {
       if (timer) return;
       // Spread the first checks over a few seconds after start
-      for (const m of db.prepare('SELECT id, interval_s FROM monitors').all()) nextRun.set(m.id, Date.now() + Math.floor(Math.random() * Math.min(15, m.interval_s) * 1000));
+      for (const m of db.prepare('SELECT id, interval_s FROM monitors').all()) nextRun.set(m.id, performance.now() + Math.floor(Math.random() * Math.min(15, m.interval_s) * 1000));
       timer = setInterval(tick, 1000);
       timer.unref();
     },

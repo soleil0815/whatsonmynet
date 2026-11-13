@@ -43,7 +43,7 @@ function selfDescription(f) {
   return [
     f.snmp?.descr, f.snmp?.name,
     ...(f.http || []).flatMap((h) => [h.title, h.server, h.cert?.subject, h.cert?.org, h.cert?.issuer]),
-  ].filter(Boolean).join(' | ');
+  ].filter(Boolean).map((x) => String(x).slice(0, 512)).join(' | ').slice(0, 4096);
 }
 
 export function classify(f) {
@@ -63,7 +63,8 @@ export function classify(f) {
   // --- Telematik infrastructure (first: these devices must never be mistaken for something else)
   if (ports.has(4742)) add('ti_terminal', 6, 'port 4742 (SICCT)');
   if (TI_TERMINAL_VENDORS.test(brand)) add('ti_terminal', 3, `manufacturer ${brand}`);
-  if (t(/ORGA\s?6\d{3}|ST-?1506|eHealth|Kartenterminal|card terminal|SICCT/i)) add('ti_terminal', 5, 'name of a card terminal');
+  // A word on a web page alone ("eHealth Portal") is a hint, not proof: enough only together with port or manufacturer
+  if (t(/ORGA\s?6\d{3}|ST-?1506|eHealth|Kartenterminal|card terminal|SICCT/i)) add('ti_terminal', 3, 'name of a card terminal');
   if (TI_CONNECTOR_VENDORS.test(brand)) add('ti_connector', 4, `manufacturer ${brand}`);
   if (t(/konnektor|kocobox|ti-?gateway|secunet konnektor|rise konnektor|connector\.sds/i)) add('ti_connector', 6, 'web interface of a TI connector');
 
@@ -88,7 +89,7 @@ export function classify(f) {
   if (has(515)) add('printer', 2, 'port 515 (LPD)');
   if (has(631)) add('printer', 2, 'port 631 (IPP)');
   if (PRINTER_VENDORS.test(brand) && (has(9100, 515, 631) || f.snmp)) add('printer', 3, `printer manufacturer ${brand}`);
-  if (t(/printer|drucker|laserjet|officejet|deskjet|ecosys|taskalfa|bizhub|imagerunner|i-sensys|workcentre|versalink|altalink|mfc-|hl-l|dcp-|ricoh|aficio|lexmark|epson.*(wf|et)-|web image monitor|embedded web server|command center/i)) add('printer', 4, 'printer name');
+  if (t(/printer|drucker|laserjet|officejet|deskjet|ecosys|taskalfa|bizhub|imagerunner|i-sensys|workcentre|versalink|altalink|mfc-|hl-l|dcp-|ricoh|aficio|lexmark|epson.{0,40}(wf|et)-|web image monitor|embedded web server|command center/i)) add('printer', 4, 'printer name');
 
   // --- Network devices
   const isGw = !!f.isGateway;
@@ -99,18 +100,18 @@ export function classify(f) {
   if (t(/opnsense|pfsense|sophos|fortigate|fortinet|watchguard|sonicwall|securepoint|untangle|ipfire|firewall/i)) add('firewall', 6, 'firewall web interface');
   if (FIREWALL_VENDORS.test(brand)) add('firewall', 4, `manufacturer ${brand}`);
   if (has(8291) || /^MikroTik$/i.test(brand) || t(/routeros|mikrotik/i)) add('router', 4, 'MikroTik');
-  if (t(/\bswitch\b|jetstream|smart switch|managed switch|easy smart|gs\d{3,4}|sg\d{3,4}|catalyst|procurve|aruba.*switch|omada.*switch|tl-sg|lancom gs-|ex\d{4}/i)) add('switch', 5, 'switch name');
+  if (t(/\bswitch\b|jetstream|smart switch|managed switch|easy smart|gs\d{3,4}|sg\d{3,4}|catalyst|procurve|aruba.{0,40}switch|omada.{0,40}switch|tl-sg|lancom gs-|ex\d{4}/i)) add('switch', 5, 'switch name');
   if (/^LANCOM$/i.test(brand)) {
     if (t(/lancom (gs|xs)-/i)) add('switch', 4, 'LANCOM switch');
     else if (t(/lancom l-|lcos li/i)) add('accesspoint', 4, 'LANCOM access point');
     else add('router', 3, 'LANCOM');
   }
   if (NETWORK_VENDORS.test(brand) && (f.snmp || has(80, 443, 23, 22)) && !has(445, 3389, 9100)) add('switch', 2, `network manufacturer ${brand}`);
-  if (t(/access point|\bap\b|omada.*eap|eap\d{3}|airos|aironet|wlan/i)) add('accesspoint', 4, 'access point name');
+  if (t(/access point|\bap\b|omada.{0,40}eap|eap\d{3}|airos|aironet|wlan/i)) add('accesspoint', 4, 'access point name');
   if (/^Ubiquiti$/i.test(brand)) add('accesspoint', 2, 'Ubiquiti');
   // UniFi, Omada, MikroTik, Aruba Instant On: the model names say what it is (stronger than the manufacturer alone) -
   // they often appear only as host name (UniFi devices register with their model, e.g. USW-Lite-8-PoE)
-  const named = [text, f.hostname, f.rdns, f.netbios?.name].filter(Boolean).join(' | ');
+  const named = [text, ...[f.hostname, f.rdns, f.netbios?.name].filter(Boolean).map((x) => String(x).slice(0, 255))].join(' | ');
   const tn = (re) => re.test(named);
   const unifi = /^Ubiquiti$/i.test(brand) || tn(/unifi/i);
   if (unifi && tn(/\b(usw|us-?(8|16|24|48)|us-xg|usw-flex|switch (lite|pro|enterprise|aggregation))/i)) { add('switch', 6, 'UniFi switch'); model = model || /(usw[-\w]*|us-?\d+[-\w]*)/i.exec(named)?.[1] || ''; }
@@ -118,9 +119,9 @@ export function classify(f) {
   if (tn(/\b(udm|udr|ucg|usg|uxg|udw|dream (machine|router|wall)|cloud gateway|security gateway)\b/i)) { add('router', 7, 'UniFi gateway'); os = os || 'UniFi OS'; }
   if (unifi && tn(/cloud ?key|\buck\b|unifi network application|unifi network server|unifi controller|^unifi network$/i)) add('server', 7, 'UniFi Network application');
   if (tn(/\bEAP\d{3}/i)) add('accesspoint', 6, 'Omada access point');
-  if (tn(/\bER(605|707|7206|7212|8411|2260)\b|omada.*(gateway|router)/i)) add('router', 6, 'Omada gateway');
+  if (tn(/\bER(605|707|7206|7212|8411|2260)\b|omada.{0,40}(gateway|router)/i)) add('router', 6, 'Omada gateway');
   if (tn(/\bOC(200|220|300|400)\b|omada (software )?controller|omada network/i)) add('server', 6, 'Omada controller');
-  if (tn(/\b(SG|TL-SG|SX)\d{3,4}|omada.*switch/i) && /^TP-Link$/i.test(brand)) add('switch', 3, 'Omada/JetStream switch');
+  if (tn(/\b(SG|TL-SG|SX)\d{3,4}|omada.{0,40}switch/i) && /^TP-Link$/i.test(brand)) add('switch', 3, 'Omada/JetStream switch');
   if (/^MikroTik$/i.test(brand) || tn(/routeros|mikrotik/i)) {
     if (tn(/\b(CRS|CSS)\d{3}/i)) add('switch', 7, 'MikroTik switch (CRS)');
     if (tn(/\b(cAP|wAP)\b/)) add('accesspoint', 7, 'MikroTik access point');

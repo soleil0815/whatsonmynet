@@ -23,7 +23,9 @@ on:
 permissions: {}
 
 concurrency:
-  group: security-update
+  # the same group as a release by button (ci.yml): both set "latest" - never at the same time, otherwise an older
+  # version could take "latest" back after a newer one was published
+  group: release
   cancel-in-progress: false
 
 env:

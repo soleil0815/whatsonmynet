@@ -68,7 +68,7 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   scanner.recover();
   const mailer = createMailer(settings);
   const limiter = createLoginLimiter();
-  const channels = createChannels(db, mailer);
+  const channels = createChannels(db, mailer, settings);
   const maintenance = createMaintenance(db);
   const monitoring = createMonitoring({ db, channels, maintenance, settings });
   const nightly = createNightly({ db, settings, scanner, channels });

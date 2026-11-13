@@ -7,8 +7,14 @@ $Dest = Join-Path $Dir @FILE@
 $Setup = [bool]($PSCommandPath -and $PSCommandPath -ne $Dest)
 if ($Setup) {
   New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+  # Normal users may create folders in ProgramData: one made beforehand (or a link to elsewhere) must not let them
+  # swap the script that runs as SYSTEM. So no link, owner Administrators, rights only for SYSTEM and Administrators -
+  # all of that before the script is copied in.
+  if ((Get-Item -LiteralPath $Dir -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "WhatsOnMyNet: $Dir is a link - please remove it and run the setup again." }
+  & icacls.exe $Dir /setowner '*S-1-5-32-544' /T /C | Out-Null
+  & icacls.exe $Dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /T /C | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'WhatsOnMyNet: the rights of the folder could not be set - please run as administrator.' }
   Copy-Item -Force -Path $PSCommandPath -Destination $Dest
-  & icacls.exe $Dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
   & schtasks.exe /Create /F /TN $Task /SC MINUTE /MO 5 /RU SYSTEM /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Dest" | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'WhatsOnMyNet: the scheduled task could not be created - please run as administrator.' }
   # The setup of version 0.6.0 used another task name - remove it, so the host does not report twice
