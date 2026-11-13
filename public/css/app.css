@@ -92,7 +92,11 @@ p { margin: 0 0 .8em; }
   .side-foot .who { padding: 4px 10px 4px; margin-top: 4px; padding-top: 6px; }
 }
 .coffee { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius, 6px); }
-.coffee .btn span { display: inline-flex; margin-right: 6px; }
+.coffee .btn span { display: inline-flex; }
+/* the coffee button: yellow with black text in both themes so it stands out, but small */
+.btn.btn-coffee { height: 30px; padding: 0 12px; gap: 6px; font-size: 13px; font-weight: 600; background: #ffdd00; color: #000; border-color: #e6c700; border-radius: 8px; text-decoration: none; }
+.btn.btn-coffee:hover { background: #ffe94d; border-color: #000; color: #000; }
+.btn.btn-coffee span svg { width: 16px; height: 16px; }
 ul.changes { margin: 0 0 14px; padding-left: 20px; }
 ul.changes li { margin: 3px 0; }
 .main { min-width: 0; }

@@ -4,8 +4,10 @@
 export const CHANGELOG = [
   { version: 'next', de: [
     'Sensor anlegen: jede Temperatur, jede Festplatte und jedes Zertifikat steht mit Namen in der Auswahl (z. B. „Temperatur: NVMe nvme0 Sensor 2“) statt zigmal nur „Temperatur“; bei vielen Werten nach Bereichen gruppiert',
+    'Kaffee-Knopf unter „Über WhatsOnMyNet“ gelb, damit er auffällt',
   ], en: [
     'Add sensor: every temperature, disk and certificate is listed by name (e.g. "Temperature: NVMe nvme0 Sensor 2") instead of "Temperature" many times; with many values grouped by area',
+    'Coffee button under "About WhatsOnMyNet" in yellow so it stands out',
   ] },
   { version: '0.14.0', date: '2026-11-13', de: [
     'Alarme sagen, was los ist: bei Messwerten „Grenzwert überschritten - 83,9 °C (≥ 80)“ und „wieder im normalen Bereich“, bei Zuständen „Störung“/„wieder in Ordnung“, ohne Werte „keine aktuellen Werte“ - „nicht erreichbar“ nur noch für Webseite, Port und Ping. Ergebnisse der Prüfungen auf Deutsch',
