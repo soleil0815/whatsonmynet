@@ -79,6 +79,7 @@ jobs:
       WOMN_TEST_POSTGRES: 127.0.0.1:5432:womn:ci-womn-pw
       WOMN_TEST_REDIS: "127.0.0.1:6379::"
       WOMN_TEST_LDAP: localhost:636:ci-ldap-pw
+      WOMN_TEST_SMB: 127.0.0.1:1445:Abteilung:monitor:ci-smb-pw
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,8 +89,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Tools for shell tests
-        run: sudo apt-get update -q && sudo apt-get install -y -q shellcheck dash >/dev/null
+      - name: Tools for shell tests and the network drive test
+        run: sudo apt-get update -q && sudo apt-get install -y -q shellcheck dash samba smbclient >/dev/null
+      - name: Samba test server
+        run: sh .github/scripts/samba-test-server.sh ci-smb-pw
       - name: Tests
         run: npm test
       - name: Check dependencies for known vulnerabilities
