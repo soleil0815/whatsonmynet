@@ -139,6 +139,24 @@ export function parseUnc(s) {
   return { host: m[1], share: m[2], path: (m[3] || '').replace(/[\\/]+/g, '\\').replace(/\\$/, '') };
 }
 
+/**
+ * Host, port and scheme of whatever was typed: https://nas.local:5001/, a UNC path (two backslashes, server, share), 10.0.0.5:22, [fe80::1]:80, nas.local
+ */
+export function splitAddress(raw) {
+  const s = String(raw || '').trim();
+  const unc = parseUnc(s);
+  if (unc) return { host: unc.host, port: null, scheme: 'smb' };
+  const m = /^([a-z][a-z0-9+.-]*):\/\//i.exec(s);
+  if (m) {
+    try { const u = new URL(s); return { host: u.hostname.replace(/^\[|\]$/g, ''), port: u.port ? Number(u.port) : null, scheme: m[1].toLowerCase() }; } catch { /* fall through */ }
+  }
+  const v6 = /^\[([^\]]+)\](?::(\d{1,5}))?$/.exec(s);
+  if (v6) return { host: v6[1], port: v6[2] ? Number(v6[2]) : null, scheme: '' };
+  const hp = /^([^\s/:]+):(\d{1,5})$/.exec(s);
+  if (hp) return { host: hp[1], port: Number(hp[2]), scheme: '' };
+  return { host: s.replace(/\/.*$/, ''), port: null, scheme: '' };
+}
+
 const pct = (v) => (v === null || v === undefined ? '–' : `${v.toLocaleString(getLang() === 'en' ? 'en-GB' : 'de-DE', { maximumFractionDigits: 2 })} %`);
 
 export async function renderMonitoring(main, id, sub) {
@@ -517,7 +535,35 @@ export async function openMonitorForm(m, done, preset = null) {
     target.placeholder = ty === 'http' ? 'https://intranet.firma.local/' : ty === 'docker' ? 'nextcloud' : ty === 'smb' ? t('smb.serverPh') : '192.168.1.10';
     if (ty === 'docker' && !containers.children.length) loadContainers();
   };
-  typeSel.addEventListener('change', sync);
+  // Switching the kind carries the address over in the form the new kind needs: https://10.0.0.5:8443/ for a web
+  // check, 10.0.0.5 for ping/SMB/SNMP/databases, 10.0.0.5 + port 8443 for a TCP port. Back to web gives the old URL again.
+  let prevType = typeSel.value;
+  let lastUrl = prevType === 'http' ? target.value.trim() : '';
+  const NO_HOST = ['sensor', 'proxmox'];
+  typeSel.addEventListener('change', () => {
+    const from = prevType; const to = typeSel.value;
+    prevType = to;
+    const raw = target.value.trim();
+    if (!raw || NO_HOST.includes(to)) { sync(); return; }
+    if (from === 'docker' || to === 'docker') { if (from !== to) target.value = ''; sync(); return; }
+    const a = splitAddress(raw);
+    if (from === 'http') lastUrl = raw;
+    if (to === 'http') {
+      if (!/^https?:\/\//i.test(raw)) {
+        const old = lastUrl && splitAddress(lastUrl);
+        const p = from === 'tcp' ? Number(port.value) || a.port : a.port;
+        target.value = old && old.host === a.host ? lastUrl
+          : `${p === 80 ? 'http' : 'https'}://${a.host.includes(':') ? `[${a.host}]` : a.host}${p && p !== 80 && p !== 443 ? `:${p}` : ''}/`;
+      }
+    } else {
+      target.value = a.host;
+    }
+    // The port belongs to the old kind (e.g. 161 for SNMP); only a TCP check takes the one from the address
+    const fromUrl = lastUrl ? splitAddress(lastUrl) : null;
+    const known = a.port ? a : fromUrl && fromUrl.host === a.host ? fromUrl : a;
+    if (from !== to) port.value = to === 'tcp' ? String(known.port || (known.scheme === 'https' ? 443 : known.scheme === 'http' ? 80 : '') || '') : '';
+    sync();
+  });
   const selected = new Set(v.channels || []);
   const chanBox = chans.length ? h('div', { class: 'full field' }, t('mon.f.channels'),
     h('div', { class: 'chips' }, chans.map((c) => h('label', { class: 'check', style: { marginRight: '14px' } },
@@ -558,6 +604,8 @@ export async function openMonitorForm(m, done, preset = null) {
       fail_threshold: d.fail_threshold, resend_min: d.resend_min, http_status: d.http_status, http_keyword: d.http_keyword,
       tls_verify: d.tls_verify, cert_check: d.cert_check, cert_days: d.cert_days,
       channels: chans.filter((c) => d[`ch_${c.id}`]).map((c) => c.id) };
+    // An address typed as URL for a host check ("https://nas:5001" with ping) only needs the host
+    if (!['http', 'docker', 'smb'].includes(d.type) && /^[a-z][a-z0-9+.-]*:\/\//i.test(body.target)) body.target = splitAddress(body.target).host;
     if (d.type === 'docker') body.docker_host_id = d.docker_host_id;
     if (d.type === 'sensor') {
       const x = metrics.find((y) => `${y.metric}|${y.key}` === d.metric);
