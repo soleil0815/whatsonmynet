@@ -54,7 +54,7 @@ Ein Monitor prüft regelmäßig (20 Sekunden bis 24 Stunden) und meldet sich ers
 - **Netzlaufwerk (SMB)**: Windows-Freigaben und NAS - siehe unten
 - **Sensor (Gerätewert)**, **SNMP-Wert (OID)** und **Proxmox** - siehe unten
 
-Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert sich die IP eines Geräts, ziehen seine Monitore mit.
+Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert sich die IP eines Geräts, ziehen seine Monitore mit. Benennst du das Gerät um, heißen seine Monitore und Sensoren auch gleich so, damit ein Alarm den aktuellen Namen nennt (ein Monitor mit selbst vergebenem Namen ohne den Gerätenamen bleibt, wie er ist).
 
 ![Monitor mit Verlauf](img/monitor-de.png)
 

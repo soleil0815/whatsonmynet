@@ -153,11 +153,26 @@ export function createInventory(db) {
     if (v.mac && v.mac !== cur.mac && byMac.get(v.mac)) throw new HttpError(409, 'err.macExists');
     const changed = Object.keys(v).filter((k) => (v[k] ?? null) !== (cur[k] ?? null));
     if (!changed.length) return get(id);
+    let renamed = 0;
     db.transaction(() => {
       db.prepare(`UPDATE devices SET ${changed.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...changed.map((k) => v[k]), now(), id);
       history(id, 'edit', { fields: changed.map((k) => ({ field: k, from: k === 'notes' ? undefined : cur[k], to: k === 'notes' ? undefined : v[k] })) }, user);
+      // Monitors and sensors of the device carry its name ("NAS", "NAS - Sensor") - they follow a new name, so an alarm
+      // names the device as it is called now. A monitor named by hand without the old name stays as it is.
+      if (changed.includes('name') && cur.name) renamed = renameMonitors(id, cur.name, v.name);
     })();
-    return get(id);
+    return renamed ? { ...get(id), renamedMonitors: renamed } : get(id);
+  }
+
+  function renameMonitors(deviceId, from, to) {
+    let n = 0;
+    for (const m of db.prepare('SELECT id, name FROM monitors WHERE device_id=?').all(deviceId)) {
+      if (!m.name.includes(from)) continue;
+      const name = m.name.split(from).join(to).slice(0, 120);
+      if (name === m.name) continue;
+      n += db.prepare('UPDATE monitors SET name=?, updated_at=? WHERE id=?').run(name, now(), m.id).changes;
+    }
+    return n;
   }
 
   function remove(id) {

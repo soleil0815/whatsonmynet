@@ -54,7 +54,7 @@ A monitor checks regularly (20 seconds to 24 hours) and reports only after sever
 - **Network drive (SMB)**: Windows shares and NAS - see below
 - **Sensor (device value)**, **SNMP value (OID)** and **Proxmox** - see below
 
-On the device page "Monitor" creates a fitting monitor. If the IP of a device changes, its monitors follow.
+On the device page "Monitor" creates a fitting monitor. If the IP of a device changes, its monitors follow. If you rename the device, its monitors and sensors take the new name too, so an alarm names it as it is called now (a monitor with a name of your own without the device name stays as it is).
 
 ![Monitor with history](img/monitor-en.png)
 
