@@ -614,14 +614,17 @@ async function proxmox(body, _s, reload, scope = 'virt') {
   const kinds = scope === 'net' ? NET : VIRT;
   const list = (await get('/proxmox')).filter((x) => kinds.includes(x.kind));
   const edit = (x, preset = 'pve') => {
-    const kind = select('kind', [['pve', 'Proxmox VE'], ['pbs', 'Proxmox Backup Server']], x?.kind || preset);
-    const url = input('url', x?.url || '', { required: true, class: 'mono', placeholder: 'https://192.168.1.10:8006' });
+    // Backup Server: port 8007 and realm pbs - also when it was chosen in the step before (not only by the select)
+    const start = x?.kind || preset;
+    const kind = select('kind', [['pve', 'Proxmox VE'], ['pbs', 'Proxmox Backup Server']], start);
+    const defUrl = (k) => (k === 'pbs' ? 'https://192.168.1.20:8007' : 'https://192.168.1.10:8006');
+    const url = input('url', x?.url || '', { required: true, class: 'mono', placeholder: defUrl(start) });
     const defToken = (k) => (k === 'pbs' ? 'whatsonmynet@pbs!womn' : 'whatsonmynet@pve!womn');
-    const tokenId = input('token_id', x?.token_id || defToken(x?.kind || 'pve'), { required: true, class: 'mono', autocomplete: 'off', placeholder: defToken(x?.kind || 'pve') });
+    const tokenId = input('token_id', x?.token_id || defToken(start), { required: true, class: 'mono', autocomplete: 'off', placeholder: defToken(start) });
     const ca = h('textarea', { name: 'ca', rows: 3, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false' }, x?.ca || '');
     const verify = h('input', { type: 'checkbox', name: 'verify', checked: x ? x.verify : true });
     kind.addEventListener('change', () => {
-      url.placeholder = kind.value === 'pbs' ? 'https://192.168.1.20:8007' : 'https://192.168.1.10:8006';
+      url.placeholder = defUrl(kind.value);
       if (!x && /^whatsonmynet@pb?v?e?s?!womn$/.test(tokenId.value)) tokenId.value = defToken(kind.value);
       tokenId.placeholder = defToken(kind.value);
     });
@@ -645,7 +648,7 @@ async function proxmox(body, _s, reload, scope = 'virt') {
       x ? null : proxmoxSetup(kind),
       h('h3', { class: 'px-step' }, x ? t('pxs.connection') : t('pxs.step2')),
       h('div', { class: 'form-grid' },
-        field(t('px.name'), input('name', x?.name || '', { required: true, maxlength: 80, placeholder: 'pve01' })),
+        field(t('px.name'), input('name', x?.name || '', { required: true, maxlength: 80, placeholder: start === 'pbs' ? 'pbs01' : 'pve01' })),
         field(t('px.kind'), kind)),
       field(t('px.url'), url, t('pxs.urlHint')),
       h('div', { class: 'field' }, h('span', {}, t('px.ca')), h('div', { class: 'actions' }, fetchBtn), certState, h('span', { class: 'hint' }, t('pxs.certHint'))),
