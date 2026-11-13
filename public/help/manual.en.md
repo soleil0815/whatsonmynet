@@ -129,7 +129,7 @@ Under *Settings → Reports* reports go out by e-mail at set times – e.g. the 
 
 - **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*.
 - **Locations**: editors and viewers can be limited to locations – they then only see and change devices, scans and monitors of these.
-- **Active Directory** (*Settings → Active Directory*): sign-in with the Windows account over LDAPS or StartTLS. The role comes from AD groups; members of none cannot sign in. Local accounts win for the same name.
+- **Active Directory** (*Settings → Active Directory*): sign-in with the Windows account over LDAPS or StartTLS. The role comes from AD groups; members of none cannot sign in. Local accounts win for the same name. Under *TLS certificate*, "Fetch certificate from DC" gets the chain from the domain controller (missing CAs via AIA or from AD); you compare the fingerprint with certlm.msc and confirm.
 - **Two-factor sign-in** (*My account*): scan the QR code with an authenticator app, confirm a code, keep the recovery codes. It can be made mandatory for administrators under *Settings → General*.
 
 ## Scan agent for branch offices

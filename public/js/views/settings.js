@@ -659,7 +659,7 @@ async function ad(body, _s, reload) {
     field(t('ad.bindPassword'), input('bindPassword', '', { type: 'password', autocomplete: 'new-password', placeholder: c.bindPassword.set ? '••••••' : '' }), c.bindPassword.set ? t('set.smtpPasswordSet') : null)),
   field(t('ad.startTls'), h('input', { type: 'checkbox', name: 'startTls', checked: c.startTls }), t('ad.startTlsHint')),
   field(t('ad.verify'), h('input', { type: 'checkbox', name: 'verify', checked: c.verify }), t('ad.verifyHint')),
-  field(t('ad.ca'), h('textarea', { name: 'ca', rows: 4, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false' }, c.ca || ''), t('ad.caHint')),
+  adCertBlock(c.cert, () => formData(form), reload),
   h('h3', { class: 'sub-title' }, t('ad.groups')),
   h('p', { class: 'muted small', style: { marginTop: 0 } }, t('ad.groupsHint')),
   field(t('role.admin'), input('groupAdmin', c.groupAdmin, { class: 'mono', placeholder: 'CN=WOMN-Admins,OU=Gruppen,DC=firma,DC=local' })),
@@ -691,6 +691,82 @@ async function ad(body, _s, reload) {
   h('div', { class: 'form-grid' }, field(t('user.username'), tu), field(t('ad.testPassword'), tp, t('ad.testPasswordHint'))),
   h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'submit' }, t('ad.test'))), out);
   mount(body, panel(t('set.ad'), form), panel(t('ad.test'), test));
+}
+
+// ---------- TLS certificate of the domain controller ----------
+const shortFp = (fp) => `${String(fp).split(':').slice(0, 8).join(':')}…`;
+// 32 bytes in two lines of 16 – easier to compare than one wrapped line
+const fpLines = (fp) => { const p = String(fp).split(':'); return [p.slice(0, 16).join(':'), p.slice(16).join(':')].filter(Boolean).map((x) => h('div', {}, x)); };
+const certDate = (iso) => fmtDate(iso, getLang(), false);
+
+function certRow(c, { full = false } = {}) {
+  return h('div', { class: 'cert-row' },
+    h('span', { class: 'cert-role' }, t(`adc.role.${c.role}`)),
+    h('div', { class: 'cert-main' },
+      h('div', { class: 'cert-cn', title: c.subject }, h('span', { class: 'mono' }, c.cn), c.org ? h('span', { class: 'muted' }, ` · ${c.org}`) : null,
+        c.source === 'aia' ? h('span', { class: 'badge badge-ti' }, t('adc.fromAia')) : null,
+        c.expired ? h('span', { class: 'badge badge-bad' }, t('adc.expired')) : null),
+      h('div', { class: 'muted small' }, t('adc.validTo', { date: certDate(c.validTo) }), c.role !== 'root' ? ` · ${t('adc.issuer', { name: c.issuer })}` : ''),
+      full ? null : h('div', { class: 'muted small mono cert-fp-short', title: c.fingerprint256 }, `SHA-256 ${shortFp(c.fingerprint256)}`),
+      full ? h('dl', { class: 'kv cert-fp' },
+        h('dt', {}, 'SHA-256'), h('dd', { class: 'mono' }, fpLines(c.fingerprint256)),
+        h('dt', {}, 'SHA-1'), h('dd', { class: 'mono' }, c.fingerprint),
+        c.names.length ? [h('dt', {}, t('adc.names')), h('dd', { class: 'mono' }, c.names.join(', '))] : null) : null));
+}
+
+function adCertBlock(cert, formValues, reload) {
+  const n = cert.certs.length;
+  const out = h('div', { class: 'cert-block' });
+  const form = () => {
+    const d = formValues();
+    const v = { url: d.url, startTls: !!d.startTls, bindDn: d.bindDn };
+    if (d.bindPassword) v.bindPassword = d.bindPassword;
+    return v;
+  };
+  const afterSave = (r) => {
+    if (r.added) toast(t('adc.savedAd', { n: r.added }));
+    else if (!r.complete) toast(t('adc.savedNoRoot'));
+    else toast(t('adc.saved'));
+    reload();
+  };
+  const confirmFetched = (r) => {
+    const save = h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+      save.disabled = true;
+      try { const res = await put('/settings/ad/cert', { ...form(), pem: r.pem }); m.close(); afterSave(res); } catch (ex) { save.disabled = false; fail(ex); }
+    } }, t('adc.trust'));
+    const m = modal(t('adc.checkTitle'), h('div', {},
+      h('p', { style: { marginTop: 0 } }, t('adc.checkLead')),
+      r.nameOk ? null : h('div', { class: 'note warn' }, t('adc.nameMismatch', { host: r.host, names: r.certs[0].names.join(', ') || r.certs[0].cn })),
+      h('div', { class: 'cert-list' }, r.certs.map((c) => certRow(c, { full: true }))),
+      h('div', { class: `note${r.complete ? '' : ' warn'}`, style: { marginTop: '14px', marginBottom: 0 } }, r.complete ? t('adc.complete') : t('adc.incomplete')),
+      r.aiaTried.some((x) => x.error) ? h('p', { class: 'muted small' }, t('adc.aiaFailed'), ' ', r.aiaTried.filter((x) => x.error).map((x) => h('span', { class: 'mono' }, `${x.url} (${x.error}) `))) : null),
+    { wide: true, actions: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, t('cancel')), save] });
+  };
+  const fetchBtn = h('button', { class: 'btn', type: 'button', html: `${icon('download')}<span>${t('adc.fetch')}</span>`, onclick: async () => {
+    fetchBtn.disabled = true;
+    try { confirmFetched(await post('/settings/ad/cert/fetch', form())); } catch (ex) { fail(ex); }
+    fetchBtn.disabled = false;
+  } });
+  const removeBtn = n ? h('button', { class: 'btn btn-danger', type: 'button', html: `${icon('trash')}<span>${t('adc.remove')}</span>`, onclick: async () => {
+    if (!await confirmDialog(t('adc.remove'), t('adc.removeConfirm'), t('adc.remove'), t('cancel'), { danger: true })) return;
+    try { await del('/settings/ad/cert'); toast(t('adc.removed')); reload(); } catch (ex) { fail(ex); }
+  } }) : null;
+  const pem = h('textarea', { rows: 5, class: 'mono', placeholder: '-----BEGIN CERTIFICATE-----', spellcheck: 'false' });
+  const manual = h('details', { class: 'cert-manual' }, h('summary', {}, t('adc.manual')),
+    h('p', { class: 'muted small' }, t('adc.manualHint')), pem,
+    h('div', { class: 'actions', style: { marginTop: '8px' } }, h('button', { class: 'btn btn-sm', type: 'button', onclick: async () => {
+      try { afterSave(await put('/settings/ad/cert', { ...form(), pem: pem.value })); } catch (ex) { fail(ex); }
+    } }, t('adc.manualSave'))));
+  mount(out,
+    h('div', { class: 'cert-head' }, h('h3', {}, t('adc.title')),
+      n ? h('span', { class: 'badge badge-ok', html: `${icon('lock')}<span>${t(n === 1 ? 'adc.count1' : 'adc.countN', { n })}</span>` })
+        : h('span', { class: 'badge badge-new' }, t('adc.none'))),
+    h('p', { class: 'muted small', style: { marginTop: 0 } }, t('adc.lead')),
+    n ? h('div', { class: 'cert-list' }, cert.certs.map((c) => certRow(c))) : null,
+    n && !cert.complete ? h('p', { class: 'muted small' }, t('adc.noRoot')) : null,
+    h('div', { class: 'actions' }, fetchBtn, removeBtn),
+    manual);
+  return out;
 }
 
 async function ignored(body, _s, reload) {
