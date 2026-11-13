@@ -77,7 +77,7 @@ const de = {
   'dev.randomMac': 'Private (zufällige) MAC-Adresse - Hersteller nicht erkennbar', 'dev.noFacts': 'Noch keine Scan-Daten.',
   'dev.firstSeen': 'Erstmals gesehen', 'dev.lastSeen': 'Zuletzt gesehen', 'dev.created': 'Angelegt',
   'hist.created': 'Ins Inventar übernommen', 'hist.createdManual': 'Von Hand angelegt', 'hist.ip': 'IP-Adresse geändert: {from} → {to}',
-  'hist.change': '{field} geändert: {from} → {to}', 'hist.edit': 'Bearbeitet: {fields}', 'hist.deep': 'Tiefenprüfung ({n} offene Ports)', 'hist.byScan': 'Scan',
+  'hist.change': '{field} geändert: {from} → {to}', 'hist.snmp': 'Vom Gerät selbst übernommen (SNMP): {fields}', 'hist.edit': 'Bearbeitet: {fields}', 'hist.deep': 'Tiefenprüfung ({n} offene Ports)', 'hist.byScan': 'Scan',
   'telematik': 'Telematik', 'unsure': 'unsicher',
   // scan
   'scan.title': 'Netzwerk scannen', 'scan.lead': 'Wähle die Standorte oder gib ein Subnetz ein. Der Scan ist schonend: Geräte werden über ARP gefunden, geprüft werden nur rund 25 typische Ports.',
@@ -553,7 +553,7 @@ const en = {
   'dev.randomMac': 'Private (random) MAC address - manufacturer unknown', 'dev.noFacts': 'No scan data yet.',
   'dev.firstSeen': 'First seen', 'dev.lastSeen': 'Last seen', 'dev.created': 'Created',
   'hist.created': 'Adopted into the inventory', 'hist.createdManual': 'Added by hand', 'hist.ip': 'IP address changed: {from} → {to}',
-  'hist.change': '{field} changed: {from} → {to}', 'hist.edit': 'Edited: {fields}', 'hist.deep': 'Deep check ({n} open ports)', 'hist.byScan': 'Scan',
+  'hist.change': '{field} changed: {from} → {to}', 'hist.snmp': 'Taken from the device itself (SNMP): {fields}', 'hist.edit': 'Edited: {fields}', 'hist.deep': 'Deep check ({n} open ports)', 'hist.byScan': 'Scan',
   'telematik': 'Telematik', 'unsure': 'unsure',
   'scan.title': 'Scan network', 'scan.lead': 'Choose locations or enter a subnet. The scan is gentle: devices are found via ARP, only about 25 typical ports are checked.',
   'scan.locations': 'Locations', 'scan.noLocations': 'No locations yet. Enter a subnet below or create locations under “Locations”.',

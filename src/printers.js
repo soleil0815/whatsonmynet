@@ -1,6 +1,7 @@
 // Printer status: asks every printer in the inventory via SNMP (Printer-MIB) at a set interval, keeps the latest
 // status and one page count per day, and reports supplies that run low (once per supply until it is replaced).
 import { readPrinter } from './scan/printer.js';
+import { fillDevice } from './devicefill.js';
 import { HttpError } from './lib/http.js';
 import { log } from './lib/log.js';
 import { localDay } from './scan/nightly.js';
@@ -72,6 +73,8 @@ export function createPrinters({ db, settings, channels }) {
       try { data = await reader(d.ip, communities()); } catch (e) { error = e.message === 'snmp' || e.message === 'noPrinterMib' ? e.message : 'snmp'; }
       let alerts = parse(prev?.alerts);
       if (data) {
+        // Serial number and model from the printer itself into the inventory (only empty fields)
+        fillDevice(db, d.id, { serial: data.serial, model: data.model });
         if (data.pages !== null && data.pages !== undefined) pageRow.run(d.id, localDay(at), data.pages);
         const r = supplyAlerts(data.supplies || [], alerts, Number(settings.get('printer.threshold')) || 15);
         alerts = r.alerts;

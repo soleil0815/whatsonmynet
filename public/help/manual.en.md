@@ -76,6 +76,7 @@ Devices of type *Printer*, *Switch* and *NAS* are queried via SNMP (read-only). 
 - **Printer**: toner or ink per colour, drum, waste toner, page counter, faults and display text. Below 15 % a notice is sent - once per cartridge.
 - **Switch**: ports as tiles, which devices hang at which port (VLAN-aware), LLDP neighbours, firmware. Every device page shows "Plugged in at".
 - **NAS**: volumes; on Synology also disks, RAID, temperature, fans, power supply and DSM update. Problems are reported - and again when everything is fine.
+- **Taken into the inventory**: what the device says about itself - serial number, model, firmware or operating system (e.g. DSM version), for Synology/QNAP the manufacturer - goes right into the details of the device. Only into empty fields: what you entered yourself stays. The history shows what was taken over.
 
 ![Switch](img/switch-en.png)
 
