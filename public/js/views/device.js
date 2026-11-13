@@ -19,6 +19,7 @@ export function historyText(r) {
     case 'change': return t('hist.change', { field: FIELD_LABEL(d.field), from: d.from || '–', to: d.to || '–' });
     case 'edit': return t('hist.edit', { fields: (d.fields || []).map((f) => FIELD_LABEL(f.field)).join(', ') });
     case 'deep': return t('hist.deep', { n: d.ports ?? 0 });
+    case 'snmp': return t('hist.snmp', { fields: (d.fields || []).map((f) => `${FIELD_LABEL(f.field)} ${f.to}`).join(', ') });
     default: return r.kind;
   }
 }

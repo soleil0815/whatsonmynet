@@ -101,3 +101,24 @@ test('poller: MAC table → "plugged in at", NAS problems reported once and when
   assert.equal(svc.problems().length, 0);
   await assert.rejects(svc.poll(prn), { code: 'err.snmpType' });
 });
+
+test('serial number, model and firmware from SNMP go into empty device fields only', async () => {
+  const db = memoryDb();
+  const svc = createSnmpDevices({ db, settings: createSettings(db), channels: { notifyIds: async () => [] } });
+  const ts = new Date().toISOString();
+  const nas = db.prepare("INSERT INTO devices(name,type,ip,model,created_at,updated_at) VALUES('nas01','nas','10.0.0.5','Mein Modell',?,?)").run(ts, ts).lastInsertRowid;
+  const sw = db.prepare("INSERT INTO devices(name,type,ip,created_at,updated_at) VALUES('core','switch','10.0.0.2',?,?)").run(ts, ts).lastInsertRowid;
+  svc.setReaderForTests('nas', async () => ({ vendor: 'synology', model: 'DS920+', serial: '2080PDN123456', version: 'DSM 7.2.2-72806', volumes: [], disks: [], raids: [], system: 'normal' }));
+  svc.setReaderForTests('switch', async () => ({ ports: [], macs: [], serial: 'N/A', model: 'GS-2310P', firmware: '10.42.0457' }));
+  await svc.poll(nas);
+  await svc.poll(sw);
+  const get = (id) => db.prepare('SELECT serial, model, vendor, os FROM devices WHERE id=?').get(id);
+  assert.deepEqual(get(nas), { serial: '2080PDN123456', model: 'Mein Modell', vendor: 'Synology', os: 'DSM 7.2.2-72806' }, 'typed-in model stays');
+  assert.deepEqual(get(sw), { serial: '', model: 'GS-2310P', vendor: '', os: '10.42.0457' }, '"N/A" is no serial number');
+  const h = db.prepare("SELECT user, detail FROM device_history WHERE device_id=? AND kind='snmp'").all(nas);
+  assert.equal(h.length, 1);
+  assert.equal(h[0].user, 'SNMP');
+  // later polls change nothing (fields are filled now), the history stays quiet
+  await svc.poll(nas);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM device_history WHERE device_id=? AND kind='snmp'").get(nas).n, 1);
+});

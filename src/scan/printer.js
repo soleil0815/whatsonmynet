@@ -8,6 +8,7 @@ const LIFE_COUNT = '1.3.6.1.2.1.43.10.2.1.4';   // prtMarkerLifeCount (pages)
 const DISPLAY = '1.3.6.1.2.1.43.16.5.1.2';      // prtConsoleDisplayBufferText
 const HR_PRINTER = '1.3.6.1.2.1.25.3.5.1';      // hrPrinterStatus (.1), hrPrinterDetectedErrorState (.2)
 const SERIAL = '1.3.6.1.2.1.43.5.1.1.17.1';     // prtGeneralSerialNumber
+const HR_DESCR = '1.3.6.1.2.1.25.3.2.1.3';       // hrDeviceDescr - for the printer: its model
 
 // prtMarkerSuppliesType
 const SUPPLY_TYPES = {
@@ -83,18 +84,26 @@ export function parseSupplies(supplies, colorants = new Map()) {
   return out.sort((a, b) => (order[a.color] ?? 9) - (order[b.color] ?? 9) || a.key.localeCompare(b.key, undefined, { numeric: true }));
 }
 
+/** Model of the printer: hrDeviceDescr of the device the printer table points to (otherwise the first entry) */
+export function printerModel(hr, descr) {
+  const idx = [...(hr?.keys() || [])].map((k) => k.split('.').slice(1).join('.')).find(Boolean);
+  const v = (idx && descr?.get(idx)) || [...(descr?.values() || [])][0];
+  return text(v, 80).replace(/\s*;.*$/, '');
+}
+
 /** Reads the status of one printer. Throws with a readable message if it does not answer. */
 export async function readPrinter(ip, communities, { port = 161 } = {}) {
   const s = await openSnmp(ip, communities, { port });
   if (!s) throw new Error('snmp');
   try {
-    const [supplies, colorants, counts, display, hr, single] = await Promise.all([
+    const [supplies, colorants, counts, display, hr, single, descr] = await Promise.all([
       walk(s, SUPPLIES, { max: 600 }),
       walk(s, COLORANTS, { max: 60 }),
       walk(s, LIFE_COUNT, { max: 10 }),
       walk(s, DISPLAY, { max: 10 }),
       walk(s, HR_PRINTER, { max: 20 }),
       getValues(s, [SERIAL]),
+      walk(s, HR_DESCR, { max: 20 }),
     ]);
     if (!supplies.size && !counts.size && !hr.size) throw new Error('noPrinterMib');
     let status = '';
@@ -111,6 +120,7 @@ export async function readPrinter(ip, communities, { port = 161 } = {}) {
       errors,
       display: [...display.values()].map((v) => text(v, 80)).filter(Boolean).slice(0, 4),
       serial: text(single[SERIAL], 60),
+      model: printerModel(hr, descr),
       snmp: s.version,
     };
   } finally {
