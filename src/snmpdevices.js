@@ -1,6 +1,6 @@
 // Switches and NAS: asks them via SNMP at a set interval (read-only).
 // Switch: ports, MAC table (→ "plugged in at switch X, port Y" for every device), LLDP neighbours, firmware.
-// NAS: volumes, disks, RAID, temperature, health – problems are reported once and again when they are solved.
+// NAS: volumes, disks, RAID, temperature, health - problems are reported once and again when they are solved.
 import { readSwitch } from './scan/switch.js';
 import { readNas, nasProblems } from './scan/nas.js';
 import { HttpError } from './lib/http.js';

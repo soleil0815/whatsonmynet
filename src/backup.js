@@ -1,7 +1,7 @@
 // Backup and restore in the web interface.
 //
 // Download: a consistent copy of the database (SQLite online backup). Stored passwords inside it are encrypted with
-// the key (data/secret.key or WOMN_SECRET) – a restore only works with the same key.
+// the key (data/secret.key or WOMN_SECRET) - a restore only works with the same key.
 // Restore: the file is checked (SQLite, schema not newer, same key), stored as data/restore-pending.sqlite and the
 // program restarts; at the next start the current database is moved to the backups and the new one takes its place.
 import fs from 'node:fs';
@@ -78,7 +78,7 @@ export function createBackups({ db, settings, dbFile, backupsDir, restart = () =
       const file = await backupDatabase(db, settings.get('backup.keep'), backupsDir);
       return path.basename(file);
     },
-    /** Path of a stored backup (only names from the list – never a path from outside) */
+    /** Path of a stored backup (only names from the list - never a path from outside) */
     file(name) {
       if (!NAME.test(String(name)) || String(name).includes('/')) throw new HttpError(404, 'err.notFound');
       const f = path.join(backupsDir, name);
@@ -105,7 +105,7 @@ export function createBackups({ db, settings, dbFile, backupsDir, restart = () =
         }
         const info = inspect(tmp);
         fs.renameSync(tmp, pending);
-        log.warn(`Restore requested (${info.devices} devices, ${info.users} users, schema ${info.schema}) – restarting`);
+        log.warn(`Restore requested (${info.devices} devices, ${info.users} users, schema ${info.schema}) - restarting`);
         restart();
         return info;
       } finally {

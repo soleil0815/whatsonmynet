@@ -1,5 +1,5 @@
 // Planned reports by e-mail: e.g. every Monday 8:00 the office gets the toner levels of all printers.
-// The mail is neutral on purpose: no link and no hint where it comes from – only the devices, their state and the
+// The mail is neutral on purpose: no link and no hint where it comes from - only the devices, their state and the
 // own text (subject, introduction, signature such as "Your IT team").
 import { HttpError, line, str } from './lib/http.js';
 import { log } from './lib/log.js';
@@ -17,25 +17,25 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 const T = {
   de: {
-    subject: 'Gerätestatus – KW {week}', printers: 'Drucker', nas: 'Speichersysteme (NAS)', switches: 'Switches', shares: 'Netzlaufwerke',
+    subject: 'Gerätestatus - KW {week}', printers: 'Drucker', nas: 'Speichersysteme (NAS)', switches: 'Switches', shares: 'Netzlaufwerke',
     freeOf: '{free} frei von {total}',
     order: 'bitte nachbestellen', nearlyFull: 'fast voll', empty: 'leer', full: 'voll', free: '{pct} % frei', some: 'vorhanden', unknown: 'unbekannt',
     unreachable: 'zurzeit nicht erreichbar', pages: 'Seiten gedruckt (gesamt)', pagesLeft: 'noch ca. {n} Seiten',
     period: { daily: 'Seiten seit gestern', weekly: 'Seiten in den letzten 7 Tagen', monthly: 'Seiten in den letzten 30 Tagen' }, state: 'Zustand', ok: 'in Ordnung', attention: 'Handlungsbedarf',
     volume: 'Speicher', disks: 'Festplatten', temp: 'Temperatur', portsUp: '{up} von {n} Anschlüssen verbunden', none: 'Keine Geräte in diesem Bericht.',
-    allGood: 'Alles in Ordnung – nichts zu tun.', location: 'Standort', disk: 'Festplatte {name}: {status}', raid: '{name}: {status}',
+    allGood: 'Alles in Ordnung - nichts zu tun.', location: 'Standort', disk: 'Festplatte {name}: {status}', raid: '{name}: {status}',
     sys: 'Systemstatus gestört', power: 'Netzteil gestört', fan: 'Lüfter gestört', full90: '{name} zu {pct} % belegt', jam: 'Papierstau', noPaper: 'kein Papier',
     doorOpen: 'Klappe offen', service: 'Wartung nötig', offline: 'offline',
     st: { systemPartitionFailed: 'Systempartition defekt', crashed: 'ausgefallen', degrade: 'eingeschränkt', rwError: 'Lese-/Schreibfehler', invalid: 'ungültig', raidUnknownStatus: 'unbekannter Zustand' },
   },
   en: {
-    subject: 'Device status – week {week}', printers: 'Printers', nas: 'Storage (NAS)', switches: 'Switches', shares: 'Network drives',
+    subject: 'Device status - week {week}', printers: 'Printers', nas: 'Storage (NAS)', switches: 'Switches', shares: 'Network drives',
     freeOf: '{free} free of {total}',
     order: 'please order', nearlyFull: 'almost full', empty: 'empty', full: 'full', free: '{pct} % free', some: 'available', unknown: 'unknown',
     unreachable: 'currently not reachable', pages: 'Pages printed (total)', pagesLeft: 'about {n} pages left',
     period: { daily: 'Pages since yesterday', weekly: 'Pages in the last 7 days', monthly: 'Pages in the last 30 days' }, state: 'State', ok: 'fine', attention: 'Action needed',
     volume: 'Storage', disks: 'Disks', temp: 'Temperature', portsUp: '{up} of {n} ports connected', none: 'No devices in this report.',
-    allGood: 'All fine – nothing to do.', location: 'Location', disk: 'Disk {name}: {status}', raid: '{name}: {status}',
+    allGood: 'All fine - nothing to do.', location: 'Location', disk: 'Disk {name}: {status}', raid: '{name}: {status}',
     sys: 'System status failed', power: 'Power supply failed', fan: 'Fan failed', full90: '{name} is {pct} % full', jam: 'Paper jam', noPaper: 'No paper',
     doorOpen: 'Door open', service: 'Service needed', offline: 'offline',
   },
@@ -51,7 +51,7 @@ export function isoWeek(d = new Date()) {
   return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
 }
 
-/** Is the report due at `now` (local time)? schedule: { freq: daily|weekly|monthly, time, weekday 1–7, day 1–28 } */
+/** Is the report due at `now` (local time)? schedule: { freq: daily|weekly|monthly, time, weekday 1-7, day 1-28 } */
 export function reportDue(schedule, lastDay, now = new Date()) {
   const m = TIME.exec(schedule?.time || '');
   if (!m || lastDay === localDay(now)) return false;
@@ -109,7 +109,7 @@ export function createReports({ db, settings, mailer }) {
       .filter((d) => (!c.locs.length || c.locs.includes(d.location_id)) && (!c.picked || c.devices.includes(d.id)));
   }
 
-  /** Pages printed in the report period (from the daily counter) – null while there is no older value */
+  /** Pages printed in the report period (from the daily counter) - null while there is no older value */
   function pagesIn(deviceId, days, now) {
     const latest = db.prepare('SELECT count FROM printer_pages WHERE device_id=? ORDER BY day DESC LIMIT 1').get(deviceId);
     const before = db.prepare('SELECT count FROM printer_pages WHERE device_id=? AND day<=? ORDER BY day DESC LIMIT 1').get(deviceId, localDay(new Date(now.getTime() - days * 864e5)));
@@ -228,7 +228,7 @@ export function createReports({ db, settings, mailer }) {
     for (const g of groups) {
       t.push(g.title.toUpperCase(), '');
       for (const i of g.items) {
-        t.push(`${i.name}${i.sub ? ` (${i.sub})` : ''}${i.attention ? `  – ${L.attention}` : ''}`);
+        t.push(`${i.name}${i.sub ? ` (${i.sub})` : ''}${i.attention ? `  - ${L.attention}` : ''}`);
         if (i.unreachable) t.push(`  ${L.unreachable}`);
         for (const s of i.supplies) t.push(`  ${s.label}: ${s.value}${s.low ? `  ← ${s.lowText || L.order}` : ''}`);
         for (const k of i.counters) t.push(`  ${k.label}: ${k.value}`);
@@ -240,11 +240,11 @@ export function createReports({ db, settings, mailer }) {
     if (r.signature) t.push('', fill(r.signature, vars));
     const text = t.join('\n');
 
-    // HTML (inline styles – mail programs ignore style sheets)
+    // HTML (inline styles - mail programs ignore style sheets)
     const para = (s) => esc(s).replace(/\n/g, '<br>');
     const bar = (s) => `<tr><td style="padding:3px 12px 3px 0;font-size:13px;color:#30363d;white-space:nowrap">${esc(s.label)}</td>
       <td style="padding:3px 0;width:100%"><div style="background:#e6e9ee;border-radius:4px;height:10px;overflow:hidden">${s.fill === null || s.fill === undefined ? '' : `<div style="background:${s.color};width:${Math.max(0, Math.min(100, s.fill))}%;height:10px"></div>`}</div></td>
-      <td style="padding:3px 0 3px 12px;font-size:13px;white-space:nowrap;${s.low ? 'color:#c0392b;font-weight:bold' : 'color:#57606a'}">${esc(s.value)}${s.low ? ` – ${esc(s.lowText || L.order)}` : ''}</td></tr>`;
+      <td style="padding:3px 0 3px 12px;font-size:13px;white-space:nowrap;${s.low ? 'color:#c0392b;font-weight:bold' : 'color:#57606a'}">${esc(s.value)}${s.low ? ` - ${esc(s.lowText || L.order)}` : ''}</td></tr>`;
     const card = (i) => `<div style="border:1px solid ${i.attention ? '#e8b4ad' : '#d8dee4'};border-radius:8px;padding:12px 14px;margin:0 0 10px;background:${i.attention ? '#fff8f6' : '#ffffff'}">
       <div style="font-size:15px;font-weight:bold;color:#1f2328">${esc(i.name)}${i.attention ? ` <span style="font-size:12px;font-weight:normal;color:#c0392b">· ${esc(L.attention)}</span>` : ''}</div>
       ${i.sub ? `<div style="font-size:12px;color:#6e7781;margin:2px 0 6px">${esc(i.sub)}</div>` : ''}

@@ -40,7 +40,7 @@ export async function renderAccount(main) {
 
   const tf = await get('/me/2fa').catch(() => null);
   mount(main, h('div', { class: 'page' },
-    pageHead(t('acc.title'), `${t(`role.${u.role}`)} – ${t(`role.${u.role}.hint`)}`),
+    pageHead(t('acc.title'), `${t(`role.${u.role}`)} - ${t(`role.${u.role}.hint`)}`),
     tf?.required && !tf.enabled ? h('div', { class: 'note warn' }, t('tf.requiredNote')) : null,
     h('div', { class: 'device-grid' },
       h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('acc.profile')), profile),

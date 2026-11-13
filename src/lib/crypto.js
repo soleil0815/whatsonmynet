@@ -10,7 +10,7 @@ export function initMasterKey() {
   const env = process.env.WOMN_SECRET;
   if (env) {
     // Never ignore a value that is too short (the key would change unnoticed)
-    if (env.length < 16) throw new Error('WOMN_SECRET is too short (at least 16 characters) – change it or leave it empty.');
+    if (env.length < 16) throw new Error('WOMN_SECRET is too short (at least 16 characters) - change it or leave it empty.');
     masterKey = crypto.createHash('sha256').update(env).digest();
     return;
   }

@@ -1,5 +1,5 @@
 // Docker hosts: where WhatsOnMyNet reads container states. Best a socket proxy (read-only, only containers allowed),
-// e.g. tecnativa/docker-socket-proxy with CONTAINERS=1 – or the local socket mounted read-only.
+// e.g. tecnativa/docker-socket-proxy with CONTAINERS=1 - or the local socket mounted read-only.
 import { HttpError, line } from '../lib/http.js';
 import { validDockerUrl, dockerInfo, dockerError } from './services.js';
 
@@ -35,7 +35,7 @@ export function createDockerHosts(db) {
       if (db.prepare('SELECT 1 FROM monitors WHERE docker_host_id=?').get(id)) throw new HttpError(409, 'err.dockerInUse');
       db.prepare('DELETE FROM docker_hosts WHERE id=?').run(id);
     },
-    /** Version and container list – throws HttpError 502 with a readable reason */
+    /** Version and container list - throws HttpError 502 with a readable reason */
     async info(id) {
       const h = get(id);
       if (!h) throw new HttpError(404, 'err.notFound');

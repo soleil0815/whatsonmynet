@@ -62,7 +62,7 @@ export function createUsers(db) {
     count: () => db.prepare('SELECT COUNT(*) n FROM users').get().n,
     list: () => db.prepare(`SELECT ${PUBLIC} FROM users ORDER BY username`).all().map(withLocations),
     get: (id) => withLocations(db.prepare(`SELECT ${PUBLIC} FROM users WHERE id=?`).get(id)),
-    /** Local accounts only – an account from the directory never signs in with a password stored here */
+    /** Local accounts only - an account from the directory never signs in with a password stored here */
     authenticate(username, password) {
       const u = byName.get(String(username || '').trim());
       const ok = verifyPassword(String(password || ''), u?.source === 'local' ? u.password_hash : '');
@@ -113,7 +113,7 @@ export function createUsers(db) {
       db.prepare('UPDATE users SET recovery_codes=? WHERE id=?').run(JSON.stringify(left), id);
       return true;
     },
-    /** 'local' | 'ldap' | null – which kind of account has this name */
+    /** 'local' | 'ldap' | null - which kind of account has this name */
     sourceOf(username) { return byName.get(String(username || '').trim())?.source || null; },
     /**
      * After a successful directory sign-in: create the account or update name, e-mail and role from AD.

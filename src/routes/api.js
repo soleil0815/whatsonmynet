@@ -64,7 +64,7 @@ export function createApi(ctx) {
     sessions.create(req, res, u.id);
     req.user = u;
     audit(req, 'setup', `admin ${u.username}`);
-    log.info(`Initial setup completed – administrator "${u.username}" created`);
+    log.info(`Initial setup completed - administrator "${u.username}" created`);
     res.json({ user: publicUser(u) });
   });
 
@@ -129,7 +129,7 @@ export function createApi(ctx) {
 
   // --- Signed in ------------------------------------------------------------------------------------------
   r.use(requireAuth);
-  // Admin setting: local administrators must use two-factor sign-in – until set up only the own account works
+  // Admin setting: local administrators must use two-factor sign-in - until set up only the own account works
   const twoFactorRequired = (u) => !!settings.get('security.require2faAdmins') && u.role === 'admin' && u.source === 'local';
   r.use((req, _res, next) => {
     if (!twoFactorRequired(req.user) || req.user.totp_enabled) return next();
@@ -214,7 +214,7 @@ export function createApi(ctx) {
       interfaces: ifaces,
       gateways: defaultGateways(),
       pingAvailable: await pingAvailable(),
-      // Without host networking Docker only shows its own bridge – then MAC addresses cannot be seen
+      // Without host networking Docker only shows its own bridge - then MAC addresses cannot be seen
       hostNetwork: ifaces.some((i) => !i.virtual),
       suggestions: [...new Set(ifaces.filter((i) => !i.virtual && i.prefix >= 20).map((i) => i.cidr))],
     });

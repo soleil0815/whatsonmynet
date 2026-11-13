@@ -1,6 +1,6 @@
 // Builds the PDF manuals from public/help/manual.<lang>.md (same text as the help page in the app).
 //   node tools/build-manual.mjs        (needs Playwright with Chromium; ImageMagick makes the PDFs smaller)
-// Output: public/help/WhatsOnMyNet-Handbuch.pdf and WhatsOnMyNet-Manual.pdf – shipped in the image and the release.
+// Output: public/help/WhatsOnMyNet-Handbuch.pdf and WhatsOnMyNet-Manual.pdf - shipped in the image and the release.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,7 +15,7 @@ const help = path.join(root, 'public', 'help');
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 
-// Smaller images for the PDF (JPEG, 1600 px) – the app keeps the sharp PNGs
+// Smaller images for the PDF (JPEG, 1600 px) - the app keeps the sharp PNGs
 const imgDir = fs.mkdtempSync(path.join(os.tmpdir(), 'womn-manual-'));
 let hasConvert = true;
 for (const f of fs.readdirSync(path.join(help, 'img'))) {
@@ -63,7 +63,7 @@ for (const lang of ['de', 'en']) {
   const base = `${pathToFileURL(hasConvert ? imgDir : path.join(help, 'img')).href}/`;
   const body = mdToHtml(md, { imgBase: '' }).replace(/src="img\//g, `src="${base}`);
   const html = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><style>${css}</style></head><body>
-<section class="cover">${LOGO_MARK}<h1>Whats<span>OnMyNet</span></h1><p class="sub">${L.title} – ${L.sub}</p>
+<section class="cover">${LOGO_MARK}<h1>Whats<span>OnMyNet</span></h1><p class="sub">${L.title} - ${L.sub}</p>
 <p class="meta">${new Date().toISOString().slice(0, 10)}</p></section>
 <section class="toc"><h2>${L.contents}</h2><ol>${toc(md).map((x) => `<li><a href="#${x.id}">${x.text.replace(/[<>&]/g, '')}</a></li>`).join('')}</ol></section>
 ${body}</body></html>`;
@@ -74,7 +74,7 @@ ${body}</body></html>`;
   await page.goto(pathToFileURL(htmlFile).href, { waitUntil: 'load' });
   await page.pdf({ path: path.join(help, L.file), format: 'A4', printBackground: true, displayHeaderFooter: true,
     headerTemplate: '<span></span>',
-    footerTemplate: `<div style="width:100%;font-size:8px;color:#8a94a0;padding:0 17mm;display:flex;justify-content:space-between"><span>WhatsOnMyNet – ${L.title}</span><span class="pageNumber"></span></div>`,
+    footerTemplate: `<div style="width:100%;font-size:8px;color:#8a94a0;padding:0 17mm;display:flex;justify-content:space-between"><span>WhatsOnMyNet - ${L.title}</span><span class="pageNumber"></span></div>`,
     margin: { top: '18mm', bottom: '20mm', left: '17mm', right: '17mm' } });
   await page.close();
   console.log(`${L.file}: ${(fs.statSync(path.join(help, L.file)).size / 1024 / 1024).toFixed(1)} MB`);

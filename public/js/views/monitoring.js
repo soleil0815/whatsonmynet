@@ -77,37 +77,64 @@ export async function renderMonitoring(main, id, sub) {
   const body = h('section', { class: 'panel' });
   let timer = null;
   let alive = true;
+  // Filter by state and search; the list is grouped so that what is down comes first
+  let filter = new URLSearchParams(location.search).get('status') || '';
+  let all = [];
+  const q = h('input', { type: 'search', placeholder: t('mon.search'), 'aria-label': t('mon.search'), oninput: () => draw() });
+  const chips = h('div', { class: 'inv-chips', role: 'group', 'aria-label': t('mon.col.name') });
+  const ORDER = ['down', 'pending', 'maintenance', 'up', 'paused'];
+
+  function row(m) {
+    return h('tr', { class: 'click', onclick: (e) => { if (!e.target.closest('a,button')) navigate(`/monitoring/${m.id}`); } },
+      h('td', {}, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
+        h('div', { style: { minWidth: 0 } }, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
+          h('div', { class: 'sub' }, m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, m.last_message) : h('span', { class: 'mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`))))),
+      h('td', { class: 'hide-sm' }, beatsBar(m.beats, 40, isValueType(m))),
+      h('td', {}, pct(m.uptime24)),
+      h('td', { class: 'hide-sm' }, isValueType(m) ? valueText(m) : m.last_ms !== null && m.status === 'up' ? `${m.last_ms} ms` : '–'),
+      h('td', { class: 'hide-sm' }, certBadge(m)));
+  }
+
+  function draw() {
+    const counts = {};
+    for (const m of all) counts[m.status] = (counts[m.status] || 0) + 1;
+    const chip = (key, label, n, tone) => h('button', { type: 'button', class: `fchip${filter === key ? ' on' : ''}`, 'aria-pressed': String(filter === key),
+      onclick: () => { filter = filter === key && key ? '' : key; history.replaceState({}, '', `/monitoring${filter ? `?status=${filter}` : ''}`); draw(); } },
+      tone ? h('span', { class: `dot dot-${tone}` }) : null, label, h('span', { class: 'chip-n' }, n));
+    mount(chips, chip('', t('all'), all.length), counts.down ? chip('down', t('mon.status.down'), counts.down, 'bad') : null,
+      counts.up ? chip('up', t('mon.status.up'), counts.up, 'ok') : null, counts.paused ? chip('paused', t('mon.status.paused'), counts.paused) : null);
+    const term = q.value.trim().toLowerCase();
+    const list = all.filter((m) => (!filter || m.status === filter) && (!term || `${m.name} ${m.target} ${t(`mon.type.${m.type}`)}`.toLowerCase().includes(term)));
+    const rows = [];
+    for (const st of ORDER) {
+      const part = list.filter((m) => (ORDER.includes(m.status) ? m.status : 'pending') === st);
+      if (!part.length) continue;
+      rows.push(h('tr', { class: 'group' }, h('td', { colspan: 5 }, `${t(`mon.status.${st}`)} · ${part.length}`)));
+      for (const m of part) rows.push(row(m));
+    }
+    mount(body, h('div', { class: 'table-wrap' }, rows.length ? h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('mon.col.name')), h('th', { class: 'hide-sm' }, t('mon.col.beats')),
+        h('th', {}, t('mon.col.uptime')), h('th', { class: 'hide-sm' }, t('mon.col.ms')), h('th', { class: 'hide-sm' }, t('mon.col.cert')))),
+      h('tbody', {}, rows)) : h('div', { class: 'empty' }, t('mon.noMatch'))));
+  }
 
   async function load() {
     let list;
     try { list = await get('/monitors'); } catch (e) { if (alive) fail(e); return; }
     if (!alive) return;
+    all = list;
     if (!list.length) {
       mount(body, h('div', { class: 'empty' }, h('h2', {}, t('mon.emptyTitle')), h('p', {}, t('mon.emptyText')),
         edit ? btn(t('mon.add'), { class: 'btn btn-primary', onclick: () => openMonitorForm(null, load) }, 'plus') : null));
     } else {
-      const down = list.filter((m) => m.status === 'down').length;
-      mount(body,
-        h('div', { class: 'toolbar' }, h('span', { class: 'count', style: { marginLeft: 0 } },
-          t('mon.count', { n: list.length, up: list.filter((m) => m.status === 'up').length, down }))),
-        h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
-          h('thead', {}, h('tr', {}, h('th', {}, t('mon.col.name')), h('th', { class: 'hide-sm' }, t('mon.col.beats')),
-            h('th', {}, t('mon.col.uptime')), h('th', { class: 'hide-sm' }, t('mon.col.ms')), h('th', { class: 'hide-sm' }, t('mon.col.cert')))),
-          h('tbody', {}, list.map((m) => h('tr', { class: 'click', onclick: (e) => { if (!e.target.closest('a,button')) navigate(`/monitoring/${m.id}`); } },
-            h('td', {}, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
-              h('div', {}, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
-                h('div', { class: 'sub mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`)))),
-            h('td', { class: 'hide-sm' }, beatsBar(m.beats, 40, isValueType(m))),
-            h('td', {}, pct(m.uptime24)),
-            h('td', { class: 'hide-sm' }, isValueType(m) ? valueText(m) : m.last_ms !== null && m.status === 'up' ? `${m.last_ms} ms` : '–'),
-            h('td', { class: 'hide-sm' }, certBadge(m))))))));
+      draw();
     }
     timer = setTimeout(load, 15000);
   }
 
   mount(main, h('div', { class: 'page' },
     pageHead(t('mon.title'), t('mon.lead'), edit ? btn(t('mon.add'), { class: 'btn btn-primary', onclick: () => openMonitorForm(null, load) }, 'plus') : null),
-    tabs, body));
+    tabs, h('div', { class: 'inv-filter' }, h('div', { class: 'search' }, h('span', { html: icon('search') }), q), chips), body));
   mount(body, h('div', { class: 'empty' }, t('loading')));
   await load();
   return () => { alive = false; clearTimeout(timer); };
@@ -127,7 +154,7 @@ function certBadge(m) {
 }
 
 /** Response time chart: line for answers, red marks for failed checks */
-/** valueMode: sensors – the line shows the measured value (also while the alarm is on), without unit */
+/** valueMode: sensors - the line shows the measured value (also while the alarm is on), without unit */
 function chart(checks, hours, valueMode = false) {
   const W = 720; const H = 160; const P = 6;
   const svg = svgEl('svg', { class: 'mon-chart', viewBox: `0 0 ${W} ${H + 18}`, role: 'img', 'aria-label': t('mon.chart') });
@@ -228,11 +255,22 @@ async function renderDetail(main, id) {
 
 function eventLine(e) {
   if (e.kind === 'cert') return t('mon.ev.cert', { n: e.message });
-  return `${t(`mon.ev.${e.kind}`)}${e.message && e.kind === 'down' ? ` – ${e.message}` : ''}`;
+  return `${t(`mon.ev.${e.kind}`)}${e.message && e.kind === 'down' ? ` - ${e.message}` : ''}`;
 }
 
 /** Form to add or edit a monitor. `preset` fills a new one (e.g. from a device). */
+// Step 1 of "Add monitor": what should be watched? One tile per kind, with a sentence what it checks
+const PICK = [['http', 'open'], ['ping', 'radar'], ['tcp', 'switch'], ['smb', 'nas'], ['sensor', 'printer'], ['proxmox', 'hypervisor'], ['docker', 'server'], ['mysql', 'inventory'], ['snmp', 'router']];
+function pickKind(done, preset) {
+  const dlg = modal(t('mon.add'), h('div', {},
+    h('p', { class: 'muted', style: { marginTop: 0 } }, t('mon.pick.lead')),
+    h('div', { class: 'pick-grid' }, PICK.map(([type, ico]) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); openMonitorForm(null, done, { ...(preset || {}), type }); } },
+      h('span', { class: 'pick-ico', html: icon(ico) }), h('span', { class: 'pick-title' }, t(`mon.pick.${type}`)), h('span', { class: 'pick-text' }, t(`mon.pick.${type}.d`)))))),
+  { wide: true, actions: [btn(t('cancel'), { onclick: () => dlg.close() })] });
+}
+
 export async function openMonitorForm(m, done, preset = null) {
+  if (!m && !preset?.type) { pickKind(done, preset); return; }
   let chans = [];
   try { chans = await get('/channels'); } catch { /* list stays empty */ }
   const v = m || { type: 'http', interval_s: 60, timeout_s: 10, fail_threshold: 3, resend_min: 0, http_status: '200-399', http_keyword: '',
@@ -418,12 +456,16 @@ export async function openMonitorForm(m, done, preset = null) {
     dockerBox,
     dbBox,
     smbBox,
-    field(t('mon.f.interval'), input('interval_s', v.interval_s, { type: 'number', min: 20, max: 86400 }), t('mon.f.intervalHint')),
-    field(t('mon.f.retries'), input('fail_threshold', v.fail_threshold, { type: 'number', min: 1, max: 10 }), t('mon.f.retriesHint')),
-    field(t('mon.f.timeout'), input('timeout_s', v.timeout_s, { type: 'number', min: 1, max: 60 })),
-    field(t('mon.f.resend'), input('resend_min', v.resend_min, { type: 'number', min: 0, max: 1440 }), t('mon.f.resendHint')),
-    httpBox,
-    chanBox);
+    chanBox,
+    // Rarely changed: how often, when to alarm, HTTP details - folded away with sensible defaults
+    h('details', { class: 'adv full', open: !!m && m.type === 'http' && (m.http_keyword || m.http_status !== '200-399') },
+      h('summary', {}, t('mon.f.advanced')),
+      h('div', { class: 'form-grid' },
+        field(t('mon.f.interval'), input('interval_s', v.interval_s, { type: 'number', min: 20, max: 86400 }), t('mon.f.intervalHint')),
+        field(t('mon.f.retries'), input('fail_threshold', v.fail_threshold, { type: 'number', min: 1, max: 10 }), t('mon.f.retriesHint')),
+        field(t('mon.f.timeout'), input('timeout_s', v.timeout_s, { type: 'number', min: 1, max: 60 })),
+        field(t('mon.f.resend'), input('resend_min', v.resend_min, { type: 'number', min: 0, max: 1440 }), t('mon.f.resendHint')),
+        httpBox)));
   sync();
   const dlg = modal(m ? m.name : t('mon.add'), form, { wide: true, actions: [
     btn(t('cancel'), { onclick: () => dlg.close() }),
@@ -483,7 +525,7 @@ async function renderMaintenance(main) {
   const reload = () => renderMaintenance(main);
   const names = Object.fromEntries(monitors.map((m) => [m.id, m.name]));
   const when = (w) => (w.kind === 'once'
-    ? `${fmtDate(w.starts_at, getLang())} – ${fmtDate(w.ends_at, getLang())}`
+    ? `${fmtDate(w.starts_at, getLang())} - ${fmtDate(w.ends_at, getLang())}`
     : `${w.weekdays.slice().sort((a, b) => DAYS.indexOf(a) - DAYS.indexOf(b)).map((d) => t(`day.${d}`)).join(', ')} · ${w.time_from}–${w.time_to}`);
   mount(main, h('div', { class: 'page' },
     pageHead(t('mon.title'), t('maint.lead'), edit ? btn(t('maint.add'), { class: 'btn btn-primary', onclick: () => maintenanceForm(null, monitors, reload) }, 'plus') : null),

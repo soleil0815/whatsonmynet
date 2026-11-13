@@ -1,17 +1,17 @@
 // HTTPS rules.
 //
 // Direct access (the normal case): WhatsOnMyNet speaks HTTPS itself on WOMN_HTTPS_PORT (8743). The HTTP port
-// (WOMN_HTTP_PORT, 8780) only redirects to HTTPS – the target comes from WOMN_BASE_URL, or else from the host name
+// (WOMN_HTTP_PORT, 8780) only redirects to HTTPS - the target comes from WOMN_BASE_URL, or else from the host name
 // the browser used (checked, port replaced by the HTTPS port).
 //
 // HSTS on direct access only with an uploaded (trusted) certificate: with HSTS a browser no longer lets anyone
-// click past the warning for a self-signed certificate – that would lock users out.
+// click past the warning for a self-signed certificate - that would lock users out.
 //
 // Behind a reverse proxy (WOMN_TRUST_PROXY = its address): the proxy may also talk plain HTTP to the HTTP port; such
 // requests are served instead of redirected. The rules are the same as in Catalytix, AssetLotse and Helfi.Space:
 // once the https:// address of WOMN_BASE_URL was reached through the proxy, requests the proxy forwards over plain
 // HTTP are redirected to it (remembered in https-hosts.txt); HSTS only where WhatsOnMyNet had to redirect itself
-// (a proxy that redirects on its own usually sends HSTS too – never twice). WOMN_HSTS=off never, preload always.
+// (a proxy that redirects on its own usually sends HSTS too - never twice). WOMN_HSTS=off never, preload always.
 import fs from 'node:fs';
 import path from 'node:path';
 import { isIPv4 } from './lib/net.js';
@@ -54,12 +54,12 @@ export function createHttpsHosts(file) {
     learn(host) {
       if (hosts.has(host) || !HOSTNAME.test(host) || hosts.size >= MAX_HOSTS) return;
       hosts.add(host);
-      save('HTTPS through the reverse proxy detected for %s – HTTP is now redirected to HTTPS', host);
+      save('HTTPS through the reverse proxy detected for %s - HTTP is now redirected to HTTPS', host);
     },
     markRedirected(host) {
       if (redirected.has(host) || !hosts.has(host)) return;
       redirected.add(host);
-      save('The reverse proxy does not redirect %s to HTTPS itself – HSTS is now sent', host);
+      save('The reverse proxy does not redirect %s to HTTPS itself - HSTS is now sent', host);
     },
   };
 }
@@ -135,7 +135,7 @@ export function proxyHttpsMiddleware(app, { baseUrl, hsts = 'on', hosts = null }
   };
 }
 
-/** HSTS for direct HTTPS access – only with a trusted (uploaded) certificate and a host name. */
+/** HSTS for direct HTTPS access - only with a trusted (uploaded) certificate and a host name. */
 export function directHstsMiddleware({ hsts, certSource }) {
   return (req, res, next) => {
     if (hsts !== 'off' && req.socket?.encrypted && certSource() === 'custom') {

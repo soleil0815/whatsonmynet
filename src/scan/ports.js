@@ -1,4 +1,4 @@
-// Port lists. The normal scan only checks a short, fixed list of typical ports – enough to recognise
+// Port lists. The normal scan only checks a short, fixed list of typical ports - enough to recognise
 // servers, NAS, printers, switches and Telematik devices without looking like an attack.
 
 /** Gentle scan (default): 26 ports */

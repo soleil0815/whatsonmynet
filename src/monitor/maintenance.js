@@ -1,4 +1,4 @@
-// Maintenance windows: no alarms while a window is active. Once (from – to) or weekly (weekdays + time of day,
+// Maintenance windows: no alarms while a window is active. Once (from - to) or weekly (weekdays + time of day,
 // local time of the container, TZ in .env). A weekly window may cross midnight (22:00–02:00).
 import { HttpError, line, ids } from '../lib/http.js';
 

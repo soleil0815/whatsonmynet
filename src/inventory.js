@@ -164,7 +164,7 @@ export function createInventory(db) {
     if (!db.prepare('DELETE FROM devices WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound');
   }
 
-  /** Last finished network scans with their subnets – to tell whether a device was seen in the latest scan */
+  /** Last finished network scans with their subnets - to tell whether a device was seen in the latest scan */
   function coverage() {
     return db.prepare("SELECT id, started_at, targets FROM scans WHERE kind='network' AND status='done' ORDER BY id DESC LIMIT 50").all()
       .map((s) => ({ ...s, targets: parse(s.targets, []) }));
@@ -237,7 +237,7 @@ export function createInventory(db) {
         const r = getResult.get(rid);
         if (!r || r.device_id) continue;
         const mac = normalizeMac(r.mac);
-        const label = [r.hostname, r.vendor].filter(Boolean).join(' – ').slice(0, 200);
+        const label = [r.hostname, r.vendor].filter(Boolean).join(' - ').slice(0, 200);
         if (mac) db.prepare('INSERT INTO ignored(mac,ip,label,created_at,created_by) VALUES(?,?,?,?,?) ON CONFLICT(mac) DO UPDATE SET ip=excluded.ip').run(mac, r.ip, label, now(), user);
         else if (!isIgnored.get(null, r.ip)) db.prepare('INSERT INTO ignored(mac,ip,label,created_at,created_by) VALUES(NULL,?,?,?,?)').run(r.ip, label, now(), user);
         db.prepare("UPDATE scan_results SET handled='ignored', status='ignored' WHERE id=?").run(rid);
@@ -271,7 +271,7 @@ export function createInventory(db) {
     };
   }
 
-  /** Values already used in the inventory – for suggestions while typing (most used first) */
+  /** Values already used in the inventory - for suggestions while typing (most used first) */
   function suggestions() {
     const top = (col) => db.prepare(`SELECT ${col} v, COUNT(*) n FROM devices WHERE ${col} <> '' GROUP BY ${col} COLLATE NOCASE ORDER BY n DESC, v LIMIT 300`).all().map((r) => r.v);
     const tags = new Map();
@@ -332,7 +332,7 @@ export function createInventory(db) {
   return { applyResult, finishScan, create, update, remove, get, list, historyOf, adopt, ignore, stats, history, suggestions, bulkUpdate, bulkRemove };
 }
 
-/** CSV export (semicolon, UTF-8 with BOM – opens correctly in Excel) */
+/** CSV export (semicolon, UTF-8 with BOM - opens correctly in Excel) */
 export function toCsv(devices) {
   const cols = ['name', 'type', 'ip', 'mac', 'hostname', 'vendor', 'model', 'os', 'location_name', 'owner', 'tags', 'serial',
     'supplier', 'purchase_date', 'warranty_until', 'maintenance_until', 'web_url', 'last_seen', 'notes'];

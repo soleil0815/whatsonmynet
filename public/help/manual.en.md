@@ -1,4 +1,4 @@
-# WhatsOnMyNet – Manual
+# WhatsOnMyNet - Manual
 
 WhatsOnMyNet finds what runs on your network and keeps only what you adopt in the inventory. It also monitors devices, services and websites, reads printers, switches, NAS and Proxmox, and reports by e-mail, Telegram or webhook when something is wrong.
 
@@ -6,11 +6,11 @@ WhatsOnMyNet finds what runs on your network and keeps only what you adopt in th
 
 ## Installation
 
-WhatsOnMyNet runs as a Docker container with host networking – only this way the scan sees the MAC addresses of the devices.
+WhatsOnMyNet runs as a Docker container with host networking - only this way the scan sees the MAC addresses of the devices.
 
 1. Put `docker-compose.yml` and `env.example` from the release into a folder, rename `env.example` to `.env`.
 2. Adjust ports (`WOMN_HTTPS_PORT`, default 8743), time zone (`TZ`) and owner of the data (`PUID`/`PGID`) in `.env` if needed.
-3. `docker compose up -d` – or create the stack in Dockhand.
+3. `docker compose up -d` - or create the stack in Dockhand.
 4. Get the **setup code** from the log (`docker compose logs whatsonmynet`) and open `https://<server>:8743/setup`. There you create the first administrator.
 
 The interface always runs over HTTPS. On first start WhatsOnMyNet creates a self-signed certificate; upload your own (PEM or PFX) under *Settings → HTTPS certificate*.
@@ -39,7 +39,7 @@ The MAC address is the identity of a device: if it gets a new IP, the next scan 
 
 ## Nightly light scan
 
-Every night (default 02:30) WhatsOnMyNet looks for devices in all subnets of your locations – no ports, no SNMP. Known devices get their new IP; a device showing up for the very first time is reported once. Settings, time and "Run now" are under *Settings → Scan*.
+Every night (default 02:30) WhatsOnMyNet looks for devices in all subnets of your locations - no ports, no SNMP. Known devices get their new IP; a device showing up for the very first time is reported once. Settings, time and "Run now" are under *Settings → Scan*.
 
 ## Monitoring
 
@@ -50,9 +50,9 @@ A monitor checks regularly (20 seconds to 24 hours) and reports only after sever
 - **Web (HTTP/S)** with status codes, keyword and certificate expiry (warning e.g. 30, 14 and 7 days before)
 - **TCP port** and **ping**
 - **Docker container** (through a socket proxy, *Settings → Docker*): running, restarting all the time, health check "unhealthy"
-- **Databases**: MariaDB/MySQL, PostgreSQL, Redis/Valkey – sign-in and one harmless query
-- **Network drive (SMB)**: Windows shares and NAS – see below
-- **Sensor (device value)**, **SNMP value (OID)** and **Proxmox** – see below
+- **Databases**: MariaDB/MySQL, PostgreSQL, Redis/Valkey - sign-in and one harmless query
+- **Network drive (SMB)**: Windows shares and NAS - see below
+- **Sensor (device value)**, **SNMP value (OID)** and **Proxmox** - see below
 
 On the device page "Monitor" creates a fitting monitor. If the IP of a device changes, its monitors follow.
 
@@ -66,9 +66,9 @@ Devices of type *Printer*, *Switch* and *NAS* are queried via SNMP (read-only). 
 
 ![Printer](img/printer-en.png)
 
-- **Printer**: toner or ink per colour, drum, waste toner, page counter, faults and display text. Below 15 % a notice is sent – once per cartridge.
+- **Printer**: toner or ink per colour, drum, waste toner, page counter, faults and display text. Below 15 % a notice is sent - once per cartridge.
 - **Switch**: ports as tiles, which devices hang at which port (VLAN-aware), LLDP neighbours, firmware. Every device page shows "Plugged in at".
-- **NAS**: volumes; on Synology also disks, RAID, temperature, fans, power supply and DSM update. Problems are reported – and again when everything is fine.
+- **NAS**: volumes; on Synology also disks, RAID, temperature, fans, power supply and DSM update. Problems are reported - and again when everything is fine.
 
 ![Switch](img/switch-en.png)
 
@@ -82,7 +82,7 @@ The *Network map* shows from MAC tables and LLDP which device hangs at which por
 
 ## Sensors
 
-Every value a device delivers can become a monitor of its own – with history, alarm and maintenance windows. On the device page "Add sensor", then choose value and condition, e.g.:
+Every value a device delivers can become a monitor of its own - with history, alarm and maintenance windows. On the device page "Add sensor", then choose value and condition, e.g.:
 
 - "toner cyan less than or equal 10 %"
 - "usage /volume1 greater than or equal 85 %"
@@ -95,10 +95,10 @@ The kind **SNMP value (OID)** reads any SNMP value (e.g. runtime left of a UPS) 
 
 ![Network drive](img/smb-en.png)
 
-The kind **Network drive (SMB)** really signs in to a share – not just to the open port. So you also notice when the password expired, the rights changed or a folder is missing.
+The kind **Network drive (SMB)** really signs in to a share - not just to the open port. So you also notice when the password expired, the rights changed or a folder is missing.
 
 1. Create an account of its own with **read rights** on the share (in AD e.g. `COMPANY\monitor`, on a NAS a local user).
-2. *Add monitor* → kind **Network drive (SMB)**. Just paste the path, e.g. `\\fs01\Department\Projects` – server, share and folder are taken from it.
+2. *Add monitor* → kind **Network drive (SMB)**. Just paste the path, e.g. `\\fs01\Department\Projects` - server, share and folder are taken from it.
 3. Enter user, domain (empty for NAS accounts) and password. Optional: warn below … % or … GB free.
 
 The check runs over SMB 2/3: sign in, read the share (or the folder or file), ask for the free space. WhatsOnMyNet writes nothing to the share. The detail page shows the free space; reports have the section *Network drives* for it.
@@ -107,13 +107,13 @@ The check runs over SMB 2/3: sign in, read the share (or the folder or file), as
 
 ![Proxmox](img/proxmox-en.png)
 
-WhatsOnMyNet reads Proxmox VE and the Proxmox Backup Server through their built-in interface (API). Nothing is installed on Proxmox. WhatsOnMyNet gets a user of its own there that may **only read**, and a key for it (API token). The dialog *Settings → Proxmox → Add Proxmox server* shows the same steps, with a button to copy.
+WhatsOnMyNet reads Proxmox VE and the Proxmox Backup Server through their built-in interface (API). Nothing is installed on Proxmox. WhatsOnMyNet gets a user of its own there that may **only read**, and a key for it (API token). The dialog *Monitoring → Proxmox → Add Proxmox server* shows the same steps, with a button to copy.
 
 ### Step 1: prepare Proxmox (once)
 
-**With commands (recommended) – Proxmox VE**
+**With commands (recommended) - Proxmox VE**
 
-1. In Proxmox click a node on the left and open **>_ Shell** at the top. One node is enough – in a cluster it applies to all.
+1. In Proxmox click a node on the left and open **>_ Shell** at the top. One node is enough - in a cluster it applies to all.
 2. Copy these three lines, paste them into the shell and press Enter:
 
 ```
@@ -122,9 +122,9 @@ pveum acl modify / --users whatsonmynet@pve --roles PVEAuditor
 pveum user token add whatsonmynet@pve womn --privsep 0
 ```
 
-3. The output shows a table. The row `value` holds the **secret** (a long string with dashes). Copy and keep it – Proxmox shows it only this once.
+3. The output shows a table. The row `value` holds the **secret** (a long string with dashes). Copy and keep it - Proxmox shows it only this once.
 
-**With commands – Proxmox Backup Server**
+**With commands - Proxmox Backup Server**
 
 1. In the Backup Server open *Administration → Shell* on the left.
 2. Paste these four lines and press Enter:
@@ -136,53 +136,53 @@ proxmox-backup-manager user generate-token whatsonmynet@pbs womn
 proxmox-backup-manager acl update / Audit --auth-id 'whatsonmynet@pbs!womn'
 ```
 
-3. After the third command `"value"` holds the **secret**. Copy it – it is shown only once.
+3. After the third command `"value"` holds the **secret**. Copy it - it is shown only once.
 
-**By clicking – Proxmox VE**
+**By clicking - Proxmox VE**
 
 1. *Datacenter → Permissions → Users* → *Add*: user name `whatsonmynet`, realm *Proxmox VE authentication server*, any password → *Add*.
 2. *Datacenter → Permissions* → *Add* → *User Permission*: path `/`, user `whatsonmynet@pve`, role `PVEAuditor` → *Add*.
 3. *Datacenter → Permissions → API Tokens* → *Add*: user `whatsonmynet@pve`, token ID **only** `womn` (no @ or !), **untick** *Privilege Separation* → *Add*.
-4. Proxmox now shows the *Secret* – only this once. Copy and keep it.
+4. Proxmox now shows the *Secret* - only this once. Copy and keep it.
 
-On the Backup Server it works the same under *Configuration → Access Control*: user `whatsonmynet` (realm *Proxmox Backup authentication server*), tab *API Token* with token name `womn`, then under *Permissions* the role `Audit` on the path `/` twice – once for the user `whatsonmynet@pbs`, once for the token `whatsonmynet@pbs!womn`.
+On the Backup Server it works the same under *Configuration → Access Control*: user `whatsonmynet` (realm *Proxmox Backup authentication server*), tab *API Token* with token name `womn`, then under *Permissions* the role `Audit` on the path `/` twice - once for the user `whatsonmynet@pbs`, once for the token `whatsonmynet@pbs!womn`.
 
 ### Step 2: enter it in WhatsOnMyNet
 
-1. *Settings → Proxmox* → **Add Proxmox server**.
+1. *Monitoring → Proxmox* → **Add Proxmox server**.
 2. Give it a name and choose the kind (Proxmox VE or Backup Server).
 3. Enter the **address** the way you open Proxmox in the browser, e.g. `https://192.168.1.10:8006` (Backup Server: port `8007`).
-4. Click **Fetch certificate**. WhatsOnMyNet shows the fingerprint of the Proxmox certificate. Compare it – Proxmox VE: click the node → *System → Certificates* → row `pve-ssl.pem`; Backup Server: *Dashboard* → *Show Fingerprint*. If it matches, **Fingerprint matches – trust**.
+4. Click **Fetch certificate**. WhatsOnMyNet shows the fingerprint of the Proxmox certificate. Compare it - Proxmox VE: click the node → *System → Certificates* → row `pve-ssl.pem`; Backup Server: *Dashboard* → *Show Fingerprint*. If it matches, **Fingerprint matches - trust**.
 5. The **token ID** is already filled in (`whatsonmynet@pve!womn` or `whatsonmynet@pbs!womn`). Paste the copied secret into **Token secret**.
 6. **Save and connect.** After a few seconds nodes, storage, VMs and containers and the backups appear.
 
 ### Adding sensors
 
-In the detail view **Add sensor** – e.g. "VM 101 running", "storage local-lvm below 85 %" or "last backup older than 26 hours". Every sensor is a monitor with history and notification.
+In the detail view **Add sensor** - e.g. "VM 101 running", "storage local-lvm below 85 %" or "last backup older than 26 hours". Every sensor is a monitor with history and notification.
 
 ### If something does not work
 
-- **"tokenid: value does not match the regex pattern" in Proxmox**: when adding the token enter only `womn` – without user, @ and !.
+- **"tokenid: value does not match the regex pattern" in Proxmox**: when adding the token enter only `womn` - without user, @ and !.
 - **"sign-in refused (401)"**: token ID or secret are wrong. Delete the token in Proxmox, add it again and enter the new secret.
-- **Notice "The token lacks read rights"**: usually *Privilege Separation* stayed ticked on the token. The notice shows two commands – paste them into the Proxmox shell, Enter, then **Query now**.
+- **Notice "The token lacks read rights"**: usually *Privilege Separation* stayed ticked on the token. The notice shows two commands - paste them into the Proxmox shell, Enter, then **Query now**.
 - **"certificate changed"**: Proxmox got a new certificate. *Edit* → **Fetch certificate** → confirm.
 
 ## Reports
 
 ![Report](img/report-en.png)
 
-Under *Settings → Reports* reports go out by e-mail at set times – e.g. the toner levels to the office every Monday at 8:00.
+Under *Monitoring → Reports* reports go out by e-mail at set times - e.g. the toner levels to the office every Monday at 8:00.
 
 - Content: printers, NAS, switches, network drives; can be limited to locations; optionally only devices that need action.
-- **Devices**: all devices of the chosen content – or only chosen ones, e.g. a report of its own for the printer in the front office.
-- Printers show the **pages printed** (in total and in the report period, e.g. "in the last 7 days") and – if the printer reports it – how many pages the toner still lasts.
-- The mail is **neutral**: no link, no program name – only your sender name, subject (`{week}`, `{date}`), introduction, the devices and your closing.
+- **Devices**: all devices of the chosen content - or only chosen ones, e.g. a report of its own for the printer in the front office.
+- Printers show the **pages printed** (in total and in the report period, e.g. "in the last 7 days") and - if the printer reports it - how many pages the toner still lasts.
+- The mail is **neutral**: no link, no program name - only your sender name, subject (`{week}`, `{date}`), introduction, the devices and your closing.
 - "Preview", "Test to me" and "Send now" right in the list.
 
 ## Users and rights
 
 - **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*.
-- **Locations**: editors and viewers can be limited to locations – they then only see and change devices, scans and monitors of these.
+- **Locations**: editors and viewers can be limited to locations - they then only see and change devices, scans and monitors of these.
 - **Active Directory**: sign-in with the Windows account, see the next section.
 - **Two-factor sign-in** (*My account*): scan the QR code with an authenticator app, confirm a code, keep the recovery codes. It can be made mandatory for administrators under *Settings → General*.
 
@@ -221,13 +221,13 @@ For a branch office a second container runs there as scan agent. Under *Settings
 
 - Every night WhatsOnMyNet backs up the database to `data/backups/`; additionally before every database update.
 - *Settings → Backup*: download a backup, back up now, restore a backup (the current state is backed up first, then the program restarts).
-- **Keep `data/secret.key` (or `WOMN_SECRET`) as well** – without it stored passwords in a backup are unreadable.
+- **Keep `data/secret.key` (or `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 - Updates: in Dockhand/Watchtower or `docker compose pull && docker compose up -d`. Once a month a security update with new packages is released.
 
 ## Troubleshooting
 
-- **Interface not reachable**: open the host firewall for the HTTPS port. With host networking Docker/Dockhand shows no port mapping – that is correct.
+- **Interface not reachable**: open the host firewall for the HTTPS port. With host networking Docker/Dockhand shows no port mapping - that is correct.
 - **No printer/switch data**: switch on SNMP at the device, check the community under *Settings → Scan*, "Query now" on the device page.
 - **Locked out**: `docker compose exec whatsonmynet womn-admin reset <user>` sets a new password, makes the account administrator again and switches two-factor sign-in off. `womn-admin create <user>` adds a new administrator.
-- **Network drive reports "protocol not supported"**: the device only speaks the old SMB1 – it is not used for security reasons. Switch on SMB2/3 at the device (Synology: *File Services → SMB → Advanced*).
+- **Network drive reports "protocol not supported"**: the device only speaks the old SMB1 - it is not used for security reasons. Switch on SMB2/3 at the device (Synology: *File Services → SMB → Advanced*).
 - **Log**: *Settings → Log* shows who changed what; technical messages are in the container log.

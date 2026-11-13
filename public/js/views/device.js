@@ -127,7 +127,7 @@ export async function renderDevice(main, id) {
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('mon.device')),
       h('div', { class: 'actions' },
         edit && ['printer', 'nas', 'switch'].includes(d.type) ? btn(t('sens.add'), { class: 'btn btn-sm btn-ghost', onclick: () =>
-          openMonitorForm(null, () => renderDevice(main, id), { type: 'sensor', device_id: d.id, name: `${d.name} – Sensor`, interval_s: 300, fail_threshold: 1 }) }, 'plus') : null,
+          openMonitorForm(null, () => renderDevice(main, id), { type: 'sensor', device_id: d.id, name: `${d.name} - Sensor`, interval_s: 300, fail_threshold: 1 }) }, 'plus') : null,
         edit && d.ip ? btn(t('mon.watch'), { class: 'btn btn-sm', onclick: async () => {
           try { const preset = await get(`/monitors/suggest/${d.id}`); openMonitorForm(null, () => renderDevice(main, id), preset); } catch (e) { fail(e); }
         } }, 'pulse') : null)),
@@ -147,21 +147,69 @@ export async function renderDevice(main, id) {
     h('ul', { class: 'timeline' }, d.history.map((r) => h('li', { class: r.kind },
       h('span', { class: 'when' }, `${fmtDate(r.at, getLang())} · ${r.user === 'scan' ? t('hist.byScan') : r.user}`), historyText(r)))));
 
-  const deepBtn = edit && d.ip ? btn(t('dev.deep'), { title: ti ? t('dev.deepTi') : t('dev.deepHint'), onclick: (e) => deep(e.currentTarget) }, 'radar') : null;
+  // Read view of the details: only what is filled in; the form only after "Edit"
+  const locName = locations.find((l) => l.id === d.location_id)?.name;
+  const val = (k, v) => (v ? [h('dt', {}, t(`f.${k}`)), h('dd', { class: ['ip', 'mac', 'serial'].includes(k) ? 'mono' : '' }, v)] : null);
+  const details = h('dl', { class: 'kv' },
+    val('type', t(`type.${d.type}`)), val('location', locName), val('ip', d.ip), val('mac', d.mac), val('vendor', d.vendor), val('model', d.model),
+    val('hostname', d.hostname), val('os', d.os), val('owner', d.owner), val('tags', d.tags), val('web_url', d.web_url),
+    val('serial', d.serial), val('supplier', d.supplier),
+    val('purchase_date', d.purchase_date ? fmtDate(d.purchase_date, getLang(), false) : ''),
+    val('warranty_until', d.warranty_until ? fmtDate(d.warranty_until, getLang(), false) : ''),
+    val('maintenance_until', d.maintenance_until ? fmtDate(d.maintenance_until, getLang(), false) : ''));
+  const notes = d.notes ? h('div', { class: 'dev-notes' }, h('h3', { class: 'section-title' }, t('f.notes')), h('p', {}, d.notes)) : null;
+  const detailsPanel = (editing) => h('section', { class: 'panel panel-pad' },
+    h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '10px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('dev.details')),
+      edit && !editing ? btn(t('edit'), { class: 'btn btn-sm', onclick: () => show('details', true) }, 'edit') : null),
+    editing ? form : [details, notes]);
+
+  // Short facts for the state tab when there is no printer, switch or NAS panel
+  const facts = h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('dev.facts')),
+    h('dl', { class: 'kv' }, val('vendor', d.vendor), val('model', d.model), val('os', d.os), val('owner', d.owner),
+      val('warranty_until', d.warranty_until ? fmtDate(d.warranty_until, getLang(), false) : ''),
+      [h('dt', {}, t('dev.lastSeen')), h('dd', {}, d.last_seen ? fmtAgo(d.last_seen, t) : t('never'))]), notes);
+  const typePanel = d.type === 'printer' ? printerPanel(d) : d.type === 'switch' ? switchPanel(d) : d.type === 'nas' ? nasPanel(d) : null;
+  const netShort = !(d.plugged || d.mac || f.ports?.length || webRow) ? null : h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('dev.net')),
+    h('dl', { class: 'kv' }, pluggedLine(d.plugged), val('mac', d.mac),
+      f.ports?.length ? [h('dt', {}, t('dev.ports')), h('dd', {}, portList(f.ports, services))] : null, webRow));
+
+  const TABS = [['state', t('dev.tab.state')], ['details', t('dev.tab.details')], ['monitors', `${t('dev.tab.monitors')}${d.monitors?.length ? ` ${d.monitors.length}` : ''}`],
+    ['network', t('dev.tab.network')], ['history', t('dev.tab.history')]];
+  const content = h('div');
+  const tabBar = h('div', { class: 'tabs', role: 'tablist' });
+  function show(tab, editing = false) {
+    if (!TABS.some(([k]) => k === tab)) tab = 'state';
+    history.replaceState({}, '', `${location.pathname}${tab === 'state' ? '' : `#${tab}`}`);
+    mount(tabBar, TABS.map(([k, label]) => h('button', { type: 'button', role: 'tab', class: k === tab ? 'on' : '', 'aria-selected': String(k === tab), onclick: () => show(k) }, label)));
+    const views = {
+      state: () => h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || facts), h('div', { class: 'stack' }, monPanel, netShort)),
+      details: () => detailsPanel(editing),
+      monitors: () => monPanel,
+      network: () => h('div', { class: 'stack' }, detection, meta),
+      history: () => hist,
+    };
+    mount(content, views[tab]());
+  }
+
+  const more = edit ? h('details', { class: 'menu' }, h('summary', { class: 'btn', 'aria-label': t('dev.more') }, t('dev.more')),
+    h('div', { class: 'menu-list' },
+      d.ip ? h('button', { type: 'button', title: ti ? t('dev.deepTi') : t('dev.deepHint'), onclick: (e) => { e.currentTarget.closest('details').open = false; deep(e.currentTarget); } }, t('dev.deep')) : null,
+      h('button', { type: 'button', class: 'danger', onclick: (e) => { e.currentTarget.closest('details').open = false; remove(); } }, t('dev.delete')))) : null;
 
   mount(main, h('div', { class: 'page' },
+    h('a', { class: 'back-link', href: '/inventory', 'data-link': true }, t('nav.inventory')),
     h('div', { class: 'device-head' },
       h('div', { class: `device-icon${ti ? ' ti' : ''}`, html: icon(d.type) }),
       h('div', { style: { flex: 1, minWidth: 0 } },
         h('h1', {}, d.name, ti ? h('span', { class: 'badge badge-ti' }, t('telematik')) : null),
-        h('div', { class: 'meta' }, h('span', {}, presenceDot(presence), ' ', t(`presence.${presence}`)), typeChip(d.type),
-          d.ip ? h('span', { class: 'mono' }, d.ip) : null, d.mac ? h('span', { class: 'mono' }, d.mac) : null)),
+        h('div', { class: 'meta' }, h('span', {}, presenceDot(presence), ' ', t(`presence.${presence}`)), h('span', {}, t(`type.${d.type}`)),
+          d.ip ? h('span', { class: 'mono' }, d.ip) : null, locName ? h('span', {}, locName) : null)),
       h('div', { class: 'actions' },
         d.web_url ? h('a', { class: 'btn btn-primary', href: d.web_url, target: '_blank', rel: 'noopener noreferrer' }, h('span', { html: icon('open') }), t('open.web')) : null,
-        deepBtn,
-        edit ? btn(t('delete'), { class: 'btn btn-danger', onclick: remove }, 'trash') : null)),
+        edit ? btn(t('edit'), { onclick: () => show('details', true) }, 'edit') : null,
+        more)),
     ti ? h('div', { class: 'note ti' }, t('dev.deepTi')) : null,
-    h('div', { class: 'device-grid' },
-      h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('dev.details')), form),
-      h('div', { class: 'stack' }, d.type === 'printer' ? printerPanel(d) : d.type === 'switch' ? switchPanel(d) : d.type === 'nas' ? nasPanel(d) : null, monPanel, detection, meta, hist))));
+    tabBar,
+    content));
+  show(location.hash.slice(1) || 'state');
 }
