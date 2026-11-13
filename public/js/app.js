@@ -50,6 +50,7 @@ const ROUTES = [
   [/^\/scan(?:\/(\d+))?$/, renderScan, 'scan'],
   [/^\/monitoring(?:\/(\d+))?$/, renderMonitoring, 'monitoring'],
   [/^\/monitoring\/(maintenance)$/, (main, sub) => renderMonitoring(main, null, sub), 'monitoring'],
+  [/^\/monitoring\/(sensors)$/, (main, sub) => renderMonitoring(main, null, sub), 'sensors'],
   [/^\/locations$/, renderLocations, 'locations'],
   [/^\/(virtualization|proxmox)$/, renderProxmox, 'proxmox'],
   [/^\/controllers$/, renderControllers, 'controllers'],
@@ -77,6 +78,7 @@ function sidebar(active) {
       link('/locations', 'locations', 'location'),
       h('div', { class: 'nav-group' }, t('nav.groupWatch')),
       link('/monitoring', 'monitoring', 'pulse', state.down ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.down) : null),
+      link('/monitoring/sensors', 'sensors', 'gauge', state.sensorsDown ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.sensorsDown) : null),
       u.canEdit ? link('/virtualization', 'proxmox', 'hypervisor') : null,
       u.canEdit ? link('/controllers', 'controllers', 'accesspoint') : null,
       u.canEdit ? link('/hardware', 'hardware', 'server') : null,
@@ -102,7 +104,10 @@ async function refreshBadge() {
   try {
     const d = await get('/dashboard');
     state.waiting = d.waiting;
-    state.down = d.monitoring?.down?.length || 0;
+    // Sensors (values of devices, hypervisors) have their own entry in the menu
+    const down = d.monitoring?.down || [];
+    state.sensorsDown = down.filter((m) => ['sensor', 'snmp', 'proxmox'].includes(m.type)).length;
+    state.down = down.length - state.sensorsDown;
   } catch { /* shown elsewhere */ }
 }
 
@@ -149,10 +154,11 @@ export async function updateBadge() {
     a.querySelector('.badge')?.remove();
     if (state.waiting) a.append(h('span', { class: 'badge badge-new', title: t('dash.waiting') }, state.waiting));
   }
-  const m = document.querySelector('.nav a[href="/monitoring"]');
-  if (m) {
+  for (const [href, n] of [['/monitoring', state.down], ['/monitoring/sensors', state.sensorsDown]]) {
+    const m = document.querySelector(`.nav a[href="${href}"]`);
+    if (!m) continue;
     m.querySelector('.badge')?.remove();
-    if (state.down) m.append(h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.down));
+    if (n) m.append(h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, n));
   }
 }
 

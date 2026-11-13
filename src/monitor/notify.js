@@ -9,6 +9,7 @@ import { log } from '../lib/log.js';
 import { config } from '../config.js';
 import { PROVIDERS, PROVIDER_TYPES, publicConfig, cleanProviderConfig, sendProvider } from './providers.js';
 import { forgetChannel } from '../lib/idlists.js';
+import { checkText } from '../../public/js/checktext.js';
 
 export const CHANNEL_TYPES = ['email', 'telegram', 'webhook', ...PROVIDER_TYPES];
 let telegramApi = 'https://api.telegram.org';
@@ -19,6 +20,18 @@ const TEXT = {
     down: '🔴 {name} ist nicht erreichbar - {message}',
     escalate: '🚨 Eskalation: {name} ist seit {min} Min. nicht erreichbar - {message}',
     up: '🟢 {name} ist wieder erreichbar{downtime}',
+    // Measured values (temperature, fill level …): a limit, not a connection
+    'down.value': '🔴 {name}: Grenzwert überschritten - {message}',
+    'up.value': '🟢 {name}: wieder im normalen Bereich - {message}{downtime}',
+    'escalate.value': '🚨 Eskalation: {name} seit {min} Min. über dem Grenzwert - {message}',
+    // States (service, VM, disk, container, database …)
+    'down.state': '🔴 {name}: Störung - {message}',
+    'up.state': '🟢 {name}: wieder in Ordnung{downtime}',
+    'escalate.state': '🚨 Eskalation: {name} seit {min} Min. gestört - {message}',
+    // A sensor without current values (device, script or hypervisor does not report)
+    'down.nodata': '🔴 {name}: keine aktuellen Werte - {message}',
+    'up.nodata': '🟢 {name}: liefert wieder Werte{downtime}',
+    'escalate.nodata': '🚨 Eskalation: {name} seit {min} Min. ohne aktuelle Werte - {message}',
     downtime: ' (Ausfall {min} Min.)',
     cert: '🟠 Das Zertifikat von {name} läuft in {days} Tagen ab ({date}).',
     certExpired: '🔴 Das Zertifikat von {name} ist abgelaufen ({date}).',
@@ -42,6 +55,15 @@ const TEXT = {
     down: '🔴 {name} is down - {message}',
     escalate: '🚨 Escalation: {name} has been down for {min} min - {message}',
     up: '🟢 {name} is up again{downtime}',
+    'down.value': '🔴 {name}: limit exceeded - {message}',
+    'up.value': '🟢 {name}: back in the normal range - {message}{downtime}',
+    'escalate.value': '🚨 Escalation: {name} over the limit for {min} min - {message}',
+    'down.state': '🔴 {name}: fault - {message}',
+    'up.state': '🟢 {name}: fine again{downtime}',
+    'escalate.state': '🚨 Escalation: {name} failing for {min} min - {message}',
+    'down.nodata': '🔴 {name}: no current values - {message}',
+    'up.nodata': '🟢 {name}: delivers values again{downtime}',
+    'escalate.nodata': '🚨 Escalation: {name} without current values for {min} min - {message}',
     downtime: ' (down for {min} min)',
     cert: '🟠 The certificate of {name} expires in {days} days ({date}).',
     certExpired: '🔴 The certificate of {name} has expired ({date}).',
@@ -63,17 +85,24 @@ const TEXT = {
   },
 };
 
+/** "Temperatur pve2: 83.9 °C (≥ 80)" → "83.9 °C (≥ 80)" when the alarm names the monitor anyway */
+const stripLabel = (msg, label) => (label && msg.startsWith(`${label}: `) ? msg.slice(label.length + 2) : msg);
+
 const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''));
 
 /** One-line text of an event in the channel's language */
 export function eventText(ev, lang = 'de') {
-  const T = TEXT[lang === 'en' ? 'en' : 'de'];
+  const L = lang === 'en' ? 'en' : 'de';
+  const T = TEXT[L];
   const name = ev.monitor?.name || '';
   const date = ev.certValidTo ? new Date(ev.certValidTo).toLocaleDateString(lang === 'en' ? 'en-GB' : 'de-DE', { timeZone: process.env.TZ || undefined }) : '';
+  // What failed decides the words: a connection is "down", a value is over its limit, a state is faulty
+  const fam = ['value', 'state', 'nodata'].includes(ev.family) ? `.${ev.family}` : '';
+  const message = checkText(stripLabel(ev.message || '', ev.monitor?.label), L);
   switch (ev.kind) {
-    case 'down': return fill(T.down, { name, message: ev.message || '' });
-    case 'escalate': return fill(T.escalate, { name, min: ev.downMin ?? '', message: ev.message || '' });
-    case 'up': return fill(T.up, { name, downtime: ev.downtimeMin ? fill(T.downtime, { min: ev.downtimeMin }) : '' });
+    case 'down': return fill(T[`down${fam}`], { name, message });
+    case 'escalate': return fill(T[`escalate${fam}`], { name, min: ev.downMin ?? '', message });
+    case 'up': return fill(T[`up${fam}`], { name, message, downtime: ev.downtimeMin ? fill(T.downtime, { min: ev.downtimeMin }) : '' });
     case 'cert': return ev.certDays < 0 ? fill(T.certExpired, { name, date }) : fill(T.cert, { name, days: ev.certDays, date });
     case 'newDevices': {
       const list = (ev.devices || []).slice(0, 5).map(deviceLabel).join(', ') + ((ev.devices || []).length > 5 ? ', …' : '');
