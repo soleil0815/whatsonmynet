@@ -194,13 +194,34 @@ Unter *Überwachung → Virtualisierung → Host hinzufügen* stehen neben Proxm
 
 1. *Host hinzufügen* → **Microsoft Hyper-V** bzw. **KVM / libvirt**, Namen vergeben, speichern.
 2. Der Dialog zeigt das Skript mit einem eigenen Schlüssel (nur dieses eine Mal) - **Skript herunterladen**.
-3. **Hyper-V:** auf dem Host *PowerShell als Administrator* öffnen und die angezeigten Zeilen ausführen. Sie legen das Skript nach `C:\ProgramData\WhatsOnMyNet` und eine geplante Aufgabe an, die es alle 5 Minuten als SYSTEM startet. Im Cluster auf jedem Knoten - alle Knoten landen im selben Eintrag.
-   **KVM:** das Skript auf den Host kopieren und als root die angezeigten Zeilen ausführen (installiert es und legt einen cron-Eintrag an). Nötig sind `virsh`, `awk` und `curl`; gelesen wird mit `virsh -r`.
+3. Einmal ausführen, es richtet sich selbst ein. **Hyper-V** als Administrator: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\womn-hyperv.ps1` (geplante Aufgabe *WhatsOnMyNet-HyperV*, alle 5 Minuten als SYSTEM). Im Cluster auf jedem Knoten - alle Knoten landen im selben Eintrag.
+   **KVM:** `sh womn-libvirt.sh` (cron-Eintrag, alle 5 Minuten). Nötig sind `virsh`, `awk` und `curl`; gelesen wird mit `virsh -r`.
+   Wieder entfernen: das **Deinstallationsskript** aus dem Dialog bzw. *Einstellungen → Rechner-Skripte* - es entfernt auch die Einrichtung von Version 0.6.0.
 4. Nach ein paar Sekunden erscheint der Host. Meldet er sich länger als 15 Minuten nicht, gilt er als offline - ein Sensor „Host online“ schlägt dann Alarm.
 
 Ist der Schlüssel weg oder soll er erneuert werden: **Neues Skript** - das alte hört dann auf zu funktionieren.
 
 Mit dem selbstsignierten Zertifikat von WhatsOnMyNet vertraut das Skript genau diesem Zertifikat (fest hinterlegt); mit einem Zertifikat einer echten CA wird ganz normal geprüft.
+
+## Windows- und Linux-Rechner per Skript (ohne Agent)
+
+Server und PCs lassen sich ohne Agent überwachen: Ein kleines Skript auf dem Rechner meldet alle 5 Minuten **CPU, RAM, Laufwerke, Laufzeit und Dienste**. Es installiert nichts, lädt nichts nach, öffnet keinen Port und braucht kein Konto - es spricht nur mit WhatsOnMyNet. Unter Windows ist es ein PowerShell-Skript (läuft als SYSTEM), unter Linux ein POSIX-sh-Skript (braucht `sh`, `awk` und `curl`, root ist nicht nötig).
+
+**Ein einzelner Rechner:** Geräteseite → *Mehr* → **Per Skript überwachen** → Windows oder Linux → **Skript erzeugen**.
+
+1. **Skript herunterladen** (es enthält Adresse und Schlüssel - nur dieses eine Mal angezeigt).
+2. Einmal ausführen - es richtet sich selbst ein:
+   - **Windows** als Administrator: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\womn-host.ps1` - es legt sich nach `C:\ProgramData\WhatsOnMyNet` (nur für SYSTEM und Administratoren lesbar) und legt die geplante Aufgabe *WhatsOnMyNet-Host* an.
+   - **Linux**: `sh womn-host.sh` - als root nach `/usr/local/sbin` mit `/etc/cron.d/whatsonmynet-host`, sonst nach `~/.local/bin` mit einem Eintrag in der eigenen crontab.
+3. Nach ein paar Sekunden zeigt die Geräteseite den Bereich **System**. Mit **Sensor anlegen** werden daraus Monitore mit Alarm: „Rechner meldet sich“, „CPU-Auslastung“, „Arbeitsspeicher“, „Laufwerk C:“, „Gestörte Dienste“ oder „Dienst … läuft“.
+
+**Viele Rechner auf einmal:** *Einstellungen → Rechner-Skripte* → **Gemeinsames Skript**. Dieses eine Skript verteilst du über die Softwareverteilung, ein Startskript per Gruppenrichtlinie oder Ansible. Jede Meldung wird dem passenden Gerät im Inventar zugeordnet (MAC-Adresse, Rechnername, IP). Rechner, die noch nicht im Inventar stehen, erscheinen dort unter *Unbekannte Rechner* - es wird nichts von allein angelegt.
+
+**Gestörte Dienste:** Windows - automatisch startende Dienste, die mit einem Fehlercode beendet wurden (normal beendete Dienste mit Auslösestart zählen nicht); Linux - systemd-Dienste im Zustand *failed*.
+
+**Wieder entfernen:** Zu jedem Skript gibt es ein **Deinstallationsskript** (im Skript-Dialog unter *Wieder entfernen* und unter *Einstellungen → Rechner-Skripte*). Es entfernt die geplante Aufgabe bzw. den cron-Eintrag und das Skript - genauso ausführen oder verteilen. Danach ist der Rechner wie vorher. Ein Skript unter *Einstellungen → Rechner-Skripte* zu löschen oder neu zu erzeugen, sperrt den alten Schlüssel.
+
+Meldet sich ein Rechner 15 Minuten nicht, gilt er als offline - der Sensor „Rechner meldet sich“ schlägt dann Alarm.
 
 ## Berichte
 

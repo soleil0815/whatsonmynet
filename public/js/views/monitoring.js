@@ -433,7 +433,12 @@ export async function openMonitorForm(m, done, preset = null) {
   nameIn.addEventListener('input', () => { nameIn.dataset.touched = '1'; });
   const autoName = (text) => { if (!m && text && !nameIn.dataset.touched) nameIn.value = text; };
   let sensorDevices = [];
-  try { sensorDevices = (await get('/devices')).filter((d) => ['printer', 'nas', 'switch'].includes(d.type)); } catch { /* none */ }
+  try {
+    // Devices with values to watch: printers, switches, NAS - and every machine whose host script reports
+    const [all, reporting] = await Promise.all([get('/devices'), get('/hosts/devices').catch(() => [])]);
+    const rep = new Set(reporting);
+    sensorDevices = all.filter((d) => ['printer', 'nas', 'switch'].includes(d.type) || rep.has(d.id));
+  } catch { /* none */ }
   const devSel = select('device_id', [['', t('sens.chooseDevice')], ...sensorDevices.map((d) => [String(d.id), `${d.name}${d.ip ? ` (${d.ip})` : ''}`])],
     v.device_id ? String(v.device_id) : '', m ? { disabled: true } : {});
   let metrics = [];

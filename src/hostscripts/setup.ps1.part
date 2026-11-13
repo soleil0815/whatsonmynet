@@ -1,0 +1,16 @@
+# First call (by hand, software distribution or GPO, as administrator or SYSTEM): copy this script to
+# C:\ProgramData\WhatsOnMyNet, readable only for SYSTEM and administrators (the key is in it), and add the scheduled
+# task that runs it every 5 minutes as SYSTEM. The task then calls the copy - it only reports.
+$Task = @TASK@
+$Dir = Join-Path $env:ProgramData 'WhatsOnMyNet'
+$Dest = Join-Path $Dir @FILE@
+if ($PSCommandPath -and $PSCommandPath -ne $Dest) {
+  New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+  Copy-Item -Force -Path $PSCommandPath -Destination $Dest
+  & icacls.exe $Dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+  & schtasks.exe /Create /F /TN $Task /SC MINUTE /MO 5 /RU SYSTEM /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Dest" | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'WhatsOnMyNet: the scheduled task could not be created - please run as administrator.' }
+  # The setup of version 0.6.0 used another task name - remove it, so the host does not report twice
+  foreach ($old in @OLD@) { & schtasks.exe /Query /TN $old *> $null; if ($LASTEXITCODE -eq 0) { & schtasks.exe /Delete /F /TN $old | Out-Null } }
+  Write-Output "WhatsOnMyNet: set up ($Dest, task $Task every 5 minutes)."
+}

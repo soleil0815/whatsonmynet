@@ -1,5 +1,7 @@
 // REST API of the web interface.
+import crypto from 'node:crypto';
 import express from 'express';
+import { SCRIPT_KINDS, uninstallScript } from '../hostscripts.js';
 import os from 'node:os';
 import fs from 'node:fs';
 import { config } from '../config.js';
@@ -113,6 +115,12 @@ export function createApi(ctx) {
   });
 
   // --- Scan agents (own token, no session) -----------------------------------------------------------------
+  // Windows/Linux machines with the host script (key of the device or the shared key, no session)
+  r.post('/hosts/push', (req, res) => {
+    const m = /^Bearer\s+(\S{20,200})$/.exec(String(req.get('authorization') || ''));
+    if (!m) throw new HttpError(401, 'err.unauthorized');
+    res.json(ctx.hosts.push(m[1], req.body, req.ip));
+  });
   // Hyper-V / KVM hosts send their data themselves (token of the host, no session)
   r.post('/proxmox/:id/push', (req, res) => {
     const m = /^Bearer\s+(\S{20,200})$/.exec(String(req.get('authorization') || ''));
@@ -263,7 +271,8 @@ export function createApi(ctx) {
     if (!d) throw new HttpError(404, 'err.notFound');
     const presence = inventory.list({}).find((x) => x.id === d.id)?.presence || 'unknown';
     const monitors = db.prepare('SELECT id FROM monitors WHERE device_id=? ORDER BY name').all(d.id).map((m) => ctx.monitoring.get(m.id));
-    res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null,
+    res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null, host: ctx.hosts.report(d.id),
+      hostScript: req.user.role === 'admin' ? ctx.hosts.list().find((t) => t.device_id === d.id) || null : undefined,
       snmp: ['switch', 'nas'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: d.mac ? ctx.snmpDevices.locate(d.mac) : null, history: inventory.historyOf(d.id) });
   });
   r.post('/devices', editor, (req, res) => {
@@ -462,6 +471,31 @@ export function createApi(ctx) {
     ctx.agents.jobForLocation(a.location_id, req.body.kind === 'light' ? 'light' : 'network', who(req));
     audit(req, 'scan.agent', a.name);
     res.status(202).json({ ok: true });
+  });
+  // Host scripts (Windows/Linux): keys and scripts for admins; the uninstall scripts hold no secret
+  const pinOf = () => {
+    const pin = {};
+    const pem = String(tls?.current()?.cert || '').match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/)?.[0];
+    if (pem && tls?.describe()?.source !== 'custom') {
+      const c = new crypto.X509Certificate(pem);
+      pin.sha1 = c.fingerprint.replace(/:/g, '');
+      pin.spki = crypto.createHash('sha256').update(c.publicKey.export({ type: 'spki', format: 'der' })).digest('base64');
+    }
+    return pin;
+  };
+  r.get('/hosts/devices', editor, (_req, res) => res.json(ctx.hosts.deviceIds()));
+  r.get('/hosts', admin, (_req, res) => res.json({ tokens: ctx.hosts.list(), unmatched: ctx.hosts.unmatched() }));
+  r.post('/hosts', admin, (req, res) => {
+    const out = ctx.hosts.create(req.body, { server: str(req.body?.server, 300), pin: pinOf() });
+    audit(req, 'host.script', `${out.name} (${out.os})`);
+    res.status(201).json(out);
+  });
+  r.post('/hosts/:id/renew', admin, (req, res) => { const out = ctx.hosts.renew(idParam(req), { server: str(req.body?.server, 300), pin: pinOf() }); audit(req, 'host.renew', out.name); res.json(out); });
+  r.delete('/hosts/:id', admin, (req, res) => { ctx.hosts.remove(idParam(req)); audit(req, 'host.delete', req.params.id); res.json({ ok: true }); });
+  r.delete('/hosts/unmatched/:name', admin, (req, res) => { ctx.hosts.forgetUnmatched(req.params.name); res.json({ ok: true }); });
+  r.get('/hosts/uninstall/:kind', editor, (req, res) => {
+    if (!SCRIPT_KINDS.includes(req.params.kind)) throw new HttpError(404, 'err.notFound');
+    res.json(uninstallScript(req.params.kind));
   });
   // Certificate of this server for the scan agents (public anyway: every browser gets it)
   r.get('/tls/agent-ca', admin, (_req, res) => {

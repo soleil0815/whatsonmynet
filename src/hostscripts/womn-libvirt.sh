@@ -1,10 +1,12 @@
 #!/bin/sh
 # WhatsOnMyNet - KVM/libvirt host report (read only). Sends host load, storage pools and VMs every 5 minutes.
 # Uses "virsh -r" (read-only connection) and /proc - changes nothing. Needs: virsh, awk, curl.
+# Run it once (sh womn-libvirt.sh): it sets itself up in cron. Removing: womn-libvirt-uninstall.sh.
 URL=@URL@
 TOKEN=@TOKEN@
 PIN=@PIN@
 export LC_ALL=C
+@SETUP@
 VIRSH="virsh -r -c qemu:///system"
 
 esc() { printf '%s' "$1" | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/," "); if (NR>1) print " "; print}'; }

@@ -1,5 +1,6 @@
 # WhatsOnMyNet - Hyper-V host report (read only). Sends host load, volumes and VMs every 5 minutes.
-# Runs as scheduled task under SYSTEM; reads with Get-VM / CIM only, changes nothing.
+# Run it once as administrator (or via software distribution): it sets itself up as scheduled task under SYSTEM.
+# Reads with Get-VM / CIM only, changes nothing. Removing: womn-hyperv-uninstall.ps1.
 $ErrorActionPreference = 'Stop'
 $Url = @URL@
 $Token = @TOKEN@
@@ -15,6 +16,7 @@ public static class WomnPin { static string Thumb;
 "@
   [WomnPin]::Enable($Thumb.Replace(':', '').ToUpper())
 }
+@SETUP@
 $name = $env:COMPUTERNAME
 $os = Get-CimInstance Win32_OperatingSystem
 $cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
