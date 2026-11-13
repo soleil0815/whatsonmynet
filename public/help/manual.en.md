@@ -265,7 +265,17 @@ The **scan** now also recognises these devices better by their model names: UniF
 
 ## Windows and Linux machines by script (without agent)
 
-Servers and PCs can be monitored without an agent: a small script on the machine reports **CPU, RAM, drives, uptime and services** every 5 minutes, plus a connected **UPS** (see above). It installs nothing, loads nothing, opens no port and needs no account - it only talks to WhatsOnMyNet. On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
+Servers and PCs can be monitored without an agent: a small script on the machine reports **CPU, RAM, drives, uptime and services** every 5 minutes, plus a connected **UPS** (see above).
+
+On top comes what an administrator wants to know about a server. Everything is on the device page in the *System* area, and every value can become a sensor with alarm:
+
+- **Updates and protection:** pending updates (how many important/security), whether a restart is pending, virus protection (Defender or another product registered in the Security Center: active, signatures current) and firewall (Windows: domain/private/public, Linux: ufw or firewalld). The update search runs only every 6 hours and after the report, so that the 5-minute report stays quick. It only searches and never installs anything.
+- **Disks:** model, serial number, health, temperature, wear and power-on hours. On Linux this needs `smartctl` and root, otherwise there is only model, serial number and size.
+- **Events:** critical entries and errors of the last 24 hours (Windows: system log, Linux: journal), the newest ten with text.
+- **Certificates** of the machine (Windows, store "Personal" of the computer), with days until they expire.
+- **Hardware:** manufacturer, model, serial number, BIOS, processors, memory modules and network cards. Manufacturer, model and serial number also go into the inventory. On Linux, serial number and memory modules only come as root (`dmidecode`).
+
+Fans, power supplies, mainboard temperatures and RAID controllers are usually unknown to the operating system. They come from the management chip of the server (iDRAC, iLO, XClarity …). It installs nothing, loads nothing, opens no port and needs no account - it only talks to WhatsOnMyNet. On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
 
 **A single machine:** *Monitoring* → **Add monitor** → **Machine by script (Windows/Linux)** → choose the machine. On the device page the same works with **Monitor** (kind of check *Machine by script*) or *More* → **Monitor with script**. Then Windows or Linux → **Create script**.
 

@@ -6,4 +6,6 @@ for f in @FILES@; do
   if crontab -l 2>/dev/null | grep -q "$f"; then crontab -l 2>/dev/null | grep -v "$f" | crontab -; fi
 done
 for c in @CRONS@; do [ -f "/etc/cron.d/$c" ] && rm -f "/etc/cron.d/$c"; done
+# The last update search (only a small status file)
+rm -rf /var/cache/whatsonmynet "${XDG_CACHE_HOME:-$HOME/.cache}/whatsonmynet" 2>/dev/null
 echo "WhatsOnMyNet: removed"

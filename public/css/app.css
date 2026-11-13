@@ -388,6 +388,11 @@ dialog.modal footer { display: flex; justify-content: flex-end; gap: 8px; paddin
 .mon-icon.mon-maintenance { background: var(--ti-soft); color: var(--ti); }
 .mon-icon.mon-paused { background: var(--bg-2); color: var(--muted); }
 .mon-icon.mon-unreachable { background: var(--bg-2); color: var(--bad); }
+.ev-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ev-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.inline-more { margin-top: 4px; }
+.inline-more summary { cursor: pointer; color: var(--accent); font-size: .875rem; }
+.inline-more[open] summary { margin-bottom: 6px; }
 .ups-state { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; }
 .dep-list { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .dep-link { display: inline-flex; align-items: center; gap: 6px; }

@@ -1,6 +1,8 @@
 #!/bin/sh
 # WhatsOnMyNet - Linux report (read only). Sends CPU, RAM, file systems, uptime and the state of the services
-# (systemd) every 5 minutes to WhatsOnMyNet. No agent, no open port, nothing installed, root not needed: run it once
+# (systemd) every 5 minutes to WhatsOnMyNet - plus hardware (model, CPU, network cards; as root also serial number
+# and memory modules), the disks (with smartctl as root: health, temperature, wear), pending updates and restart,
+# firewall and critical journal entries of the last 24 hours. No agent, no open port, nothing installed, root not needed: run it once
 # (sh womn-host.sh) - it sets itself up in cron. Needs: sh, awk, curl. Removing: womn-host-uninstall.sh.
 # Talks only to the address below; loads nothing from anywhere.
 URL=@URL@
@@ -62,6 +64,81 @@ elif command -v apcaccess >/dev/null 2>&1 && av=$(apcaccess status 2>/dev/null) 
   uj="{\"status\":\"$(esc "$(get STATUS)")\",\"charge\":$(num "$(get BCHARGE)"),\"runtime\":$(num "$left"),\"load\":$(num "$(get LOADPCT)"),\"model\":\"$(esc "$(get MODEL)")\",\"vendor\":\"APC\"}"
 fi
 
+# Hardware from DMI (serial number and memory modules only as root)
+rd() { [ -r "$1" ] && tr -d '\n' < "$1" 2>/dev/null | sed 's/[[:space:]]*$//'; }
+d=/sys/class/dmi/id
+hmodel=$(rd $d/product_name); [ -n "$hmodel" ] || hmodel=$(tr -d '\000' < /proc/device-tree/model 2>/dev/null)
+hcpu=$(awk -F': *' '/^model name/ {print $2; exit}' /proc/cpuinfo)
+[ -n "$hcpu" ] || hcpu=$(awk -F': *' '/^(Hardware|Model)[[:space:]]*:/ {print $2; exit}' /proc/cpuinfo)
+threads=$(grep -c '^processor' /proc/cpuinfo)
+sockets=$(awk -F': *' '/^physical id/ {print $2}' /proc/cpuinfo | sort -u | wc -l)
+cores=$(awk -F': *' '/^physical id/ {p=$2} /^core id/ {print p"-"$2}' /proc/cpuinfo | sort -u | wc -l)
+[ "$sockets" -gt 0 ] || sockets=1; [ "$cores" -gt 0 ] || cores=$threads
+virt=false; command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt -q 2>/dev/null && virt=true
+ram=""
+if [ "$(id -u)" = 0 ] && command -v dmidecode >/dev/null 2>&1; then
+  ram=$(dmidecode -t 17 2>/dev/null | awk -F': *' '
+    function clean(v) { gsub(/["\\]/, "", v); sub(/[[:space:]]+$/, "", v); return v }
+    function out() { if (size > 0) printf "%s{\"slot\":\"%s\",\"sizeMb\":%d,\"speed\":%d,\"vendor\":\"%s\",\"part\":\"%s\"}", (n++ ? "," : ""), clean(loc), size, speed, clean(ven), clean(part); size = 0; speed = 0; loc = ven = part = "" }
+    /^Memory Device/ { out() }
+    /^[[:space:]]+Size:/ { v = $2; size = (v ~ /GB/) ? v * 1024 : (v ~ /MB/) ? v + 0 : 0 }
+    /^[[:space:]]+Locator:/ { loc = $2 } /^[[:space:]]+Speed:/ { speed = $2 + 0 }
+    /^[[:space:]]+Manufacturer:/ { ven = $2 } /^[[:space:]]+Part Number:/ { part = $2 }
+    END { out() }')
+fi
+nj=""
+for n in /sys/class/net/*; do
+  [ -e "$n/device" ] || continue
+  sp=$(cat "$n/speed" 2>/dev/null); case "$sp" in ''|-*|*[!0-9]*) sp=0 ;; esac
+  up=false; [ "$(cat "$n/operstate" 2>/dev/null)" = up ] && up=true
+  nj="$nj${nj:+,}{\"name\":\"$(esc "${n##*/}")\",\"mac\":\"$(esc "$(cat "$n/address" 2>/dev/null)")\",\"speedMb\":$sp,\"up\":$up}"
+done
+hw="{\"vendor\":\"$(esc "$(rd $d/sys_vendor)")\",\"model\":\"$(esc "$hmodel")\",\"serial\":\"$(esc "$(rd $d/product_serial)")\",\"bios\":\"$(esc "$(rd $d/bios_version)")\",\"biosDate\":\"$(esc "$(rd $d/bios_date)")\",\"cpu\":\"$(esc "$hcpu")\",\"sockets\":$sockets,\"cores\":$cores,\"threads\":${threads:-0},\"virtual\":$virt,\"ram\":[$ram],\"nics\":[$nj]}"
+
+# Disks: model, serial number and size (lsblk); with smartctl (root) also health, temperature, hours and wear -
+# the server reads them out of the smartctl answer
+pj=""
+if command -v lsblk >/dev/null 2>&1; then
+  for dev in $(lsblk -dn -o NAME,TYPE 2>/dev/null | awk '$2 == "disk" && $1 !~ /^(zram|ram|loop|fd|sr)/ {print $1}' | head -n 32); do
+    kv=$(lsblk -dn -b -P -o MODEL,SERIAL,SIZE,ROTA,TRAN "/dev/$dev" 2>/dev/null)
+    get() { printf '%s' "$kv" | awk -v k="$1" '{ if (match($0, k "=\"[^\"]*\"")) { v = substr($0, RSTART + length(k) + 2, RLENGTH - length(k) - 3); gsub(/\\x20/, " ", v); sub(/[[:space:]]+$/, "", v); print v } }'; }
+    sm=null
+    if [ "$(id -u)" = 0 ] && command -v smartctl >/dev/null 2>&1; then
+      out=$(smartctl -j -i -H -A "/dev/$dev" 2>/dev/null)
+      case "$out" in "{"*"}") sm=$out ;; esac
+    fi
+    sz=$(get SIZE); case "$sz" in ''|*[!0-9]*) sz=0 ;; esac
+    rota=$(get ROTA); case "$rota" in 0|1) ;; *) rota=null ;; esac
+    pj="$pj${pj:+,}{\"name\":\"$(esc "$dev")\",\"model\":\"$(esc "$(get MODEL)")\",\"serial\":\"$(esc "$(get SERIAL)")\",\"size\":$sz,\"rota\":$rota,\"tran\":\"$(esc "$(get TRAN)")\",\"smart\":$sm}"
+  done
+fi
+
+# Updates: the package search runs after the report at most every 6 hours (apt: simulated upgrade, dnf: cache only);
+# the report sends the last result. A pending restart (Debian/Ubuntu) is read every time.
+if [ "$(id -u)" = 0 ]; then CACHE=/var/cache/whatsonmynet; else CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/whatsonmynet; fi
+UPD=$CACHE/updates.json
+uc=null; [ -s "$UPD" ] && uc=$(cat "$UPD")
+case "$uc" in "{"*"}") ;; *) uc=null ;; esac
+rb=false; [ -f /var/run/reboot-required ] && rb=true
+updj="{\"cache\":$uc,\"reboot\":$rb}"
+
+# Firewall: ufw (root) or firewalld
+fwj=null
+if command -v ufw >/dev/null 2>&1 && [ "$(id -u)" = 0 ]; then
+  case "$(ufw status 2>/dev/null | head -n 1)" in *inactive*) fwj='{"name":"ufw","on":false}' ;; *active*) fwj='{"name":"ufw","on":true}' ;; esac
+elif command -v firewall-cmd >/dev/null 2>&1; then
+  if [ "$(firewall-cmd --state 2>/dev/null)" = running ]; then fwj='{"name":"firewalld","on":true}'; else fwj='{"name":"firewalld","on":false}'; fi
+fi
+
+# Journal: critical entries and errors of the last 24 hours (the newest 10 with text)
+ej=null
+if command -v journalctl >/dev/null 2>&1; then
+  crit=$(journalctl -q --no-pager -p 0..2 --since "24 hours ago" -o cat 2>/dev/null | wc -l)
+  errs=$(journalctl -q --no-pager -p 3..3 --since "24 hours ago" -o cat 2>/dev/null | wc -l)
+  items=$(journalctl -q --no-pager -p 0..3 --since "24 hours ago" -r -n 10 -o json 2>/dev/null | awk '/^\{.*\}$/ {printf "%s%s", (n++ ? "," : ""), $0}')
+  ej="{\"hours\":24,\"critical\":${crit:-0},\"errors\":${errs:-0},\"journal\":[$items]}"
+fi
+
 macs=""
 for a in /sys/class/net/*/address; do
   [ -r "$a" ] || continue
@@ -71,7 +148,25 @@ for a in /sys/class/net/*/address; do
 done
 ips=$( (ip -o -4 addr show scope global 2>/dev/null || true) | awk '{split($4,a,"/"); printf "%s\"%s\"", (n++?",":""), a[1]}')
 
-body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj}"
+body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej}"
 if [ -n "$PIN" ]; then TLS="-k --pinnedpubkey $PIN"; else TLS=""; fi
 # shellcheck disable=SC2086
 printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer $TOKEN" -H 'X-WOMN-Request: 1' -H 'Content-Type: application/json' --data-binary @- "$URL" >/dev/null
+
+# After the report: search for updates again when the last search is older than 6 hours (not on the first call -
+# the setup should be quick). Only looks, never installs.
+if [ "${1:-}" = --run ] && { [ ! -s "$UPD" ] || [ -n "$(find "$UPD" -mmin +360 2>/dev/null)" ]; }; then
+  n=""; sec=0; rpm=false
+  if command -v apt-get >/dev/null 2>&1; then
+    r=$(apt-get -s -o Debug::NoLocking=1 dist-upgrade 2>/dev/null | awk '/^Inst / {n++; if (/[Ss]ecurity/) s++} END {printf "%d %d", n, s}')
+    n=${r%% *}; sec=${r##* }
+  elif command -v dnf >/dev/null 2>&1; then
+    n=$(dnf -q --cacheonly check-update 2>/dev/null | awk 'NF == 3 && $2 ~ /[0-9]/ {c++} END {print c + 0}')
+    sec=$(dnf -q --cacheonly updateinfo list --security 2>/dev/null | wc -l)
+    command -v needs-restarting >/dev/null 2>&1 && { needs-restarting -r >/dev/null 2>&1 || rpm=true; }
+  fi
+  if [ -n "$n" ]; then
+    mkdir -p "$CACHE" && chmod 700 "$CACHE"
+    printf '{"pending":%d,"security":%d,"reboot":%s,"checkedAt":"%s"}' "$n" "${sec:-0}" "$rpm" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$UPD"
+  fi
+fi
