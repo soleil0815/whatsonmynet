@@ -12,7 +12,7 @@
 //   hyperv    Microsoft Hyper-V - PowerShell script as scheduled task
 //   libvirt   KVM/QEMU with libvirt - POSIX sh script with "virsh -r" (read-only) as cron job
 import crypto from 'node:crypto';
-import fs from 'node:fs';
+import { hostScript } from './hostscripts.js';
 import { tlsRequest } from './proxmox.js';
 
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
@@ -294,16 +294,10 @@ export function markStale(data, staleMin = 15, now = Date.now()) {
 }
 
 // ---------------------------------------------------------------------------------------------- the host scripts
-const scriptText = (file) => fs.readFileSync(new URL(`./hostscripts/${file}`, import.meta.url), 'utf8');
-const psQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
-const shQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
-
 /**
- * Script for a host. server: address of WhatsOnMyNet as the browser uses it; pin: { sha1, spki } of a self-signed
- * certificate (empty when a public CA vouches for it) - the script then trusts exactly that certificate.
+ * Script for a Hyper-V / KVM host. server: address of WhatsOnMyNet as the browser uses it; pin: { sha1, spki } of a
+ * self-signed certificate (empty when a public CA vouches for it) - the script then trusts exactly that certificate.
  */
 export function pushScript(kind, { server, id, token, pin = {} }) {
-  const url = `${server.replace(/\/+$/, '')}/api/proxmox/${id}/push`;
-  if (kind === 'hyperv') return { file: 'womn-hyperv.ps1', text: scriptText('womn-hyperv.ps1').replace('@URL@', psQuote(url)).replace('@TOKEN@', psQuote(token)).replace('@THUMB@', psQuote(pin.sha1 || '')) };
-  return { file: 'womn-libvirt.sh', text: scriptText('womn-libvirt.sh').replace('@URL@', shQuote(url)).replace('@TOKEN@', shQuote(token)).replace('@PIN@', shQuote(pin.spki ? `sha256//${pin.spki}` : '')) };
+  return hostScript(kind === 'hyperv' ? 'hyperv' : 'libvirt', { url: `${server.replace(/\/+$/, '')}/api/proxmox/${id}/push`, token, pin });
 }

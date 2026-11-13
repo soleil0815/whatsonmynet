@@ -6,6 +6,7 @@ import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { monitorDot, statusPill, openMonitorForm } from './monitoring.js';
 import { printerPanel } from './printer.js';
+import { systemPanel, openHostScript } from './hostscripts.js';
 import { switchPanel, nasPanel, pluggedLine } from './snmpdev.js';
 import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
 
@@ -127,7 +128,7 @@ export async function renderDevice(main, id) {
   const monPanel = h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('mon.device')),
       h('div', { class: 'actions' },
-        edit && ['printer', 'nas', 'switch'].includes(d.type) ? btn(t('sens.add'), { class: 'btn btn-sm btn-ghost', onclick: () =>
+        edit && (['printer', 'nas', 'switch'].includes(d.type) || d.host) ? btn(t('sens.add'), { class: 'btn btn-sm btn-ghost', onclick: () =>
           openMonitorForm(null, () => renderDevice(main, id), { type: 'sensor', device_id: d.id, name: `${d.name} - Sensor`, interval_s: 300, fail_threshold: 1 }) }, 'plus') : null,
         edit && d.ip ? btn(t('mon.watch'), { class: 'btn btn-sm', onclick: async () => {
           try { const preset = await get(`/monitors/suggest/${d.id}`); openMonitorForm(null, () => renderDevice(main, id), preset); } catch (e) { fail(e); }
@@ -188,13 +189,15 @@ export async function renderDevice(main, id) {
       case 'monitors': view = monPanel; break;
       case 'network': view = h('div', { class: 'stack' }, detection, meta); break;
       case 'history': view = hist; break;
-      default: view = h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || facts), h('div', { class: 'stack' }, monPanel, netShort));
+      default: view = h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || (d.host ? systemPanel(d.host) : facts), typePanel && d.host ? systemPanel(d.host) : null), h('div', { class: 'stack' }, monPanel, netShort));
     }
     mount(content, view);
   }
 
   const more = edit ? h('details', { class: 'menu' }, h('summary', { class: 'btn', 'aria-label': t('dev.more') }, t('dev.more')),
     h('div', { class: 'menu-list' },
+      state.user.isAdmin && !ti ? h('button', { type: 'button', title: t('hs.menuHint'), onclick: (e) => { e.currentTarget.closest('details').open = false; openHostScript(d, () => renderDevice(main, id)); } },
+        d.hostScript ? t('hs.menuRenew') : t('hs.menu')) : null,
       d.ip ? h('button', { type: 'button', title: ti ? t('dev.deepTi') : t('dev.deepHint'), onclick: (e) => { e.currentTarget.closest('details').open = false; deep(e.currentTarget); } }, t('dev.deep')) : null,
       h('button', { type: 'button', class: 'danger', onclick: (e) => { e.currentTarget.closest('details').open = false; remove(); } }, t('dev.delete')))) : null;
 
