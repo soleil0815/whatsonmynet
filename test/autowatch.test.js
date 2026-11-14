@@ -96,3 +96,24 @@ test('a host under Virtualization: its nodes, storage and backups once it answer
   await ctx.autoWatch.tick();
   assert.equal(db.prepare("SELECT COUNT(*) n FROM monitors WHERE type='proxmox'").get().n, 4);
 });
+
+test('a NAS: sensors on its data volumes, not on the system partition or the internal folders of the NAS', async () => {
+  const { DATA_VOLUME } = await import('../src/monitor/autowatch.js');
+  const vols = ['/', '/opt', '/volume1', '/volume1/@accountdb/@accountcache', '/volume2', '/volume1/@docker'].map((key) => ({ metric: 'volume', key }));
+  assert.deepEqual(pick(vols, DEVICE_PICKS.nas).map((x) => x.key), ['/volume1', '/volume2']);
+  assert.deepEqual(pick([{ metric: 'volume', key: '/share/CACHEDEV1_DATA' }, { metric: 'volume', key: '/mnt/tank' }], DEVICE_PICKS.nas).map((x) => x.key),
+    ['/share/CACHEDEV1_DATA', '/mnt/tank']);
+  // only the system partition known: that one rather than nothing
+  assert.deepEqual(pick([{ metric: 'volume', key: '/' }, { metric: 'volume', key: '/opt' }], DEVICE_PICKS.nas).map((x) => x.key), ['/']);
+  assert.equal(DATA_VOLUME({ key: '/volume1/@appstore' }), false);
+});
+
+test('UPS runtime under an hour reads in minutes ("25 Min."), not "0 Std."', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../public/js/views/monitoring.js', import.meta.url), 'utf8');
+  assert.match(src, /ups\.leftShort', \{ time: duration\(d\.runtime \* 1000\)/);
+  globalThis.document ??= { documentElement: {} };
+  const { duration } = await import('../public/js/views/monchart.js');
+  assert.equal(duration(25 * 60 * 1000), '25 Min.');
+  assert.equal(duration(95 * 60 * 1000), '1 Std. 35 Min.');
+});
