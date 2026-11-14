@@ -309,6 +309,13 @@ export function createApi(ctx) {
     ctx.autoWatch.markDevices([d.id], req.user.language);
     res.status(201).json(d);
   });
+  // The tip "monitor with the script": not for this device any more (or again)
+  r.put('/devices/:id/script-tip', editor, (req, res) => {
+    visible(req, idParam(req));
+    const hidden = req.body.hidden ? 1 : 0;
+    if (!db.prepare('UPDATE devices SET script_tip_hidden=? WHERE id=?').run(hidden, idParam(req)).changes) throw new HttpError(404, 'err.notFound');
+    res.json({ hidden: !!hidden });
+  });
   r.patch('/devices/:id', editor, (req, res) => {
     visible(req, idParam(req));
     if (req.scope && 'location_id' in req.body && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');

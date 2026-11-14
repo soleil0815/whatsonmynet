@@ -152,6 +152,10 @@ export function createMonitoringApi(ctx) {
     const list = ctx.proxmox.list();
     res.json(req.user.role === 'admin' ? list : list.map((h) => ({ id: h.id, name: h.name, kind: h.kind })));
   });
+  r.put('/proxmox/:id/script-tip', admin, (req, res) => {
+    if (!db.prepare('UPDATE proxmox_hosts SET script_tip_hidden=? WHERE id=?').run(req.body.hidden ? 1 : 0, Number(req.params.id) || 0).changes) throw new HttpError(404, 'err.notFound');
+    res.json({ hidden: !!req.body.hidden });
+  });
   r.post('/proxmox', admin, async (req, res) => {
     const h = ctx.proxmox.create(req.body);
     audit(req, 'proxmox.create', `${h.name} (${h.url})`);
