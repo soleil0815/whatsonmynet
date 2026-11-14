@@ -26,7 +26,7 @@ export function followUrl(url, from, to) {
   let host;
   try { host = new URL(url).hostname; } catch { return null; }
   if (host !== from) return null;
-  const esc = from.replace(/\./g, '\\.');
+  const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const out = String(url).replace(new RegExp(`^([a-z][a-z0-9+.-]*://(?:[^@/?#]*@)?)${esc}(?=[:/?#]|$)`, 'i'), `$1${to}`);
   return out === url ? null : out;
 }
