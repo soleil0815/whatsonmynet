@@ -1,7 +1,8 @@
 // API for monitors, notification channels and maintenance windows.
 import crypto from 'node:crypto';
 import express from 'express';
-import { HttpError, int, str } from '../lib/http.js';
+import { HttpError, int, str, ids } from '../lib/http.js';
+import { BULK_MAX } from '../monitor/index.js';
 import { requireRole } from '../auth/session.js';
 import { inScope } from '../auth/scope.js';
 
@@ -61,6 +62,24 @@ export function createMonitoringApi(ctx) {
     const m = await monitoring.update(idParam(req), req.body);
     audit(req, 'monitor.update', m.name);
     res.json(m);
+  });
+  // Several at once: change how often / when to alarm, pause, resume, delete. A limited user gets 403 as soon as one
+  // of the monitors is not his (then nothing changes at all).
+  r.post('/monitors/bulk', editor, async (req, res) => {
+    const raw = req.body?.ids;
+    const list = ids(raw, BULK_MAX + 1);
+    if (!Array.isArray(raw) || !list.length || raw.length > BULK_MAX || list.length > BULK_MAX) throw new HttpError(400, 'err.bulkIds', String(BULK_MAX));
+    const action = str(req.body.action, 20);
+    if (!['edit', 'pause', 'resume', 'delete'].includes(action)) throw new HttpError(400, 'err.badRequest', action);
+    if (req.scope) {
+      for (const id of list) {
+        const m = db.prepare('SELECT device_id FROM monitors WHERE id=?').get(id);
+        if (m && !deviceOk(req, m.device_id)) throw new HttpError(403, 'err.scope');
+      }
+    }
+    const out = await monitoring.bulk(list, action, req.body.changes);
+    if (out.changed) audit(req, 'monitor.bulk', `${action} ${out.changed} monitor(s)${action === 'edit' ? `: ${Object.keys(req.body.changes || {}).join(', ')}` : ''}`);
+    res.json(out);
   });
   r.post('/monitors/:id/pause', editor, (req, res) => { monitorOk(req, idParam(req)); const m = monitoring.pause(idParam(req)); audit(req, 'monitor.pause', m.name); res.json(m); });
   r.post('/monitors/:id/resume', editor, (req, res) => { monitorOk(req, idParam(req)); const m = monitoring.resume(idParam(req)); audit(req, 'monitor.resume', m.name); res.json(m); });
