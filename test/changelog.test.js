@@ -25,3 +25,18 @@ test('changelog: every released minor version (git tags) is listed', (t) => {
   const listed = new Set(CHANGELOG.map((c) => c.version));
   for (const tag of tags) assert.ok(listed.has(tag.slice(1)), `${tag} missing in public/js/changelog.js`);
 });
+
+test('CHANGELOG.md / CHANGELOG.en.md match public/js/changelog.js (else: node tools/changelog.mjs)', async () => {
+  const fs = await import('node:fs');
+  const { markdown, FILES } = await import('../tools/changelog.mjs');
+  for (const [lang, f] of Object.entries(FILES)) {
+    assert.equal(fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8'), markdown(lang), `${f} is outdated - run: node tools/changelog.mjs`);
+  }
+});
+
+test('release text: the entry of the version, or the waiting one that becomes it', async () => {
+  const { releaseNotes } = await import('../tools/changelog.mjs');
+  const list = [{ version: 'next', de: ['neu'], en: ['new'] }, { version: '1.2.0', date: '2026-01-01', de: ['alt'], en: ['old'] }];
+  assert.match(releaseNotes('1.3.0', list), /- neu[\s\S]*- new/);
+  assert.match(releaseNotes('1.2.0', list), /- alt[\s\S]*- old/);
+});
