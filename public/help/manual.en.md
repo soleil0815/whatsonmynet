@@ -144,6 +144,8 @@ The *Network map* shows from MAC tables and LLDP which device hangs at which por
 
 ## Sensors
 
+![Sensor with limit](img/sensor-en.png)
+
 Every value a device delivers can become a monitor of its own - with history, alarm and maintenance windows. All sensors are listed under *Monitoring → Sensors*. "Add sensor" is on the device page, at the host under *Virtualization* and under *Monitoring → Sensors*. It is always the same dialog: choose device or host, then value and condition. Values another sensor already watches are not offered again (also not through the hypervisor when the Linux script delivers the same value). Examples:
 
 - "toner cyan less than or equal 10 %"
@@ -392,6 +394,8 @@ Staff sign in with their Windows account. AD groups decide which role they get. 
 For a branch office a second container runs there as scan agent. Under *Settings → Scan agents* add an agent for the location; put the `.env` shown next to `docker-compose.agent.yml` from the release and start `docker compose -f docker-compose.agent.yml up -d`. The agent opens no port, fetches jobs over HTTPS and reports only addresses of its location.
 
 ## Failover: master and standby
+
+![Failover: standby](img/failover-en.png)
 
 A second WhatsOnMyNet (another machine, best on another host or in another room) stands by and takes over when the first one fails.
 

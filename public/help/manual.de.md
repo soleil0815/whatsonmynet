@@ -144,6 +144,8 @@ Der *Netzplan* zeigt aus den MAC-Tabellen und LLDP, welches Gerät an welchem Po
 
 ## Sensoren
 
+![Sensor mit Grenzwert](img/sensor-de.png)
+
 Jeder Wert, den ein Gerät liefert, kann ein eigener Monitor werden - mit Verlauf, Alarm und Wartungsfenstern. Alle Sensoren stehen unter *Überwachung → Sensoren*. „Sensor anlegen“ gibt es auf der Geräteseite, unter *Virtualisierung* am Host und unter *Überwachung → Sensoren*. Es ist immer derselbe Dialog: Gerät oder Host wählen, dann Wert und Bedingung. Werte, die schon ein anderer Sensor überwacht, bietet der Dialog nicht noch einmal an (auch nicht über den Hypervisor, wenn das Linux-Skript denselben Wert liefert). Beispiele:
 
 - „Toner Cyan kleiner oder gleich 10 %“
@@ -392,6 +394,8 @@ Mitarbeitende melden sich mit ihrem Windows-Konto an. Welche Rolle sie bekommen,
 Für eine Außenstelle läuft dort ein zweiter Container als Scan-Agent. Unter *Einstellungen → Scan-Agenten* einen Agenten für den Standort anlegen; die angezeigte `.env` neben die `docker-compose.agent.yml` aus dem Release legen und `docker compose -f docker-compose.agent.yml up -d` starten. Der Agent öffnet keinen Port, holt sich Aufträge über HTTPS und meldet nur Adressen seines Standorts.
 
 ## Ausfallsicherung: Master und Standby
+
+![Ausfallsicherung: Standby](img/failover-de.png)
 
 Ein zweites WhatsOnMyNet (anderer Rechner, am besten anderer Host oder anderer Raum) steht bereit und übernimmt, wenn das erste ausfällt.
 
