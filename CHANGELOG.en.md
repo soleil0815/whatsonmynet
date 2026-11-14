@@ -6,6 +6,7 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Notifications: display name (sender) per channel - shown above every message so one sees where it comes from; for e-mail as the sender name and in the subject, for ntfy, Gotify, Pushover & co. as the title, for Discord and Mattermost as the bot name, in the webhook as "sender"
 - Outages in the history chart: reasons without a colon lost their first letter ("onnection refused") - now the reason is shown in full
 - Manual, help and project page: all pictures in the new, light look
 

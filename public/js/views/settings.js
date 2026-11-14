@@ -1313,6 +1313,8 @@ async function notify(body, s, reload) {
       help,
       field(t('ch.name'), input('name', c?.name || t(`ch.type.${ty}`), { required: true, maxlength: 80 })),
       fields,
+      // shown in every message of this channel, so one sees where it comes from
+      field(t('ch.sender'), input('sender', cfg.sender || '', { maxlength: 80, placeholder: t('ch.senderPh') }), t(ty === 'email' ? 'ch.senderHintMail' : 'ch.senderHint')),
       field(t('ch.language'), select('language', [['de', 'Deutsch'], ['en', 'English']], c?.language || getLang())),
       field(t('ch.default'), h('input', { type: 'checkbox', name: 'is_default', checked: c ? c.is_default : true }), t('ch.defaultHint')),
       field(t('user.active'), h('input', { type: 'checkbox', name: 'enabled', checked: c ? c.enabled : true })));

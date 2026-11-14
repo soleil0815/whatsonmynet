@@ -82,7 +82,7 @@ On the device page "Monitor" creates a fitting monitor. If the IP of a device ch
 
 ![Monitor with history](img/monitor-en.png)
 
-**Notifications** (*Settings → Notifications → Add channel*): choose the service, follow the short guide in the form, save and check with **Test message**.
+**Notifications** (*Settings → Notifications → Add channel*): choose the service, follow the short guide in the form, save and check with **Test message**. The **display name** (sender) shows above every message where it comes from - handy when several installations report to the same chat. For e-mail it is the sender's name and appears in the subject, for ntfy, Gotify, Pushover & co. it is the title, for Discord and Mattermost the name of the bot.
 
 - **Common:** e-mail (through the SMTP server), Telegram bot, webhook with your own JSON template (e.g. for n8n or a script)
 - **Chat and messengers:** Discord, Slack, Microsoft Teams (Workflows), Google Chat, Mattermost, Rocket.Chat, Matrix/Element, Signal (through signal-cli-rest-api), WhatsApp (CallMeBot, to your own number)
