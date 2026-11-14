@@ -69,7 +69,7 @@ export async function renderDevice(main, id) {
       const r = await patch(`/devices/${d.id}`, formData(form));
       toast(r?.renamedMonitors ? t('dev.savedRenamed', { n: r.renamedMonitors }) : t('saved'));
       renderDevice(main, id);
-    } catch (e) { fail(e); }
+    } catch (e) { fail(e, form); }
   }
 
   async function deep(button) {

@@ -23,7 +23,7 @@ const hourOf = (d) => `${d.toISOString().slice(0, 13)}:00`;
 export function parseCertDays(v) {
   const list = String(v ?? '30,14,7').split(/[,\s]+/).filter(Boolean).map(Number);
   if (!list.length) return [];
-  if (list.some((n) => !Number.isInteger(n) || n < 1 || n > 365) || list.length > 5) throw new HttpError(400, 'err.certDays');
+  if (list.some((n) => !Number.isInteger(n) || n < 1 || n > 365) || list.length > 5) throw new HttpError(400, 'err.certDays', undefined, 'cert_days');
   return [...new Set(list)].sort((a, b) => b - a);
 }
 
@@ -194,9 +194,9 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       })(),
       escalate_channels: JSON.stringify(ids(input.escalate_channels ?? parse(old?.escalate_channels, []), 50)),
     };
-    if (!v.name) throw new HttpError(400, 'err.nameRequired');
+    if (!v.name) throw new HttpError(400, 'err.nameRequired', undefined, 'name');
     v.parent_id = cleanParent(input, old);
-    if (!validStatusSpec(v.http_status)) throw new HttpError(400, 'err.httpStatus');
+    if (!validStatusSpec(v.http_status)) throw new HttpError(400, 'err.httpStatus', undefined, 'http_status');
     v.timeout_s = Math.min(v.timeout_s, v.interval_s - 1);
     for (const c of parse(v.channels, [])) if (!db.prepare('SELECT 1 FROM channels WHERE id=?').get(c)) throw new HttpError(400, 'err.channel');
     const target = line(input.target ?? old?.target, 1000);
@@ -230,21 +230,21 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       v.target = (base.label || metric).slice(0, 200);
       v.port = null;
     } else if (type === 'snmp') {
-      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
       v.target = target.toLowerCase();
       const p = int(String(input.port ?? old?.port ?? '')) || 161;
-      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port', undefined, 'port');
       v.port = p;
       const prev = old && old.type === 'snmp' ? parse(old.options, {}) : {};
       const oid = line(input.options?.oid ?? prev.oid ?? '', 200).replace(/^\./, '');
-      if (!validOid(oid)) throw new HttpError(400, 'err.oid');
+      if (!validOid(oid)) throw new HttpError(400, 'err.oid', undefined, 'oid');
       v.options = JSON.stringify({ oid, ...sensorOptions(input, old && old.type === 'snmp' ? old : null) });
     } else if (type === 'smb') {
       // Network drive: \\host\share, optional folder or file, read-only account, warning below free space
-      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
       v.target = target.toLowerCase();
       const p = int(String(input.port ?? old?.port ?? '')) || 445;
-      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port', undefined, 'port');
       v.port = p;
       const prev = old && old.type === 'smb' ? parse(old.options, {}) : {};
       const o = input.options && typeof input.options === 'object' ? input.options : {};
@@ -265,17 +265,17 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       else if (old && old.type === 'smb') v.secret = keepSecret(old, v);
       else v.secret = '';
     } else if (type === 'docker') {
-      if (!CONTAINER_NAME.test(target)) throw new HttpError(400, 'err.container');
+      if (!CONTAINER_NAME.test(target)) throw new HttpError(400, 'err.container', undefined, 'target');
       const hostId = int(String(input.docker_host_id ?? old?.docker_host_id ?? ''));
-      if (!hostId || !db.prepare('SELECT 1 FROM docker_hosts WHERE id=?').get(hostId)) throw new HttpError(400, 'err.dockerHost');
+      if (!hostId || !db.prepare('SELECT 1 FROM docker_hosts WHERE id=?').get(hostId)) throw new HttpError(400, 'err.dockerHost', undefined, 'docker_host_id');
       v.target = target;
       v.docker_host_id = hostId;
       v.port = null;
     } else if (DB_TYPES.includes(type)) {
-      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
       v.target = target.toLowerCase();
       const p = int(String(input.port ?? old?.port ?? '')) || DEFAULT_PORTS[type];
-      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port', undefined, 'port');
       v.port = p;
       const oldOpts = old && old.type === type ? parse(old.options, {}) : {};
       const o = input.options && typeof input.options === 'object' ? input.options : {};
@@ -293,16 +293,16 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       else v.secret = '';
     } else if (type === 'http') {
       let u;
-      try { u = new URL(target); } catch { throw new HttpError(400, 'err.url'); }
-      if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw new HttpError(400, 'err.url');
+      try { u = new URL(target); } catch { throw new HttpError(400, 'err.url', undefined, 'target'); }
+      if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw new HttpError(400, 'err.url', undefined, 'target');
       v.target = u.toString();
       v.port = null;
     } else {
-      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
       v.target = target.toLowerCase();
       if (type === 'tcp') {
         const p = int(String(input.port ?? old?.port ?? ''));
-        if (!p || p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+        if (!p || p < 1 || p > 65535) throw new HttpError(400, 'err.port', undefined, 'port');
         v.port = p;
       } else {
         v.port = null;

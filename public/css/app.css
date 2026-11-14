@@ -128,6 +128,9 @@ ul.changes li { margin: 3px 0; }
 .icon-btn:hover { background: var(--bg-2); color: var(--ink); }
 label.field { display: flex; flex-direction: column; gap: 5px; font-weight: 500; font-size: 13px; color: var(--ink-2); }
 .field .hint { font-weight: 400; color: var(--muted); font-size: 12.5px; }
+/* validation error of the server next to its input */
+.field-error { font-weight: 500; color: var(--bad); font-size: 12.5px; }
+[aria-invalid="true"] { border-color: var(--bad) !important; box-shadow: 0 0 0 1px var(--bad); }
 input[type=text], input[type=password], input[type=email], input[type=number], input[type=date], input[type=search], input[type=url], select, textarea {
   font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line-2); border-radius: var(--r-s); padding: 7px 10px; min-height: 36px; width: 100%; }
 :root[data-theme='dark'] input, :root[data-theme='dark'] select, :root[data-theme='dark'] textarea { background: var(--bg-2); }
@@ -340,6 +343,7 @@ dl.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .subnav a.active { background: var(--panel); color: var(--ink); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); border-radius: 0 var(--r-s) var(--r-s) 0; }
 .subnav-group { font-family: var(--display); font-size: 14px; font-weight: 600; color: var(--muted); padding: 14px 10px 4px; }
 .subnav-group:first-child { padding-top: 0; }
+.subnav-select { display: none; }
 .loc-card { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: flex-start; }
 .loc-card:last-child { border-bottom: 0; }
 .loc-card .grow { flex: 1; min-width: 0; }
@@ -386,7 +390,10 @@ dialog.modal footer { display: flex; justify-content: flex-end; gap: 8px; paddin
   .topbar .logo-mark { width: 26px; height: 26px; color: var(--accent); }
   .page { padding: 18px 14px 50px; }
   .settings { grid-template-columns: 1fr; }
-  .subnav { position: static; flex-direction: row; overflow-x: auto; }
+  /* phones: one select instead of the long strip of links */
+  .subnav { position: static; }
+  .subnav-select { display: block; width: 100%; }
+  .subnav a { display: none; }
   .subnav-group { display: none; }
   .form-grid { grid-template-columns: 1fr; }
   .auth { grid-template-columns: 1fr; }
