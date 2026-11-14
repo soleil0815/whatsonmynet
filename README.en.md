@@ -164,15 +164,15 @@ WhatsOnMyNet runs without root. Ping then only works if the host allows ICMP for
 
 ```sh
 # inside the LXC as root - permanent, also after a restart
-echo 'net.ipv4.ping_group_range = 0 2147483647' > /etc/sysctl.d/99-ping.conf
+echo 'net.ipv4.ping_group_range = 0 65535' > /etc/sysctl.d/99-ping.conf
 sysctl -p /etc/sysctl.d/99-ping.conf
-# check: now "0 2147483647"
+# check: now "0 65535"
 cat /proc/sys/net/ipv4/ping_group_range
 # restart WhatsOnMyNet so it detects ping again
 docker compose restart
 ```
 
-Then the "ping not possible" notice of the scan is gone and ping monitors work. This works in an unprivileged LXC too, without giving the container more rights.
+Then the "ping not possible" notice of the scan is gone and ping monitors work. This works in an unprivileged LXC too, without giving the container more rights. Higher than `65535` does not work there (the kernel answers "Invalid argument") - an LXC only has the groups 0–65535.
 
 ### SNMP
 
