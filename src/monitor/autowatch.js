@@ -59,7 +59,11 @@ export function createAutoWatch({ db, settings, monitoring }) {
     .map((m) => parse(m.options, {})).map((o) => `${o.metric}|${o.key ?? ''}`));
 
   async function sensor(input) {
-    try { await monitoring.create(input); return 1; } catch (e) { log.warn(`Watch new devices: ${input.name}: ${e.message}`); return 0; }
+    try { await monitoring.create(input); return 1; } catch (e) {
+      // watched that way already (by hand, with another name or address): nothing to add
+      if (e.status !== 409) log.warn(`Watch new devices: ${input.name}: ${e.message}`);
+      return 0;
+    }
   }
 
   async function forDevice(d) {
@@ -71,7 +75,7 @@ export function createAutoWatch({ db, settings, monitoring }) {
     if (!w.conn) {
       const has = db.prepare("SELECT 1 FROM monitors WHERE device_id=? AND type IN ('http','tcp','ping')").get(d.id);
       if (d.ip && !has) {
-        try { const s = await monitoring.suggestionFor(d.id); n += await sensor({ ...s, name: d.name }); } catch (e) { log.warn(`Watch new devices: ${d.name}: ${e.message}`); }
+        try { const s = await monitoring.suggestionFor(d.id); n += await sensor({ ...s, name: d.name }); } catch (e) { if (e.status !== 409) log.warn(`Watch new devices: ${d.name}: ${e.message}`); }
       }
       w.conn = true; changed = true;
     }

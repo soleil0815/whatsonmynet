@@ -37,6 +37,10 @@ The setting survives a restart and needs no extra rights for the container. High
 
 The MAC address is the identity of a device: if it gets a new IP, the next scan takes it over automatically and records it in the history. A host name you typed by hand stays; the scan only fills the host name while the field is empty or the name came from the scan. If you empty the field, the scan fills it again.
 
+**In the inventory already?** When the scan finds a device that is probably in the inventory already - same host name (e.g. the second network card of a NAS) or same IP with another MAC (VM, exchanged device) -, the list shows a tip with the existing device. Adopting skips it. "Assign to this device" takes over the new MAC for the same IP, or puts the second network card on the ignore list with a note; "Add as new device anyway" adds it after all. When devices are in the inventory twice already (same host name), the inventory shows a note with "Merge" at the top.
+
+**Nothing watched twice:** WhatsOnMyNet does not create a second monitor or sensor for something watched already - it names the existing one. Host name and IP of the same device count as the same target; several services of one server (web interface, SSH, database …) are of course fine. Windows and Linux machines without script show the tip "Monitor with script" on the device page.
+
 ## Inventory
 
 ![Inventory](img/inventory-en.png)
