@@ -138,13 +138,16 @@ test('adopting from an older scan does not mark the device as online', () => {
   const old = new Date(Date.now() - 2 * 86400000).toISOString();
   const s1 = scanWith(db, [{ ip: '192.168.1.60', mac: 'aa:bb:cc:00:03:01' }], { startedAt: old, status: 'done' });
   inv.applyResult(s1.ids[0]); inv.finishScan(s1.scanId);
-  // newer scan of the same subnet without that device
-  scanWith(db, [], { startedAt: new Date(Date.now() - 3600000).toISOString(), status: 'done' });
+  // newer finished scan of the same subnet without that device: the old result can no longer be adopted at all
+  // (adopt only from the newest scan of a subnet, suggestions 2026-11)
+  const s2 = scanWith(db, [], { startedAt: new Date(Date.now() - 3600000).toISOString(), status: 'done' });
+  assert.throws(() => inv.adopt(s1.ids), { code: 'err.scanOutdated' });
+  // still running, the newer scan does not count yet: adopted, the device carries the time of its own scan, not "now"
+  db.prepare("UPDATE scans SET status='running', finished_at=NULL WHERE id=?").run(s2.scanId);
   const [id] = inv.adopt(s1.ids);
   const d = inv.get(id);
   assert.equal(d.last_seen, old);
   assert.equal(d.first_seen, old);
-  assert.notEqual(inv.list()[0].presence, 'online');
 });
 
 // ---------------------------------------------------------------------------------------------------- 6

@@ -21,11 +21,11 @@ Die Oberfläche läuft immer über HTTPS. Beim ersten Start erzeugt WhatsOnMyNet
 
 1. **Standort anlegen** (*Standorte*): Name und Subnetze, z. B. „Hauptgebäude“ mit `192.168.10.0/24`.
 2. **Netzwerk scannen** (*Netzwerk scannen*): Standort anhaken, „Scan starten“. Der Radar zeigt die gefundenen Geräte; der Scan ist schonend (ARP, 26 typische Ports, SNMP nur lesend).
-3. **Übernehmen**: Im Ergebnis unter „Neu“ Typ und Name prüfen, Geräte anhaken, „Ins Inventar übernehmen“. Was du nicht im Inventar willst, „Ignorieren“. Versehentlich ignoriert? Im Reiter „Ignoriert“ anhaken und „Nicht mehr ignorieren“ (steht dann wieder unter „Neu“) oder gleich „Ins Inventar übernehmen“. Die ganze Liste steht unter *Einstellungen → Ignorierte Geräte*.
+3. **Übernehmen**: Im Ergebnis unter „Neu“ Typ und Name prüfen, Geräte anhaken, „Ins Inventar übernehmen“. Was du nicht im Inventar willst, „Ignorieren“. Versehentlich ignoriert? Im Reiter „Ignoriert“ anhaken und „Nicht mehr ignorieren“ (steht dann wieder unter „Neu“) oder gleich „Ins Inventar übernehmen“. Die ganze Liste steht unter *Einstellungen → Ignorierte Geräte*. Übernehmen und Ignorieren geht nur aus dem neuesten Scan eines Subnetzes - hat ein neuerer Scan das Subnetz erfasst, bleibt ein älterer Scan lesbar, übernommen oder ignoriert wird im neueren. „Nicht mehr ignorieren“ geht auch im älteren Scan.
 
 ![Scan mit Radar](img/scan-de.png)
 
-Die MAC-Adresse ist die Identität eines Geräts: Bekommt es eine neue IP, übernimmt der nächste Scan sie automatisch und schreibt es in den Verlauf.
+Die MAC-Adresse ist die Identität eines Geräts: Bekommt es eine neue IP, übernimmt der nächste Scan sie automatisch und schreibt es in den Verlauf. Einen Rechnernamen, den du von Hand eingetragen hast, lässt der Scan stehen; er füllt den Rechnernamen nur, solange das Feld leer ist oder der Name vom Scan stammt. Leerst du das Feld, füllt der Scan es wieder.
 
 ## Inventar
 
@@ -35,7 +35,7 @@ Die MAC-Adresse ist die Identität eines Geräts: Bekommt es eine neue IP, über
 - **Geräteseite**: alle Angaben, Kauf- und Garantiedaten, Notizen, Schnellzugriff auf die Weboberfläche, was der Scan erkannt hat, Verlauf aller Änderungen.
 - **Vorschläge beim Ausfüllen**: Hersteller, Modell, Betriebssystem, Verantwortlicher, Lieferant und Schlagwörter schlagen vor, was schon im Inventar steht. Ein bekanntes Modell füllt Hersteller und Typ aus.
 - **Mehrfachauswahl**: Geräte anhaken und gemeinsam bearbeiten (Typ, Standort, Hersteller, Modell, Daten, Schlagwörter) oder löschen.
-- **Tiefenprüfung**: prüft ein einzelnes Gerät mit einer längeren Port-Liste. Telematik-Geräte (Konnektor, Kartenterminal) werden immer nur schonend geprüft.
+- **Tiefenprüfung**: prüft ein einzelnes Gerät mit einer längeren Port-Liste. Telematik-Geräte (Konnektor, Kartenterminal) werden immer nur schonend geprüft. Bei einem noch unklaren Gerät fragt die Tiefenprüfung zuerst nur Port 4742 (SICCT) ab - antwortet ein Kartenterminal, bleibt es beim schonenden Profil.
 
 ## Nächtlicher Leicht-Scan
 
@@ -54,7 +54,7 @@ Ein Monitor prüft regelmäßig (20 Sekunden bis 24 Stunden) und meldet sich ers
 - **Netzlaufwerk (SMB)**: Windows-Freigaben und NAS - siehe unten
 - **Sensor** (Wert eines Geräts, Rechners mit Skript, Hypervisors oder Controllers) und **SNMP-Wert (OID)** - siehe unten
 
-Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert sich die IP eines Geräts, ziehen seine Monitore mit. Benennst du das Gerät um, heißen seine Monitore und Sensoren auch gleich so, damit ein Alarm den aktuellen Namen nennt (ein Monitor mit selbst vergebenem Namen ohne den Gerätenamen bleibt, wie er ist).
+Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert sich die IP eines Geräts, ziehen seine Monitore mit. Ausnahme: Ein Monitor mit gespeichertem Passwort (Datenbank, Netzlaufwerk) wird pausiert, denn das Passwort wurde für die alte Adresse eingegeben und geht nie ungefragt an eine andere. Er zeigt „Gerät hat neue IP - Passwort bitte neu eingeben“, seine Benachrichtigungskanäle bekommen eine Meldung, und im Bearbeiten-Dialog ist die neue Adresse schon eingetragen: Mit dem Passwort gespeichert läuft er wieder. Kehrt das Gerät zur alten Adresse zurück, läuft er von selbst weiter. Benennst du das Gerät um, heißen seine Monitore und Sensoren auch gleich so, damit ein Alarm den aktuellen Namen nennt (ein Monitor mit selbst vergebenem Namen ohne den Gerätenamen bleibt, wie er ist).
 
 ![Monitor mit Verlauf](img/monitor-de.png)
 
@@ -67,7 +67,7 @@ Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert 
 
 Tokens, Schlüssel und Webhook-Adressen werden verschlüsselt gespeichert und nie wieder angezeigt. Störungen kommen bei Push-Diensten mit hoher Priorität.
 
-**Wartungsfenster** (*Überwachung → Monitoring → Wartungsfenster*): einmalig oder an bestimmten Wochentagen von-bis (auch über Mitternacht). Es gilt für die angehakten Monitore und Sensoren - die Auswahl ist nach Gerät bzw. Hypervisor gruppiert, mit Suche, ein Haken beim Gerät nimmt alles davon. Nichts angehakt = alles. Schneller für einen einzelnen: auf der Seite des Monitors oder Sensors unter *Zeiten ohne Alarm* → **Zeitfenster ohne Alarm** (vorbelegt: täglich 20-23 Uhr, z. B. für die Zeit des Backups, in der eine SSD warm wird). Geprüft und aufgezeichnet wird auch im Wartungsfenster, nur die Meldungen schweigen.
+**Wartungsfenster** (*Überwachung → Monitoring → Wartungsfenster*): einmalig oder an bestimmten Wochentagen von-bis (auch über Mitternacht). Es gilt für die angehakten Monitore und Sensoren - die Auswahl ist nach Gerät bzw. Hypervisor gruppiert, mit Suche, ein Haken beim Gerät nimmt alles davon. Nichts angehakt = alles. Schneller für einen einzelnen: auf der Seite des Monitors oder Sensors unter *Zeiten ohne Alarm* → **Zeitfenster ohne Alarm** (vorbelegt: täglich 20-23 Uhr, z. B. für die Zeit des Backups, in der eine SSD warm wird). Geprüft und aufgezeichnet wird auch im Wartungsfenster, nur die Meldungen schweigen. Der Status „Wartung“ steht ab Beginn des Fensters da (nicht erst nach der nächsten Prüfung) und verschwindet mit seinem Ende.
 
 **Was in einem Alarm steht:** Webseite, Port und Ping melden „ist nicht erreichbar“. Ein Messwert meldet „Grenzwert überschritten - 83,9 °C (≥ 80)“ und später „wieder im normalen Bereich“, ein Zustand (Dienst, VM, Festplatte, Container …) „Störung“ und „wieder in Ordnung“, ein Sensor ohne aktuelle Werte „keine aktuellen Werte“. Deutsche Kanäle bekommen auch die Einzelheiten auf Deutsch.
 
@@ -136,7 +136,7 @@ Der *Netzplan* zeigt aus den MAC-Tabellen und LLDP, welches Gerät an welchem Po
 
 ## Sensoren
 
-Jeder Wert, den ein Gerät liefert, kann ein eigener Monitor werden - mit Verlauf, Alarm und Wartungsfenstern. Alle Sensoren stehen unter *Überwachung → Sensoren*. „Sensor anlegen“ gibt es auf der Geräteseite, unter *Virtualisierung* am Host und unter *Überwachung → Sensoren*. Es ist immer derselbe Dialog: Gerät oder Host wählen, dann Wert und Bedingung, z. B.:
+Jeder Wert, den ein Gerät liefert, kann ein eigener Monitor werden - mit Verlauf, Alarm und Wartungsfenstern. Alle Sensoren stehen unter *Überwachung → Sensoren*. „Sensor anlegen“ gibt es auf der Geräteseite, unter *Virtualisierung* am Host und unter *Überwachung → Sensoren*. Es ist immer derselbe Dialog: Gerät oder Host wählen, dann Wert und Bedingung. Werte, die schon ein anderer Sensor überwacht, bietet der Dialog nicht noch einmal an (auch nicht über den Hypervisor, wenn das Linux-Skript denselben Wert liefert). Beispiele:
 
 - „Toner Cyan kleiner oder gleich 10 %“
 - „Belegung /volume1 größer oder gleich 85 %“
@@ -347,7 +347,7 @@ Unter *Überwachung → Berichte* gehen Berichte zu festen Zeiten per E-Mail rau
 
 ## Benutzer und Rechte
 
-- **Rollen**: *Administrator* (alles), *Bearbeiter* (scannen, übernehmen, pflegen, Monitore), *Nur lesen*.
+- **Rollen**: *Administrator* (alles), *Bearbeiter* (scannen, übernehmen, pflegen, Monitore), *Nur lesen*. Bearbeiter scannen nur private Netze (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) und die Subnetze der Standorte; öffentliche Adressen nur Administratoren.
 - **Standorte**: Bearbeiter und Leser lassen sich auf Standorte beschränken - sie sehen und ändern dann nur deren Geräte, Scans und Monitore.
 - **Active Directory**: Anmeldung mit dem Windows-Konto, siehe nächster Abschnitt.
 - **Zwei-Faktor-Anmeldung** (*Mein Konto*): QR-Code mit einer Authenticator-App scannen, Code bestätigen, Wiederherstellungscodes aufbewahren. Für Administratoren lässt sie sich unter *Einstellungen → Allgemein* verpflichtend machen.

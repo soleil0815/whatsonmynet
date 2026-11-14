@@ -47,7 +47,7 @@ export function scriptDialog(title, r, { where = 'host', onClose } = {}) {
       h('div', { class: 'actions' }, btn(t('hs.downloadUninstall'), { class: 'btn btn-sm', onclick: () => download(u.file, u.text) }, 'download')),
       cmd(runLine(u.file))),
     h('details', { class: 'cert-manual' }, h('summary', {}, t('virt.showScript')), h('pre', { class: 'code wrap', style: { maxHeight: '260px', overflow: 'auto' } }, s.text))),
-  { wide: true, onClose, actions: [h('button', { class: 'btn btn-primary', type: 'button', onclick: () => m.close() }, t('virt.done'))] });
+  { wide: true, onClose, onSubmit: () => m.close(), actions: [h('button', { class: 'btn btn-primary', type: 'submit' }, t('virt.done'))] });
 }
 
 /** Device page: "Monitor with script" - choose Windows/Linux, get the script with the key of this device */
@@ -58,16 +58,15 @@ export async function openHostScript(d, reload) {
     h('p', { style: { margin: 0 } }, t('hs.lead')),
     field(t('hs.os'), os),
     d.hostScript ? h('p', { class: 'note warn', style: { margin: 0 } }, t('hs.replace')) : null);
-  const m = modal(`${t('hs.title')}: ${d.name}`, form, { actions: [
+  const m = modal(`${t('hs.title')}: ${d.name}`, form, { onSubmit: async () => {
+    try {
+      const r = await post('/hosts', { os: os.value, device_id: d.id, server: location.origin });
+      m.close();
+      scriptDialog(`${t('hs.title')}: ${d.name}`, r, { onClose: reload });
+    } catch (ex) { fail(ex); }
+  }, actions: [
     btn(t('cancel'), { onclick: () => m.close() }),
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
-      e.currentTarget.disabled = true;
-      try {
-        const r = await post('/hosts', { os: os.value, device_id: d.id, server: location.origin });
-        m.close();
-        scriptDialog(`${t('hs.title')}: ${d.name}`, r, { onClose: reload });
-      } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
-    } }, t('hs.create'))] });
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t('hs.create'))] });
 }
 
 const bytes = (n) => { const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']; let i = 0; let v = Number(n) || 0; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 && i ? 1 : 0)} ${u[i]}`; };
@@ -196,13 +195,11 @@ export async function hostScriptsSettings(body, reload) {
     const name = input('name', '', { required: true, maxlength: 80, placeholder: t('hs.sharedPh') });
     const os = select('os', [['windows', 'Windows'], ['linux', 'Linux']], 'windows');
     const form = h('form', { class: 'form' }, h('p', { style: { margin: 0 } }, t('hs.sharedLead')), field(t('px.name'), name), field(t('hs.os'), os));
-    const m = modal(t('hs.addShared'), form, { actions: [
+    const m = modal(t('hs.addShared'), form, { onSubmit: async () => {
+      try { const r = await post('/hosts', { name: name.value, os: os.value, server: location.origin }); m.close(); scriptDialog(r.name, r, { onClose: reload }); } catch (ex) { fail(ex); }
+    }, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
-        if (!form.reportValidity()) return;
-        e.currentTarget.disabled = true;
-        try { const r = await post('/hosts', { name: name.value, os: os.value, server: location.origin }); m.close(); scriptDialog(r.name, r, { onClose: reload }); } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
-      } }, t('hs.create'))] });
+      h('button', { class: 'btn btn-primary', type: 'submit' }, t('hs.create'))] });
   };
   const uninstall = async (kind) => { try { const u = await get(`/hosts/uninstall/${kind}`); download(u.file, u.text); } catch (ex) { fail(ex); } };
   mount(body, h('section', { class: 'panel' },

@@ -13,8 +13,8 @@ const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,}$/;
 
 export function checkPassword(pw, username = '') {
   const p = typeof pw === 'string' ? pw : '';
-  if (p.length < MIN_PASSWORD || p.length > 1024) throw new HttpError(400, 'err.passwordShort', String(MIN_PASSWORD));
-  if (username && p.toLowerCase() === String(username).toLowerCase()) throw new HttpError(400, 'err.passwordIsName');
+  if (p.length < MIN_PASSWORD || p.length > 1024) throw new HttpError(400, 'err.passwordShort', String(MIN_PASSWORD), 'password');
+  if (username && p.toLowerCase() === String(username).toLowerCase()) throw new HttpError(400, 'err.passwordIsName', undefined, 'password');
   return p;
 }
 
@@ -42,13 +42,13 @@ export function createUsers(db) {
     const out = {};
     if (!partial || 'username' in input) {
       const u = line(input.username, 64);
-      if (!USERNAME.test(u)) throw new HttpError(400, 'err.username');
+      if (!USERNAME.test(u)) throw new HttpError(400, 'err.username', undefined, 'username');
       out.username = u;
     }
     if (!partial || 'display_name' in input) out.display_name = line(input.display_name, 120);
     if (!partial || 'email' in input) {
       const e = line(input.email, 254);
-      if (e && !EMAIL.test(e)) throw new HttpError(400, 'err.email');
+      if (e && !EMAIL.test(e)) throw new HttpError(400, 'err.email', undefined, 'email');
       out.email = e;
     }
     if (!partial || 'role' in input) out.role = oneOf(input.role, ROLES, partial ? undefined : 'viewer');
@@ -143,7 +143,7 @@ export function createUsers(db) {
     create(input) {
       const v = clean(input);
       const pw = checkPassword(input.password, v.username);
-      if (byName.get(v.username)) throw new HttpError(409, 'err.userExists');
+      if (byName.get(v.username)) throw new HttpError(409, 'err.userExists', undefined, 'username');
       const now = new Date().toISOString();
       const r = db.prepare('INSERT INTO users(username,display_name,email,password_hash,role,language,theme,created_at,password_changed_at) VALUES(?,?,?,?,?,?,?,?,?)')
         .run(v.username, v.display_name, v.email, hashPassword(pw), v.role, v.language, v.theme || 'system', now, now);

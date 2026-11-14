@@ -15,23 +15,31 @@ export function createLocations(db) {
       subnets: subnets.filter((s) => s.location_id === l.id).sort((a, b) => ipToInt(a.cidr.split('/')[0]) - ipToInt(b.cidr.split('/')[0])) }));
   }
 
+  // Every subnet error names the input as typed (not the normalised network): the form marks the row whose value
+  // equals the detail (see showFieldError) - "192.168.1.5/24" must find the row "192.168.1.5/24", not 192.168.1.0/24
+  const typed = (raw) => String(raw ?? '').trim().slice(0, 40);
+
   function checkCidr(raw) {
     const c = parseCidr(raw);
-    if (!c) throw new HttpError(400, 'err.cidr', String(raw).slice(0, 40));
-    if (c.hosts > MAX_PREFIX_HOSTS) throw new HttpError(400, 'err.cidrTooLarge', c.cidr);
+    if (!c) throw new HttpError(400, 'err.cidr', typed(raw), 'cidr');
+    if (c.hosts > MAX_PREFIX_HOSTS) throw new HttpError(400, 'err.cidrTooLarge', typed(raw), 'cidr');
     return c.cidr;
   }
 
   function save(id, input) {
     const name = line(input.name, 80);
-    if (!name) throw new HttpError(400, 'err.nameRequired');
+    if (!name) throw new HttpError(400, 'err.nameRequired', undefined, 'name');
     const description = str(input.description, 500).trim();
     const cidrs = Array.isArray(input.subnets) ? input.subnets.slice(0, 64) : [];
-    const subnets = cidrs.map((s) => ({ cidr: checkCidr(typeof s === 'string' ? s : s?.cidr), label: line(s?.label, 80) }));
-    if (new Set(subnets.map((s) => s.cidr)).size !== subnets.length) throw new HttpError(400, 'err.cidrDuplicate');
+    const subnets = cidrs.map((s) => {
+      const raw = typeof s === 'string' ? s : s?.cidr;
+      return { cidr: checkCidr(raw), label: line(s?.label, 80), raw: typed(raw) };
+    });
+    const dup = subnets.find((s, i) => subnets.findIndex((x) => x.cidr === s.cidr) !== i);
+    if (dup) throw new HttpError(400, 'err.cidrDuplicate', dup.raw, 'cidr');
     return db.transaction(() => {
       const other = db.prepare('SELECT id FROM locations WHERE name=? AND id IS NOT ?').get(name, id);
-      if (other) throw new HttpError(409, 'err.locationExists');
+      if (other) throw new HttpError(409, 'err.locationExists', undefined, 'name');
       let locId = id;
       if (id) {
         if (!db.prepare('UPDATE locations SET name=?, description=? WHERE id=?').run(name, description, id).changes) throw new HttpError(404, 'err.notFound');
@@ -40,7 +48,7 @@ export function createLocations(db) {
       }
       for (const s of subnets) {
         const taken = db.prepare('SELECT l.name FROM subnets s JOIN locations l ON l.id=s.location_id WHERE s.cidr=? AND s.location_id<>?').get(s.cidr, locId);
-        if (taken) throw new HttpError(409, 'err.cidrTaken', `${s.cidr} → ${taken.name}`);
+        if (taken) throw new HttpError(409, 'err.cidrTaken', `${s.raw} → ${taken.name}`, 'cidr');
       }
       db.prepare('DELETE FROM subnets WHERE location_id=?').run(locId);
       const ins = db.prepare('INSERT INTO subnets(location_id,cidr,label,created_at) VALUES(?,?,?,?)');

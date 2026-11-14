@@ -123,3 +123,24 @@ test('after the update: sensors are named after their value once (the old "Tempe
   assert.equal(row(a).name, 'Eigener Name');
   assert.equal(nameSensorsByValue(db) >= 1, true);
 });
+
+test('values a sensor already watches are marked as taken - also the script twin of a node value', async () => {
+  for (const m of db.prepare("SELECT id FROM monitors WHERE type IN ('sensor','proxmox')").all()) await call('DELETE', `/api/monitors/${m.id}`);
+  const nvme = (await call('POST', '/api/monitors', { name: 'pve2: NVMe', type: 'sensor', device_id: pve2, interval_s: 300, options: { metric: 'hostTemp', key: 'nvme/nvme0/Sensor 2', op: 'ge', threshold: 70, label: 'Temperatur: NVMe nvme0 Sensor 2' } })).data;
+  // the old way: the hottest temperature of pve2 at the hypervisor - the script delivers the same value
+  const hot = (await call('POST', '/api/monitors', { name: 'Temperatur pve2', type: 'proxmox', interval_s: 300, options: { host, metric: 'nodeTemp', key: 'pve2', op: 'ge', threshold: 80, label: 'Temperatur pve2' } })).data;
+  const online = (await call('POST', '/api/monitors', { name: 'pve2 online', type: 'proxmox', interval_s: 300, options: { host, metric: 'nodeOnline', key: 'pve2', label: 'Knoten pve2 online' } })).data;
+  const l = (await call('GET', `/api/sensors/choices?device=${pve2}`)).data;
+  const taken = (metric, key = '') => l.find((x) => x.metric === metric && String(x.key) === key)?.taken;
+  assert.equal(taken('hostTemp', 'nvme/nvme0/Sensor 2'), nvme.id);
+  assert.equal(taken('hostTempMax'), hot.id);
+  assert.equal(taken('nodeOnline', 'pve2'), online.id);
+  assert.equal(taken('hostCpu'), undefined);
+  // from the host the same
+  const lh = (await call('GET', `/api/sensors/choices?host=${host}`)).data;
+  assert.equal(lh.find((x) => x.metric === 'nodeOnline' && x.key === 'pve2').taken, online.id);
+  assert.equal(lh.find((x) => x.metric === 'nodeOnline' && x.key === 'pve1').taken, undefined);
+  // the dialog leaves taken values out, except the one of the sensor being edited
+  const src = (await import('node:fs')).readFileSync(new URL('../public/js/views/monitoring.js', import.meta.url), 'utf8');
+  assert.match(src, /choices\.filter\(\(x\) => !x\.taken \|\| \(m && x\.taken === m\.id\)/);
+});

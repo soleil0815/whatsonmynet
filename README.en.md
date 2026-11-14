@@ -23,9 +23,9 @@ WhatsOnMyNet scans your network, recognises manufacturer and device type by itse
 
 - **Gentle network scan** - devices in local networks are found via ARP (every device answers, even with a closed firewall), in routed networks via ping and a few TCP connection attempts. Only 26 typical ports are checked, limited to 40 attempts per second. To a firewall this looks like normal traffic.
 - **Automatic recognition** - manufacturer from the MAC address (IEEE registry), device type from open ports, web interface title, certificate, SNMP (read-only), NetBIOS name and reverse DNS. Unsure guesses are marked; you can change the type before adopting.
-- **Telematik** - card terminals (SICCT port 4742, ORGA, Cherry …) and TI connectors (KoCoBox, secunet, RISE …) get their own icon and category. Their deep check always keeps the gentle profile.
-- **Adopt only what you want** - scan results in four tabs: *New*, *Changed*, *Known*, *Ignored*. Tick new devices to adopt them or ignore them for good.
-- **MAC address as identity** - when a known device gets a new IP, the next scan takes it over automatically, with an entry in the history.
+- **Telematik** - card terminals (SICCT port 4742, ORGA, Cherry …) and TI connectors (KoCoBox, secunet, RISE …) get their own icon and category. Their deep check always keeps the gentle profile - also for a device not yet recognised: the deep check first asks port 4742 (SICCT) alone; if it answers, the gentle profile stays.
+- **Adopt only what you want** - scan results in four tabs: *New*, *Changed*, *Known*, *Ignored*. Tick new devices to adopt them or ignore them for good. Adopt and ignore work from the newest scan of a subnet; older scans stay readable, and "Stop ignoring" works there too.
+- **MAC address as identity** - when a known device gets a new IP, the next scan takes it over automatically, with an entry in the history. A host name typed by hand stays; the scan only fills the name while it is empty or came from the scan.
 - **Inventory** - search across everything, filter by type and location, view as list, by subnet or by type, "seen in the last scan" status, export as CSV (Excel) and JSON.
 - **Quick access** - one click opens the device's web interface (Proxmox on 8006, Synology on 5001, printers …). The scan suggests the address.
 - **Purchase, warranty, maintenance** - optional fields, with a notice on the overview when a warranty ends soon.
@@ -45,9 +45,9 @@ WhatsOnMyNet monitors devices, services and websites and replaces Uptime Kuma fo
 - **No false alarms**: an alarm comes only after several failed checks in a row (default 3), the all-clear with the length of the outage. Optionally the alarm repeats while the outage lasts.
 - **Certificates**: for HTTPS the expiry date is read; warnings e.g. 30, 14 and 7 days before, each step once. Checking chain and name can be switched on for internet sites; LAN devices with self-signed certificates work without it.
 - **Notifications** under *Settings → Notifications*: Discord, Slack, Microsoft Teams, Google Chat, Mattermost, Rocket.Chat, Matrix, Signal, WhatsApp (CallMeBot), ntfy, Gotify, Pushover, Pushbullet, Home Assistant and Apprise (more than 100 further services), each with a short guide in the form; also email (through the SMTP server), Telegram bot (token from @BotFather, chat ID) and webhook with an own JSON template (`{{text}}`, `{{name}}`, `{{status}}`, `{{message}}`, `{{target}}`, `{{time}}`) and an optional header for a key. Token and header are stored encrypted. Every channel has a test message.
-- **Maintenance windows** once or weekly (also across midnight), for all or selected monitors - no alarms meanwhile.
+- **Maintenance windows** once or weekly (also across midnight), for all or selected monitors - no alarms meanwhile. The status "maintenance" is shown from the start of the window, not only after the next check.
 - **Availability** over 24 hours, 7 and 30 days, response time chart, events showing who was notified.
-- **Devices**: on a device page, “Monitor” adds a fitting monitor (web interface, else ping or an open port). When the scan changes a device's IP address, its monitors follow.
+- **Devices**: on a device page, “Monitor” adds a fitting monitor (web interface, else ping or an open port). When the scan changes a device's IP address, its monitors follow. A monitor with a stored password (database, network share) does not follow: it is paused, its notification channels get a message, and with the password entered again it continues at the new address - the password is never sent to another address unasked. When the device returns to the old address, it runs again by itself.
 
 Check results are kept in detail for 7 days and hourly for a year.
 
@@ -61,7 +61,7 @@ Check results are kept in detail for 7 days and hourly for a year.
 
 Like in PRTG, every value a device delivers can be watched as a monitor of its own - with history, alarm and maintenance windows:
 
-- **Sensor (device value)**: "Add sensor" on the device page, then choose value and condition - e.g. "toner cyan less than or equal 10 %", "volume 1 at least 85 %", "temperature drive 2 above 50 °C", "port 10 (uplink) connected", "disk/storage pool fine", "faults at the printer". It reads the latest state of the printer/switch/NAS query, without extra requests to the device.
+- **Sensor (device value)**: "Add sensor" on the device page, then choose value and condition - e.g. "toner cyan less than or equal 10 %", "volume 1 at least 85 %", "temperature drive 2 above 50 °C", "port 10 (uplink) connected", "disk/storage pool fine", "faults at the printer". It reads the latest state of the printer/switch/NAS query, without extra requests to the device. Values another sensor already watches are not offered again.
 - **SNMP value (OID)**: any value readable via SNMP with its own condition (less, greater, equal, contains text …) - e.g. runtime left of a UPS, temperature of an air conditioner, sessions of a firewall.
 - The history shows the measured value over 24 hours up to one year (from 30 days as an hourly summary).
 
@@ -104,7 +104,7 @@ Then `docker compose up -d`.
 
 Once a night (default 02:30 local time, `TZ` in `.env`) WhatsOnMyNet only looks for devices in all subnets of your locations: ARP, NetBIOS and - if allowed - ping; in routed subnets also a few TCP connection attempts (ports 443, 80, 22, 445, 3389) and the ARP table of the routers via SNMP. No port check of the devices, no web requests, so the scan stays inconspicuous.
 
-- Known devices get their new IP address automatically (the MAC address is the identity), their monitors follow.
+- Known devices get their new IP address automatically (the MAC address is the identity), their monitors follow - except monitors with a stored password: they are paused and need the password again (see Monitoring).
 - Unknown devices wait in the scan result to be adopted or ignored; the overview shows how many are waiting.
 - **Report new devices**: a device that shows up for the very first time is reported once through the notification channels. The first scan after the update only learns what is already there - no flood of notices.
 - Time, channels and "Run now" under *Settings → Scan*. After a restart the scan is caught up to 4 hours later.
@@ -160,6 +160,8 @@ Under *Settings → Active Directory* users sign in with their Windows account:
 ## Rights per location (from version 0.3)
 
 Editors and viewers can be limited to one or more locations under *Settings → Users* - e.g. for the IT of a branch office. A limited account only sees and changes devices, scan results and monitors of these locations, scans only their subnets and counts only them on the overview. Devices without a location, free subnets, the nightly scan, maintenance windows and Docker hosts stay with unlimited accounts. Administrators are never limited; this also applies to accounts from Active Directory.
+
+**Allowed scan targets:** editors only scan private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and 100.64.0.0/10) and the subnets an administrator entered at the locations. Public addresses - as a subnet in a scan or as the deep check of a device - only an administrator may scan.
 
 ## Scan agent for branch offices (from version 0.3)
 

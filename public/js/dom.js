@@ -42,22 +42,91 @@ export function toast(message, kind = 'ok') {
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, kind === 'error' ? 6000 : 3200);
 }
 
-/** Modal dialog using <dialog>. Returns { close, el }. */
-export function modal(title, body, { actions = [], wide = false, onClose } = {}) {
+let formSeq = 0;
+
+/**
+ * Modal dialog using <dialog>. Returns { close, el, form }.
+ * Every dialog is a form: the body sits in a <form> (a <form> passed as body is used as it is - forms cannot be nested),
+ * the primary button in `actions` is created with type: 'submit' and belongs to that form. Enter in a single-line field
+ * submits it, textareas keep Enter as new line. onSubmit runs while the submit button is disabled (busy), so a double
+ * click or Enter pressed twice sends one request. All other buttons are type=button.
+ */
+export function modal(title, body, { actions = [], wide = false, onClose, onSubmit } = {}) {
   const dlg = h('dialog', { class: `modal${wide ? ' wide' : ''}`, 'aria-label': title });
   const close = () => { dlg.close(); };
   dlg.addEventListener('close', () => {
     if (toastBox?.parentNode === dlg) document.body.append(toastBox); // keep running messages visible after the dialog closes
     dlg.remove(); onClose?.();
   });
+  const form = body?.tagName === 'FORM' ? body : h('form', { class: 'modal-form' }, body);
+  if (!form.id) form.id = `modal-form-${++formSeq}`;
+  const footer = actions.length ? h('footer', {}, actions) : null; // a dialog without buttons must not show the text "null"
+  // A <button> without type is a submit button: only the ones marked as submit may submit the dialog
+  for (const b of form.querySelectorAll('button')) if (b.getAttribute('type') !== 'submit') b.type = 'button';
+  for (const b of footer ? footer.querySelectorAll('button') : []) {
+    if (b.getAttribute('type') === 'submit') b.setAttribute('form', form.id); // the footer lies outside the form
+    else b.type = 'button';
+  }
+  // Enter in a filter field (type=search) filters and never submits the dialog
+  form.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target?.type === 'search') e.preventDefault(); });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault(); // never navigate away
+    if (!onSubmit) return undefined;
+    clearFieldErrors(form);
+    const submitter = e.submitter?.getAttribute?.('type') === 'submit' ? e.submitter : footer?.querySelector('button[type=submit]');
+    return busy(submitter, () => onSubmit(e));
+  });
   dlg.append(
     h('header', {}, h('h2', {}, title), h('button', { class: 'icon-btn', type: 'button', 'aria-label': tr('close'), onclick: close }, '×')),
-    h('div', { class: 'modal-body' }, body),
-    ...(actions.length ? [h('footer', {}, actions)] : []), // a dialog without buttons must not show the text "null"
+    h('div', { class: 'modal-body' }, form),
+    ...(footer ? [footer] : []),
   );
   document.body.append(dlg);
   dlg.showModal();
-  return { close, el: dlg };
+  return { close, el: dlg, form };
+}
+
+let errSeq = 0;
+/** Removes the message of a field error from one input */
+function clearFieldError(el) {
+  const id = el.dataset?.errId;
+  if (!id) return;
+  [...(el.parentNode?.children || [])].find((c) => c.id === id)?.remove();
+  const rest = (el.getAttribute('aria-describedby') || '').split(' ').filter((x) => x && x !== id);
+  if (rest.length) el.setAttribute('aria-describedby', rest.join(' ')); else el.removeAttribute('aria-describedby');
+  el.removeAttribute('aria-invalid');
+  delete el.dataset.errId;
+}
+
+/** Removes all field errors shown in root */
+export function clearFieldErrors(root) {
+  for (const el of root?.querySelectorAll?.('[aria-invalid]') || []) clearFieldError(el);
+}
+
+/**
+ * Shows a server validation error next to the input named `field` in root: aria-invalid, aria-describedby, focus.
+ * With several inputs of that name, the one whose value the server reports in `detail` is marked.
+ * Returns false when root has no such input (the caller shows a toast instead).
+ */
+export function showFieldError(root, field, message, detail) {
+  if (!root || typeof field !== 'string' || !field) return false;
+  const all = [...root.querySelectorAll('[name]')].filter((x) => x.name === field && !x.disabled && !x.closest('[hidden]'));
+  if (!all.length) return false;
+  const d = detail === undefined || detail === null ? '' : String(detail);
+  const el = all.find((x) => d && x.value?.trim() && (d === x.value.trim() || d.startsWith(`${x.value.trim()} `))) || all[0];
+  clearFieldError(el);
+  const id = `field-err-${++errSeq}`;
+  el.after(h('span', { class: 'field-error', id, role: 'alert' }, message));
+  el.dataset.errId = id;
+  el.setAttribute('aria-invalid', 'true');
+  el.setAttribute('aria-describedby', [...(el.getAttribute('aria-describedby') || '').split(' ').filter(Boolean), id].join(' '));
+  // A field folded away (e.g. in "Advanced") is opened, so the message can be seen
+  for (let det = el.closest('details'); det; det = det.parentNode?.closest?.('details')) det.open = true;
+  const clear = () => clearFieldError(el);
+  el.addEventListener('input', clear, { once: true });
+  el.addEventListener('change', clear, { once: true });
+  el.focus();
+  return true;
 }
 
 /**
@@ -77,9 +146,10 @@ export function confirmDialog(title, text, okLabel, cancelLabel, { danger = fals
     let result = false;
     const m = modal(title, h('p', {}, text), {
       onClose: () => resolve(result),
+      onSubmit: () => { result = true; m.close(); },
       actions: [
         h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, cancelLabel),
-        h('button', { class: `btn ${danger ? 'btn-danger' : 'btn-primary'}`, type: 'button', onclick: () => { result = true; m.close(); } }, okLabel),
+        h('button', { class: `btn ${danger ? 'btn-danger' : 'btn-primary'}`, type: 'submit' }, okLabel),
       ],
     });
   });

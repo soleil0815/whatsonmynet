@@ -3,12 +3,11 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { SCRIPT_KINDS, uninstallScript } from '../hostscripts.js';
 import os from 'node:os';
-import fs from 'node:fs';
 import { config } from '../config.js';
 import { HttpError, line, str, int, ids, oneOf } from '../lib/http.js';
 import { safeEqual } from '../lib/crypto.js';
 import { requireAuth, requireRole, can } from '../auth/session.js';
-import { localInterfaces, defaultGateways, parseCidr, cidrContains } from '../lib/net.js';
+import { localInterfaces, defaultGateways, parseCidr, cidrContains, scanTargetAllowed } from '../lib/net.js';
 import { pingAvailable } from '../scan/probes.js';
 import { TYPES } from '../scan/classify.js';
 import { validTime } from '../scan/nightly.js';
@@ -305,10 +304,18 @@ export function createApi(ctx) {
     audit(req, 'device.delete', d?.name);
     res.json({ ok: true });
   });
+  // Editors scan only private ranges and the subnets of the locations; public addresses only administrators
+  const checkScanTargets = (req, cidrs) => {
+    if (req.user.role === 'admin') return;
+    const subnets = db.prepare('SELECT cidr FROM subnets').all().map((x) => x.cidr);
+    const bad = cidrs.find((c) => parseCidr(c) && !scanTargetAllowed(c, subnets));
+    if (bad) throw new HttpError(403, 'err.publicScan', String(bad).slice(0, 40));
+  };
   r.post('/devices/:id/deep', editor, (req, res) => {
     visible(req, idParam(req));
     const d = db.prepare('SELECT * FROM devices WHERE id=?').get(idParam(req));
     if (!d) throw new HttpError(404, 'err.notFound');
+    if (d.ip) checkScanTargets(req, [d.ip]);
     const id = scanner.startDeep(d, who(req));
     audit(req, 'scan.deep', `${d.name} (${d.ip})`);
     res.status(202).json({ id });
@@ -355,10 +362,12 @@ export function createApi(ctx) {
     const id = idParam(req);
     const s = db.prepare('SELECT * FROM scans WHERE id=?').get(id);
     if (!s || !scanVisible(req, s)) throw new HttpError(404, 'err.notFound');
+    // outdated: a newer scan covered the address - the result can be looked at, but not adopted or ignored
+    const outdated = inventory.outdatedResults(id);
     const results = db.prepare(`SELECT r.*, d.name device_name, d.type device_type, l.name location_name FROM scan_results r
       LEFT JOIN devices d ON d.id=r.device_id LEFT JOIN locations l ON l.id=r.location_id WHERE r.scan_id=?`).all(id)
       .filter((x) => inScope(req.scope, x.location_id))
-      .map((x) => ({ ...x, facts: parse(x.facts) }));
+      .map((x) => ({ ...x, facts: parse(x.facts), outdated: outdated.has(x.id) }));
     res.json({ ...s, targets: parse(s.targets, []), stats: parse(s.stats), progress: scanner.progress(id), results });
   });
   r.post('/scans', editor, (req, res) => {
@@ -366,6 +375,7 @@ export function createApi(ctx) {
     const cidrs = Array.isArray(req.body.cidrs) ? req.body.cidrs.slice(0, 32).map((c) => line(c, 40)).filter(Boolean) : [];
     // Limited users scan only the subnets of their locations
     if (req.scope && (cidrs.length || locIds.some((l) => !req.scope.has(l)))) throw new HttpError(403, 'err.scope');
+    checkScanTargets(req, cidrs);
     const targets = [
       ...locations.targets(locIds),
       ...cidrs.map((c) => ({ cidr: c, locationId: (parseCidr(c) && locations.locationForCidr(parseCidr(c).cidr)) || null })),
@@ -465,9 +475,17 @@ export function createApi(ctx) {
   r.get('/backups/download', admin, async (req, res) => {
     const f = await ctx.backups.snapshot();
     audit(req, 'backup.download');
-    res.download(f, `whatsonmynet-${new Date().toISOString().slice(0, 10)}.sqlite`, () => fs.rm(f, { force: true }, () => {}));
+    // Removed after sending, on an error and when the browser aborts (close fires in every case)
+    let gone = false;
+    const drop = () => { if (!gone) { gone = true; ctx.backups.discard(f); } };
+    res.once('close', drop);
+    // dotfiles: the data directory may lie below a folder whose name starts with a dot (the path is our own)
+    res.download(f, `whatsonmynet-${new Date().toISOString().slice(0, 10)}.sqlite`, { dotfiles: 'allow' }, (err) => {
+      drop();
+      if (err && !res.headersSent) res.status(500).json({ error: { code: 'err.internal', message: t(req.user?.language, 'err.internal') } });
+    });
   });
-  r.get('/backups/file/:name', admin, (req, res) => { audit(req, 'backup.download', req.params.name); res.download(ctx.backups.file(req.params.name), req.params.name); });
+  r.get('/backups/file/:name', admin, (req, res) => { audit(req, 'backup.download', req.params.name); res.download(ctx.backups.file(req.params.name), req.params.name, { dotfiles: 'allow' }); });
   // Restore: the confirmation header protects against a click by mistake (and the CSRF header against other sites)
   const confirmRestore = (req) => { if (req.get('X-WOMN-Confirm') !== 'restore') throw new HttpError(400, 'err.backupConfirm'); };
   r.post('/backups/restore', admin, express.raw({ type: 'application/octet-stream', limit: '2gb' }), async (req, res) => {

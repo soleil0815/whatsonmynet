@@ -24,6 +24,8 @@ const ACCOUNT_KINDS = [...API_KINDS, ...NET_KINDS, 'redfish'];
 
 const URL_RE = /^https:\/\/[a-z0-9.\-[\]:]+(:\d{1,5})?$/i;
 const PVE_TOKEN = /^[\w.@-]+![\w.-]+$/;   // user@realm!tokenid
+// Hypervisors, controllers and management chips are queried every 5 minutes (push kinds report on their own)
+const POLL_EVERY_MS = 5 * 60 * 1000;
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
 const pct = (used, total) => (total > 0 ? Math.round((used / total) * 100) : null);
 
@@ -270,7 +272,7 @@ export function backupAgeHours(data, vmid) {
   return b ? Math.round((Date.now() / 1000 - (b.end || b.start)) / 3600) : null;
 }
 
-export function createProxmox({ db, settings }) {
+export function createProxmox({ db }) {
   let timer = null;
   let polling = false;
   const rowOf = (id) => db.prepare('SELECT * FROM proxmox_hosts WHERE id=?').get(id);
@@ -420,7 +422,7 @@ export function createProxmox({ db, settings }) {
     if (polling) return;
     polling = true;
     try {
-      const every = Math.max(1, Number(settings.get('proxmox.interval')) || 5) * 60 * 1000;
+      const every = POLL_EVERY_MS;
       for (const h of db.prepare('SELECT id, kind, last_at FROM proxmox_hosts').all()) {
         // A negative age means the clock was set back: then it is due, not hours later
         const age = h.last_at ? Date.now() - Date.parse(h.last_at) : Infinity;
