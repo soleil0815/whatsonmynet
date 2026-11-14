@@ -9,6 +9,8 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 - Mehrere Sensoren oder Monitore ankreuzen und löschen: nach dem Bestätigen passierte nichts - jetzt werden sie gelöscht. Ebenso das Einspielen einer hochgeladenen Sicherung
 - Neue NAS: Sensoren nur auf den Datenvolumes (/volume1 …), nicht auf der Systempartition (/, /opt) oder internen Ordnern wie /volume1/@docker
 - USV: die Restlaufzeit unter einer Stunde in Minuten („reicht 25 Min.“ statt „reicht 0 Std.“)
+- Diagnosepaket (Einstellungen → Diagnose): ein ZIP für die Fehlersuche mit Protokoll, Warnungen und Fehlern, Monitoren, Sensoren, Geräten mit ihren Werten, Hypervisoren, Scans und Einstellungen - für 1 bis 30 Tage oder seit dem letzten Update. Standardmäßig anonymisiert mit Platzhaltern, die in jedem Paket gleich bleiben und sich nachschlagen lassen; nie mit Kennwörtern oder Schlüsseln, nichts wird verschickt. Das Programm bewahrt sein Protokoll dafür 30 Tage auf
+- Hilfe, Handbuch und Projektbeschreibung: Ping in einem Proxmox-LXC freischalten (ping_group_range im LXC setzen, Schritt für Schritt); der Hinweis beim Scan zeigt dorthin
 
 ## 0.21.0 - 2026-11-14
 

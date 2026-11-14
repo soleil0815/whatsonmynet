@@ -160,6 +160,20 @@ Der *Netzplan* zeigt aus den MAC-Tabellen und LLDP-Daten der Switches, welches G
 
 WhatsOnMyNet läuft ohne Root-Rechte. Ping funktioniert dann nur, wenn der Host normalen Benutzern ICMP erlaubt (`net.ipv4.ping_group_range`, bei Debian, Ubuntu und Proxmox Standard). Ohne Ping findet der Scan lokale Geräte trotzdem über ARP und entfernte über TCP; das Programm zeigt dann einen Hinweis.
 
+**Docker in einem Proxmox-LXC: Ping freischalten.** Im LXC ist ICMP für normale Benutzer meist aus (`cat /proc/sys/net/ipv4/ping_group_range` zeigt `1 0`). Weil WhatsOnMyNet im Host-Netzwerk läuft, gilt die Einstellung des LXC - sie wird **im LXC** gesetzt (nicht auf dem Proxmox-Host und nicht in der `docker-compose.yml`, Docker erlaubt `sysctls` im Host-Netzwerk nicht):
+
+```sh
+# im LXC als root - dauerhaft, auch nach einem Neustart
+echo 'net.ipv4.ping_group_range = 0 65535' > /etc/sysctl.d/99-ping.conf
+sysctl -p /etc/sysctl.d/99-ping.conf
+# prüfen: jetzt "0 65535"
+cat /proc/sys/net/ipv4/ping_group_range
+# WhatsOnMyNet neu starten, damit es Ping wieder erkennt
+docker compose restart
+```
+
+Danach verschwindet der Hinweis „Ping nicht möglich“ beim Scan, und Ping-Monitore funktionieren. Das geht auch im unprivilegierten LXC, ohne dem Container mehr Rechte zu geben. Höher als `65535` geht dort nicht (der Kernel meldet sonst „Invalid argument“) - im LXC gibt es nur die Gruppen 0–65535.
+
 ### SNMP
 
 Standardmäßig fragt der Scan Geräte mit der Community `public` (SNMP v2c, sonst v1) nach Name, Beschreibung und Hersteller-ID - nur lesend. Eigene Communities trägst du unter *Einstellungen → Scan* ein; sie werden verschlüsselt gespeichert. Geräte ohne SNMP (z. B. einfache TP-Link-Switches) werden trotzdem erkannt, nur mit weniger Details.
@@ -270,6 +284,8 @@ Was neu ist, steht in [CHANGELOG.md](CHANGELOG.md) (dieselben Texte wie im Progr
 - WhatsOnMyNet legt jeden Tag eine Sicherung der Datenbank in `data/backups/` an (Anzahl unter *Einstellungen → Allgemein*). Sichere den ganzen Ordner `data/`, inklusive `secret.key` und `tls/`.
 
 Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle Sicherung herunter, legst eine an oder spielst eine ein - hochgeladen oder aus der Liste auf dem Server. Die Datei wird vorher geprüft (WhatsOnMyNet-Datenbank, nicht neuer als diese Version, gleicher Schlüssel), der aktuelle Stand wird als `whatsonmynet-before-restore-…` gesichert, dann startet das Programm neu. **Bewahre `data/secret.key` (bzw. deinen `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
+
+**Diagnosepaket** (ab 0.22): *Einstellungen → Diagnose* erstellt ein ZIP für die Fehlersuche - Protokoll der letzten 1–30 Tage oder seit dem letzten Update, Warnungen und Fehler, Monitore, Sensoren, Geräte mit ihren Werten, Hypervisoren, Scans, Einstellungen. Standardmäßig anonymisiert (Platzhalter wie GERAET-001, die in jedem Paket gleich bleiben und sich nachschlagen lassen), nie mit Kennwörtern oder Schlüsseln, nichts wird automatisch verschickt.
 
 **Handbuch neu bauen** (nach Änderungen an `public/help/manual.*.md` oder den Bildern): `node tools/build-manual.mjs` - braucht Playwright mit Chromium, ImageMagick macht die PDFs kleiner.
 

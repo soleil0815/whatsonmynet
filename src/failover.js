@@ -37,8 +37,8 @@ const HELLO_MS = 60 * 1000;
 const SYNC_MS = 5 * 60 * 1000;
 export const DELAY_MIN = { min: 3, max: 240, default: 10 };
 const MAX_SNAPSHOT = 4 * 1024 * 1024 * 1024;
-// Tables that stay with each installation: who is signed in here
-const LOCAL_TABLES = new Set(['sessions']);
+// Tables that stay with each installation: who is signed in here, its own log, its versions and diagnostic placeholders
+export const LOCAL_TABLES = new Set(['sessions', 'server_log', 'version_history', 'diag_alias']);
 // While standby, the interface may only read - apart from signing in/out and the failover itself
 const WRITE_OK = [/^\/api\/(login|logout|failover)(\/|$)/, /^\/api\/me$/];
 
@@ -537,7 +537,11 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       try {
         // who is signed in here stays here: the sessions (their ids sign in) leave the copy, overwritten on disk
         const c = new Database(f);
-        try { c.pragma('secure_delete = ON'); c.prepare('DELETE FROM sessions').run(); } finally { c.close(); }
+        try {
+          c.pragma('secure_delete = ON');
+          const have = new Set(c.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((x) => x.name));
+          for (const tbl of LOCAL_TABLES) if (have.has(tbl)) c.prepare(`DELETE FROM "${tbl}"`).run();
+        } finally { c.close(); }
         res.setHeader('Content-Type', 'application/octet-stream');
         res.setHeader('X-WOMN-Schema', String(db.pragma('user_version', { simple: true })));
         await pipeline(fs.createReadStream(f), zlib.createGzip({ level: 6 }), res);
