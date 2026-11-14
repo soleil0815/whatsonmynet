@@ -391,6 +391,31 @@ Staff sign in with their Windows account. AD groups decide which role they get. 
 
 For a branch office a second container runs there as scan agent. Under *Settings → Scan agents* add an agent for the location; put the `.env` shown next to `docker-compose.agent.yml` from the release and start `docker compose -f docker-compose.agent.yml up -d`. The agent opens no port, fetches jobs over HTTPS and reports only addresses of its location.
 
+## Failover: master and standby
+
+A second WhatsOnMyNet (another machine, best on another host or in another room) stands by and takes over when the first one fails.
+
+**Setting up (once):**
+
+1. On the first server (**master**): *Settings → Failover → Make this the master*. A **pairing code** appears (`WOMN1-…`). It is shown only now and gives full access - treat it like a password.
+2. On the second server (freshly installed or existing): *Settings → Failover → This server as standby*. Enter the address of the master (e.g. `10.0.10.5` or `womn1.firma.local:8743`) and the code, if you like the time until it takes over (10 minutes by default, 3 to 240) - **Pair**.
+
+When pairing, the standby takes **all data of the master** (devices, monitors, users, channels, settings) and its key (`data/secret.key`) too, so it can read stored passwords. Its previous key is kept as `secret.key.before-standby`. If `WOMN_SECRET` is set on the standby, it must have the same value as on the master. Both servers need the same version.
+
+**In operation:**
+
+- The **master** works as always and does not have to do anything.
+- The **standby** asks the master every minute and takes its data every 5 minutes. It checks nothing, scans nothing and sends no alarms. A note shows at the top; nothing can be changed there (please on the master).
+- The connection uses HTTPS; the standby checks the fingerprint of the master's certificate from the code. If the key of the certificate stays the same on renewal (always with the self-signed one), nothing needs to be done. With a new certificate with a new key, create a new code on the master and pair again.
+
+**When the master fails:** if it does not answer for longer than the set time, the **standby takes over**. It then checks and alarms itself and reports to all default channels: "Failover: the master … has not answered for 10 min - this server (standby) has taken over monitoring." For longer maintenance on the master, raise the time on the standby beforehand.
+
+**When the master comes back:** as soon as it answers, the standby is quiet again ("… is back") and takes its data. **Nothing goes back to the master.** What the standby reported meanwhile is listed on the standby under *Takeovers*.
+
+**When the master does not come back:** on the standby, **Make this the master**. It is then the master for good and shows a new pairing code. If the old master comes up again after all, it learns this on its first contact and stops alarming. Best pair it there as standby of the new master.
+
+**Ending:** *End pairing* on either side. On the master: the standby does not take over any more and stays quiet until decided there. On the standby: it works alone afterwards (if the master still runs, alarms arrive twice). A new pairing code on the master also lets the current standby go.
+
 ## Backup and updates
 
 - Once a day WhatsOnMyNet backs up the database to `data/backups/` (the first time one hour after the start); additionally before every database update.

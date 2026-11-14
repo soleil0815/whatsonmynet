@@ -17,13 +17,13 @@ export function memoryDb() {
 }
 
 /** Starts the app; returns { url, ctx, db, call(method, path, body, cookie), close } */
-export async function startApp({ setupToken = 'setup-123' } = {}) {
+export async function startApp({ setupToken = 'setup-123', tls = null, dataDir = undefined } = {}) {
   process.env.WOMN_SETUP_TOKEN = setupToken;
   const { createApp } = await import('../src/app.js');
   const db = memoryDb();
   const origLog = console.log;
   console.log = () => {}; // setup banner
-  const { app, ctx } = createApp(db, { plainHttp: true });
+  const { app, ctx } = createApp(db, { plainHttp: true, tls, dataDir });
   console.log = origLog;
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const url = `http://127.0.0.1:${server.address().port}`;
@@ -41,5 +41,5 @@ export async function startApp({ setupToken = 'setup-123' } = {}) {
     try { data = await res.json(); } catch { /* not JSON */ }
     return { status: res.status, data };
   }
-  return { url, ctx, db, call, close: () => new Promise((r) => server.close(r)) };
+  return { url, app, ctx, db, call, close: () => new Promise((r) => server.close(r)) };
 }

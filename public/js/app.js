@@ -15,6 +15,7 @@ import { renderSettings, renderProxmox, renderControllers, renderHardware, rende
 import { renderAccount } from './views/account.js';
 import { renderMonitoring } from './views/monitoring.js';
 import { openAbout, COFFEE } from './views/about.js';
+import { loadFailoverState, failoverBar } from './views/failover.js';
 
 export const state = { user: null, boot: null, meta: null, waiting: 0, down: 0 };
 const root = document.getElementById('app');
@@ -83,9 +84,9 @@ function sidebar(active) {
       h('div', { class: 'nav-group' }, t('nav.groupWatch')),
       link('/monitoring', 'monitoring', 'pulse', state.down ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.down) : null),
       link('/monitoring/sensors', 'sensors', 'gauge', state.sensorsDown ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.sensorsDown) : null),
-      u.canEdit ? link('/virtualization', 'proxmox', 'hypervisor') : null,
-      u.canEdit ? link('/controllers', 'controllers', 'accesspoint') : null,
-      u.canEdit ? link('/hardware', 'hardware', 'server') : null,
+      (u.canEditServer ?? u.canEdit) ? link('/virtualization', 'proxmox', 'hypervisor') : null,
+      (u.canEditServer ?? u.canEdit) ? link('/controllers', 'controllers', 'accesspoint') : null,
+      (u.canEditServer ?? u.canEdit) ? link('/hardware', 'hardware', 'server') : null,
       u.isAdmin ? link('/reports', 'reports', 'mail') : null,
     ),
     h('div', { class: 'side-foot' },
@@ -152,7 +153,8 @@ export async function render() {
     onclick: () => setMenu(!side.classList.contains('open')), html: icon('menu') });
   const topbar = h('div', { class: 'topbar' }, menuBtn, h('span', { html: LOGO_MARK }), wordmark());
   const skip = h('a', { class: 'skip-link', href: '#main', onclick: (e) => { e.preventDefault(); main.focus(); } }, t('nav.skip'));
-  mount(root, h('div', { class: 'shell' }, skip, side, h('div', {}, topbar, main)));
+  // failover: a bar while this server is a standby (or has taken over / was replaced)
+  mount(root, h('div', { class: 'shell' }, skip, side, h('div', {}, topbar, failoverBar(), main)));
   side.addEventListener('click', (e) => { if (e.target.closest('a')) setMenu(false); });
   document.title = `${t(`nav.${key}`)} · ${state.boot.title || 'WhatsOnMyNet'}`;
   // Screen readers and keyboard users start on the new page, not on the (redrawn) sidebar; views may focus a field afterwards
@@ -214,7 +216,7 @@ async function start() {
   if (state.boot.user) {
     setUser(state.boot.user);
     try { state.meta = await get('/meta'); } catch { /* later */ }
-    await refreshBadge();
+    await Promise.all([refreshBadge(), loadFailoverState()]);
   }
   render();
 }
@@ -223,10 +225,15 @@ export async function afterLogin(user) {
   setUser(user);
   state.boot.setupRequired = false;
   state.meta = await get('/meta');
-  await refreshBadge();
+  await Promise.all([refreshBadge(), loadFailoverState()]);
   navigate('/', { replace: true });
 }
 
-setInterval(() => { if (state.user && document.visibilityState === 'visible') updateBadge(); }, 60000);
+setInterval(async () => {
+  if (!state.user || document.visibilityState !== 'visible') return;
+  updateBadge();
+  // failover: standby took over or handed back - the page anew (rights, bar); otherwise only the bar
+  if (await loadFailoverState()) render(); else document.getElementById('fo-bar')?.replaceWith(failoverBar());
+}, 60000);
 
 start();
