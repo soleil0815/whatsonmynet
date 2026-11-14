@@ -334,6 +334,10 @@ Sensoren (*Sensor anlegen*): Gesamtzustand, Server eingeschaltet, jeder Lüfter,
 
 ## Windows- und Linux-Rechner per Skript (ohne Agent)
 
+**Wofür das Skript?** Viele Werte eines Rechners kennt nur das Betriebssystem selbst: Temperaturen von CPU und NVMe, der Zustand der Festplatten (SMART), Dienste, ausstehende Updates. Große Server liefern einiges davon über ihren Management-Chip (iDRAC, iLO, XClarity - siehe *Server-Hardware*). Ein Mini-PC, ein Selbstbau-Server oder ein Proxmox-Knoten im Homelab hat so etwas nicht - hier holt das Skript diese Infos. Für Proxmox gilt: Die Schnittstelle liefert Knoten, VMs, Speicher und Sicherungen; Temperaturen, Festplatten, Dienste und Updates der Knoten kommen nur mit dem Skript dazu.
+
+**Der Tipp im Programm:** Rechner, Server, VMs und Hypervisoren mit Windows oder Linux, die noch keine Systemwerte haben, zeigen auf der Geräteseite den Tipp „Per Skript überwachen“; unter *Virtualisierung* steht er bei Proxmox-Knoten ohne Skript. Er verschwindet von selbst, sobald das Gerät Werte liefert - über das Skript oder über die Server-Hardware (iDRAC, iLO …). Brauchst du das Skript für ein Gerät bewusst nicht, blendet **Nicht mehr anzeigen** den Tipp dort dauerhaft aus; über *Mehr → Per Skript überwachen* geht es trotzdem jederzeit.
+
 Server und PCs lassen sich ohne Agent überwachen: Ein kleines Skript auf dem Rechner meldet alle 5 Minuten **CPU, RAM, Laufwerke, Laufzeit und Dienste**, dazu eine angeschlossene **USV** (siehe oben).
 
 Dazu kommt, was ein Administrator von einem Server wissen will. Alles steht auf der Geräteseite im Bereich *System*, aus allem lassen sich Sensoren mit Alarm anlegen:

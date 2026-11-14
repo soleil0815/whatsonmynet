@@ -618,6 +618,9 @@ export const MIGRATIONS = [
      created_at TEXT NOT NULL,
      PRIMARY KEY (kind, real)
    );`,
+  // 25: "Do not show again" for the tip to monitor a Windows/Linux machine (or the nodes of a hypervisor) with the script
+  `ALTER TABLE devices ADD COLUMN script_tip_hidden INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE proxmox_hosts ADD COLUMN script_tip_hidden INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
