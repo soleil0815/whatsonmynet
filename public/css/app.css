@@ -457,6 +457,52 @@ dialog.modal footer { display: flex; justify-content: flex-end; gap: 8px; paddin
 .mon-chart .grid { stroke: var(--line); stroke-dasharray: 3 4; }
 .mon-chart .fail { fill: var(--bad); }
 .mon-chart .axis, .mon-chart .muted-text { fill: var(--muted); font-family: var(--font); font-size: 9px; }
+/* chart on the page of a monitor/sensor: outages as periods, crosshair with tooltip, list of outages below */
+.chart-box { display: flex; flex-direction: column; gap: 10px; }
+.chart-sum { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); }
+.chart-sum i { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); flex: none; }
+.chart-sum.bad i { background: var(--bad); }
+.chart-sum b { color: var(--ink); font-weight: 600; }
+.chart-wrap { position: relative; }
+.mon-chart2 { width: 100%; height: auto; display: block; touch-action: pan-y; user-select: none; }
+.mon-chart2 .grid { stroke: var(--line); stroke-width: 1; }
+.mon-chart2 .grid.v { stroke-dasharray: 2 4; }
+.mon-chart2 .grid.day { stroke: var(--line-2); }
+.mon-chart2 .base { stroke: var(--line-2); }
+.mon-chart2 .axis, .mon-chart2 .muted-text { fill: var(--muted); font-family: var(--font); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.mon-chart2 .axis.strong { fill: var(--ink-2); font-weight: 600; }
+.mon-chart2 .axis.unit { font-size: 9.5px; }
+.mon-chart2 .line { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.mon-chart2 .area-top { stop-color: var(--accent); stop-opacity: .22; }
+.mon-chart2 .area-bottom { stop-color: var(--accent); stop-opacity: 0; }
+.mon-chart2 .band { fill: var(--accent); opacity: .13; }
+.mon-chart2 .outage .fill { fill: var(--bad); opacity: .1; }
+.mon-chart2 .outage .cap { fill: var(--bad); opacity: .85; }
+.mon-chart2 .outage.unreach .fill, .mon-chart2 .outage.unreach .cap { fill: var(--muted); }
+.mon-chart2 .outage.hl .fill { opacity: .24; }
+.mon-chart2 .fail { fill: var(--bad); stroke: var(--panel); stroke-width: 1; }
+.mon-chart2 .limit { stroke: var(--bad); stroke-width: 1.2; stroke-dasharray: 6 4; opacity: .8; }
+.mon-chart2 .limit-text { fill: var(--bad); font-weight: 600; }
+.mon-chart2 .avail { fill: var(--ok); opacity: .6; }
+.mon-chart2 .avail.warn { fill: var(--new-fill); opacity: .95; }
+.mon-chart2 .avail.bad { fill: var(--bad); opacity: .9; }
+.mon-chart2 .hit { fill: transparent; cursor: crosshair; }
+.mon-chart2 .cross { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.mon-chart2 .focus { fill: var(--panel); stroke: var(--accent); stroke-width: 2.2; pointer-events: none; }
+.mon-chart2 .focus.bad { stroke: var(--bad); }
+.chart-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 150px; max-width: 300px; padding: 8px 10px; border-radius: var(--r-m, 6px);
+  background: var(--panel); border: 1px solid var(--line-2); box-shadow: 0 4px 14px rgba(0, 0, 0, .14); font-size: 12.5px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.chart-tip b { font-weight: 600; }
+.chart-tip .tip-out { display: block; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); color: var(--bad); font-weight: 500; }
+.chart-list { overflow-x: auto; }
+.chart-list table { width: 100%; font-size: 13px; }
+.chart-list td, .chart-list th { padding: 6px 10px; }
+.chart-list th { position: static; font-size: 12.5px; }
+.chart-list td.nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chart-list tr[tabindex] { cursor: default; }
+.chart-list tr.hl td { background: var(--bad-soft); }
+.chart-list tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chart-list .link-btn { margin: 6px 10px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
 .timeline li.ev-down::before { background: var(--bad); }
 .timeline li.ev-up::before { background: var(--ok); }
 .timeline li.ev-cert::before { background: var(--new); }
