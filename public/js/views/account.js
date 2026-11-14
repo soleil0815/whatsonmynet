@@ -14,7 +14,7 @@ export async function renderAccount(main) {
       setUser({ ...state.user, ...r });
       toast(t('saved'));
       render();
-    } catch (ex) { fail(ex); }
+    } catch (ex) { fail(ex, profile); }
   } },
   field(t('user.username'), input('username_ro', u.username, { disabled: true })),
   field(t('user.display'), input('display_name', u.display_name, { maxlength: 120 })),
@@ -31,7 +31,7 @@ export async function renderAccount(main) {
       await post('/me/password', { current: d.current, password: d.password });
       pw.reset();
       toast(t('acc.changed'));
-    } catch (ex) { fail(ex); }
+    } catch (ex) { fail(ex, pw); }
   } },
   field(t('acc.current'), input('current', '', { type: 'password', autocomplete: 'current-password', required: true })),
   field(t('acc.new'), input('password', '', { type: 'password', autocomplete: 'new-password', required: true, minlength: 10 }), t('user.passwordHint')),
@@ -55,10 +55,10 @@ function showCodes(codes) {
   const text = codes.join('\n');
   const m = modal(t('tf.codesTitle'), h('div', { class: 'form' },
     h('p', { class: 'note warn', style: { margin: 0 } }, t('tf.codesLead')),
-    h('pre', { class: 'code' }, text)), { actions: [
+    h('pre', { class: 'code' }, text)), { onSubmit: () => m.close(), actions: [
     btn(t('agent.copy'), { onclick: async () => { try { await navigator.clipboard.writeText(text); toast(t('agent.copied')); } catch { /* not allowed */ } } }),
     h('a', { class: 'btn', href: `data:text/plain;charset=utf-8,${encodeURIComponent(`${t('tf.codesTitle')}\n\n${text}\n`)}`, download: 'recovery-codes.txt' }, t('tf.save')),
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => m.close() }, t('agent.done'))] });
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t('agent.done'))] });
 }
 
 function twoFactorPanel(tf, reload) {
@@ -67,12 +67,11 @@ function twoFactorPanel(tf, reload) {
     const f = h('form', { class: 'form' },
       field(t('acc.current'), input('password', '', { type: 'password', autocomplete: 'current-password', required: true })),
       field(t('login.code'), input('code', '', { inputmode: 'numeric', autocomplete: 'one-time-code', class: 'mono', required: true })));
-    const m = modal(label, f, { actions: [
+    const m = modal(label, f, { onSubmit: async () => {
+      try { const r = await post(path, formData(f)); m.close(); onDone(r); } catch (ex) { fail(ex); }
+    }, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
-        if (!f.reportValidity()) return;
-        try { const r = await post(path, formData(f)); m.close(); onDone(r); } catch (ex) { fail(ex); }
-      } }, label)] });
+      h('button', { class: 'btn btn-primary', type: 'submit' }, label)] });
   };
   if (tf.enabled) {
     box.append(

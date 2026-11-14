@@ -1,11 +1,16 @@
 // Helpers for errors and input validation in the API.
 export class HttpError extends Error {
-  /** @param {number} status @param {string} code i18n key, e.g. 'err.notFound' */
-  constructor(status, code, detail) {
+  /**
+   * @param {number} status @param {string} code i18n key, e.g. 'err.notFound'
+   * @param {string} [detail] text for {detail} in the message
+   * @param {string} [field] name of the input the error belongs to, so the interface can show it there
+   */
+  constructor(status, code, detail, field) {
     super(code);
     this.status = status;
     this.code = code;
     this.detail = detail;
+    if (field) this.field = field;
   }
 }
 
