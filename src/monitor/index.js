@@ -12,6 +12,7 @@ import { pingAvailable } from '../scan/probes.js';
 import { bestWebUrl } from '../scan/engine.js';
 import { forgetMonitors } from '../lib/idlists.js';
 import { onIpMovedPaused } from '../devicechange.js';
+import { findSame } from './dedupe.js';
 
 const HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 const MAX_PARALLEL = 25;
@@ -358,8 +359,16 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   }
 
   // ---------------------------------------------------------------------------------------------------- CRUD
+  /** Refuses a second monitor/sensor for what one watches already (several services of one server stay possible) */
+  function refuseSame(v, old = null) {
+    const same = findSame(db, { type: v.type, target: v.target, port: v.port, device_id: 'device_id' in v ? v.device_id : old?.device_id,
+      options: v.options, http_keyword: v.http_keyword, docker_host_id: v.docker_host_id }, old?.id ?? null);
+    if (same) throw new HttpError(409, 'err.monitorExists', same.name);
+  }
+
   async function create(input) {
     const v = await clean(input);
+    refuseSame(v);
     const ts = iso();
     const cols = { ...v, created_at: ts, updated_at: ts, status: 'pending', status_since: ts };
     const keys = Object.keys(cols);
@@ -372,6 +381,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const old = db.prepare('SELECT * FROM monitors WHERE id=?').get(id);
     if (!old) throw new HttpError(404, 'err.notFound');
     const v = await clean(input, old);
+    refuseSame(v, old);
     // Paused because its device got a new IP (see devicechange.js): saved with a newly typed password it runs again
     // (at the address it was saved for - the dialog offers the new one)
     const ipMoved = !old.enabled && !!parse(old.data, {})?.ipMoved;

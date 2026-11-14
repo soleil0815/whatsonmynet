@@ -148,15 +148,41 @@ export async function renderInventory(main) {
   typeSel.addEventListener('change', load);
   locSel.addEventListener('change', load);
 
+  // Probably one device twice (same host name - e.g. both cards of a NAS adopted): a tip with "merge"
+  const dupBox = h('div');
+  async function loadDuplicates() {
+    let list = [];
+    try { ({ list } = await get('/devices/duplicates')); } catch { /* the tip is optional */ }
+    if (!list.length) { mount(dupBox); return; }
+    const link = (d) => h('a', { href: `/devices/${d.id}`, 'data-link': true }, d.name);
+    mount(dupBox, h('div', { class: 'note warn dup-note' }, h('div', {},
+      h('strong', {}, t('inv.dupTitle', { n: list.length })),
+      h('p', { style: { margin: '4px 0 8px' } }, t('inv.dupLead')),
+      h('ul', { class: 'dup-list' }, list.map((p) => h('li', {},
+        link(p.keep), h('span', { class: 'muted small' }, ` ${p.keep.ip || ''}`), ' · ', link(p.drop), h('span', { class: 'muted small' }, ` ${p.drop.ip || ''}`),
+        edit ? h('button', { type: 'button', class: 'btn btn-sm', style: { marginLeft: '10px' }, onclick: async (e) => {
+          const b = e.currentTarget;
+          if (!await confirmDialog(t('inv.dupMerge'), t('inv.dupMergeConfirm', { from: p.drop.name, to: p.keep.name }), t('inv.dupMerge'), t('cancel'))) return;
+          b.disabled = true;
+          try {
+            const r = await post(`/devices/${p.keep.id}/merge`, { from: p.drop.id });
+            toast(r.monitorsMerged ? `${t('inv.dupMerged', { name: p.keep.name })} · ${t('inv.dupMonitorsMerged', { n: r.monitorsMerged })}` : t('inv.dupMerged', { name: p.keep.name }));
+            loadDuplicates(); load();
+          } catch (ex) { fail(ex); b.disabled = false; }
+        } }, t('inv.dupMerge')) : null))))));
+  }
+
   mount(main, h('div', { class: 'page' },
     pageHead(t('inv.title'), null, exportMenu,
       edit ? btn(t('inv.add'), { class: 'btn btn-primary', onclick: () => addDevice(locations, types, sugg) }, 'plus') : null),
+    dupBox,
     h('div', { class: 'inv-filter' }, h('div', { class: 'search' }, h('span', { html: icon('search') }), q), chips),
     h('section', { class: 'panel' },
       h('div', { class: 'toolbar' }, typeSel, locations.length > 1 ? locSel : null, seg, count),
       bulk,
       body)));
   clear(body).append(h('div', { class: 'empty' }, t('loading')));
+  loadDuplicates();
   await load();
   if (q.value) q.focus();
 }

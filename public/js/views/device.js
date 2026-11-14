@@ -13,6 +13,25 @@ import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn
 
 const FIELD_LABEL = (f) => t(`f.${f}`) !== `f.${f}` ? t(`f.${f}`) : f;
 
+/** A Windows or Linux machine (by its kind, operating system or what the scan recognised) */
+export function looksLikeHost(d) {
+  // NAS, switches, printers … run Linux too, but have their own values (SNMP)
+  if (['server', 'computer', 'vm'].includes(d.type)) return true;
+  if (d.type !== 'unknown') return false;
+  const text = [d.os, d.facts?.classification?.os, d.facts?.netbios ? 'windows' : ''].filter(Boolean).join(' ');
+  return /windows|linux|ubuntu|debian|centos|red ?hat|rocky|alma|suse|fedora/i.test(text);
+}
+
+/** Tip on the device page: no values of the script yet - set it up (admins) or ask an admin */
+export function scriptHint(d, ti, open) {
+  if (ti || d.host || !looksLikeHost(d)) return null;
+  const waiting = !!d.hostScript;
+  return h('div', { class: 'note tip-script' }, h('div', {},
+    h('strong', {}, t(waiting ? 'hs.tipWaitTitle' : 'hs.tipTitle')),
+    h('p', { style: { margin: '4px 0 8px' } }, t(waiting ? 'hs.tipWait' : state.user.isAdmin ? 'hs.tip' : 'hs.tipAskAdmin')),
+    state.user.isAdmin ? btn(t(waiting ? 'hs.menuRenew' : 'hs.menu'), { class: 'btn btn-sm btn-primary', onclick: open }, 'computer') : null));
+}
+
 export function historyText(r) {
   const d = r.detail || {};
   switch (r.kind) {
@@ -23,6 +42,8 @@ export function historyText(r) {
     case 'deep': return t('hist.deep', { n: d.ports ?? 0 });
     case 'snmp': return t({ script: 'hist.script', controller: 'hist.controller' }[d.source] || 'hist.snmp', { fields: (d.fields || []).map((f) => (f.from ? `${FIELD_LABEL(f.field)} ${f.from} → ${f.to}` : `${FIELD_LABEL(f.field)} ${f.to}`)).join(', ') });
     case 'replaced': return t('hist.replaced', { from: d.from, to: d.to });
+    case 'linked': return t('hist.linked', { ip: d.ip || '–', mac: d.mac || '–' });
+    case 'merged': return t('hist.merged', { name: d.name || '–', ip: d.ip || '–', mac: d.mac || '–' });
     case 'monitorsPaused': return t('hist.monitorsPaused', { from: d.from || '–', to: d.to || '–', names: (d.monitors || []).join(', ') });
     default: return r.kind;
   }
@@ -128,6 +149,9 @@ export async function renderDevice(main, id) {
       pluggedLine(d.plugged),
     ) : null);
 
+  // Windows/Linux machine without script values yet: point to the script right away (CPU, RAM, drives, services)
+  const scriptTip = scriptHint(d, ti, () => openHostScript(d, () => renderDevice(main, id)));
+
   const monPanel = h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('mon.device')),
       h('div', { class: 'actions' },
@@ -192,7 +216,7 @@ export async function renderDevice(main, id) {
       case 'monitors': view = monPanel; break;
       case 'network': view = h('div', { class: 'stack' }, detection, meta); break;
       case 'history': view = hist; break;
-      default: view = h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || (d.host ? systemPanel(d.host) : d.hardware ? null : facts), typePanel && d.host ? systemPanel(d.host) : null, hardwarePanel(d.hardware)), h('div', { class: 'stack' }, monPanel, netShort));
+      default: view = h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || (d.host ? systemPanel(d.host) : d.hardware ? null : facts), typePanel && d.host ? systemPanel(d.host) : null, hardwarePanel(d.hardware)), h('div', { class: 'stack' }, scriptTip, monPanel, netShort));
     }
     mount(content, view);
   }

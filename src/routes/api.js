@@ -16,6 +16,7 @@ import { otpauthUri, qrSvg } from '../auth/totp.js';
 import { scopeOf, inScope, deviceInScope, requireUnscoped } from '../auth/scope.js';
 import { buildTopology } from '../topology.js';
 import { metricsFor } from '../monitor/sensors.js';
+import { mergeDuplicates } from '../monitor/dedupe.js';
 import { SERVICE_NAMES, GENTLE_PORTS } from '../scan/ports.js';
 import { toCsv } from '../inventory.js';
 import { t } from '../i18n.js';
@@ -275,6 +276,22 @@ export function createApi(ctx) {
     res.json({ exported: new Date().toISOString(), version: config.version,
       devices: inventory.list({ allowed: req.scope }).map((d) => ({ ...d, facts: inventory.get(d.id)?.facts })) });
   });
+  // Probably one device twice (same host name): a tip in the inventory, merged on request
+  r.get('/devices/duplicates', (req, res) => {
+    res.json({ list: inventory.duplicates().filter((p) => seeDeviceId(req, p.keep.id) && seeDeviceId(req, p.drop.id)) });
+  });
+  r.post('/devices/:id/merge', editor, (req, res) => {
+    const keepId = idParam(req);
+    const dropId = int(String(req.body.from ?? ''));
+    if (!dropId) throw new HttpError(400, 'err.badRequest');
+    visible(req, keepId); visible(req, dropId);
+    const name = inventory.get(dropId)?.name;
+    const d = inventory.merge(keepId, dropId, who(req));
+    // its monitors/sensors may watch the same things as the kept ones now
+    const merged = mergeDuplicates(db);
+    audit(req, 'device.merge', `${name} → ${d.name}${merged.length ? ` (${merged.reduce((n, g) => n + g.removed.length, 0)} duplicate monitor(s) merged)` : ''}`);
+    res.json({ device: d, monitorsMerged: merged.reduce((n, g) => n + g.removed.length, 0) });
+  });
   r.get('/devices/:id', (req, res) => {
     visible(req, idParam(req));
     const d = inventory.get(idParam(req));
@@ -368,7 +385,9 @@ export function createApi(ctx) {
     const results = db.prepare(`SELECT r.*, d.name device_name, d.type device_type, l.name location_name FROM scan_results r
       LEFT JOIN devices d ON d.id=r.device_id LEFT JOIN locations l ON l.id=r.location_id WHERE r.scan_id=?`).all(id)
       .filter((x) => inScope(req.scope, x.location_id))
-      .map((x) => ({ ...x, facts: parse(x.facts), outdated: outdated.has(x.id) }));
+      .map((x) => ({ ...x, facts: parse(x.facts), outdated: outdated.has(x.id),
+        // probably in the inventory already: a tip instead of a second device
+        maybe: x.status === 'new' && !x.handled && !x.device_id ? inventory.likelyExisting(x) : null }));
     res.json({ ...s, targets: parse(s.targets, []), stats: parse(s.stats), progress: scanner.progress(id), results });
   });
   r.post('/scans', editor, (req, res) => {
@@ -406,13 +425,23 @@ export function createApi(ctx) {
     const raw = req.body.overrides && typeof req.body.overrides === 'object' ? req.body.overrides : {};
     for (const rid of resultIds) {
       const o = raw[rid];
-      if (o && typeof o === 'object') overrides[rid] = { type: oneOf(o.type, TYPES, undefined), name: line(o.name, 120) };
+      if (o && typeof o === 'object') overrides[rid] = { type: oneOf(o.type, TYPES, undefined), name: line(o.name, 120), force: o.force === true };
     }
-    const created = inventory.adopt(resultIds, overrides, who(req));
+    const skipped = [];
+    const created = inventory.adopt(resultIds, overrides, who(req), skipped);
     if (created.length) audit(req, 'inventory.adopt', `${created.length} device(s) from scan ${scanId}`);
     // watched from the start: a first monitor now, sensors once the devices deliver values
     const watched = ctx.autoWatch.markDevices(created, req.user.language);
-    res.json({ created, watched });
+    // Windows/Linux machines among them: the script gives their values (the toast points to it)
+    const hosts = created.length ? db.prepare(`SELECT COUNT(*) n FROM devices WHERE id IN (${created.map(() => '?').join(',')}) AND type IN ('server','computer','vm')`).get(...created).n : 0;
+    res.json({ created, watched, skipped, hosts });
+  });
+  r.post('/scans/:id/link', editor, (req, res) => {
+    const scanId = idParam(req);
+    const resultIds = ids(req.body.ids).filter((x) => { const r0 = db.prepare('SELECT location_id FROM scan_results WHERE id=? AND scan_id=?').get(x, scanId); return r0 && inScope(req.scope, r0.location_id); });
+    const n = inventory.linkResults(resultIds, who(req));
+    if (n) audit(req, 'inventory.link', `${n} result(s) of scan ${scanId} to existing devices`);
+    res.json({ linked: n });
   });
   r.post('/scans/:id/ignore', editor, (req, res) => {
     const scanId = idParam(req);

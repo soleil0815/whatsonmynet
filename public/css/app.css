@@ -157,6 +157,14 @@ input.mono { font-family: var(--mono); }
 .diag-search { display: flex; gap: 8px; max-width: 520px; }
 .diag-search input { flex: 1; min-width: 0; }
 .diag-lookup { margin-top: 12px; }
+.scan-tip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; padding: 6px 8px; border-radius: var(--r-s);
+  background: var(--new-soft); color: var(--ink); font-size: 13px; line-height: 1.4; max-width: 520px; }
+.scan-tip > span:first-child svg { width: 15px; height: 15px; vertical-align: -2px; }
+.scan-tip-actions { display: inline-flex; gap: 6px; }
+.scan-tip .link-btn { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+.tip-script p { max-width: 60ch; }
+.dup-list { margin: 0; padding-left: 18px; }
+.dup-list li { margin: 4px 0; }
 .panel > h2:not(.section-title), .panel-head { padding: 16px 20px 0; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 @media (max-width: 560px) { .panel-head .seg { width: 100%; } .panel-head .seg button { flex: 1; padding: 6px 4px; } }

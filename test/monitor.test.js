@@ -451,7 +451,8 @@ test('the family of an alarm comes from the monitor and the check result', async
   const dev = db.prepare("INSERT INTO devices(name,created_at,updated_at) VALUES('pve2','x','x')").run().lastInsertRowid;
   const s = await mon.create({ name: 'Temp', type: 'sensor', device_id: dev, options: { metric: 'hostTempMax', op: 'ge', threshold: 80 }, fail_threshold: 1 });
   await mon.record(s, { ok: false, message: 'x: 83 °C (≥ 80)', data: { v: 83, unit: '°C', op: 'ge', threshold: 80 } });
-  const s2 = await mon.create({ name: 'Temp2', type: 'sensor', device_id: dev, options: { metric: 'hostTempMax', op: 'ge', threshold: 80 }, fail_threshold: 1 });
+  // another value of the device (the same one twice is refused)
+  const s2 = await mon.create({ name: 'CPU', type: 'sensor', device_id: dev, options: { metric: 'hostCpu', op: 'ge', threshold: 80 }, fail_threshold: 1 });
   await mon.record(s2, { ok: false, message: 'no report for 20 min' });
   assert.deepEqual(sent, ['reach', 'value', 'nodata']);
 });

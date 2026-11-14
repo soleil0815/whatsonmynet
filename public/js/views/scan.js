@@ -226,17 +226,33 @@ async function renderResult(main, id) {
     const count = h('span', { class: 'count' }, t('scan.selected', { n: selected.size }));
     const all = h('input', { type: 'checkbox', 'aria-label': t('scan.selectAll'), checked: selected.size === usable.length && usable.length > 0, disabled: !usable.length,
       onchange: (e) => { usable.forEach((r) => (e.target.checked ? selected.add(r.id) : selected.delete(r.id))); renderTabs(); } });
-    const act = async (what) => {
-      if (!selected.size) return;
+    const act = async (what, only = null) => {
+      if (!only && !selected.size) return;
       try {
-        const body = { ids: [...selected], overrides };
+        const body = { ids: only || [...selected], overrides };
         const r = await post(`/scans/${id}/${what}`, body);
-        toast(what === 'adopt' ? `${t('scan.adopted', { n: r.created.length })}${r.watched && r.created.length ? ` - ${t('aw.adopted')}` : ''}`
+        toast(what === 'adopt' ? [`${t('scan.adopted', { n: r.created.length })}${r.watched && r.created.length ? ` - ${t('aw.adopted')}` : ''}`,
+          r.skipped?.length ? t('scan.skippedKnown', { n: r.skipped.length }) : '', r.hosts ? t('scan.hostsScriptTip', { n: r.hosts }) : ''].filter(Boolean).join(' · ')
+          : what === 'link' ? t('scan.linkedN', { n: r.linked })
           : what === 'unignore' ? t('scan.unignoredN', { n: r.unignored }) : t('scan.ignoredN', { n: r.ignored }));
-        selected.clear();
+        if (!only) selected.clear();
         await load();
         updateBadge();
       } catch (e) { fail(e); }
+    };
+    /** Tip under a row that is probably in the inventory already: assign to it, or add as a new device anyway */
+    const maybeTip = (r, o) => {
+      if (!r.maybe) return null;
+      const link = h('a', { href: `/devices/${r.maybe.id}`, 'data-link': true }, r.maybe.name);
+      if (o.force) {
+        return h('div', { class: 'scan-tip' }, t('scan.maybeForced'), ' ',
+          edit ? h('button', { type: 'button', class: 'link-btn', onclick: () => { o.force = false; renderTabs(); } }, t('scan.maybeUndo')) : null);
+      }
+      return h('div', { class: 'scan-tip' }, h('span', { html: icon('help') }),
+        h('span', {}, t(r.maybe.why === 'ip' ? 'scan.maybeIp' : 'scan.maybeHost', { name: '\u0000' }).split('\u0000').flatMap((x, i) => (i ? [link, x] : [x]))),
+        edit && !r.outdated ? h('span', { class: 'scan-tip-actions' },
+          h('button', { type: 'button', class: 'btn btn-sm', onclick: () => act('link', [r.id]) }, t('scan.maybeLink')),
+          h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => { o.force = true; renderTabs(); } }, t('scan.maybeNew'))) : null);
     };
     const adoptBtn = h('button', { class: 'btn btn-primary', type: 'button', disabled: !canAdopt(open.filter((r) => selected.has(r.id))), onclick: () => act('adopt') }, h('span', { html: icon('check') }), t('scan.adopt'));
     const outdatedNote = edit && open.some((r) => r.outdated) ? h('div', { class: 'note' }, t(mode === 'ignored' ? 'scan.outdatedHintIgnored' : 'scan.outdatedHint')) : null;
@@ -261,7 +277,7 @@ async function renderResult(main, id) {
         const name = h('input', { type: 'text', class: 'inline', value: o.name, maxlength: 120, 'aria-label': t('col.name'), oninput: (e) => { o.name = e.target.value; } });
         return h('tr', {},
           edit ? h('td', { class: 'min' }, cb) : null,
-          h('td', {}, edit ? name : h('span', { class: 'name' }, suggest(r)), r.hostname ? h('div', { class: 'sub' }, r.hostname) : null),
+          h('td', {}, edit ? name : h('span', { class: 'name' }, suggest(r)), r.hostname ? h('div', { class: 'sub' }, r.hostname) : null, maybeTip(r, o)),
           h('td', {}, edit ? h('span', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, typeSel, r.confidence < 0.45 ? h('span', { class: 'badge badge-new', title: (Array.isArray(r.facts.classification?.reasons) ? r.facts.classification.reasons : []).map(reasonText).join(', ') }, t('unsure')) : confidenceBar(r.confidence))
             : typeChip(r.detected_type)),
           h('td', { class: 'mono' }, r.ip, h('div', { class: 'sub' }, r.mac || '–')),
