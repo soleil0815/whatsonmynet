@@ -20,7 +20,7 @@ export async function renderAccount(main) {
   field(t('user.display'), input('display_name', u.display_name, { maxlength: 120 })),
   field(t('user.email'), input('email', u.email, { type: 'email' })),
   field(t('language'), select('language', [['de', 'Deutsch'], ['en', 'English']], u.language)),
-  field(t('theme'), select('theme', [['system', t('theme.system')], ['light', t('theme.light')], ['dark', t('theme.dark')]], u.theme)),
+  field(t('theme'), select('theme', [['light', t('theme.light')], ['dark', t('theme.dark')], ['system', t('theme.system')]], u.theme)),
   h('div', { class: 'actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))));
 
   const pw = h('form', { class: 'form', onsubmit: async (e) => {

@@ -621,6 +621,9 @@ export const MIGRATIONS = [
   // 25: "Do not show again" for the tip to monitor a Windows/Linux machine (or the nodes of a hypervisor) with the script
   `ALTER TABLE devices ADD COLUMN script_tip_hidden INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE proxmox_hosts ADD COLUMN script_tip_hidden INTEGER NOT NULL DEFAULT 0;`,
+  // 26: light is the default look - accounts still on the old default "like the system" become light (dark stays dark);
+  // new accounts are made light (users.js)
+  `UPDATE users SET theme='light' WHERE theme='system';`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
