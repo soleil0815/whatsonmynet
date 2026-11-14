@@ -8,7 +8,7 @@ export const GROUPS = [
   ['access', [['general', 'settings'], ['users', 'users'], ['ad', 'user']]],
   ['scan', [['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['agents', 'location'], ['ignored', 'eyeoff']]],
   ['connect', [['docker', 'server'], ['hostscripts', 'computer'], ['notify', 'bell'], ['smtp', 'mail']]],
-  ['system', [['https', 'lock'], ['backup', 'download'], ['audit', 'history'], ['about', 'shield']]],
+  ['system', [['https', 'lock'], ['backup', 'download'], ['failover', 'shield'], ['audit', 'history'], ['about', 'shield']]],
 ];
 export const SECTIONS = GROUPS.flatMap(([, list]) => list);
 

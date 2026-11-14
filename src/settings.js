@@ -91,6 +91,8 @@ export function createSettings(db) {
     get,
     set,
     isSecret: (key) => SECRET.has(key),
+    /** After the database was replaced underneath (failover standby): read everything anew */
+    clearCache: () => cache.clear(),
     /** All keys of a group (without secrets in clear text: they are reported as set/not set) */
     publicGroup(prefix) {
       const out = {};

@@ -391,6 +391,31 @@ Mitarbeitende melden sich mit ihrem Windows-Konto an. Welche Rolle sie bekommen,
 
 Für eine Außenstelle läuft dort ein zweiter Container als Scan-Agent. Unter *Einstellungen → Scan-Agenten* einen Agenten für den Standort anlegen; die angezeigte `.env` neben die `docker-compose.agent.yml` aus dem Release legen und `docker compose -f docker-compose.agent.yml up -d` starten. Der Agent öffnet keinen Port, holt sich Aufträge über HTTPS und meldet nur Adressen seines Standorts.
 
+## Ausfallsicherung: Master und Standby
+
+Ein zweites WhatsOnMyNet (anderer Rechner, am besten anderer Host oder anderer Raum) steht bereit und übernimmt, wenn das erste ausfällt.
+
+**Einrichten (einmalig):**
+
+1. Am ersten System (**Master**): *Einstellungen → Ausfallsicherung → Zum Master machen*. Es erscheint ein **Kopplungscode** (`WOMN1-…`). Er wird nur jetzt angezeigt und gibt vollen Zugriff - wie ein Passwort behandeln.
+2. Am zweiten System (frisch installiert oder vorhandenes): *Einstellungen → Ausfallsicherung → Dieses System als Standby*. Adresse des Masters (z. B. `10.0.10.5` oder `womn1.firma.local:8743`) und den Code eintragen, auf Wunsch die Zeit bis zur Übernahme (Standard 10 Minuten, 3 bis 240) - **Koppeln**.
+
+Beim Koppeln übernimmt der Standby **alle Daten des Masters** (Geräte, Monitore, Benutzer, Kanäle, Einstellungen) und auch dessen Schlüssel (`data/secret.key`), damit er gespeicherte Passwörter lesen kann. Sein bisheriger Schlüssel bleibt als `secret.key.before-standby` liegen. Ist am Standby `WOMN_SECRET` gesetzt, muss es denselben Wert haben wie am Master. Beide Systeme brauchen dieselbe Version.
+
+**Im Betrieb:**
+
+- Der **Master** arbeitet wie immer und muss nichts tun.
+- Der **Standby** fragt jede Minute beim Master nach und holt alle 5 Minuten dessen Daten. Er prüft nichts, scannt nichts und alarmiert nicht. Oben steht ein Hinweis; ändern lässt sich dort nichts (bitte am Master).
+- Die Verbindung läuft über HTTPS, der Standby prüft dabei den Fingerabdruck des Master-Zertifikats aus dem Code. Bleibt der Schlüssel des Zertifikats bei einer Erneuerung gleich (beim selbstsignierten immer), muss man nichts tun. Bei einem neuen Zertifikat mit neuem Schlüssel am Master einen neuen Code erzeugen und neu koppeln.
+
+**Wenn der Master ausfällt:** Antwortet er länger als die eingestellte Zeit nicht, **übernimmt der Standby**. Er prüft und alarmiert dann selbst und meldet an alle Standard-Kanäle: „Ausfallsicherung: Der Master … ist seit 10 Min. nicht erreichbar - dieses System hat die Überwachung übernommen.“ Für eine längere Wartung am Master stellst du die Zeit vorher am Standby hoch.
+
+**Wenn der Master wiederkommt:** Sobald er antwortet, ist der Standby wieder still („… ist wieder da“) und holt sich dessen Daten. **Zum Master geht nichts zurück.** Was der Standby in der Zeit gemeldet hat, steht am Standby unter *Übernahmen*.
+
+**Wenn der Master nicht wiederkommt:** Am Standby **Zum Master machen**. Er ist dann dauerhaft Master und zeigt einen neuen Kopplungscode. Kommt der alte Master doch wieder hoch, erfährt er das beim ersten Kontakt und hört auf zu alarmieren. Dort dann am besten als Standby an den neuen Master koppeln.
+
+**Auflösen:** *Kopplung lösen* auf der jeweiligen Seite. Am Master: Der Standby übernimmt nicht mehr und bleibt still, bis dort entschieden wird. Am Standby: Er arbeitet danach allein (läuft der Master noch, kommen Alarme doppelt). Ein neuer Kopplungscode am Master trennt den bisherigen Standby ebenfalls.
+
 ## Sicherung und Updates
 
 - Einmal am Tag sichert WhatsOnMyNet die Datenbank nach `data/backups/` (das erste Mal eine Stunde nach dem Start); vor jedem Update der Datenbank zusätzlich.
