@@ -164,15 +164,15 @@ WhatsOnMyNet läuft ohne Root-Rechte. Ping funktioniert dann nur, wenn der Host 
 
 ```sh
 # im LXC als root - dauerhaft, auch nach einem Neustart
-echo 'net.ipv4.ping_group_range = 0 2147483647' > /etc/sysctl.d/99-ping.conf
+echo 'net.ipv4.ping_group_range = 0 65535' > /etc/sysctl.d/99-ping.conf
 sysctl -p /etc/sysctl.d/99-ping.conf
-# prüfen: jetzt "0 2147483647"
+# prüfen: jetzt "0 65535"
 cat /proc/sys/net/ipv4/ping_group_range
 # WhatsOnMyNet neu starten, damit es Ping wieder erkennt
 docker compose restart
 ```
 
-Danach verschwindet der Hinweis „Ping nicht möglich“ beim Scan, und Ping-Monitore funktionieren. Das geht auch im unprivilegierten LXC, ohne dem Container mehr Rechte zu geben.
+Danach verschwindet der Hinweis „Ping nicht möglich“ beim Scan, und Ping-Monitore funktionieren. Das geht auch im unprivilegierten LXC, ohne dem Container mehr Rechte zu geben. Höher als `65535` geht dort nicht (der Kernel meldet sonst „Invalid argument“) - im LXC gibt es nur die Gruppen 0–65535.
 
 ### SNMP
 

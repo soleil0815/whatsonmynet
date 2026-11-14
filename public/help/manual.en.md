@@ -20,12 +20,12 @@ The interface always runs over HTTPS. On first start WhatsOnMyNet creates a self
 **Allow ping in a Proxmox LXC** (it is usually off there - `cat /proc/sys/net/ipv4/ping_group_range` shows `1 0`). Inside the LXC as root, not on the Proxmox host:
 
 ```sh
-echo 'net.ipv4.ping_group_range = 0 2147483647' > /etc/sysctl.d/99-ping.conf
+echo 'net.ipv4.ping_group_range = 0 65535' > /etc/sysctl.d/99-ping.conf
 sysctl -p /etc/sysctl.d/99-ping.conf
 docker compose restart
 ```
 
-The setting survives a restart and needs no extra rights for the container. It cannot go into `docker-compose.yml`: Docker does not allow `sysctls` in the host network.
+The setting survives a restart and needs no extra rights for the container. Higher than `65535` does not work in an unprivileged LXC ("Invalid argument"). It cannot go into `docker-compose.yml`: Docker does not allow `sysctls` in the host network.
 
 ## First steps
 
