@@ -35,6 +35,7 @@ import { httpPortMiddleware, proxyHttpsMiddleware, directHstsMiddleware, createH
 import { createSensorChoices } from './monitor/choices.js';
 import { nameSensorsOnce } from './monitor/sensornames.js';
 import { createFailover } from './failover.js';
+import { createAutoWatch } from './monitor/autowatch.js';
 import { createFailoverApi } from './routes/failover.js';
 
 /**
@@ -106,14 +107,16 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   }
 
   const sensorChoices = createSensorChoices({ db, settings });
+  // New devices and hosts get a first monitor and a few sensors by themselves
+  const autoWatch = createAutoWatch({ db, settings, monitoring });
   // Failover: what only runs on the installation that is active (alone, master, or a standby that has taken over)
   const failover = createFailover({ db, settings, dataDir,
-    engines: [monitoring, nightly, printers, snmpDevices, reports, proxmox],
+    engines: [monitoring, nightly, printers, snmpDevices, reports, proxmox, autoWatch],
     notify: (ev) => channels.notifyIds([], { ...ev, at: new Date().toISOString() }),
     certPem: () => tls?.current()?.cert || '',
     snapshot: () => backups.snapshot(), discard: (f) => backups.discard(f),
     audit: (action, detail) => { try { db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), 'system', action, String(detail ?? '').slice(0, 500)); } catch { /* never stops */ } } });
-  const ctx = { db, settings, sensorChoices, failover, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
+  const ctx = { db, settings, sensorChoices, failover, autoWatch, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 

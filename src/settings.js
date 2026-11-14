@@ -30,6 +30,8 @@ export const DEFAULTS = {
   'nas.threshold': 90,            // % - report a volume at or above this
   'nas.notify': true,
   'nas.channels': [],
+  // New devices and hosts get a first monitor and a few sensors by themselves
+  'autowatch.enabled': true,
   // Escalation: an outage not solved after this many minutes goes to these channels too (0 = off)
   'escalate.min': 0,
   'escalate.channels': [],

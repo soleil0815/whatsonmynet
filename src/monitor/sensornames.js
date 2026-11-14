@@ -1,7 +1,7 @@
 // Names of sensors after the value they watch ("pve2: Temperatur: NVMe nvme0 Sensor 2") - the same rule as the
 // sensor dialog uses. Run once after the update that brought it, so sensors whose value was changed later
 // (and kept the old name, e.g. "Temperatur pve2") say again what they watch.
-import { t } from '../../public/js/i18n.js';
+import { TEXTS } from '../../public/js/i18n.js';
 import { metricsFor } from './sensors.js';
 import { proxmoxMetrics } from '../proxmox.js';
 import { nodeTempsInto } from '../hosts.js';
@@ -11,13 +11,17 @@ const DONE = 'sensors.namedByValue';
 /** "pve2: Temperatur: CPU Core 0"; no prefix when the value already names it ("CPU pve01", not "pve01: CPU pve01") */
 export const sensorName = (owner, label) => (owner && !String(label).toLowerCase().includes(String(owner).toLowerCase()) ? `${owner}: ${label}` : label);
 
-/** Label of a device value (German, like the stored labels): "Temperatur: CPU Core 0", "Toner Schwarz (frei)" */
-export function deviceValueLabel(x) {
-  const base = t(`sens.m.${x.metric}`, { name: x.name || '' });
-  return x.receptacle ? `${base} (${t('sens.free')})` : base;
+/** A text of the interface in a language (German by default, like most stored labels) */
+const t = (key, vars = {}, lang = 'de') => String((lang === 'en' ? TEXTS.en : TEXTS.de)[key] ?? TEXTS.de[key] ?? key)
+  .replace(/(?<!\{)\{(\w+)\}(?!\})/g, (all, k) => (k in vars ? String(vars[k] ?? '') : all));
+
+/** Label of a device value: "Temperatur: CPU Core 0", "Toner Schwarz (frei)" */
+export function deviceValueLabel(x, lang = 'de') {
+  const base = t(`sens.m.${x.metric}`, { name: x.name || '' }, lang);
+  return x.receptacle ? `${base} (${t('sens.free', {}, lang)})` : base;
 }
 /** Label of a hypervisor value: "Knoten pve2 online", "CPU pve2" */
-export const hostValueLabel = (x) => t(`px.m.${x.metric}`, { name: x.name || '' });
+export const hostValueLabel = (x, lang = 'de') => t(`px.m.${x.metric}`, { name: x.name || '' }, lang);
 
 /** Renames every sensor (device and hypervisor values) after its value. Returns how many were renamed. */
 export function nameSensorsByValue(db) {

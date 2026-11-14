@@ -91,7 +91,9 @@ const de = {
   'scan.phase.discover': 'Suche Geräte', 'scan.phase.probe': 'Prüfe gefundene Geräte', 'scan.phase.done': 'Fertig', 'scan.phase.cancelled': 'Abgebrochen',
   'scan.phase.failed': 'Fehlgeschlagen', 'scan.progress': '{done} von {total} Adressen', 'scan.probed': '{n} Geräte geprüft',
   'scan.tab.new': 'Neu', 'scan.tab.changed': 'Geändert', 'scan.tab.known': 'Bekannt', 'scan.tab.ignored': 'Ignoriert',
-  'scan.adopt': 'Ins Inventar übernehmen', 'scan.ignore': 'Ignorieren', 'scan.adopted': '{n} Geräte übernommen', 'scan.ignoredN': '{n} Geräte werden künftig ignoriert',
+  'scan.adopt': 'Ins Inventar übernehmen', 'scan.ignore': 'Ignorieren', 'scan.adopted': '{n} Geräte übernommen', 'aw.adopted': 'Monitore und erste Sensoren werden angelegt',
+  'aw.title': 'Neue Geräte automatisch überwachen', 'aw.lead': 'Übernimmst du Geräte ins Inventar oder fügst einen Host hinzu, legt WhatsOnMyNet gleich einen Monitor an (Weboberfläche, sonst Ping) und, sobald das Gerät Werte liefert, ein paar wichtige Sensoren: beim Drucker die Toner, beim NAS Volumes, RAID, Zustand und Temperatur, bei Windows- und Linux-Rechnern mit Skript Online, CPU, RAM, Systemlaufwerk, Temperatur und Dienste, beim Hypervisor Knoten, Speicher und Sicherungen. Mehr fügst du selbst hinzu.',
+  'aw.enabled': 'Monitore und erste Sensoren automatisch anlegen', 'aw.hint': 'Gilt für Geräte und Hosts, die ab jetzt dazukommen. Was du löschst, wird nicht wieder angelegt.', 'scan.ignoredN': '{n} Geräte werden künftig ignoriert',
   'scan.selectAll': 'Alle auswählen', 'scan.selected': '{n} ausgewählt', 'scan.noNew': 'Keine neuen Geräte. Alles Gefundene ist schon im Inventar oder wird ignoriert.',
   'scan.noResults': 'Hier ist nichts.', 'scan.history': 'Frühere Scans', 'scan.noPing': 'Ping ist auf diesem Host nicht erlaubt - Geräte werden über ARP und Ports gefunden.',
   'scan.noHostNet': 'Der Container sieht nur sein eigenes Docker-Netz. Für MAC-Adressen und Hersteller muss er mit network_mode: host laufen (siehe README).',
@@ -767,7 +769,9 @@ const en = {
   'scan.phase.discover': 'Looking for devices', 'scan.phase.probe': 'Checking the devices found', 'scan.phase.done': 'Finished', 'scan.phase.cancelled': 'Cancelled',
   'scan.phase.failed': 'Failed', 'scan.progress': '{done} of {total} addresses', 'scan.probed': '{n} devices checked',
   'scan.tab.new': 'New', 'scan.tab.changed': 'Changed', 'scan.tab.known': 'Known', 'scan.tab.ignored': 'Ignored',
-  'scan.adopt': 'Adopt into inventory', 'scan.ignore': 'Ignore', 'scan.adopted': '{n} devices adopted', 'scan.ignoredN': '{n} devices will be ignored from now on',
+  'scan.adopt': 'Adopt into inventory', 'scan.ignore': 'Ignore', 'scan.adopted': '{n} devices adopted', 'aw.adopted': 'monitors and first sensors are being created',
+  'aw.title': 'Watch new devices by themselves', 'aw.lead': 'When you adopt devices into the inventory or add a host, WhatsOnMyNet creates a monitor right away (web interface, else ping) and, as soon as the device delivers values, a few important sensors: toner for a printer, volumes, RAID, health and temperature for a NAS, online, CPU, RAM, system drive, temperature and services for Windows and Linux machines with the script, nodes, storage and backups for a hypervisor. You add more yourself.',
+  'aw.enabled': 'Create monitors and first sensors by themselves', 'aw.hint': 'Applies to devices and hosts added from now on. What you delete is not created again.', 'scan.ignoredN': '{n} devices will be ignored from now on',
   'scan.selectAll': 'Select all', 'scan.selected': '{n} selected', 'scan.noNew': 'No new devices. Everything found is already in the inventory or ignored.',
   'scan.noResults': 'Nothing here.', 'scan.history': 'Earlier scans', 'scan.noPing': 'This host does not allow ping - devices are found via ARP and ports.',
   'scan.noHostNet': 'The container only sees its own Docker network. To see MAC addresses and manufacturers it has to run with network_mode: host (see README).',
@@ -1374,3 +1378,5 @@ export function reasonText(r) {
 }
 export const KEYS_DE = Object.keys(de);
 export const KEYS_EN = Object.keys(en);
+/** Both dictionaries (the server builds labels of sensors with them) */
+export const TEXTS = { de, en };
