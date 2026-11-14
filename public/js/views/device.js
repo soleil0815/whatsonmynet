@@ -1,35 +1,47 @@
 // One device: details (editable), what the scan found, history, deep check.
 import { h, mount, fmtDate, fmtAgo, toast, confirmDialog } from '../dom.js';
-import { get, patch, del, post } from '../api.js';
+import { get, patch, del, post, put } from '../api.js';
 import { t, getLang, reasonText } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { monitorDot, statusPill, openMonitorForm } from './monitoring.js';
 import { printerPanel } from './printer.js';
-import { systemPanel, openHostScript } from './hostscripts.js';
+import { systemPanel, openHostScript, helpLink } from './hostscripts.js';
 import { hardwarePanel } from './hardware.js';
 import { switchPanel, nasPanel, upsPanel, pluggedLine } from './snmpdev.js';
 import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
 
 const FIELD_LABEL = (f) => t(`f.${f}`) !== `f.${f}` ? t(`f.${f}`) : f;
 
-/** A Windows or Linux machine (by its kind, operating system or what the scan recognised) */
+/** A Windows or Linux machine (by its kind, operating system or what the scan recognised) - Proxmox nodes too */
 export function looksLikeHost(d) {
-  // NAS, switches, printers … run Linux too, but have their own values (SNMP)
-  if (['server', 'computer', 'vm'].includes(d.type)) return true;
-  if (d.type !== 'unknown') return false;
   const text = [d.os, d.facts?.classification?.os, d.facts?.netbios ? 'windows' : ''].filter(Boolean).join(' ');
-  return /windows|linux|ubuntu|debian|centos|red ?hat|rocky|alma|suse|fedora/i.test(text);
+  // ESXi, Hyper-V Server … run no script of ours; NAS, switches, printers run Linux too but have their own values (SNMP)
+  if (/esxi|vmware|vsphere/i.test(text)) return false;
+  if (['server', 'computer', 'vm', 'hypervisor'].includes(d.type)) return true;
+  if (d.type !== 'unknown') return false;
+  return /windows|linux|ubuntu|debian|centos|red ?hat|rocky|alma|suse|fedora|proxmox/i.test(text);
 }
 
-/** Tip on the device page: no values of the script yet - set it up (admins) or ask an admin */
-export function scriptHint(d, ti, open) {
-  if (ti || d.host || !looksLikeHost(d)) return null;
+/**
+ * Tip on the device page: more about the system with the script. Only while the device has no system values at all
+ * (no script report, no server hardware such as iDRAC/iLO) and nobody said "do not show again" for it.
+ */
+export function scriptHint(d, ti, open, reload) {
+  if (ti || d.host || d.hardware || d.script_tip_hidden || !looksLikeHost(d)) return null;
   const waiting = !!d.hostScript;
+  const hide = state.user.canEdit ? h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try { await put(`/devices/${d.id}/script-tip`, { hidden: true }); toast(t('hs.tipHidden')); reload(); } catch (ex) { fail(ex); b.disabled = false; }
+  } }, t('hs.tipHide')) : null;
   return h('div', { class: 'note tip-script' }, h('div', {},
     h('strong', {}, t(waiting ? 'hs.tipWaitTitle' : 'hs.tipTitle')),
     h('p', { style: { margin: '4px 0 8px' } }, t(waiting ? 'hs.tipWait' : state.user.isAdmin ? 'hs.tip' : 'hs.tipAskAdmin')),
-    state.user.isAdmin ? btn(t(waiting ? 'hs.menuRenew' : 'hs.menu'), { class: 'btn btn-sm btn-primary', onclick: open }, 'computer') : null));
+    h('div', { class: 'actions', style: { justifyContent: 'flex-start' } },
+      state.user.isAdmin ? btn(t(waiting ? 'hs.menuRenew' : 'hs.menu'), { class: 'btn btn-sm btn-primary', onclick: open }, 'computer') : null,
+      helpLink(),
+      hide)));
 }
 
 export function historyText(r) {
@@ -150,7 +162,7 @@ export async function renderDevice(main, id) {
     ) : null);
 
   // Windows/Linux machine without script values yet: point to the script right away (CPU, RAM, drives, services)
-  const scriptTip = scriptHint(d, ti, () => openHostScript(d, () => renderDevice(main, id)));
+  const scriptTip = scriptHint(d, ti, () => openHostScript(d, () => renderDevice(main, id)), () => renderDevice(main, id));
 
   const monPanel = h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('mon.device')),

@@ -6,6 +6,11 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Tipp „Per Skript überwachen“ jetzt auch bei Linux-Rechnern und Hypervisoren wie Proxmox (bisher vor allem Windows) und unter Virtualisierung bei Proxmox-Knoten ohne Skript - freundlich formuliert: zusätzliche Infos über das System. Er verschwindet von selbst, sobald das Gerät Werte liefert (Skript oder iDRAC/iLO), und lässt sich pro Gerät mit „Nicht mehr anzeigen“ ausblenden
+- Skript-Dialoge und Tipp: Link „Was bringt das Skript?“ direkt zum passenden Abschnitt der Hilfe; Hilfe und Handbuch erklären ausführlicher, wofür das Skript gut ist (gerade bei Mini-PCs ohne Server-Hardware)
+
+## 0.22.0 - 2026-11-14
+
 - Mehrere Sensoren oder Monitore ankreuzen und löschen: nach dem Bestätigen passierte nichts - jetzt werden sie gelöscht. Ebenso das Einspielen einer hochgeladenen Sicherung
 - Neue NAS: Sensoren nur auf den Datenvolumes (/volume1 …), nicht auf der Systempartition (/, /opt) oder internen Ordnern wie /volume1/@docker
 - USV: die Restlaufzeit unter einer Stunde in Minuten („reicht 25 Min.“ statt „reicht 0 Std.“)

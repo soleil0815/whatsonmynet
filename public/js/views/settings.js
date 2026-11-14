@@ -6,7 +6,7 @@ import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
 import { openMonitorForm } from './monitoring.js';
-import { scriptDialog, hostScriptsSettings } from './hostscripts.js';
+import { scriptDialog, hostScriptsSettings, helpLink } from './hostscripts.js';
 import { aboutContent } from './about.js';
 import { hardwareDetail } from './hardware.js';
 import { SECTIONS, settingsNav } from './settingsnav.js';
@@ -410,6 +410,27 @@ const meter = (label, pct, sub = '') => h('div', { class: `supply${pct >= 85 ? '
   h('div', { class: 'supply-track' }, h('i', { style: { width: `${pct || 0}%` } })));
 const ago = (sec) => { if (!sec) return '–'; const hrs = Math.round((Date.now() / 1000 - sec) / 3600); return hrs < 48 ? t('px.hoursAgo', { n: hrs }) : t('px.daysAgo', { n: Math.round(hrs / 24) }); };
 
+/**
+ * Nodes of a Proxmox VE / KVM host without the Linux script: with it they deliver more about the system (temperatures,
+ * disks, services, updates). Gone by itself once every node reports, or for good with "do not show again".
+ */
+function nodeScriptTip(x, d) {
+  if (!['pve', 'libvirt'].includes(x.kind) || x.script_tip_hidden || !state.user.isAdmin) return null;
+  const without = (d.nodes || []).filter((n) => !n.script);
+  if (!without.length) return null;
+  return h('div', { class: 'note tip-script', style: { marginTop: '10px' } }, h('div', {},
+    h('strong', {}, t('hs.nodeTipTitle')),
+    h('p', { style: { margin: '4px 0 8px' } }, t('hs.nodeTip', { nodes: without.map((n) => n.name).join(', ') })),
+    h('div', { class: 'actions', style: { justifyContent: 'flex-start' } },
+      h('a', { class: 'btn btn-sm btn-primary', href: '/settings/hostscripts', 'data-link': true }, h('span', { html: icon('computer') }), t('set.hostscripts')),
+      helpLink(),
+      btn(t('hs.tipHide'), { class: 'btn btn-sm btn-ghost', onclick: async (e) => {
+        const b = e.currentTarget;
+        b.disabled = true;
+        try { await put(`/proxmox/${x.id}/script-tip`, { hidden: true }); x.script_tip_hidden = true; b.closest('.tip-script')?.remove(); toast(t('hs.tipHidden')); } catch (ex) { fail(ex); b.disabled = false; }
+      } }))));
+}
+
 function proxmoxDetail(x) {
   const d = x.data || {};
   if (!x.last_at) return h('p', { class: 'muted' }, PUSH.includes(x.kind) ? t('virt.waiting') : t('prn.none'));
@@ -442,6 +463,7 @@ function proxmoxDetail(x) {
         n.online && (n.cpu !== null || n.mem !== null) ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu ?? '–'} % · RAM ${n.mem ?? '–'} %`) : null,
         n.temp ? h('span', { class: `badge ${n.temp.c >= n.temp.warn ? 'badge-new' : ''}`, title: t('vo.tempTitle', { name: n.temp.name, warn: n.temp.warn }) }, `${n.temp.c} °C`) : null,
         n.seen ? h('span', { class: 'muted small' }, t('virt.seen', { when: fmtDate(n.seen, getLang()) })) : null))),
+      nodeScriptTip(x, d),
       h('h3', { class: 'sub-title' }, t('px.storages')),
       h('div', { class: 'supplies' }, (d.storages || []).filter((s) => s.total).map((s) => meter(s.node ? `${s.name} · ${s.node}` : s.name, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
       h('h3', { class: 'sub-title' }, pve ? t('px.guests', { running, n: (d.guests || []).length }) : t('virt.guests', { running, n: (d.guests || []).length })),

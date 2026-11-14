@@ -19,4 +19,7 @@ export async function renderHelp(main) {
       h('nav', { class: 'help-toc', 'aria-label': t('help.contents') }, h('strong', {}, t('help.contents')),
         h('ol', {}, toc(text).map((x) => h('li', {}, h('a', { href: `#${x.id}`, onclick: (e) => { e.preventDefault(); document.getElementById(x.id)?.scrollIntoView({ behavior: 'smooth' }); } }, x.text))))),
       body)));
+  // Opened at a section (/help#…, e.g. "What does the script bring?" in a dialog): go there
+  const id = decodeURIComponent(location.hash.slice(1));
+  if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView());
 }

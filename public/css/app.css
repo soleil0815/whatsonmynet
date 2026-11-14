@@ -163,6 +163,9 @@ input.mono { font-family: var(--mono); }
 .scan-tip-actions { display: inline-flex; gap: 6px; }
 .scan-tip .link-btn { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
 .tip-script p { max-width: 60ch; }
+.help-link { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
+.help-link svg { width: 14px; height: 14px; }
+.tip-script .actions { align-items: center; flex-wrap: wrap; }
 .dup-list { margin: 0; padding-left: 18px; }
 .dup-list li { margin: 4px 0; }
 .panel > h2:not(.section-title), .panel-head { padding: 16px 20px 0; }
