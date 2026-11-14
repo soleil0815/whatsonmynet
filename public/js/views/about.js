@@ -3,7 +3,6 @@
 // number at the bottom of the menu.
 import { h, modal, fmtDate } from '../dom.js';
 import { t, getLang } from '../i18n.js';
-import { icon } from '../icons.js';
 import { state } from '../app.js';
 import { CHANGELOG } from '../changelog.js';
 
@@ -47,7 +46,9 @@ export function aboutContent() {
       h('dt', {}, t('about.website')), h('dd', {}, ext(WEBSITE, 'helfi.space'))),
     h('div', { class: 'coffee' },
       h('p', { style: { margin: 0 } }, t('about.thanks')),
-      ext(COFFEE, [h('span', { html: icon('coffee') }), t('about.coffee')], 'btn btn-coffee')),
+      // the official Buy Me a Coffee button: yellow, cup logo, "Buy me a coffee" (logo shipped with the program, nothing loaded from the internet)
+      h('a', { href: COFFEE, target: '_blank', rel: 'noopener noreferrer', class: 'btn btn-coffee', title: t('about.coffee'), 'aria-label': t('about.coffee') },
+        h('img', { src: '/img/bmc-logo.svg', alt: '', width: 20, height: 20 }), h('span', { class: 'bmc-text' }, 'Buy me a coffee'))),
     h('h2', { class: 'section-title', style: { marginTop: '22px' } }, t('about.whatsNew')),
     whatsNew());
 }
