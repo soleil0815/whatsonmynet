@@ -26,6 +26,7 @@ import { encrypt, decrypt, randomToken, currentKey, prepareKey, decryptWith, key
 import { log } from './lib/log.js';
 import { config } from './config.js';
 import { MIGRATIONS } from './db.js';
+import { fetchTlsChain, toPem } from './auth/dccert.js';
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest();
 const b64u = (buf) => Buffer.from(buf).toString('base64url');
@@ -65,29 +66,65 @@ export function parseCode(raw) {
   return { secret: m[1], pin: m[2] };
 }
 
+// TLS errors that mean "the certificate is not the stored one any more" (renewed) - fetched again and checked against the pin
+const CHAIN_ERRORS = new Set(['DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'CERT_SIGNATURE_FAILURE', 'CERT_UNTRUSTED']);
+
 /**
- * One HTTPS request to the other installation. The TLS connection is made first and the public key of the
- * certificate compared with the pin - only then the request (with the secret) goes out. The name in the certificate
- * does not matter (the master may be reached by IP), the pin is stronger than a CA would be.
+ * The certificate of the other installation, fetched (openssl s_client) and accepted only when its public key is the
+ * one in the pairing code. It is then the only trusted certificate for the connection.
+ */
+export async function fetchPinnedPem({ address, pin }) {
+  const u = new URL(`${address}/`);
+  const host = u.hostname.replace(/^\[|\]$/g, '');
+  let chain;
+  try { chain = await fetchTlsChain({ host, port: Number(u.port || 443) }); } catch (e) { throw Object.assign(new Error(e.message), { code: e.code || 'ECONNREFUSED' }); }
+  const leaf = chain.certs[0];
+  if (!leaf || spkiPin(leaf.publicKey) !== pin) throw Object.assign(new Error('the certificate of the other server does not match the pairing code'), { code: 'EPIN' });
+  return toPem([leaf]);
+}
+
+/**
+ * One HTTPS request to the other installation. The normal TLS check applies, with the certificate of the other side
+ * (checked against the pin in the pairing code) as the only trusted one; on top the public key must be the pinned
+ * one - checked before anything, the secret included, is sent. The name in the certificate does not matter (the
+ * master may be reached by IP). A renewed certificate with the same key is fetched again by itself (peer.onPem keeps it).
  * With `toFile` the answer body is written there (size-limited) instead of being returned.
  */
-export function pinnedRequest({ address, pin, secret }, method, p, { body = null, toFile = null, timeoutMs = 20000, maxBytes = 2 * 1024 * 1024 } = {}) {
+export async function pinnedRequest(peer, method, p, opts = {}) {
+  let pem = peer.pem || null;
+  if (!pem) { pem = await fetchPinnedPem(peer); peer.pem = pem; peer.onPem?.(pem); }
+  try {
+    return await requestOnce(peer, pem, method, p, opts);
+  } catch (e) {
+    if (!CHAIN_ERRORS.has(e.code) && e.code !== 'CERT_HAS_EXPIRED') throw e;
+    const fresh = await fetchPinnedPem(peer);
+    if (fresh === pem) throw e;
+    peer.pem = fresh; peer.onPem?.(fresh);
+    return requestOnce(peer, fresh, method, p, opts);
+  }
+}
+
+function requestOnce({ address, pin, secret }, pem, method, p, { body = null, toFile = null, timeoutMs = 20000, maxBytes = 2 * 1024 * 1024 } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(p, `${address}/`);
     const host = u.hostname.replace(/^\[|\]$/g, '');
     let done = false;
     const fail = (e) => { if (!done) { done = true; clearTimeout(deadline); reject(e); } };
     const deadline = setTimeout(() => { socket.destroy(); fail(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })); }, toFile ? 30 * 60 * 1000 : timeoutMs * 3);
-    // rejectUnauthorized: false only because the check below replaces it - it runs before a single byte is written
-    const socket = tls.connect({ host, port: Number(u.port || 443), servername: isIpLiteral(host) ? undefined : host, rejectUnauthorized: false, minVersion: 'TLSv1.2' });
+    const socket = tls.connect({ host, port: Number(u.port || 443), servername: isIpLiteral(host) ? undefined : host, minVersion: 'TLSv1.2',
+      // the pinned certificate is the only trust anchor (also the server's own, not only a CA) ...
+      ca: [pem], allowPartialTrustChain: true,
+      // ... and its public key must be the one from the pairing code (instead of the name)
+      checkServerIdentity: (_name, cert) => {
+        let ok = false;
+        // the whole public key (SubjectPublicKeyInfo) from the certificate itself - `pubkey` is only the bare key for EC
+        try { ok = !!cert?.raw && spkiPin(new crypto.X509Certificate(cert.raw).publicKey) === pin; } catch { ok = false; }
+        return ok ? undefined : Object.assign(new Error('the certificate of the other server does not match the pairing code'), { code: 'EPIN' });
+      } });
     socket.setTimeout(timeoutMs, () => { socket.destroy(); fail(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })); });
     socket.once('error', (e) => fail(e));
     socket.once('secureConnect', () => {
-      const cert = socket.getPeerCertificate();
-      let ok = false;
-      // the whole public key (SubjectPublicKeyInfo) from the certificate itself - `pubkey` is only the bare key for EC
-      try { ok = !!cert?.raw && spkiPin(new crypto.X509Certificate(cert.raw).publicKey) === pin; } catch { ok = false; }
-      if (!ok) { socket.destroy(); fail(Object.assign(new Error('the certificate of the other server does not match the pairing code'), { code: 'EPIN' })); return; }
       const data = body === null ? null : Buffer.from(JSON.stringify(body));
       // HTTP over the TLS connection checked above (the http client only writes to the socket it is given)
       const req = http.request({ host: u.hostname, port: u.port, path: `${u.pathname}${u.search}`, method, createConnection: () => socket, headers: {
@@ -178,7 +215,9 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
   }
 
   // ---------------------------------------------------------------------------------------------- standby side
-  const peer = () => ({ address: st.standby.address, pin: st.standby.pin, secret: decrypt(st.standby.token) });
+  // the certificate of the master as fetched last (a renewed one with the same key is taken over by itself)
+  const peer = () => ({ address: st.standby.address, pin: st.standby.pin, pem: st.standby.pem || null, secret: decrypt(st.standby.token),
+    onPem: (pem) => { st.standby.pem = pem; } });
 
   /** Takes over a copy of the master: checks it, then replaces every table but the local ones in one transaction */
   function importSnapshot(snapFile, key) {
@@ -340,7 +379,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
   /** Promoted master: tells the old one on its next contact, so it keeps quiet */
   async function formerTick() {
     try {
-      const r = await pinnedRequest({ address: st.former.address, pin: st.former.pin, secret: decrypt(st.former.token) }, 'POST', '/api/failover/yield', { body: {} });
+      const r = await pinnedRequest({ address: st.former.address, pin: st.former.pin, pem: st.former.pem || null, secret: decrypt(st.former.token), onPem: (pem) => { st.former.pem = pem; } }, 'POST', '/api/failover/yield', { body: {} });
       if (r.status === 200 || r.status === 401) {
         log.info(`Failover: the former master ${st.former.address} ${r.status === 200 ? 'knows now that it was replaced' : 'no longer has the pairing'}`);
         delete st.former;
@@ -434,7 +473,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       if (hello.json.schema !== db.pragma('user_version', { simple: true })) throw new HttpError(400, 'err.foVersion', `${hello.json.version} / ${config.version}`);
       const before = st;
       setRunning(false);
-      st = { ...st, role: 'standby', standby: { address: addr, pin, token: '', delayMin: delay, state: 'listening', pairedAt: nowIso(), lastContact: nowIso() } };
+      st = { ...st, role: 'standby', standby: { address: addr, pin, pem: p.pem || null, token: '', delayMin: delay, state: 'listening', pairedAt: nowIso(), lastContact: nowIso() } };
       delete st.master;
       try {
         // sync() uses peer(): the secret goes into the file only encrypted - with the key in use after the sync
@@ -465,7 +504,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       if (st.role !== 'standby') throw new HttpError(409, 'err.badRequest');
       const s = st.standby;
       if (s.state === 'active') endTakeover('promoted');
-      st.former = { address: s.address, pin: s.pin, token: s.token };
+      st.former = { address: s.address, pin: s.pin, pem: s.pem || null, token: s.token };
       delete st.standby;
       st.role = 'master';
       st.master = null;

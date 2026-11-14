@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import https from 'node:https';
+import { spawnSync } from 'node:child_process';
 import { tmp, startApp } from './helpers.js';
 import { createTls } from '../src/tls.js';
 import { normalizeAddress, parseCode, spkiPin, pinnedRequest } from '../src/failover.js';
@@ -19,9 +20,9 @@ await tlsB.ensure();
 const B = await startApp({ tls: tlsB, dataDir: dirB });
 // the master also on HTTPS (the standby only talks HTTPS)
 let httpsA = null; let port = 0;
-const listenA = () => new Promise((resolve) => {
+const listenA = (cert = null, key = null) => new Promise((resolve) => {
   const c = tlsA.current();
-  httpsA = https.createServer({ cert: c.cert, key: c.key }, A.app);
+  httpsA = https.createServer({ cert: cert || c.cert, key: key || c.key }, A.app);
   httpsA.listen(port, '127.0.0.1', () => { port = httpsA.address().port; resolve(); });
 });
 await listenA();
@@ -143,6 +144,30 @@ test('the master is gone longer than the set time: the standby takes over; it is
   // and the data are the master's again (the event of the takeover is not in them)
   assert.equal(B.db.prepare("SELECT COUNT(*) n FROM monitor_events WHERE message='Intranet: timeout'").get().n, 0);
   assert.equal(A.db.prepare("SELECT COUNT(*) n FROM monitor_events WHERE message='Intranet: timeout'").get().n, 0);
+});
+
+test('the master gets a new certificate with the same key: the standby goes on by itself; another key: it does not talk', async () => {
+  const key = tlsA.current().key;
+  const kf = path.join(dirA, 'k.pem');
+  fs.writeFileSync(kf, key, { mode: 0o600 });
+  const renewed = spawnSync('openssl', ['req', '-x509', '-key', kf, '-subj', '/CN=renewed', '-days', '30', '-sha256'], { encoding: 'utf8' }).stdout;
+  assert.match(renewed, /BEGIN CERTIFICATE/);
+  const before = B.ctx.failover._state().standby.pem;
+  await new Promise((r) => httpsA.close(r));
+  await listenA(renewed, key);
+  await B.ctx.failover.tick();
+  assert.equal(B.ctx.failover.status().standby.lastError, '');
+  assert.notEqual(B.ctx.failover._state().standby.pem, before);
+  // a certificate with another key (someone else at that address): no contact, the secret is not sent
+  const other = spawnSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes', '-keyout', '-', '-subj', '/CN=fremd', '-days', '30'], { encoding: 'utf8' }).stdout;
+  await new Promise((r) => httpsA.close(r));
+  await listenA(other.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/)[0], other.match(/-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/)[0]);
+  await B.ctx.failover.tick();
+  assert.match(B.ctx.failover.status().standby.lastError, /pairing code/);
+  await new Promise((r) => httpsA.close(r));
+  await listenA();
+  await B.ctx.failover.tick();
+  assert.equal(B.ctx.failover.status().standby.lastError, '');
 });
 
 test('the time until it takes over can be set (3 to 240 minutes)', async () => {
