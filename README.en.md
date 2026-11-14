@@ -23,7 +23,7 @@ WhatsOnMyNet scans your network, recognises manufacturer and device type by itse
 
 - **Gentle network scan** - devices in local networks are found via ARP (every device answers, even with a closed firewall), in routed networks via ping and a few TCP connection attempts. Only 26 typical ports are checked, limited to 40 attempts per second. To a firewall this looks like normal traffic.
 - **Automatic recognition** - manufacturer from the MAC address (IEEE registry), device type from open ports, web interface title, certificate, SNMP (read-only), NetBIOS name and reverse DNS. Unsure guesses are marked; you can change the type before adopting.
-- **Telematik** - card terminals (SICCT port 4742, ORGA, Cherry …) and TI connectors (KoCoBox, secunet, RISE …) get their own icon and category. Their deep check always keeps the gentle profile.
+- **Telematik** - card terminals (SICCT port 4742, ORGA, Cherry …) and TI connectors (KoCoBox, secunet, RISE …) get their own icon and category. Their deep check always keeps the gentle profile - also for a device not yet recognised: the deep check first asks port 4742 (SICCT) alone; if it answers, the gentle profile stays.
 - **Adopt only what you want** - scan results in four tabs: *New*, *Changed*, *Known*, *Ignored*. Tick new devices to adopt them or ignore them for good.
 - **MAC address as identity** - when a known device gets a new IP, the next scan takes it over automatically, with an entry in the history.
 - **Inventory** - search across everything, filter by type and location, view as list, by subnet or by type, "seen in the last scan" status, export as CSV (Excel) and JSON.
@@ -160,6 +160,8 @@ Under *Settings → Active Directory* users sign in with their Windows account:
 ## Rights per location (from version 0.3)
 
 Editors and viewers can be limited to one or more locations under *Settings → Users* - e.g. for the IT of a branch office. A limited account only sees and changes devices, scan results and monitors of these locations, scans only their subnets and counts only them on the overview. Devices without a location, free subnets, the nightly scan, maintenance windows and Docker hosts stay with unlimited accounts. Administrators are never limited; this also applies to accounts from Active Directory.
+
+**Allowed scan targets:** editors only scan private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and 100.64.0.0/10) and the subnets an administrator entered at the locations. Public addresses - as a subnet in a scan or as the deep check of a device - only an administrator may scan.
 
 ## Scan agent for branch offices (from version 0.3)
 

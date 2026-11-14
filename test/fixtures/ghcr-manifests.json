@@ -1,0 +1,10 @@
+{
+  "sha256:aaaa": {
+    "schemaVersion": 2,
+    "mediaType": "application/vnd.oci.image.index.v1+json",
+    "manifests": [
+      { "mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": "sha256:bbbb", "platform": { "architecture": "amd64", "os": "linux" } },
+      { "mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": "sha256:cccc", "platform": { "architecture": "arm64", "os": "linux" } }
+    ]
+  }
+}
