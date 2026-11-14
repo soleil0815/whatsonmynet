@@ -35,6 +35,7 @@ const TEXT = {
     downtime: ' (Ausfall {min} Min.)',
     cert: '🟠 Das Zertifikat von {name} läuft in {days} Tagen ab ({date}).',
     certExpired: '🔴 Das Zertifikat von {name} ist abgelaufen ({date}).',
+    ipMoved: '🟠 {name} pausiert: Das Gerät hat eine neue IP ({from} → {to}) - bitte das Passwort neu eingeben.',
     test: '✅ Testnachricht von WhatsOnMyNet - dieser Kanal funktioniert.',
     newDevice: '🆕 Neues Gerät im Netz: {list}',
     newDevices: '🆕 {n} neue Geräte im Netz: {list}',
@@ -67,6 +68,7 @@ const TEXT = {
     downtime: ' (down for {min} min)',
     cert: '🟠 The certificate of {name} expires in {days} days ({date}).',
     certExpired: '🔴 The certificate of {name} has expired ({date}).',
+    ipMoved: '🟠 {name} paused: the device has a new IP ({from} → {to}) - please enter the password again.',
     test: '✅ Test message from WhatsOnMyNet - this channel works.',
     newDevice: '🆕 New device on the network: {list}',
     newDevices: '🆕 {n} new devices on the network: {list}',
@@ -104,6 +106,7 @@ export function eventText(ev, lang = 'de') {
     case 'escalate': return fill(T[`escalate${fam}`], { name, min: ev.downMin ?? '', message });
     case 'up': return fill(T[`up${fam}`], { name, message, downtime: ev.downtimeMin ? fill(T.downtime, { min: ev.downtimeMin }) : '' });
     case 'cert': return ev.certDays < 0 ? fill(T.certExpired, { name, date }) : fill(T.cert, { name, days: ev.certDays, date });
+    case 'ipMoved': return fill(T.ipMoved, { name, from: ev.from || '', to: ev.to || '' });
     case 'newDevices': {
       const list = (ev.devices || []).slice(0, 5).map(deviceLabel).join(', ') + ((ev.devices || []).length > 5 ? ', …' : '');
       return ev.devices?.length === 1 ? fill(T.newDevice, { list }) : fill(T.newDevices, { n: ev.devices?.length || 0, list });

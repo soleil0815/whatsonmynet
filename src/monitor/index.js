@@ -11,6 +11,7 @@ import { encrypt, decrypt } from '../lib/crypto.js';
 import { pingAvailable } from '../scan/probes.js';
 import { bestWebUrl } from '../scan/engine.js';
 import { forgetMonitors } from '../lib/idlists.js';
+import { onIpMovedPaused } from '../devicechange.js';
 
 const HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 const MAX_PARALLEL = 25;
@@ -500,6 +501,19 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   function event(m, kind, message, notified = []) {
     db.prepare('INSERT INTO monitor_events(monitor_id,at,kind,message,notified) VALUES(?,?,?,?,?)').run(m.id, iso(now()), kind, String(message).slice(0, 500), notified.join(', '));
   }
+
+  // A monitor with a stored password paused because its device has a new IP (devicechange.js): its channels are
+  // told like for any other alarm - a database or share check must not stop silently
+  onIpMovedPaused(db, async (list) => {
+    for (const x of list) {
+      const ev = db.prepare("SELECT id, at FROM monitor_events WHERE id=? AND monitor_id=? AND kind='ipMoved'").get(x.eventId, x.monitorId);
+      const m = ev && db.prepare('SELECT * FROM monitors WHERE id=?').get(x.monitorId);
+      if (!m) continue; // rolled back or deleted meanwhile
+      const mon = { id: m.id, name: m.name, type: m.type, label: parse(m.options, {}).label || '', target: m.type === 'tcp' ? `${m.target}:${m.port}` : m.target, channels: m.channels };
+      const reached = await channels.notify(mon, { kind: 'ipMoved', from: x.from, to: x.to, message: `${x.from} → ${x.to}`, monitor: mon, at: ev.at });
+      db.prepare('UPDATE monitor_events SET notified=? WHERE id=?').run(reached.join(', '), ev.id);
+    }
+  });
 
   async function checkNow(id) {
     const m = db.prepare('SELECT * FROM monitors WHERE id=?').get(id);

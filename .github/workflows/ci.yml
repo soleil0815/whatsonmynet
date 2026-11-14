@@ -389,12 +389,13 @@ jobs:
           generate_release_notes: true
 
   # Candidate images of this run (<version>-kandidat-<run id>[-<arch>]): removed from the registry when the run
-  # ends - after publishing, after a failure or a cancel. Never deleted: a version that also carries a real version
-  # tag or latest (after publishing that is the checked candidate itself) and the platform images the published
-  # image points to (see the script).
+  # ends - after publishing, after a failed build or check (publish skipped) or a cancel. A failed publish job (e.g. a
+  # transient registry error) keeps them, so that "Re-run failed jobs" still finds them. Never deleted: a version
+  # that also carries a real version tag or latest (after publishing that is the checked candidate itself) and the
+  # platform images the published image points to (see the script).
   cleanup-candidates:
     needs: [release-check, release-build, publish]
-    if: always() && needs.release-check.result == 'success' && needs.release-build.result != 'skipped'
+    if: always() && needs.publish.result != 'failure' && needs.release-check.result == 'success' && needs.release-build.result != 'skipped'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

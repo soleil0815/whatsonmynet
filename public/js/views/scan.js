@@ -5,6 +5,7 @@ import { t, getLang, reasonText } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail, updateBadge } from '../app.js';
 import { pageHead, typeChip, select, typeOptions, confidenceBar, portList, btn, TI } from './common.js';
+import { selectableRow, canAdopt } from '../scanpick.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const s = (tag, attrs = {}) => { const el = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
@@ -205,7 +206,7 @@ async function renderResult(main, id) {
     }, t(`scan.tab.${k}`), h('span', { class: `badge${k === 'new' && by.new.length ? ' badge-new' : ''}` }, by[k].length))));
     const list = by[tab];
     // Only rows of the open tab that can still be acted on stay selected
-    const selectable = new Set(tab === 'new' || tab === 'ignored' ? openRows(list, tab).filter((r) => !r.outdated).map((r) => r.id) : []);
+    const selectable = new Set(tab === 'new' || tab === 'ignored' ? openRows(list, tab).filter((r) => selectableRow(r, tab)).map((r) => r.id) : []);
     for (const rid of [...selected]) if (!selectable.has(rid)) selected.delete(rid);
     mount(content, tabs, tab === 'new' || tab === 'ignored' ? pickTable(list, tab) : otherTable(list));
   }
@@ -219,8 +220,9 @@ async function renderResult(main, id) {
     if (!open.length) {
       return h('div', { class: 'empty' }, mode === 'ignored' ? t('scan.noIgnored') : data.status === 'running' ? t('scan.radarEmpty') : t('scan.noNew'));
     }
-    // Results a newer scan of the subnet has covered can be looked at, but not adopted or ignored
-    const usable = open.filter((r) => !r.outdated);
+    // Results a newer scan of the subnet has covered can be looked at, but not adopted or ignored - stopping to
+    // ignore them still works
+    const usable = open.filter((r) => selectableRow(r, mode));
     const count = h('span', { class: 'count' }, t('scan.selected', { n: selected.size }));
     const all = h('input', { type: 'checkbox', 'aria-label': t('scan.selectAll'), checked: selected.size === usable.length && usable.length > 0, disabled: !usable.length,
       onchange: (e) => { usable.forEach((r) => (e.target.checked ? selected.add(r.id) : selected.delete(r.id))); renderTabs(); } });
@@ -236,8 +238,8 @@ async function renderResult(main, id) {
         updateBadge();
       } catch (e) { fail(e); }
     };
-    const adoptBtn = h('button', { class: 'btn btn-primary', type: 'button', disabled: !selected.size, onclick: () => act('adopt') }, h('span', { html: icon('check') }), t('scan.adopt'));
-    const outdatedNote = edit && usable.length < open.length ? h('div', { class: 'note' }, t('scan.outdatedHint')) : null;
+    const adoptBtn = h('button', { class: 'btn btn-primary', type: 'button', disabled: !canAdopt(open.filter((r) => selected.has(r.id))), onclick: () => act('adopt') }, h('span', { html: icon('check') }), t('scan.adopt'));
+    const outdatedNote = edit && open.some((r) => r.outdated) ? h('div', { class: 'note' }, t(mode === 'ignored' ? 'scan.outdatedHintIgnored' : 'scan.outdatedHint')) : null;
     const bulk = !edit || !usable.length ? null : mode === 'ignored'
       ? h('div', { class: 'bulk' }, count,
         h('span', { class: 'muted small bulk-hint' }, t('scan.unignoreHint')),
@@ -254,7 +256,7 @@ async function renderResult(main, id) {
         const o = overrides[r.id] || (overrides[r.id] = {});
         // The name shown is the name used - also when the user does not touch it
         if (o.name === undefined) o.name = suggest(r);
-        const cb = h('input', { type: 'checkbox', checked: selected.has(r.id), disabled: !!r.outdated, 'aria-label': r.ip, onchange: (e) => { if (e.target.checked) selected.add(r.id); else selected.delete(r.id); renderTabs(); } });
+        const cb = h('input', { type: 'checkbox', checked: selected.has(r.id), disabled: !selectableRow(r, mode), 'aria-label': r.ip, onchange: (e) => { if (e.target.checked) selected.add(r.id); else selected.delete(r.id); renderTabs(); } });
         const typeSel = select('type', typeOptions(types), o.type || r.detected_type, { class: 'inline', 'aria-label': t('col.type'), onchange: (e) => { o.type = e.target.value; } });
         const name = h('input', { type: 'text', class: 'inline', value: o.name, maxlength: 120, 'aria-label': t('col.name'), oninput: (e) => { o.name = e.target.value; } });
         return h('tr', {},

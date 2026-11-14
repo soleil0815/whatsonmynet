@@ -137,13 +137,19 @@ test('deep check: the scanner uses the gentle profile when the mocked SICCT prob
 
 const hasTools = spawnSync('sh', ['-c', 'command -v jq']).status === 0;
 
-function runCleanup(runId, { failInspect = false } = {}) {
+function runCleanup(runId, { failInspect = false, ghFail = '' } = {}) {
   const dir = fs.mkdtempSync(path.join(tmp, 'cand-'));
   const bin = path.join(dir, 'bin');
   fs.mkdirSync(bin);
   const log = path.join(dir, 'calls.log');
   fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 printf 'gh %s\\n' "$*" >> "$CALL_LOG"
+case "$GH_FAIL:$*" in
+  list403:*--paginate*) echo 'gh: Resource not accessible by integration (HTTP 403)' >&2; exit 1 ;;
+  list500:*--paginate*) echo 'gh: Server Error (HTTP 500)' >&2; exit 1 ;;
+  'delete403:api -X DELETE '*) echo 'gh: Must have admin rights to Repository. (HTTP 403)' >&2; exit 1 ;;
+  'delete500:api -X DELETE '*) echo 'gh: Server Error (HTTP 500)' >&2; exit 1 ;;
+esac
 case " $* " in *" -X DELETE "*) exit 0 ;; esac
 expr=''
 while [ $# -gt 0 ]; do [ "$1" = --jq ] && expr="$2"; shift; done
@@ -160,7 +166,7 @@ printf '%s\\n' "$out"
 `, { mode: 0o755 });
   const r = spawnSync('sh', [path.join(root, '.github', 'scripts', 'delete-candidates.sh'), 'ghcr.io/example/netapp', String(runId)], {
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CALL_LOG: log, GH_TOKEN: 'x', FAIL_INSPECT: failInspect ? '1' : '',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CALL_LOG: log, GH_TOKEN: 'x', FAIL_INSPECT: failInspect ? '1' : '', GH_FAIL: ghFail,
       FIXTURE_VERSIONS: path.join(root, 'test', 'fixtures', 'ghcr-versions.json'), FIXTURE_MANIFESTS: path.join(root, 'test', 'fixtures', 'ghcr-manifests.json') },
   });
   const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : [];
@@ -180,7 +186,7 @@ test('candidate cleanup: refuses versions with a real tag, latest or another run
   assert.ok(r.calls.some((c) => c.startsWith('gh api --paginate /users/example/packages/container/netapp/versions?per_page=100')));
 });
 
-test('candidate cleanup: a failed run removes all its candidates, the index first', { skip: !hasTools && 'jq missing' }, () => {
+test('candidate cleanup: a run that published nothing removes all its candidates, the index first', { skip: !hasTools && 'jq missing' }, () => {
   const r = runCleanup(888);
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.deepEqual(r.deleted, [10, 11, 12]);
@@ -193,6 +199,31 @@ test('candidate cleanup: nothing is deleted when the published images cannot be 
   const bad = runCleanup('12; rm');
   assert.equal(bad.status, 2);
   assert.deepEqual(bad.calls, []);
+});
+
+test('candidate cleanup: a token without access to the package only warns, real errors still fail', { skip: !hasTools && 'jq missing' }, () => {
+  const list = runCleanup(888, { ghFail: 'list403' });
+  assert.equal(list.status, 0, list.stderr + list.stdout);
+  assert.match(list.stdout, /::warning::No access to the package versions/);
+  assert.deepEqual(list.deleted, []);
+  const del = runCleanup(888, { ghFail: 'delete403' });
+  assert.equal(del.status, 0, del.stderr + del.stdout);
+  assert.match(del.stdout, /::warning::No permission to delete 10 /);
+  const listErr = runCleanup(888, { ghFail: 'list500' });
+  assert.equal(listErr.status, 1);
+  assert.match(listErr.stderr, /::error::Cannot list the package versions/);
+  const delErr = runCleanup(888, { ghFail: 'delete500' });
+  assert.equal(delErr.status, 1);
+  assert.match(delErr.stdout, /::warning::Could not delete 10 /);
+});
+
+test('candidate cleanup: a failed publish keeps the candidates for "Re-run failed jobs"', () => {
+  for (const f of ['ci.yml', 'security-update.yml']) {
+    const wf = fs.readFileSync(path.join(root, '.github', 'workflows', f), 'utf8');
+    const job = wf.slice(wf.indexOf('\n  cleanup-candidates:'));
+    assert.match(job, /\n {4}if: always\(\) && needs\.publish\.result != 'failure' && /, f);
+    assert.match(wf.slice(0, wf.indexOf('\n  cleanup-candidates:')).split('\n').slice(-6).join('\n'), /Re-run failed jobs/, `${f}: the reason is noted`);
+  }
 });
 
 test('candidate cleanup: both release workflows clean up in an always() job with packages: write only', () => {
