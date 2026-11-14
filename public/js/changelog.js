@@ -3,9 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Benachrichtigungen: Anzeigename (Absender) pro Kanal - steht über jeder Meldung, damit man sieht, woher sie kommt; bei E-Mail als Absendername und im Betreff, bei ntfy, Gotify, Pushover & Co. als Titel, bei Discord und Mattermost als Name des Bots, im Webhook als „sender“',
     'Ausfälle in der Verlaufsgrafik: Bei Gründen ohne Doppelpunkt fehlte der erste Buchstabe („onnection refused“) - jetzt steht der Grund vollständig da',
     'Handbuch, Hilfe und Projektseite: alle Bilder im neuen, hellen Aussehen',
   ], en: [
+    'Notifications: display name (sender) per channel - shown above every message so one sees where it comes from; for e-mail as the sender name and in the subject, for ntfy, Gotify, Pushover & co. as the title, for Discord and Mattermost as the bot name, in the webhook as "sender"',
     'Outages in the history chart: reasons without a colon lost their first letter ("onnection refused") - now the reason is shown in full',
     'Manual, help and project page: all pictures in the new, light look',
   ] },
