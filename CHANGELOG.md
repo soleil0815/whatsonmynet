@@ -6,6 +6,11 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Ausfälle in der Verlaufsgrafik: Bei Gründen ohne Doppelpunkt fehlte der erste Buchstabe („onnection refused“) - jetzt steht der Grund vollständig da
+- Handbuch, Hilfe und Projektseite: alle Bilder im neuen, hellen Aussehen
+
+## 0.24.0 - 2026-11-14
+
 - Neues Aussehen: ruhiger und heller im Stil einer Mac-App - Systemschrift (San Francisco auf dem Mac, sonst Inter), weiche Flächen, abgerundete Schaltflächen, Reiter als Segmente, durchscheinende Seitenleiste; die Anmeldeseite mit dem Radar auf tiefem Blau
 - Hell ist jetzt der Standard. Dunkel oder „Wie das System“ stellt jeder unter Mein Konto → Darstellung um; Konten, die noch auf dem alten Standard „Wie das System“ standen, sind jetzt hell
 
