@@ -45,6 +45,16 @@ Every night (default 02:30) WhatsOnMyNet only looks for devices in all subnets o
 
 ![Monitoring](img/monitoring-en.png)
 
+**Watched right away:** when you adopt devices from the scan into the inventory (or add one by hand), each gets a monitor at once: its web interface, else ping or an open port. As soon as the device delivers values, a few important sensors follow:
+
+- **Printer:** every toner cartridge and faults
+- **NAS:** volumes, RAID, health (system, fans, power supply) and temperature
+- **UPS:** mains/battery, charge and runtime
+- **Windows and Linux machines with the script:** online, CPU, RAM, system drive, highest temperature and failed services
+- **Hosts under Virtualization:** nodes, storage and backups; for Backup Server datastores and tasks; for controllers the devices; for servers with a management chip the health
+
+This applies to devices and hosts added from now on, and once each: if you delete one of these sensors, it does not come back. Switch it off under *Settings → Notifications → Watch new devices by themselves*.
+
 A monitor checks regularly (20 seconds to 24 hours) and reports only after several failures in a row. Kinds:
 
 - **Web (HTTP/S)** with status codes, keyword and certificate expiry (warning e.g. 30, 14 and 7 days before)

@@ -45,6 +45,16 @@ Jede Nacht (Standard 02:30) sucht WhatsOnMyNet in allen Subnetzen deiner Standor
 
 ![Monitoring](img/monitoring-de.png)
 
+**Gleich überwacht:** Übernimmst du Geräte aus dem Scan ins Inventar (oder legst eins von Hand an), bekommt jedes sofort einen Monitor: die Weboberfläche, sonst Ping oder einen offenen Port. Sobald das Gerät Werte liefert, kommen ein paar wichtige Sensoren dazu:
+
+- **Drucker:** jede Tonerkartusche und Störungen
+- **NAS:** Volumes, RAID, Zustand (System, Lüfter, Netzteil) und Temperatur
+- **USV:** Netz/Akku, Ladung und Restlaufzeit
+- **Windows- und Linux-Rechner mit Skript:** online, CPU, RAM, Systemlaufwerk, höchste Temperatur und ausgefallene Dienste
+- **Hosts unter Virtualisierung:** Knoten, Speicher und Sicherungen; bei Backup Server Datenspeicher und Aufgaben; bei Controllern die Geräte; bei Servern mit Verwaltungschip der Zustand
+
+Das gilt für Geräte und Hosts, die neu dazukommen, und jeweils einmal: Löschst du einen dieser Sensoren, kommt er nicht wieder. Abschalten unter *Einstellungen → Benachrichtigungen → Neue Geräte automatisch überwachen*.
+
 Ein Monitor prüft regelmäßig (20 Sekunden bis 24 Stunden) und meldet sich erst nach mehreren Fehlversuchen hintereinander. Arten:
 
 - **Web (HTTP/S)** mit Statuscodes, Stichwort und Ablaufdatum des Zertifikats (Warnung z. B. 30, 14 und 7 Tage vorher)
