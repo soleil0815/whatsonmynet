@@ -244,6 +244,8 @@ docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administ
 
 ## Updates und Sicherung
 
+Was neu ist, steht in [CHANGELOG.md](CHANGELOG.md) (dieselben Texte wie im Programm unter *Über WhatsOnMyNet*) und bei jeder Version auf GitHub.
+
 - Updates holen Dockhand oder Watchtower automatisch, oder von Hand: `docker compose pull && docker compose up -d`.
 - Sicherheitsupdates erscheinen am Patchday (zweiter Dienstag im Monat) als `<version>-s<n>`: dasselbe Programm mit neuem Basis-Image sowie aktualisierten Alpine- und npm-Paketen, gebaut, getestet und mit Trivy geprüft. Hat sich nichts geändert, wird nichts veröffentlicht.
 - Jeden Tag prüft Trivy das veröffentlichte Image. Gibt es behebbare Lücken, öffnet sich ein Issue, und das Sicherheitsupdate am Patchday behebt sie.

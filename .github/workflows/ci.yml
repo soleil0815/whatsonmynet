@@ -378,6 +378,11 @@ jobs:
           docker buildx imagetools create $tags "$IMAGE@$DIGEST"
           now="$(docker buildx imagetools inspect "$IMAGE:$v" --format '{{json .Manifest.Digest}}' | tr -d '"')"
           [ "$now" = "$DIGEST" ] || { echo "::error::Published image ($now) is not the checked candidate ($DIGEST)"; exit 1; }
+      # Release text: the same "what's new" lines the program shows (public/js/changelog.js), German and English
+      - name: Release text from the changelog
+        env:
+          V: ${{ steps.v.outputs.version }}
+        run: node tools/changelog.mjs --notes "$V" > release-notes.md && cat release-notes.md
       - name: GitHub release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
@@ -386,6 +391,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           make_latest: ${{ steps.v.outputs.latest }}
           files: release/*
+          body_path: release-notes.md
           generate_release_notes: true
 
   # Candidate images of this run (<version>-kandidat-<run id>[-<arch>]): removed from the registry when the run
