@@ -173,6 +173,15 @@ ARP - and so the MAC address - is only visible inside the own network. For a bra
 
 The agent has no web interface and opens no port. It asks the central server for jobs every minute (`WOMN_AGENT_INTERVAL` in seconds, 15 to 3600, default 60; HTTPS; with the self-signed certificate it trusts exactly this one certificate - checked before the key is sent. When the certificate is renewed, the agent needs the new value), scans there just as gently and follows the time of the nightly light scan. It may only report addresses from the subnets of its location. "Start scan" for that location is handed to the agent automatically; the results show up under *Earlier scans* as usual.
 
+## Failover: master and standby (from version 0.20)
+
+A second WhatsOnMyNet stands by as **standby** and takes over when the **master** fails:
+
+1. Master: *Settings → Failover → Make this the master* - a pairing code appears (shown once).
+2. Standby: there *This server as standby*, enter the address of the master and the code, choose the time until it takes over (10 minutes by default, 3 to 240) - **Pair**.
+
+The standby asks for a sign of life every minute and for the data every 5 minutes (over HTTPS; the key of the master's certificate is in the code and is checked before anything is sent). It does not check, scan or alarm and only shows. When the master does not answer for longer than set, the standby monitors and alarms and reports this to the default channels. When the master is back, the standby is quiet again and takes its data - nothing goes back to the master. If the old master does not come back: *Make this the master* on the standby. Both servers need the same version; the standby also takes the key (`secret.key`) of the master. Details in the manual.
+
 ## Proxmox VE and Backup Server (from version 0.4)
 
 Under *Monitoring → Virtualization* WhatsOnMyNet reads Proxmox VE and Proxmox Backup Server through their built-in API - nothing is installed there. A user of its own with an API token that may only read is enough (VE: role *PVEAuditor* on `/`, Backup Server: role *Audit*). The dialog *Add host → Proxmox VE* guides through two steps: the commands to copy (or the clicks in the Proxmox interface), then address, **Fetch certificate** with fingerprint comparison and the secret. If the token lacks rights, the detail view names them with a command to fix it; the secret is stored encrypted.

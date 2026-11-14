@@ -10,6 +10,7 @@ import { scriptDialog, hostScriptsSettings } from './hostscripts.js';
 import { aboutContent } from './about.js';
 import { hardwareDetail } from './hardware.js';
 import { SECTIONS, settingsNav } from './settingsnav.js';
+import { failoverSettings } from './failover.js';
 
 export async function renderSettings(main, section = 'general') {
   if (!state.user.isAdmin) { navigate('/', { replace: true }); return; }
@@ -24,13 +25,13 @@ export async function renderSettings(main, section = 'general') {
       settingsNav(section, (s) => navigate(`/settings/${s}`)),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev', 'notify'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), ad, agents, backup, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), ad, agents, backup, failover: failoverSettings, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 
 /** Proxmox VE / Backup Server: own page under "Monitoring" (editors see it, admins change it) */
 export async function renderProxmox(main) {
-  if (!state.user.canEdit) { navigate('/', { replace: true }); return; }
+  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderProxmox(main), 'virt');
@@ -38,7 +39,7 @@ export async function renderProxmox(main) {
 
 /** UniFi, Omada, MikroTik: own page under "Monitoring" (same building blocks as the hypervisors) */
 export async function renderControllers(main) {
-  if (!state.user.canEdit) { navigate('/', { replace: true }); return; }
+  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderControllers(main), 'net');
@@ -46,7 +47,7 @@ export async function renderControllers(main) {
 
 /** Server hardware through the management chip (Redfish): own page under "Monitoring" */
 export async function renderHardware(main) {
-  if (!state.user.canEdit) { navigate('/', { replace: true }); return; }
+  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderHardware(main), 'hw');
