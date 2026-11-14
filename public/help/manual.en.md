@@ -92,6 +92,10 @@ On the page of a monitor you choose the range: **24 h, 3 d, 7 d** show every sin
 - **Area:** the range from the lowest to the highest value.
 - **Strip below:** shows the availability. Green means always up or fine, yellow briefly down, red down for longer. Pointing the mouse at a section shows the date, percentage and values.
 
+**Outages in the chart:** above the chart you see how often the monitor was down in the chosen range, for how long in total and the longest (for sensors: how often there was an alarm). Every outage has a red background, from the first failed check to the next good one. Below the chart the outages are listed with start, end, length and reason, for sensors with the highest (or lowest) value during the alarm. Pointing at a row highlights the outage in the chart; clicking into an outage in the chart takes you to its row.
+
+**Point instead of search:** moving the mouse over the chart (on a phone: tap) shows a line at that spot and a box with time and value, the reason of a failed check, and within an outage its period. For sensors a dashed red line shows the alarm limit.
+
 Single checks are kept for 7 days, the hourly summary for a good year. For the first months after the update to 0.9: older hours only know the average, so the area appears only for new data.
 
 ### Dependencies: no alarm flood
