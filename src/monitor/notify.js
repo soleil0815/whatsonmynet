@@ -49,7 +49,7 @@ const TEXT = {
     nasOk: '🟢 {name}: wieder in Ordnung - {what}',
     'nas.system': 'Systemstatus gestört', 'nas.power': 'Netzteil gestört', 'nas.fan': 'Lüfter gestört',
     'nas.raid': 'Speicherpool {item}: {status}', 'nas.disk': 'Festplatte {item}: {status}', 'nas.volume': 'Volume {item} zu {pct} % voll',
-    subject: 'WhatsOnMyNet: {text}',
+    subject: '{sender}: {text}',
     target: 'Ziel',
     time: 'Zeit',
     inbox: 'Übernehmen oder ignorieren: Scan → letzter Leicht-Scan',
@@ -84,7 +84,7 @@ const TEXT = {
     nasOk: '🟢 {name}: fine again - {what}',
     'nas.system': 'system status failed', 'nas.power': 'power supply failed', 'nas.fan': 'fan failed',
     'nas.raid': 'storage pool {item}: {status}', 'nas.disk': 'disk {item}: {status}', 'nas.volume': 'volume {item} is {pct} % full',
-    subject: 'WhatsOnMyNet: {text}',
+    subject: '{sender}: {text}',
     target: 'Target',
     time: 'Time',
     inbox: 'Adopt or ignore: Scan → latest light scan',
@@ -192,6 +192,7 @@ export function createChannels(db, mailer, settings = null) {
     if (row.type === 'telegram') out.config = { chatId: c.chatId || '', threadId: c.threadId || '', token: { set: !!c.token } };
     if (row.type === 'webhook') out.config = { url: c.url || '', template: c.template || '', headerName: c.headerName || '', headerValue: { set: !!c.headerValue } };
     if (PROVIDERS[row.type]) out.config = publicConfig(row.type, c);
+    if (c.sender) out.config = { ...(out.config || {}), sender: c.sender };
     return out;
   }
 
@@ -220,7 +221,7 @@ export function createChannels(db, mailer, settings = null) {
     if (!URL_RE.test(url)) throw new HttpError(400, 'err.url');
     const template = str(c.template, 5000).trim();
     if (template) {
-      try { JSON.parse(renderTemplate(template, { name: 'x', status: 'down', event: 'down', message: 'x', target: 'x', time: 'x', text: 'x', url: 'x' })); }
+      try { JSON.parse(renderTemplate(template, { name: 'x', status: 'down', event: 'down', message: 'x', target: 'x', time: 'x', text: 'x', url: 'x', sender: 'x' })); }
       catch { throw new HttpError(400, 'err.webhookTemplate'); }
     }
     const headerName = line(c.headerName, 100);
@@ -238,6 +239,10 @@ export function createChannels(db, mailer, settings = null) {
     const name = line(input.name, 80);
     if (!name) throw new HttpError(400, 'err.nameRequired');
     const cfg = cleanConfig(type, input.config, old ? readConfig(old) : {});
+    // Display name of the sender: shown in every message (and as the sender name of a mail), so one sees where it
+    // comes from - e.g. "Rechenzentrum Haus B" when several installations report to one chat
+    const sender = line(input.config?.sender, 80);
+    if (sender) cfg.sender = sender;
     const language = oneOf(input.language, ['de', 'en'], 'de');
     const isDefault = input.is_default === undefined ? 1 : (input.is_default ? 1 : 0);
     const enabled = input.enabled === undefined ? 1 : (input.enabled ? 1 : 0);
@@ -258,6 +263,9 @@ export function createChannels(db, mailer, settings = null) {
   async function sendTo(row, ev) {
     const c = readConfig(row);
     const lang = row.language;
+    const sender = String(c.sender || '').trim();
+    // the sender's name on its own first line (chats, Telegram, mail body); services with a title get it as the title
+    const head = sender ? `${sender}\n` : '';
     const text = eventText(ev, lang);
     const more = details(ev, lang);
     if (PROVIDERS[row.type]) {
@@ -265,13 +273,14 @@ export function createChannels(db, mailer, settings = null) {
       const urgent = ev.kind === 'down' || ev.kind === 'escalate' || (ev.kind === 'failover' && ev.what !== 'back') || (ev.kind === 'cert' && ev.certDays < 0) || (ev.kind === 'supply' && ev.empty) || (ev.kind === 'nas' && !ev.problem?.solved);
       const good = ev.kind === 'up' || ev.kind === 'test' || (ev.kind === 'failover' && ev.what === 'back') || (ev.kind === 'nas' && !!ev.problem?.solved);
       try {
-        await sendProvider(row.type, c, { title: 'WhatsOnMyNet', text, textPlain, more, full: `${text}${more ? `\n${more}` : ''}`, urgent, good });
+        await sendProvider(row.type, c, { title: sender || 'WhatsOnMyNet', sender, text: `${head}${text}`, textPlain, more, body: `${text}${more ? `\n${more}` : ''}`, full: `${head}${text}${more ? `\n${more}` : ''}`, urgent, good });
       } catch (e) { throw new Error(`${row.type}: ${e.message}`); }
     } else if (row.type === 'email') {
-      await mailer.send({ to: c.to, subject: fill(TEXT[lang === 'en' ? 'en' : 'de'].subject, { text: text.replace(/^\S+\s/, '') }), text: `${text}\n\n${more}`.trim() });
+      await mailer.send({ to: c.to, subject: fill(TEXT[lang === 'en' ? 'en' : 'de'].subject, { sender: sender || 'WhatsOnMyNet', text: text.replace(/^\S+\s/, '') }),
+        text: `${head}${text}\n\n${more}`.trim(), ...(sender ? { fromName: sender } : {}) });
     } else if (row.type === 'telegram') {
       try {
-        await postJson(`${telegramApi}/bot${c.token}/sendMessage`, { chat_id: c.chatId, text: `${text}${more ? `\n${more}` : ''}`, disable_web_page_preview: true,
+        await postJson(`${telegramApi}/bot${c.token}/sendMessage`, { chat_id: c.chatId, text: `${head}${text}${more ? `\n${more}` : ''}`, disable_web_page_preview: true,
           ...(c.threadId ? { message_thread_id: Number(c.threadId) } : {}) });
       } catch (e) {
         // Never put the token (part of the URL) into an error message
@@ -281,9 +290,10 @@ export function createChannels(db, mailer, settings = null) {
       }
     } else {
       const vars = { event: ev.kind, status: ev.kind === 'up' ? 'up' : ev.kind === 'down' || ev.kind === 'escalate' ? 'down' : ev.kind, name: ev.monitor?.name || ev.device?.name || '', target: ev.monitor?.target || ev.device?.ip || '',
-        message: ev.message || '', text, time: new Date(ev.at || Date.now()).toISOString(), url: ev.monitor?.target || '' };
-      const body = c.template ? renderTemplate(c.template, vars)
-        : { event: ev.kind, text, monitor: ev.monitor ? { id: ev.monitor.id, name: ev.monitor.name, target: ev.monitor.target } : null,
+        message: ev.message || '', text, time: new Date(ev.at || Date.now()).toISOString(), url: ev.monitor?.target || '', sender };
+      // a template mostly feeds a chat: {{text}} carries the sender's line too ({{sender}} alone for own layouts)
+      const body = c.template ? renderTemplate(c.template, { ...vars, text: `${head}${text}` })
+        : { event: ev.kind, text, ...(sender ? { sender } : {}), monitor: ev.monitor ? { id: ev.monitor.id, name: ev.monitor.name, target: ev.monitor.target } : null,
           message: ev.message || '', time: vars.time, certValidTo: ev.certValidTo || null,
           ...(ev.devices ? { devices: ev.devices.slice(0, 100) } : {}),
           ...(ev.device ? { device: ev.device, supply: ev.supply || null, problem: ev.problem || null } : {}) };

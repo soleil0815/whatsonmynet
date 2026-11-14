@@ -82,7 +82,7 @@ Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert 
 
 ![Monitor mit Verlauf](img/monitor-de.png)
 
-**Benachrichtigungen** (*Einstellungen → Benachrichtigungen → Kanal hinzufügen*): Dienst wählen, die kurze Anleitung im Formular befolgen, speichern und mit **Testnachricht** prüfen.
+**Benachrichtigungen** (*Einstellungen → Benachrichtigungen → Kanal hinzufügen*): Dienst wählen, die kurze Anleitung im Formular befolgen, speichern und mit **Testnachricht** prüfen. Mit dem **Anzeigenamen** (Absender) steht über jeder Meldung, woher sie kommt - praktisch, wenn mehrere Installationen in denselben Chat melden. Bei E-Mail ist er der Name des Absenders und steht im Betreff, bei ntfy, Gotify, Pushover & Co. ist er der Titel, bei Discord und Mattermost der Name des Bots.
 
 - **Häufig:** E-Mail (über den SMTP-Server), Telegram-Bot, Webhook mit eigener JSON-Vorlage (z. B. für n8n oder ein Skript)
 - **Chat und Messenger:** Discord, Slack, Microsoft Teams (Workflows), Google Chat, Mattermost, Rocket.Chat, Matrix/Element, Signal (über signal-cli-rest-api), WhatsApp (CallMeBot, an die eigene Nummer)
