@@ -244,6 +244,49 @@ test('channels: webhook and Telegram are sent, secrets never shown or logged', a
   srv.close();
 });
 
+test('display name of a channel: above every message, as mail sender and subject, in the webhook, never doubled', async () => {
+  const got = [];
+  const srv = http.createServer((q, s) => {
+    let b = ''; q.on('data', (d) => { b += d; });
+    q.on('end', () => { got.push({ url: q.url, body: JSON.parse(b) }); s.end('{"ok":true}'); });
+  });
+  const port = await listen(srv);
+  setTelegramApiForTests(`http://127.0.0.1:${port}`);
+  const db = memoryDb();
+  const mails = [];
+  const ch = createChannels(db, { send: async (m) => { mails.push(m); } });
+  const tg = ch.create({ name: 'TG', type: 'telegram', config: { token: '123456789:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', chatId: '-100123', sender: '  UPTIME IHOME  ' } });
+  assert.equal(tg.config.sender, 'UPTIME IHOME');
+  ch.create({ name: 'Mail', type: 'email', config: { to: 'it@firma.local', sender: 'WhatsOnMyNet Haus B' } });
+  ch.create({ name: 'Hook', type: 'webhook', config: { url: `http://127.0.0.1:${port}/hook`, sender: 'Haus B' } });
+  ch.create({ name: 'Plain', type: 'webhook', config: { url: `http://127.0.0.1:${port}/plain` } });
+  ch.create({ name: 'Tpl', type: 'webhook', config: { url: `http://127.0.0.1:${port}/tpl`, template: '{"t":"{{text}}","s":"{{sender}}"}', sender: 'Haus C' } });
+  await ch.notify({ channels: '[]' }, { kind: 'down', monitor: { id: 1, name: 'pve1', target: '10.0.10.5' }, message: 'timeout' });
+  const t = got.find((g) => g.url.startsWith('/bot'));
+  assert.match(t.body.text, /^UPTIME IHOME\n🔴 pve1 ist nicht erreichbar/);
+  assert.equal(mails[0].fromName, 'WhatsOnMyNet Haus B');
+  assert.match(mails[0].subject, /^WhatsOnMyNet Haus B: pve1 ist nicht erreichbar/);
+  assert.match(mails[0].text, /^WhatsOnMyNet Haus B\n🔴 pve1/);
+  assert.equal(got.find((g) => g.url === '/hook').body.sender, 'Haus B');
+  const tpl = got.find((g) => g.url === '/tpl').body;
+  assert.equal(tpl.s, 'Haus C');
+  assert.match(tpl.t, /^Haus C\n🔴 pve1/);
+  // without a name: as before
+  const plain = got.find((g) => g.url === '/plain').body;
+  assert.equal('sender' in plain, false);
+  assert.match(plain.text, /^🔴 pve1/);
+  // editing without the field keeps nothing stale: an emptied name is gone
+  ch.update(tg.id, { name: 'TG', config: { chatId: '-100123', sender: '' } });
+  assert.equal(ch.get(tg.id).config.sender, undefined);
+  srv.close();
+});
+
+test('Discord / Mattermost: the display name is the bot name, not a second line', async () => {
+  const { PROVIDERS } = await import('../src/monitor/providers.js');
+  assert.match(PROVIDERS.discord.send.toString(), /m\.sender \? m\.body : m\.full/);
+  assert.match(PROVIDERS.mattermost.send.toString(), /m\.sender \? m\.body : m\.full/);
+});
+
 test('dependencies: behind a failed switch no alarm flood, own problem reported once the switch is back', async () => {
   const { db, sent, mon, clock } = setup();
   const sw = await mon.create({ name: 'Switch Keller', type: 'tcp', target: '10.0.0.2', port: 22, fail_threshold: 2 });

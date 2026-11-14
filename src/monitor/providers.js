@@ -77,7 +77,7 @@ export const PROVIDERS = {
   // ---------------------------------------------------------------- chat
   discord: {
     fields: { url: { kind: 'secret', re: HTTPS_ON('discord.com', 'discordapp.com') } },
-    send: (c, m) => request('POST', c.url, { body: { content: m.full.slice(0, 1990), username: 'WhatsOnMyNet' } }),
+    send: (c, m) => request('POST', c.url, { body: { content: (m.sender ? m.body : m.full).slice(0, 1990), username: (m.sender || 'WhatsOnMyNet').slice(0, 80) } }),
   },
   slack: {
     fields: { url: { kind: 'secret', re: HTTPS_ON('hooks.slack.com') } },
@@ -96,7 +96,7 @@ export const PROVIDERS = {
   },
   mattermost: {
     fields: { url: { kind: 'secret', re: HTTP_URL } },
-    send: (c, m) => request('POST', c.url, { body: { text: m.full, username: 'WhatsOnMyNet' } }),
+    send: (c, m) => request('POST', c.url, { body: { text: m.sender ? m.body : m.full, username: m.sender || 'WhatsOnMyNet' } }),
   },
   rocketchat: {
     fields: { url: { kind: 'secret', re: HTTP_URL } },
