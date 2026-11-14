@@ -37,6 +37,8 @@ const TEXT = {
     certExpired: '🔴 Das Zertifikat von {name} ist abgelaufen ({date}).',
     ipMoved: '🟠 {name} pausiert: Das Gerät hat eine neue IP ({from} → {to}) - bitte das Passwort neu eingeben.',
     test: '✅ Testnachricht von WhatsOnMyNet - dieser Kanal funktioniert.',
+    foTakeover: '🛟 Ausfallsicherung: Der Master {master} ist seit {min} Min. nicht erreichbar - dieses System (Standby) hat die Überwachung übernommen.',
+    foBack: '✅ Ausfallsicherung: Der Master {master} ist wieder da - er überwacht wieder, dieses System ist wieder Standby.',
     newDevice: '🆕 Neues Gerät im Netz: {list}',
     newDevices: '🆕 {n} neue Geräte im Netz: {list}',
     supplyLow: '🟠 {name}: {supply} nur noch {pct} %',
@@ -70,6 +72,8 @@ const TEXT = {
     certExpired: '🔴 The certificate of {name} has expired ({date}).',
     ipMoved: '🟠 {name} paused: the device has a new IP ({from} → {to}) - please enter the password again.',
     test: '✅ Test message from WhatsOnMyNet - this channel works.',
+    foTakeover: '🛟 Failover: the master {master} has not answered for {min} min - this server (standby) has taken over monitoring.',
+    foBack: '✅ Failover: the master {master} is back - it monitors again, this server is standby again.',
     newDevice: '🆕 New device on the network: {list}',
     newDevices: '🆕 {n} new devices on the network: {list}',
     supplyLow: '🟠 {name}: {supply} down to {pct} %',
@@ -121,6 +125,7 @@ export function eventText(ev, lang = 'de') {
       const what = fill(T[`nas.${p.kind}`] || p.kind || '', { item: p.name || '', status: p.status || '', pct: p.pct ?? '' });
       return fill(p.solved ? T.nasOk : T.nasBad, { name: ev.device?.name || '', what });
     }
+    case 'failover': return fill(ev.what === 'back' ? T.foBack : T.foTakeover, { master: ev.master || '', min: ev.min ?? '' });
     default: return T.test;
   }
 }
@@ -257,8 +262,8 @@ export function createChannels(db, mailer, settings = null) {
     const more = details(ev, lang);
     if (PROVIDERS[row.type]) {
       const textPlain = text.replace(/^\S+\s/, '');
-      const urgent = ev.kind === 'down' || ev.kind === 'escalate' || (ev.kind === 'cert' && ev.certDays < 0) || (ev.kind === 'supply' && ev.empty) || (ev.kind === 'nas' && !ev.problem?.solved);
-      const good = ev.kind === 'up' || ev.kind === 'test' || (ev.kind === 'nas' && !!ev.problem?.solved);
+      const urgent = ev.kind === 'down' || ev.kind === 'escalate' || (ev.kind === 'failover' && ev.what !== 'back') || (ev.kind === 'cert' && ev.certDays < 0) || (ev.kind === 'supply' && ev.empty) || (ev.kind === 'nas' && !ev.problem?.solved);
+      const good = ev.kind === 'up' || ev.kind === 'test' || (ev.kind === 'failover' && ev.what === 'back') || (ev.kind === 'nas' && !!ev.problem?.solved);
       try {
         await sendProvider(row.type, c, { title: 'WhatsOnMyNet', text, textPlain, more, full: `${text}${more ? `\n${more}` : ''}`, urgent, good });
       } catch (e) { throw new Error(`${row.type}: ${e.message}`); }

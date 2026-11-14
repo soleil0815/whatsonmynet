@@ -30,6 +30,10 @@ const WORDS = {
   'invalid share or path': 'ungültige Freigabe oder ungültiger Pfad', 'invalid user': 'ungültiger Benutzer', 'folder or file not found': 'Ordner oder Datei nicht gefunden',
   'share not found': 'Freigabe nicht gefunden', 'share readable': 'Freigabe lesbar', 'sign-in failed (user or password wrong)': 'Anmeldung fehlgeschlagen (Benutzer oder Passwort falsch)',
   'smbclient failed': 'smbclient fehlgeschlagen', 'no access to the socket': 'kein Zugriff auf den Socket', 'socket not found': 'Socket nicht gefunden',
+  'certificate does not match the pairing code': 'Zertifikat passt nicht zum Kopplungscode',
+  'the master no longer knows this standby (pairing removed or new code)': 'der Master kennt diesen Standby nicht mehr (Kopplung gelöst oder neuer Code)',
+  'the master was replaced by another one': 'der Master wurde durch einen anderen ersetzt', 'copy of the master is damaged': 'Kopie des Masters ist beschädigt',
+  'the key of the master does not open its database': 'der Schlüssel des Masters öffnet dessen Datenbank nicht', 'copy too large': 'Kopie zu groß',
   restarting: 'startet neu', unhealthy: 'ungesund', exited: 'beendet', created: 'angelegt', dead: 'abgestürzt',
 };
 
@@ -55,6 +59,8 @@ const PATTERNS = [
   [/^failed: (.*)$/, 'gestört: $1'],
   [/^device has a new IP \((.*)\) - please enter the password again$/, 'Gerät hat neue IP ($1) – Passwort bitte neu eingeben'],
   [/^(\S+): no such value$/, '$1: diesen Wert gibt es nicht'],
+  [/^program versions differ \(master (.*), here (.*)\) - update both$/, 'Programmversionen unterschiedlich (Master $1, hier $2) - beide aktualisieren'],
+  [/^database version differs \(master (\d+), here (\d+)\) - bring both to the same program version$/, 'Datenbankversion unterschiedlich (Master $1, hier $2) - beide auf dieselbe Programmversion bringen'],
   [/^(on|off|partial) \(off: (.*)\)$/, (_, s, l) => `${WORDS[s]} (aus: ${l})`],
 ];
 const BITS = [[/, battery low/g, ', Akku schwach'], [/ (\d+) % worn/g, ' $1 % verschlissen'], [/ (\d+) reallocated sectors/g, ' $1 umgelagerte Sektoren'],

@@ -768,3 +768,20 @@ pre.code.wrap { white-space: pre-wrap; word-break: break-all; }
 .scope-item { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .scope-item > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scope-item .mono { margin-left: auto; flex: none; }
+
+/* failover: bar at the top while this server is a standby / has taken over; code box; delay form */
+.fo-bar { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 13.5px; border-bottom: 1px solid var(--line); }
+.fo-bar[hidden] { display: none; }
+.fo-bar.info { background: var(--ti-soft); color: var(--ink); }
+.fo-bar.bad { background: var(--bad-soft); color: var(--ink); }
+.fo-bar span:first-child { display: inline-flex; flex: none; }
+.fo-bar span:first-child svg { width: 17px; height: 17px; }
+.fo-bar.bad span:first-child { color: var(--bad); }
+.fo-bar a { margin-left: auto; color: var(--accent); font-weight: 600; white-space: nowrap; }
+.fo-code { font-size: 13px; user-select: all; }
+.fo-delay { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin: 16px 0 4px; }
+.fo-delay .field { margin: 0; }
+.fo-events { margin-top: 4px; font-size: 13px; }
+.fo-events summary { cursor: pointer; color: var(--accent); }
+.fo-events ul { margin: 6px 0 0; padding-left: 18px; }
+td.nowrap { white-space: nowrap; }

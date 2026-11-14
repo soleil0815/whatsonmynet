@@ -61,12 +61,8 @@ async function main() {
     log.info(`HTTP on port ${config.httpPort} (redirects to HTTPS${ctx.trustProxy ? `; serves the reverse proxy ${ctx.trustProxy}` : ''})`);
   }
 
-  ctx.monitoring.start();
-  ctx.nightly.start();
-  ctx.printers.start();
-  ctx.snmpDevices.start();
-  ctx.reports.start();
-  ctx.proxmox.start();
+  // Monitoring, scans, reports, hypervisors: only on the active installation (failover - see failover.js)
+  ctx.failover.boot();
   // Signed-in AD users: still allowed? (disabled in AD or out of the group → signed out, new group → new role)
   setInterval(() => recheckDirectoryUsers(ctx).catch((e) => log.warn(`Directory check: ${e.message}`)), RECHECK_MIN * 60 * 1000).unref();
 
@@ -83,12 +79,7 @@ async function main() {
 
   const shutdown = (sig) => {
     log.info(`${sig} received, shutting down ...`);
-    ctx.monitoring.stop();
-    ctx.nightly.stop();
-    ctx.printers.stop();
-    ctx.snmpDevices.stop();
-    ctx.reports.stop();
-    ctx.proxmox.stop();
+    ctx.failover.stop();
     httpServer?.close();
     httpsServer.close(() => { db.close(); process.exit(0); });
     setTimeout(() => process.exit(0), 5000).unref();

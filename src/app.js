@@ -34,6 +34,8 @@ import { log } from './lib/log.js';
 import { httpPortMiddleware, proxyHttpsMiddleware, directHstsMiddleware, createHttpsHosts } from './https.js';
 import { createSensorChoices } from './monitor/choices.js';
 import { nameSensorsOnce } from './monitor/sensornames.js';
+import { createFailover } from './failover.js';
+import { createFailoverApi } from './routes/failover.js';
 
 /**
  * WOMN_TRUST_PROXY: addresses/networks of the reverse proxy. Empty = no proxy (nothing is trusted).
@@ -59,12 +61,13 @@ export function applyTrustProxy(app, raw) {
  * @param db open database
  * @param opts.tls certificate store (src/tls.js) - optional in tests
  * @param opts.plainHttp tests only: serve the app on plain HTTP instead of redirecting
+ * @param opts.dataDir where failover.json lives (tests: one folder per installation)
  */
 const PERMISSIONS_POLICY = ['camera=()', 'microphone=()', 'geolocation=()', 'payment=()', 'usb=()', 'serial=()', 'hid=()', 'bluetooth=()',
   'midi=()', 'magnetometer=()', 'gyroscope=()', 'accelerometer=()', 'display-capture=()', 'screen-wake-lock=()', 'xr-spatial-tracking=()',
   'publickey-credentials-get=()', 'fullscreen=(self)', 'clipboard-read=()', 'clipboard-write=(self)'].join(', ');
 
-export function createApp(db, { tls = null, plainHttp = false } = {}) {
+export function createApp(db, { tls = null, plainHttp = false, dataDir = config.dataDir } = {}) {
   const settings = createSettings(db);
   const sessions = createSessions(db);
   const users = createUsers(db);
@@ -103,7 +106,14 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
   }
 
   const sensorChoices = createSensorChoices({ db, settings });
-  const ctx = { db, settings, sensorChoices, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
+  // Failover: what only runs on the installation that is active (alone, master, or a standby that has taken over)
+  const failover = createFailover({ db, settings, dataDir,
+    engines: [monitoring, nightly, printers, snmpDevices, reports, proxmox],
+    notify: (ev) => channels.notifyIds([], { ...ev, at: new Date().toISOString() }),
+    certPem: () => tls?.current()?.cert || '',
+    snapshot: () => backups.snapshot(), discard: (f) => backups.discard(f),
+    audit: (action, detail) => { try { db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), 'system', action, String(detail ?? '').slice(0, 500)); } catch { /* never stops */ } } });
+  const ctx = { db, settings, sensorChoices, failover, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 
@@ -172,6 +182,9 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     if (req.get('X-WOMN-Request') !== '1') return next(new HttpError(403, 'err.csrf'));
     next();
   });
+  // Failover: the endpoints for the standby and the settings; on a standby the rest of the API only reads
+  app.use('/api', createFailoverApi(ctx));
+  app.use('/api', failover.middleware());
   app.use('/api', createApi(ctx));
   app.use('/api', createMonitoringApi(ctx));
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'err.notFound')));

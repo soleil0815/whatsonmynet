@@ -173,6 +173,15 @@ ARP - und damit die MAC-Adresse - sieht man nur im eigenen Netz. Für eine Auße
 
 Der Agent hat keine Weboberfläche und öffnet keinen Port. Er fragt die Zentrale jede Minute nach Aufträgen (`WOMN_AGENT_INTERVAL` in Sekunden, 15 bis 3600, Standard 60; HTTPS; beim selbstsignierten Zertifikat vertraut er genau diesem einen Zertifikat - geprüft, bevor der Schlüssel gesendet wird. Erneuert sich das Zertifikat, braucht der Agent den neuen Wert), scannt dort genauso schonend und folgt der Uhrzeit des nächtlichen Leicht-Scans. Er darf nur Adressen aus den Subnetzen seines Standorts melden. „Scan starten“ für diesen Standort geht in der Zentrale automatisch als Auftrag an den Agenten; die Ergebnisse erscheinen wie gewohnt unter *Frühere Scans*.
 
+## Ausfallsicherung: Master und Standby (ab Version 0.20)
+
+Ein zweites WhatsOnMyNet steht als **Standby** bereit und übernimmt, wenn der **Master** ausfällt:
+
+1. Master: *Einstellungen → Ausfallsicherung → Zum Master machen* - ein Kopplungscode erscheint (einmalig).
+2. Standby: dort *Dieses System als Standby*, Adresse des Masters und Code eintragen, Zeit bis zur Übernahme wählen (Standard 10 Minuten, 3 bis 240) - **Koppeln**.
+
+Der Standby holt jede Minute ein Lebenszeichen und alle 5 Minuten die Daten (über HTTPS; der Schlüssel des Master-Zertifikats ist im Code und wird vor dem Senden geprüft). Er prüft, scannt und alarmiert nicht und zeigt nur an. Antwortet der Master länger als eingestellt nicht, überwacht und alarmiert der Standby und meldet das an die Standard-Kanäle. Ist der Master wieder da, ist der Standby wieder still und holt sich dessen Daten - zurück zum Master geht nichts. Kommt der alte Master nicht wieder: am Standby *Zum Master machen*. Beide Systeme brauchen dieselbe Version; der Standby übernimmt auch den Schlüssel (`secret.key`) des Masters. Details im Handbuch.
+
 ## Proxmox VE und Backup Server (ab Version 0.4)
 
 Unter *Überwachung → Virtualisierung* liest WhatsOnMyNet Proxmox VE und Proxmox Backup Server über ihre eingebaute API - dort wird nichts installiert. Ein eigener Benutzer mit einem API-Token, der nur lesen darf, genügt (VE: Rolle *PVEAuditor* auf `/`, Backup Server: Rolle *Audit*). Der Dialog *Host hinzufügen → Proxmox VE* führt in zwei Schritten durch: die Befehle zum Kopieren (oder die Klicks in der Proxmox-Oberfläche), dann Adresse, **Zertifikat abrufen** mit Fingerabdruck-Vergleich und das Geheimnis. Fehlen dem Token Rechte, nennt die Detailansicht sie samt Befehl zum Beheben; das Geheimnis wird verschlüsselt gespeichert.
