@@ -536,7 +536,9 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       return ev?.at && ev.at <= m.status_since ? ev.at : m.status_since;
     };
     // Alarmed outage, maintenance over, still failing: the same outage goes on - back to down without a second alarm
-    const outageGoesOn = !inMaintenance && !ok && m.status === 'maintenance' && !!m.notified_down;
+    // (only when no check inside the window succeeded - a recovery in between makes the next failure a new outage)
+    const outageGoesOn = !inMaintenance && !ok && m.status === 'maintenance' && !!m.notified_down
+      && !db.prepare('SELECT 1 FROM checks WHERE monitor_id=? AND ok=1 AND at>=? LIMIT 1').get(m.id, m.status_since);
 
     if (outageGoesOn) {
       set.fail_count = Math.max(m.fail_count + 1, m.fail_threshold);

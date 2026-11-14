@@ -86,7 +86,10 @@ test('classify: short OUI vendor names (Samsung, LG, Dahua, Uniview) match their
   assert.equal(classify({ vendor: shortVendor('Zhejiang Dahua Technology Co., Ltd.'), ports: [80] }).type, 'camera');
   assert.equal(classify({ vendor: shortVendor('Zhejiang Uniview Technologies Co.,Ltd.'), ports: [80] }).type, 'camera');
   assert.equal(classify({ vendor: shortVendor('Samsung Electronics Co.,Ltd'), ports: [8001] }).type, 'media');
-  assert.equal(classify({ vendor: shortVendor('LG Electronics'), ports: [] }).type, 'media');
+  assert.equal(classify({ vendor: shortVendor('LG Electronics'), ports: [3000] }).type, 'media');
+  // LG/Samsung phones (no open port) are not taken for TVs
+  assert.notEqual(classify({ vendor: shortVendor('LG Electronics (Mobile Communications)'), ports: [] }).type, 'media');
+  assert.notEqual(classify({ vendor: shortVendor('Samsung Electronics Co.,Ltd'), ports: [] }).type, 'media');
   // Other LG companies are not TVs
   assert.notEqual(classify({ vendor: shortVendor('LG Innotek'), ports: [] }).type, 'media');
   assert.notEqual(classify({ vendor: 'LGS Innovations', ports: [] }).type, 'media');

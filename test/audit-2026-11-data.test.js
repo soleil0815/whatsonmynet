@@ -38,7 +38,7 @@ function addMonitor(db, deviceId, { name = 'm', type, target, port = null, secre
 const monTarget = (db, id) => db.prepare('SELECT target FROM monitors WHERE id=?').get(id).target;
 
 // ---------------------------------------------------------------------------------------------------- 1
-test('shared host key: a report whose MACs match no device never lands on a device with another MAC', () => {
+test('shared host key: a report whose MACs match no device never lands on a device with another MAC by IP, and a name match changes no hardware', () => {
   const db = memoryDb();
   const hosts = createHosts({ db });
   const ts = iso();
@@ -49,8 +49,8 @@ test('shared host key: a report whose MACs match no device never lands on a devi
   const noMac = db.prepare("INSERT INTO devices(name,type,ip,created_at,updated_at) VALUES('PC-0003','computer','10.0.10.13',?,?)").run(ts, ts).lastInsertRowid;
   const t = hosts.create({ name: 'All PCs', os: 'windows' }, { server: 'https://womn.firma.local' });
   const rep = (over) => ({ hostname: 'PC-0001', os: 'Windows 11', macs: ['aa:bb:cc:00:00:99'], ips: [], hw: { vendor: 'HP', model: 'EliteDesk', serial: 'SN-OTHER' }, ...over });
-  // same name, other MAC: not PC-0001
-  assert.throws(() => hosts.push(t.token, rep()), { code: 'err.hostUnknown' });
+  // same name, other MAC (docked laptop reports only its cable MAC): PC-0001, but MAC, serial and model stay
+  assert.equal(hosts.push(t.token, rep()).device, a);
   // reported IP of a device with another MAC: not that one either
   assert.throws(() => hosts.push(t.token, rep({ hostname: 'X1', ips: ['10.0.10.12'] })), { code: 'err.hostUnknown' });
   // the remote address only reaches devices without MAC
@@ -59,6 +59,7 @@ test('shared host key: a report whose MACs match no device never lands on a devi
   for (const id of [a, b]) {
     const d = db.prepare('SELECT mac, serial, model, vendor FROM devices WHERE id=?').get(id);
     assert.ok(d.mac, 'MAC kept');
+    assert.notEqual(d.serial, 'SN-OTHER', 'serial kept');
     assert.deepEqual([d.model, d.vendor], ['OptiPlex 7090', 'Dell']);
   }
   assert.equal(db.prepare("SELECT COUNT(*) n FROM device_history WHERE kind='replaced'").get().n, 0);
@@ -310,4 +311,26 @@ test('an outage that runs through a maintenance window: no second alarm, all cle
   const up = sent.find((e) => e.kind === 'up');
   assert.ok(up, 'all clear sent');
   assert.equal(up.downtimeMin, 36);
+});
+
+test('a device that recovered during the maintenance window and fails again afterwards raises a new alarm', async () => {
+  const db = memoryDb();
+  const sent = [];
+  const channels = { notify: async (_m, ev) => { sent.push(ev); return ['Mail']; }, notifyIds: async () => [] };
+  const maintenance = createMaintenance(db);
+  const clock = { t: new Date('2026-11-12T10:00:00Z') };
+  const tick = (s) => { clock.t = new Date(clock.t.getTime() + s * 1000); };
+  const mon = createMonitoring({ db, channels, maintenance, now: () => clock.t });
+  const m = await mon.create({ name: 'PC-0001', type: 'tcp', target: '10.0.10.50', port: 3389, fail_threshold: 2 });
+  await mon.record(m, { ok: true, ms: 2, message: 'open' });
+  tick(60); await mon.record(m, { ok: false, message: 'timeout' });
+  tick(60); await mon.record(m, { ok: false, message: 'timeout' }); // 10:02 down, alarm
+  maintenance.create({ name: 'Patch', kind: 'once', starts_at: '2026-11-12T10:05:00Z', ends_at: '2026-11-12T10:35:00Z', monitor_ids: [m.id] });
+  tick(240); await mon.record(m, { ok: false, message: 'timeout' }); // 10:06
+  tick(600); await mon.record(m, { ok: true, ms: 2, message: 'open' }); // 10:16 recovered inside the window
+  tick(1200); await mon.record(m, { ok: false, message: 'timeout' }); // 10:36 a new outage
+  assert.notEqual(mon.get(m.id).status, 'down', 'a single failure after a recovery waits for the threshold');
+  tick(60); await mon.record(m, { ok: false, message: 'timeout' });
+  assert.equal(mon.get(m.id).status, 'down');
+  assert.equal(sent.filter((e) => e.kind === 'down').length, 2, 'the new outage is alarmed');
 });
