@@ -18,7 +18,7 @@ const FIREWALL_VENDORS = /^(Fortinet|Sophos|Palo Alto|WatchGuard|SonicWall|Barra
 const PHONE_VENDORS = /^(Yealink|Snom|Gigaset|Polycom|Grandstream|Unify|Mitel|Auerswald|Fanvil|Avaya|Alcatel-Lucent Enterprise)/i;
 const CAMERA_VENDORS = /^(Hikvision|Axis|(Zhejiang )?Dahua|Reolink|Mobotix|Hanwha|Samsung Techwin|(Zhejiang )?Uniview|Vivotek|Ezviz)/i;
 const IOT_VENDORS = /^(Espressif|Shelly|Tuya|Philips Lighting|Signify|tado|Nuki|Bosch Thermotechnik|Fibaro|Sonoff|ITEAD|Murata|Particle)/i;
-// The OUI names are shortened (oui.js): "LG Electronics" → "LG", "Samsung Electronics" → "Samsung". LG and Samsung only as the
+// The OUI names are shortened (oui.js strips the company suffix): "LG Electronics" → "LG", "Samsung Electronics" → "Samsung". LG and Samsung only as the
 // whole name - LG Innotek, LG Display, LGS Innovations, Samsung Techwin are not TVs.
 const MEDIA_VENDORS = /^(Sonos|Roku|Google|Amazon|(LG|LGE|LG Electronics|Samsung|Samsung Electronics)$|Sony|Panasonic|Denon|Bose|Yamaha)/i;
 const UPS_VENDORS = /^(APC|Eaton|Riello|Socomec|CyberPower|Legrand|Vertiv|Liebert|Online USV)/i;
@@ -156,7 +156,9 @@ export function classify(f) {
   else if (has(554)) add('camera', 2, 'port 554 (RTSP)');
   if (IOT_VENDORS.test(brand)) add('iot', 4, `manufacturer ${brand}`);
   if (t(/home assistant|shelly|tasmota|esphome|openhab|iobroker|homematic/i)) add('iot', 4, 'smart home');
-  if (MEDIA_VENDORS.test(brand) && !has(22, 445)) add('media', 2, `manufacturer ${brand}`);
+  // LG and Samsung also make phones and laptops: only a device that answers on a port (TV web/app port) counts as media
+  const phoneMaker = /^(LG|LGE|LG Electronics|Samsung|Samsung Electronics)$/i.test(brand);
+  if (MEDIA_VENDORS.test(brand) && !has(22, 445) && (!phoneMaker || ports.size)) add('media', 2, `manufacturer ${brand}`);
 
   // OS family from SNMP, NetBIOS or TTL
   if (!os) {
