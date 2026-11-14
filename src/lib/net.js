@@ -45,6 +45,29 @@ export function cidrContains(cidr, ip) {
   return !!c && n !== null && ((n & c.mask) >>> 0) === c.network;
 }
 
+// Ranges any editor may scan: the private networks of RFC 1918 and the shared address space of carrier-grade NAT (RFC 6598)
+export const PRIVATE_RANGES = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10'];
+
+/** Does `outer` (CIDR) contain every address of `inner` (CIDR or address)? */
+export function cidrCovers(outer, inner) {
+  const o = typeof outer === 'string' ? parseCidr(outer) : outer;
+  const i = typeof inner === 'string' ? parseCidr(inner) : inner;
+  return !!o && !!i && o.prefix <= i.prefix && ((i.network & o.mask) >>> 0) === o.network;
+}
+
+/** Is the whole subnet (or address) inside one private range? 10.0.0.0/7 is not: it reaches into 11.x. */
+export const isPrivateCidr = (cidr) => PRIVATE_RANGES.some((r) => cidrCovers(r, cidr));
+
+/**
+ * May a user who is not an administrator scan this target? Allowed are private ranges and targets that lie completely
+ * inside a subnet configured at a location (`subnets`: list of CIDRs, set by an administrator). Invalid input: false.
+ */
+export function scanTargetAllowed(cidr, subnets = []) {
+  const c = parseCidr(cidr);
+  if (!c) return false;
+  return isPrivateCidr(c) || subnets.some((s) => cidrCovers(s, c));
+}
+
 export function* hostsOf(cidr) {
   const c = typeof cidr === 'string' ? parseCidr(cidr) : cidr;
   if (!c) return;

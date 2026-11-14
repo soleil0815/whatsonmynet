@@ -6,7 +6,7 @@
 // program restarts; at the next start the current database is moved to the backups and the new one takes its place.
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import crypto from 'node:crypto';
 import Database from 'better-sqlite3';
 import { HttpError } from './lib/http.js';
 import { decrypt } from './lib/crypto.js';
@@ -15,6 +15,7 @@ import { backupDatabase, MIGRATIONS, migrate } from './db.js';
 
 const SQLITE_MAGIC = Buffer.from('SQLite format 3\0', 'latin1');
 const NAME = /^whatsonmynet-[\w.-]+\.sqlite$/;
+const DOWNLOAD = /^download-\d+-\d+-[0-9a-f]{8}\.sqlite\.tmp$/;
 
 export const pendingPath = (dbFile) => path.join(path.dirname(dbFile), 'restore-pending.sqlite');
 
@@ -115,11 +116,33 @@ export function createBackups({ db, settings, dbFile, backupsDir, restart = () =
       if (!fs.existsSync(f)) throw new HttpError(404, 'err.notFound');
       return f;
     },
-    /** Fresh copy for downloading (deleted after sending) */
+    /**
+     * Fresh copy for downloading: in the backups folder of the data directory (not the shared temp folder), readable
+     * only by this program (0600), under a name the list never shows. The caller removes it with discard() after
+     * sending - also when sending fails or the browser aborts. Leftovers of a crash are removed by the next download.
+     */
     async snapshot() {
-      const f = path.join(os.tmpdir(), `womn-download-${process.pid}-${Date.now()}.sqlite`);
-      await db.backup(f);
+      fs.mkdirSync(backupsDir, { recursive: true, mode: 0o700 });
+      for (const old of fs.readdirSync(backupsDir).filter((x) => DOWNLOAD.test(x))) {
+        const p = path.join(backupsDir, old);
+        try { if (Date.now() - fs.statSync(p).mtimeMs > 60 * 60 * 1000) fs.rmSync(p, { force: true }); } catch { /* removed meanwhile */ }
+      }
+      const f = path.join(backupsDir, `download-${process.pid}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.sqlite.tmp`);
+      // Created empty with 0600 first: the copy never exists with wider rights, whatever the umask
+      fs.closeSync(fs.openSync(f, 'wx', 0o600));
+      try {
+        await db.backup(f);
+        fs.chmodSync(f, 0o600);
+      } catch (e) {
+        this.discard(f);
+        throw e;
+      }
       return f;
+    },
+    /** Removes a download copy made by snapshot() (only those - never another file) */
+    discard(f) {
+      if (!f || path.resolve(path.dirname(f)) !== path.resolve(backupsDir) || !DOWNLOAD.test(path.basename(f))) return;
+      for (const x of [f, `${f}-journal`, `${f}-wal`, `${f}-shm`]) fs.rmSync(x, { force: true });
     },
     /** buffer (upload) or name (stored backup) → checked, waits as restore-pending, program restarts */
     async restore({ buffer = null, name = null }) {

@@ -35,7 +35,7 @@ The MAC address is the identity of a device: if it gets a new IP, the next scan 
 - **Device page**: all details, purchase and warranty dates, notes, quick access to the web interface, what the scan detected, history of all changes.
 - **Suggestions while typing**: manufacturer, model, operating system, owner, supplier and tags suggest what is already in the inventory. A known model fills in manufacturer and type.
 - **Multiple selection**: tick devices and edit them together (type, location, manufacturer, model, dates, tags) or delete them.
-- **Deep check**: checks one device with a longer port list. Telematik devices (connector, card terminal) are always checked gently.
+- **Deep check**: checks one device with a longer port list. Telematik devices (connector, card terminal) are always checked gently. For a device not yet recognised, the deep check first asks port 4742 (SICCT) alone - if a card terminal answers, the gentle profile stays.
 
 ## Nightly light scan
 
@@ -347,7 +347,7 @@ Under *Monitoring → Reports* reports go out by e-mail at set times - e.g. the 
 
 ## Users and rights
 
-- **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*.
+- **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*. Editors only scan private networks (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) and the subnets of the locations; public addresses only administrators.
 - **Locations**: editors and viewers can be limited to locations - they then only see and change devices, scans and monitors of these.
 - **Active Directory**: sign-in with the Windows account, see the next section.
 - **Two-factor sign-in** (*My account*): scan the QR code with an authenticator app, confirm a code, keep the recovery codes. It can be made mandatory for administrators under *Settings → General*.

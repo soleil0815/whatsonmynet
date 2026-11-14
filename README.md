@@ -23,7 +23,7 @@ WhatsOnMyNet scannt dein Netzwerk, erkennt Hersteller und Gerätetyp selbst (Swi
 
 - **Schonender Netzwerkscan** - Geräte im eigenen Netz werden über ARP gefunden (jedes Gerät antwortet darauf, auch mit geschlossener Firewall), in gerouteten Netzen über Ping und wenige TCP-Verbindungsversuche. Geprüft werden nur 26 typische Ports, gedrosselt auf 40 Versuche pro Sekunde. Für eine Firewall sieht das aus wie normaler Netzwerkverkehr.
 - **Automatische Erkennung** - Hersteller aus der MAC-Adresse (IEEE-Liste), Gerätetyp aus offenen Ports, Titel der Weboberfläche, Zertifikat, SNMP (nur lesend), NetBIOS-Name und Reverse DNS. Unsichere Erkennungen sind markiert, den Typ kannst du vor dem Übernehmen ändern.
-- **Telematik** - Kartenterminals (SICCT-Port 4742, ORGA, Cherry …) und TI-Konnektoren (KoCoBox, secunet, RISE …) bekommen ein eigenes Symbol und eine eigene Kategorie. Ihre Tiefenprüfung bleibt immer beim schonenden Profil.
+- **Telematik** - Kartenterminals (SICCT-Port 4742, ORGA, Cherry …) und TI-Konnektoren (KoCoBox, secunet, RISE …) bekommen ein eigenes Symbol und eine eigene Kategorie. Ihre Tiefenprüfung bleibt immer beim schonenden Profil - auch bei einem noch unklaren Gerät: Die Tiefenprüfung fragt zuerst nur Port 4742 (SICCT) ab; antwortet er, bleibt es beim schonenden Profil.
 - **Nur übernehmen, was du willst** - Scan-Ergebnis in vier Reitern: *Neu*, *Geändert*, *Bekannt*, *Ignoriert*. Neue Geräte per Häkchen übernehmen oder dauerhaft ignorieren.
 - **MAC-Adresse als Ausweis** - ändert sich die IP eines bekannten Geräts, übernimmt der nächste Scan die neue Adresse automatisch, mit Eintrag im Verlauf.
 - **Inventar** - Suche über alles, Filter nach Typ und Standort, Ansicht als Liste, nach Subnetz oder nach Typ, Status „beim letzten Scan gesehen“, Export als CSV (Excel) und JSON.
@@ -160,6 +160,8 @@ Unter *Einstellungen → Active Directory* meldest du dich mit dem Windows-Konto
 ## Rechte pro Standort (ab Version 0.3)
 
 Bearbeiter und Leser lassen sich unter *Einstellungen → Benutzer* auf einen oder mehrere Standorte beschränken - etwa für die IT einer Außenstelle. Ein beschränktes Konto sieht und ändert nur Geräte, Scan-Ergebnisse und Monitore dieser Standorte, scannt nur deren Subnetze und zählt auf der Übersicht nur sie. Geräte ohne Standort, freie Subnetze, der nächtliche Scan, Wartungsfenster und Docker-Hosts bleiben unbeschränkten Konten vorbehalten. Administratoren sind nie beschränkt; das gilt auch für Konten aus dem Active Directory.
+
+**Erlaubte Scan-Ziele:** Bearbeiter scannen nur private Netze (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 und 100.64.0.0/10) und die Subnetze, die ein Administrator bei den Standorten eingetragen hat. Öffentliche Adressen - als Subnetz im Scan oder als Tiefenprüfung eines Geräts - darf nur ein Administrator scannen.
 
 ## Scan-Agent für Außenstellen (ab Version 0.3)
 
