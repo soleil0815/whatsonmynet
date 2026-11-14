@@ -353,9 +353,14 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const old = db.prepare('SELECT * FROM monitors WHERE id=?').get(id);
     if (!old) throw new HttpError(404, 'err.notFound');
     const v = await clean(input, old);
+    // Paused because its device got a new IP (see devicechange.js): saved with a newly typed password it runs again
+    // (at the address it was saved for - the dialog offers the new one)
+    const ipMoved = !old.enabled && !!parse(old.data, {})?.ipMoved;
+    const resumed = ipMoved && typeof input.password === 'string' && input.password !== '' && !!v.secret && !('enabled' in input && !input.enabled);
+    if (resumed) { v.enabled = 1; v.last_message = ''; v.data = '{}'; }
     const keys = Object.keys(v);
     db.prepare(`UPDATE monitors SET ${keys.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...keys.map((k) => v[k]), iso(), id);
-    if (v.target !== old.target || v.type !== old.type || v.port !== old.port || v.docker_host_id !== old.docker_host_id || ('device_id' in v && v.device_id !== old.device_id)) {
+    if (resumed || v.target !== old.target || v.type !== old.type || v.port !== old.port || v.docker_host_id !== old.docker_host_id || ('device_id' in v && v.device_id !== old.device_id)) {
       db.prepare("UPDATE monitors SET status='pending', status_since=?, fail_count=0, cert_valid_to=NULL, cert_alert_days=NULL, data='{}' WHERE id=?").run(iso(), id);
     }
     nextRun.set(id, 0);
@@ -363,8 +368,10 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   }
 
   function setEnabled(id, on) {
-    const r = db.prepare(`UPDATE monitors SET enabled=?, status=?, status_since=?, fail_count=0, updated_at=? WHERE id=?`)
-      .run(on ? 1 : 0, on ? 'pending' : 'paused', iso(), iso(), id);
+    // Resumed by hand: the note about a new IP of the device is done with (the monitor keeps its address)
+    const r = db.prepare(`UPDATE monitors SET enabled=?, status=?, status_since=?, fail_count=0, updated_at=?,
+      data=CASE WHEN ? AND json_valid(data) AND json_extract(data,'$.ipMoved') IS NOT NULL THEN json_remove(data,'$.ipMoved') ELSE data END WHERE id=?`)
+      .run(on ? 1 : 0, on ? 'pending' : 'paused', iso(), iso(), on ? 1 : 0, id);
     if (!r.changes) throw new HttpError(404, 'err.notFound');
     nextRun.set(id, 0);
     return get(id);
@@ -404,14 +411,27 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     return [...out.values()].map(({ n, sum, ...b }) => ({ ...b, avg: n ? Math.round((sum / n) * 100) / 100 : null }));
   }
 
+  /**
+   * Status as the user sees it: a maintenance window shows "maintenance" from its first minute (not only after the next
+   * check), and a window that is over no longer does ("pending" until the next check says up or down). Only what is
+   * shown changes - the stored status, alarms and dependencies still follow the checks.
+   */
+  function shownStatus(m, at = now()) {
+    if (!m.enabled || m.status === 'paused') return m.status;
+    if (maintenance?.activeFor?.(m.id, at)) return 'maintenance';
+    return m.status === 'maintenance' ? 'pending' : m.status;
+  }
+
   function shape(m) {
     if (!m) return null;
     const certDays = m.cert_valid_to ? Math.floor((Date.parse(m.cert_valid_to) - now().getTime()) / 86400000) : null;
     const { secret, data, ...rest } = m;
-    return { ...rest, data: parse(data, {}), channels: parse(m.channels, []), escalate_channels: parse(m.escalate_channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
+    return { ...rest, status: shownStatus(m), data: parse(data, {}), channels: parse(m.channels, []), escalate_channels: parse(m.escalate_channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
       cert_check: !!m.cert_check, cert_days_left: certDays,
       docker_host: m.docker_host_id ? db.prepare('SELECT id, name FROM docker_hosts WHERE id=?').get(m.docker_host_id) || null : null };
   }
+
+  const brief = (r) => (r ? { id: r.id, name: r.name, status: shownStatus(r) } : null);
 
   function get(id) { return shape(db.prepare('SELECT * FROM monitors WHERE id=?').get(id)); }
 
@@ -440,8 +460,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       checks,
       ...(long ? { history: history(id, span), bucketHours: bucketHours(span) } : {}),
       events: db.prepare('SELECT * FROM monitor_events WHERE monitor_id=? ORDER BY id DESC LIMIT 100').all(id),
-      parent: m.parent_id ? db.prepare('SELECT id, name, status FROM monitors WHERE id=?').get(m.parent_id) || null : null,
-      dependents: db.prepare('SELECT id, name, status FROM monitors WHERE parent_id=? ORDER BY name').all(id),
+      parent: m.parent_id ? brief(db.prepare('SELECT id, name, status, enabled FROM monitors WHERE id=?').get(m.parent_id)) : null,
+      dependents: db.prepare('SELECT id, name, status, enabled FROM monitors WHERE parent_id=? ORDER BY name').all(id).map(brief),
       candidates: childCandidates(id).length,
       maintenance: !!maintenance.activeFor(id, now()),
     };
@@ -449,7 +469,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
 
   /** keep(m): optional filter (location limit of the user) */
   function summary(keep = null) {
-    const rows = db.prepare('SELECT id, name, type, status, status_since, last_message, enabled, cert_valid_to, device_id FROM monitors').all().filter((m) => !keep || keep(m));
+    const rows = db.prepare('SELECT id, name, type, status, status_since, last_message, enabled, cert_valid_to, device_id FROM monitors').all().filter((m) => !keep || keep(m))
+      .map((m) => ({ ...m, status: shownStatus(m) }));
     const soon = rows.filter((m) => m.cert_valid_to && (Date.parse(m.cert_valid_to) - now().getTime()) / 86400000 <= 30)
       .map((m) => ({ id: m.id, name: m.name, cert_valid_to: m.cert_valid_to }));
     return {
@@ -468,7 +489,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   function deviceStatus() {
     const order = { down: 6, unreachable: 5, pending: 4, maintenance: 3, up: 2, paused: 1 };
     const map = {};
-    for (const m of db.prepare('SELECT device_id, status FROM monitors WHERE device_id IS NOT NULL').all()) {
+    for (const row of db.prepare('SELECT id, device_id, status, enabled FROM monitors WHERE device_id IS NOT NULL').all()) {
+      const m = { ...row, status: shownStatus(row) };
       if (!map[m.device_id] || (order[m.status] || 0) > (order[map[m.device_id]] || 0)) map[m.device_id] = m.status;
     }
     return map;

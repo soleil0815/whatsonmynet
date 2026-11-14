@@ -355,10 +355,12 @@ export function createApi(ctx) {
     const id = idParam(req);
     const s = db.prepare('SELECT * FROM scans WHERE id=?').get(id);
     if (!s || !scanVisible(req, s)) throw new HttpError(404, 'err.notFound');
+    // outdated: a newer scan covered the address - the result can be looked at, but not adopted or ignored
+    const outdated = inventory.outdatedResults(id);
     const results = db.prepare(`SELECT r.*, d.name device_name, d.type device_type, l.name location_name FROM scan_results r
       LEFT JOIN devices d ON d.id=r.device_id LEFT JOIN locations l ON l.id=r.location_id WHERE r.scan_id=?`).all(id)
       .filter((x) => inScope(req.scope, x.location_id))
-      .map((x) => ({ ...x, facts: parse(x.facts) }));
+      .map((x) => ({ ...x, facts: parse(x.facts), outdated: outdated.has(x.id) }));
     res.json({ ...s, targets: parse(s.targets, []), stats: parse(s.stats), progress: scanner.progress(id), results });
   });
   r.post('/scans', editor, (req, res) => {

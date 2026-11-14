@@ -23,6 +23,7 @@ export function historyText(r) {
     case 'deep': return t('hist.deep', { n: d.ports ?? 0 });
     case 'snmp': return t({ script: 'hist.script', controller: 'hist.controller' }[d.source] || 'hist.snmp', { fields: (d.fields || []).map((f) => (f.from ? `${FIELD_LABEL(f.field)} ${f.from} → ${f.to}` : `${FIELD_LABEL(f.field)} ${f.to}`)).join(', ') });
     case 'replaced': return t('hist.replaced', { from: d.from, to: d.to });
+    case 'monitorsPaused': return t('hist.monitorsPaused', { from: d.from || '–', to: d.to || '–', names: (d.monitors || []).join(', ') });
     default: return r.kind;
   }
 }
