@@ -92,6 +92,10 @@ Auf der Seite eines Monitors wählst du den Zeitraum: **24 h, 3 T, 7 T** zeigen 
 - **Fläche:** der Bereich vom niedrigsten bis zum höchsten Wert.
 - **Leiste darunter:** zeigt die Verfügbarkeit. Grün heißt immer erreichbar bzw. in Ordnung, gelb kurz gestört, rot länger gestört. Wenn du mit der Maus auf einen Abschnitt zeigst, stehen dort Datum, Prozent und Werte.
 
+**Ausfälle im Diagramm:** Über dem Diagramm steht, wie oft der Monitor im gewählten Zeitraum ausgefallen ist, wie lange zusammen und wie lange am längsten (bei Sensoren: wie oft Alarm war). Jeder Ausfall ist rot hinterlegt, von der ersten fehlgeschlagenen Prüfung bis zur nächsten erfolgreichen. Darunter stehen die Ausfälle als Liste mit Beginn, Ende, Dauer und Grund, bei Sensoren mit dem höchsten (oder niedrigsten) Wert während des Alarms. Zeigst du auf eine Zeile, wird der Ausfall im Diagramm hervorgehoben. Klickst du im Diagramm in einen Ausfall, springt die Liste zur passenden Zeile.
+
+**Zeigen statt suchen:** Wenn du mit der Maus über das Diagramm fährst (am Telefon: tippen), zeigt eine Linie die Stelle. Ein Kasten nennt Uhrzeit und Wert, bei fehlgeschlagenen Prüfungen den Grund und innerhalb eines Ausfalls dessen Zeitraum. Bei Sensoren zeigt eine gestrichelte rote Linie den Grenzwert.
+
 Einzelne Prüfungen werden 7 Tage aufbewahrt, die stündliche Zusammenfassung gut ein Jahr. Für die ersten Monate nach dem Update auf 0.9 gilt: Ältere Stunden kennen nur den Mittelwert, die Fläche erscheint erst für neue Daten.
 
 ### Abhängigkeiten: keine Alarmflut
