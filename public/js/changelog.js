@@ -6,10 +6,14 @@ export const CHANGELOG = [
     'Mehrere Sensoren oder Monitore ankreuzen und löschen: nach dem Bestätigen passierte nichts - jetzt werden sie gelöscht. Ebenso das Einspielen einer hochgeladenen Sicherung',
     'Neue NAS: Sensoren nur auf den Datenvolumes (/volume1 …), nicht auf der Systempartition (/, /opt) oder internen Ordnern wie /volume1/@docker',
     'USV: die Restlaufzeit unter einer Stunde in Minuten („reicht 25 Min.“ statt „reicht 0 Std.“)',
+    'Diagnosepaket (Einstellungen → Diagnose): ein ZIP für die Fehlersuche mit Protokoll, Warnungen und Fehlern, Monitoren, Sensoren, Geräten mit ihren Werten, Hypervisoren, Scans und Einstellungen - für 1 bis 30 Tage oder seit dem letzten Update. Standardmäßig anonymisiert mit Platzhaltern, die in jedem Paket gleich bleiben und sich nachschlagen lassen; nie mit Kennwörtern oder Schlüsseln, nichts wird verschickt. Das Programm bewahrt sein Protokoll dafür 30 Tage auf',
+    'Hilfe, Handbuch und Projektbeschreibung: Ping in einem Proxmox-LXC freischalten (ping_group_range im LXC setzen, Schritt für Schritt); der Hinweis beim Scan zeigt dorthin',
   ], en: [
     'Tick several sensors or monitors and delete them: nothing happened after confirming - now they are deleted. The same for restoring an uploaded backup',
     'New NAS: sensors only on the data volumes (/volume1 …), not on the system partition (/, /opt) or internal folders such as /volume1/@docker',
     'UPS: runtime left under an hour in minutes ("lasts 25 min" instead of "lasts 0 h")',
+    'Diagnostic package (Settings → Diagnostics): a ZIP for troubleshooting with log, warnings and errors, monitors, sensors, devices with their values, hypervisors, scans and settings - for 1 to 30 days or since the last update. Anonymised by default with placeholders that stay the same in every package and can be looked up; never with passwords or keys, nothing is sent anywhere. For it the program keeps its log for 30 days',
+    'Help, manual and project description: allowing ping in a Proxmox LXC (set ping_group_range inside the LXC, step by step); the notice of the scan points there',
   ] },
   { version: '0.21.0', date: '2026-11-14', de: [
     'Gleich überwacht: Übernommene oder neu angelegte Geräte bekommen sofort einen Monitor (Weboberfläche, sonst Ping) und, sobald sie Werte liefern, ein paar wichtige Sensoren - Toner beim Drucker, Volumes, RAID und Temperatur beim NAS, CPU, RAM, Systemlaufwerk, Temperatur und Dienste bei Rechnern mit Skript, Knoten, Speicher und Sicherungen bei Hypervisoren. Abschaltbar unter Einstellungen → Benachrichtigungen',

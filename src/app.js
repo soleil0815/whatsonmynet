@@ -36,6 +36,8 @@ import { createSensorChoices } from './monitor/choices.js';
 import { nameSensorsOnce } from './monitor/sensornames.js';
 import { createFailover } from './failover.js';
 import { createAutoWatch } from './monitor/autowatch.js';
+import { createDiagnostics } from './diagnostics.js';
+import { createDiagnosticsApi } from './routes/diagnostics.js';
 import { createFailoverApi } from './routes/failover.js';
 
 /**
@@ -116,7 +118,9 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
     certPem: () => tls?.current()?.cert || '',
     snapshot: () => backups.snapshot(), discard: (f) => backups.discard(f),
     audit: (action, detail) => { try { db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), 'system', action, String(detail ?? '').slice(0, 500)); } catch { /* never stops */ } } });
-  const ctx = { db, settings, sensorChoices, failover, autoWatch, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
+  // Diagnostic package: the program's own log (server.js attaches it), versions, placeholders
+  const diagnostics = createDiagnostics({ db, settings, failover, dbFile: path.join(dataDir, 'whatsonmynet.sqlite'), backupsDir: path.join(dataDir, 'backups') });
+  const ctx = { db, settings, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 
@@ -189,6 +193,7 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   app.use('/api', createFailoverApi(ctx));
   app.use('/api', failover.middleware());
   app.use('/api', createApi(ctx));
+  app.use('/api', createDiagnosticsApi(ctx));
   app.use('/api', createMonitoringApi(ctx));
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'err.notFound')));
 
