@@ -1325,7 +1325,18 @@ async function notify(body, s, reload) {
             try { await del(`/channels/${c.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
           } }))))))))
       : h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('ch.empty'))),
-    list.length ? escalationPanel(list, s?.escalate || { min: 0, channels: [] }) : null);
+    list.length ? escalationPanel(list, s?.escalate || { min: 0, channels: [] }) : null,
+    autoWatchPanel(s?.autowatch || { enabled: true }));
+}
+
+/** New devices and hosts: a first monitor and a few sensors by themselves (on by default) */
+function autoWatchPanel(a) {
+  const box = h('input', { type: 'checkbox', name: 'enabled', checked: a.enabled !== false, onchange: async (e) => {
+    try { await put('/settings/autowatch', { enabled: e.target.checked }); toast(t('saved')); } catch (ex) { e.target.checked = !e.target.checked; fail(ex); }
+  } });
+  return h('section', { class: 'panel panel-pad', style: { marginTop: '16px' } }, h('h2', { class: 'section-title' }, t('aw.title')),
+    h('p', { class: 'muted', style: { marginTop: 0 } }, t('aw.lead')),
+    field(t('aw.enabled'), box, t('aw.hint')));
 }
 
 /** Escalation for all monitors: an outage not solved after X minutes also goes to these channels */

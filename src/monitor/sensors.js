@@ -48,6 +48,12 @@ function stateOf(db, deviceId) {
   return null;
 }
 
+/** Where the values of a device come from: 'printer', 'nas', 'switch', 'ups', 'host' - or null (none yet) */
+export function sourceOf(db, deviceId) {
+  const s = stateOf(db, deviceId);
+  return s?.data ? s.kind : null;
+}
+
 /**
  * Everything a sensor can watch on a device, with the current value:
  * [{ metric, key, label, value, unit, kind: 'number'|'state', op, threshold }]

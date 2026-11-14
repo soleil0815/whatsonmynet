@@ -594,6 +594,10 @@ export const MIGRATIONS = [
             WHEN h.kind = 'change' THEN json_extract(h.detail, '$.field') IS 'hostname'
             ELSE 0 END
           ORDER BY h.id DESC LIMIT 1) = devices.hostname;`,
+  // Watch new devices by themselves: devices and hosts added from now on get a first monitor and a few sensors
+  // (NULL = never - nothing changes for what is there already)
+  `ALTER TABLE devices ADD COLUMN auto_watch TEXT;
+   ALTER TABLE proxmox_hosts ADD COLUMN auto_watch TEXT;`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

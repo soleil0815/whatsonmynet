@@ -231,7 +231,7 @@ async function renderResult(main, id) {
       try {
         const body = { ids: [...selected], overrides };
         const r = await post(`/scans/${id}/${what}`, body);
-        toast(what === 'adopt' ? t('scan.adopted', { n: r.created.length })
+        toast(what === 'adopt' ? `${t('scan.adopted', { n: r.created.length })}${r.watched && r.created.length ? ` - ${t('aw.adopted')}` : ''}`
           : what === 'unignore' ? t('scan.unignoredN', { n: r.unignored }) : t('scan.ignoredN', { n: r.ignored }));
         selected.clear();
         await load();
