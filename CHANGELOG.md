@@ -6,6 +6,11 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Neues Aussehen: ruhiger und heller im Stil einer Mac-App - Systemschrift (San Francisco auf dem Mac, sonst Inter), weiche Flächen, abgerundete Schaltflächen, Reiter als Segmente, durchscheinende Seitenleiste; die Anmeldeseite mit dem Radar auf tiefem Blau
+- Hell ist jetzt der Standard. Dunkel oder „Wie das System“ stellt jeder unter Mein Konto → Darstellung um; Konten, die noch auf dem alten Standard „Wie das System“ standen, sind jetzt hell
+
+## 0.23.0 - 2026-11-14
+
 - Tipp „Per Skript überwachen“ jetzt auch bei Linux-Rechnern und Hypervisoren wie Proxmox (bisher vor allem Windows) und unter Virtualisierung bei Proxmox-Knoten ohne Skript - freundlich formuliert: zusätzliche Infos über das System. Er verschwindet von selbst, sobald das Gerät Werte liefert (Skript oder iDRAC/iLO), und lässt sich pro Gerät mit „Nicht mehr anzeigen“ ausblenden
 - Skript-Dialoge und Tipp: Link „Was bringt das Skript?“ direkt zum passenden Abschnitt der Hilfe; Hilfe und Handbuch erklären ausführlicher, wofür das Skript gut ist (gerade bei Mini-PCs ohne Server-Hardware)
 

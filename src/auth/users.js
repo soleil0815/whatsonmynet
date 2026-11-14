@@ -53,7 +53,7 @@ export function createUsers(db) {
     }
     if (!partial || 'role' in input) out.role = oneOf(input.role, ROLES, partial ? undefined : 'viewer');
     if (!partial || 'language' in input) out.language = oneOf(input.language, LANGS, 'de');
-    if ('theme' in input) out.theme = oneOf(input.theme, THEMES, 'system');
+    if ('theme' in input) out.theme = oneOf(input.theme, THEMES, 'light');
     if ('active' in input) out.active = input.active ? 1 : 0;
     for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k];
     return out;
@@ -125,7 +125,7 @@ export function createUsers(db) {
       const cur = byName.get(info.username);
       if (cur && cur.source !== 'ldap') throw new HttpError(409, 'err.userExists');
       if (!cur) {
-        db.prepare("INSERT INTO users(username,display_name,email,password_hash,role,source,ext_dn,created_at) VALUES(?,?,?,'',?,'ldap',?,?)")
+        db.prepare("INSERT INTO users(username,display_name,email,password_hash,role,source,ext_dn,created_at,theme) VALUES(?,?,?,'',?,'ldap',?,?,'light')")
           .run(info.username, info.display_name || '', info.email || '', info.role, info.dn, now);
       } else {
         // The directory must never leave the program without an active admin (wrong group change, renamed group):
@@ -146,7 +146,7 @@ export function createUsers(db) {
       if (byName.get(v.username)) throw new HttpError(409, 'err.userExists', undefined, 'username');
       const now = new Date().toISOString();
       const r = db.prepare('INSERT INTO users(username,display_name,email,password_hash,role,language,theme,created_at,password_changed_at) VALUES(?,?,?,?,?,?,?,?,?)')
-        .run(v.username, v.display_name, v.email, hashPassword(pw), v.role, v.language, v.theme || 'system', now, now);
+        .run(v.username, v.display_name, v.email, hashPassword(pw), v.role, v.language, v.theme || 'light', now, now);
       if (v.role !== 'admin' && 'locations' in input) setLocations(Number(r.lastInsertRowid), input.locations);
       return this.get(r.lastInsertRowid);
     },
