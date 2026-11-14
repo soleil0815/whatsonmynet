@@ -6,6 +6,11 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Outages in the history chart: reasons without a colon lost their first letter ("onnection refused") - now the reason is shown in full
+- Manual, help and project page: all pictures in the new, light look
+
+## 0.24.0 - 2026-11-14
+
 - New look: calmer and lighter in the style of a Mac app - system font (San Francisco on a Mac, Inter elsewhere), soft surfaces, rounded buttons, tabs as segments, a translucent sidebar; the sign-in page with the radar on deep blue
 - Light is the default now. Everyone switches to dark or "like the system" under My account → Appearance; accounts still on the old default "like the system" are light now
 

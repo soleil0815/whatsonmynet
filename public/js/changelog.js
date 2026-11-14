@@ -3,6 +3,13 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Ausfälle in der Verlaufsgrafik: Bei Gründen ohne Doppelpunkt fehlte der erste Buchstabe („onnection refused“) - jetzt steht der Grund vollständig da',
+    'Handbuch, Hilfe und Projektseite: alle Bilder im neuen, hellen Aussehen',
+  ], en: [
+    'Outages in the history chart: reasons without a colon lost their first letter ("onnection refused") - now the reason is shown in full',
+    'Manual, help and project page: all pictures in the new, light look',
+  ] },
+  { version: '0.24.0', date: '2026-11-14', de: [
     'Neues Aussehen: ruhiger und heller im Stil einer Mac-App - Systemschrift (San Francisco auf dem Mac, sonst Inter), weiche Flächen, abgerundete Schaltflächen, Reiter als Segmente, durchscheinende Seitenleiste; die Anmeldeseite mit dem Radar auf tiefem Blau',
     'Hell ist jetzt der Standard. Dunkel oder „Wie das System“ stellt jeder unter Mein Konto → Darstellung um; Konten, die noch auf dem alten Standard „Wie das System“ standen, sind jetzt hell',
   ], en: [
