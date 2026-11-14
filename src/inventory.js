@@ -152,29 +152,29 @@ export function createInventory(db) {
         case 'type': out.type = oneOf(v, TYPES, 'unknown'); break;
         case 'ip': {
           const ip = line(v, 15);
-          if (ip && !isIPv4(ip)) throw new HttpError(400, 'err.ip');
+          if (ip && !isIPv4(ip)) throw new HttpError(400, 'err.ip', undefined, 'ip');
           out.ip = ip || null; break;
         }
         case 'mac': {
           const raw = line(v, 40);
           const mac = raw ? normalizeMac(raw) : null;
-          if (raw && !mac) throw new HttpError(400, 'err.mac');
+          if (raw && !mac) throw new HttpError(400, 'err.mac', undefined, 'mac');
           out.mac = mac; break;
         }
         case 'location_id': {
           const id = v === null || v === '' || v === undefined ? null : Number(v);
-          if (id !== null && !db.prepare('SELECT 1 FROM locations WHERE id=?').get(id)) throw new HttpError(400, 'err.location');
+          if (id !== null && !db.prepare('SELECT 1 FROM locations WHERE id=?').get(id)) throw new HttpError(400, 'err.location', undefined, 'location_id');
           out.location_id = id; break;
         }
         case 'purchase_date': case 'warranty_until': case 'maintenance_until': {
           const d = isoDate(v);
-          if (!d && v !== null && v !== undefined && String(v).trim() !== '') throw new HttpError(400, 'err.date');
+          if (!d && v !== null && v !== undefined && String(v).trim() !== '') throw new HttpError(400, 'err.date', undefined, k);
           out[k] = d; break;
         }
         case 'notes': out.notes = str(v, 5000); break;
         case 'web_url': {
           const u = line(v, 500);
-          if (u && !/^(https?|ssh|rdp|vnc):\/\/[^\s"'<>]+$/i.test(u)) throw new HttpError(400, 'err.url');
+          if (u && !/^(https?|ssh|rdp|vnc):\/\/[^\s"'<>]+$/i.test(u)) throw new HttpError(400, 'err.url', undefined, 'web_url');
           out.web_url = u; break;
         }
         case 'tags': out.tags = line(v, 300).split(',').map((s) => s.trim()).filter(Boolean).slice(0, 20).join(', '); break;

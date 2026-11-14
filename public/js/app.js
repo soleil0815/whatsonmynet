@@ -1,5 +1,5 @@
 // App shell: sign-in state, navigation, layout.
-import { h, mount, toast } from './dom.js';
+import { h, mount, toast, showFieldError } from './dom.js';
 import { get, post, setUnauthorizedHandler, ApiError } from './api.js';
 import { t, setLang } from './i18n.js';
 import { icon, LOGO_MARK } from './icons.js';
@@ -32,9 +32,13 @@ export function navigate(path, { replace = false } = {}) {
   render();
 }
 
-/** Error from the API as a toast in the user's language */
-export function fail(e) {
+/**
+ * Error from the API in the user's language: next to the input it belongs to when the server names one and that input
+ * is in `root` (default: the open dialog), otherwise as a toast
+ */
+export function fail(e, root) {
   if (e instanceof ApiError && e.code === 'err.totpRequiredByAdmin') { toast(e.message, 'error'); navigate('/account'); return; }
+  if (e instanceof ApiError && e.field && showFieldError(root || [...document.querySelectorAll('dialog[open]')].pop(), e.field, e.message, e.detail)) return;
   if (e instanceof ApiError && e.code === 'network') toast(t('err.network'), 'error');
   else toast(e?.message || String(e), 'error');
 }

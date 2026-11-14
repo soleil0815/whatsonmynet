@@ -191,7 +191,9 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     let code = err instanceof HttpError ? err.code : (status === 400 ? 'err.badRequest' : 'err.internal');
     if (err.type === 'entity.parse.failed' || err.type === 'entity.too.large') { status = err.type === 'entity.too.large' ? 413 : 400; code = 'err.badRequest'; }
     if (status >= 500 && !(err instanceof HttpError)) log.error(`${req.method} ${req.originalUrl}: ${err.stack || err.message}`);
-    res.status(status).json({ error: { code, message: hasKey(code) ? t(lang, code, { detail: err.detail ?? '' }) : code, detail: err.detail } });
+    // `field` (optional): the input the error belongs to - the interface shows the message next to it
+    const field = err instanceof HttpError && typeof err.field === 'string' ? err.field : undefined;
+    res.status(status).json({ error: { code, message: hasKey(code) ? t(lang, code, { detail: err.detail ?? '' }) : code, detail: err.detail, field } });
   });
 
   return { app, ctx };

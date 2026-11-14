@@ -1,6 +1,11 @@
 // Calls to the server. Writing calls carry the header that protects against requests from other sites.
 export class ApiError extends Error {
-  constructor(status, code, message) { super(message || code); this.status = status; this.code = code; }
+  /** field: the input a validation error belongs to (if the server names one), detail: the value it refers to */
+  constructor(status, code, message, { field, detail } = {}) {
+    super(message || code); this.status = status; this.code = code;
+    if (typeof field === 'string' && field) this.field = field;
+    if (detail !== undefined && detail !== null) this.detail = detail;
+  }
 }
 
 let onUnauthorized = () => {};
@@ -19,7 +24,7 @@ export async function api(path, { method = 'GET', body, raw, headers = {} } = {}
   try { data = await res.json(); } catch { /* no JSON */ }
   if (!res.ok) {
     if (res.status === 401 && path !== '/login' && path !== '/me/password') onUnauthorized();
-    throw new ApiError(res.status, data?.error?.code || 'err', data?.error?.message);
+    throw new ApiError(res.status, data?.error?.code || 'err', data?.error?.message, { field: data?.error?.field, detail: data?.error?.detail });
   }
   return data;
 }
