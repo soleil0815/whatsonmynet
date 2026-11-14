@@ -53,12 +53,40 @@ export function createSensorChoices({ db, settings }) {
       || (x.metric === 'storage' && nodes.has(String(x.key).split('/')[0])));
   }
 
+  /**
+   * Marks every value that a sensor already watches: taken = id of that sensor. The dialog offers taken values only to
+   * the sensor that watches it. A node value the script of the node delivers too (CPU, RAM, hottest temperature) counts
+   * as taken whichever of the two a sensor watches.
+   */
+  function markTaken(list) {
+    const k = (...a) => a.map((x) => String(x ?? '')).join('|');
+    const byDev = new Map(); const byHost = new Map(); const nodeTwin = new Map();
+    let idx = null;
+    for (const m of db.prepare("SELECT id, type, device_id, options FROM monitors WHERE type IN ('sensor','proxmox')").all()) {
+      const o = parse(m.options, {});
+      if (m.type === 'sensor') { if (m.device_id) byDev.set(k(m.device_id, o.metric, o.key), m.id); continue; }
+      byHost.set(k(o.host, o.metric, o.key), m.id);
+      if (SCRIPT_TWIN[o.metric]) {
+        idx ||= deviceIndex();
+        const id = idx.byName.get(shortName(o.key));
+        if (id) nodeTwin.set(k(id, SCRIPT_TWIN[o.metric]), m.id);
+      }
+    }
+    for (const x of list) {
+      const id = x.src === 'device' ? byDev.get(k(x.device, x.metric, x.key)) ?? (x.key ? null : nodeTwin.get(k(x.device, x.metric)))
+        : byHost.get(k(x.host, x.metric, x.key));
+      if (id) x.taken = id;
+    }
+    return list;
+  }
+
   const dev = (deviceId, x, group) => ({ src: 'device', device: deviceId, group, ...x });
   const px = (h, x, group) => ({ src: 'host', host: h.id, hostName: h.name, group, ...x });
 
   return {
     /** Everything a sensor on this device can watch. withHosts = false for users limited to locations (hypervisors are not theirs) */
-    forDevice(deviceId, { withHosts = true } = {}) {
+    forDevice(deviceId, opts) { return markTaken(this.valuesOfDevice(deviceId, opts)); },
+    valuesOfDevice(deviceId, { withHosts = true } = {}) {
       const own = devValues(deviceId);
       const out = own.map((x) => dev(deviceId, x, null));
       if (!withHosts) return out;
@@ -68,7 +96,8 @@ export function createSensorChoices({ db, settings }) {
     },
 
     /** Everything of a host under Virtualization, each node together with the values of its script */
-    forHost(hostId) {
+    forHost(hostId) { return markTaken(this.valuesOfHost(hostId)); },
+    valuesOfHost(hostId) {
       const h = hostsAll().find((x) => x.id === hostId);
       if (!h) return [];
       const idx = deviceIndex();
@@ -101,7 +130,7 @@ export function createSensorChoices({ db, settings }) {
     },
 
     /** Does a device have anything to watch (for the button "Add sensor" on its page) */
-    hasValues(deviceId, opts) { return this.forDevice(deviceId, opts).length > 0; },
+    hasValues(deviceId, opts) { return this.valuesOfDevice(deviceId, opts).length > 0; },
 
     /** Devices that offer values (printers, NAS, switches, UPS, machines with script, nodes, servers with Redfish) */
     deviceIds() {
