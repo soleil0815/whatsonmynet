@@ -1,0 +1,13 @@
+[
+  { "id": 1, "name": "sha256:aaaa", "metadata": { "package_type": "container", "container": { "tags": ["1.2.0-kandidat-777", "1.2.0", "latest"] } } },
+  { "id": 2, "name": "sha256:bbbb", "metadata": { "package_type": "container", "container": { "tags": ["1.2.0-kandidat-777-amd64"] } } },
+  { "id": 3, "name": "sha256:cccc", "metadata": { "package_type": "container", "container": { "tags": ["1.2.0-kandidat-777-arm64"] } } },
+  { "id": 4, "name": "sha256:dddd", "metadata": { "package_type": "container", "container": { "tags": ["1.1.0-kandidat-555-amd64"] } } },
+  { "id": 5, "name": "sha256:eeee", "metadata": { "package_type": "container", "container": { "tags": ["1.2.0-kandidat-777-x86", "1.1.9"] } } },
+  { "id": 6, "name": "sha256:ffff", "metadata": { "package_type": "container", "container": { "tags": [] } } },
+  { "id": 7, "name": "sha256:1111", "metadata": { "package_type": "container", "container": { "tags": ["1.2.0-kandidat-7777"] } } },
+  { "id": 8, "name": "sha256:2222", "metadata": { "package_type": "container", "container": { "tags": ["1.2.0-kandidat-777-riscv64"] } } },
+  { "id": 11, "name": "sha256:5555", "metadata": { "package_type": "container", "container": { "tags": ["1.3.0-kandidat-888-amd64"] } } },
+  { "id": 10, "name": "sha256:4444", "metadata": { "package_type": "container", "container": { "tags": ["1.3.0-kandidat-888"] } } },
+  { "id": 12, "name": "sha256:6666", "metadata": { "package_type": "container", "container": { "tags": ["1.3.0-kandidat-888-arm64"] } } }
+]
