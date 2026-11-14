@@ -7,7 +7,8 @@
 // * Routed subnets (no ARP across routers): ping (if the host allows it) and a TCP connection attempt to a few ports
 //   - a reset ("closed") also proves that the device exists.
 // Checking each device: a short list of typical ports, reverse DNS, SNMP (read-only), title of the web interface.
-// A deep check of one device (by hand) uses a longer port list; Telematik devices always get the gentle list.
+// A deep check of one device (by hand) uses a longer port list; Telematik devices always get the gentle list - also
+// unclassified ones: the deep check first knocks on the SICCT port of card terminals (see deepPlan).
 import os from 'node:os';
 import { parseCidr, hostsOf, cidrContains, localInterfaces, defaultGateways, readArpTable, normalizeMac, MAX_PREFIX_HOSTS } from '../lib/net.js';
 import { log } from '../lib/log.js';
@@ -16,7 +17,7 @@ import { GENTLE_PORTS, DEEP_PORTS, DISCOVERY_PORTS, WEB_PORTS } from './ports.js
 import { tcpProbe, ping, pingAvailable, netbios, reverseDns, snmpSystem, httpProbe, createRateLimiter, pool } from './probes.js';
 import { lookupVendor } from './oui.js';
 import { readRouterArp } from './routerarp.js';
-import { classify, isTelematik } from './classify.js';
+import { classify, isTelematik, isTelematikVendor } from './classify.js';
 
 export const MAX_TOTAL_HOSTS = 16384;
 const MAX_WEB_PROBES = 4;
@@ -33,7 +34,7 @@ export function validateTargets(targets, maxTotal = MAX_TOTAL_HOSTS) {
   for (const t of targets) {
     const c = parseCidr(t.cidr);
     if (!c) throw new HttpError(400, 'err.cidr', String(t.cidr).slice(0, 40));
-    if (c.hosts > MAX_PREFIX_HOSTS) throw new HttpError(400, 'err.cidrTooLarge', c.cidr);
+    if (c.hosts > MAX_PREFIX_HOSTS) throw new HttpError(400, 'err.cidrTooLarge', String(t.cidr).slice(0, 40));
     if (seen.has(c.cidr)) continue;
     seen.add(c.cidr);
     list.push({ c, locationId: t.locationId || null });
@@ -49,6 +50,26 @@ export function validateTargets(targets, maxTotal = MAX_TOTAL_HOSTS) {
   if (!out.length) throw new HttpError(400, 'err.noTargets');
   if (total > maxTotal) throw new HttpError(400, 'err.tooManyHosts', String(maxTotal));
   return out;
+}
+
+/** SICCT, the port of TI card terminals - answering it means: Telematik device, gentle list only */
+export const SICCT_PORT = 4742;
+
+/**
+ * Which ports a deep check of `device` may use. A Telematik device (stored type, detected type or the manufacturer of
+ * its MAC address) gets the gentle list. A device whose type is not known as Telematik is first probed on the SICCT
+ * port alone; if that port answers, it is treated as a card terminal and also gets the gentle list.
+ * (TI connectors have no port of their own - they speak HTTPS on 443 - so the manufacturer stands in for them.)
+ * `probe(ip, port)` resolves 'open' | 'closed' | 'filtered'.
+ */
+export async function deepPlan(device, { probe = tcpProbe, vendor = '' } = {}) {
+  const facts = typeof device.facts === 'string' ? JSON.parse(device.facts || '{}') : device.facts || {};
+  if (isTelematik(device.type) || isTelematik(facts.classification?.type)) return { telematik: true, reason: 'type', ports: [...GENTLE_PORTS] };
+  if (isTelematikVendor(vendor || device.vendor)) return { telematik: true, reason: 'vendor', ports: [...GENTLE_PORTS] };
+  let state = 'filtered';
+  try { state = await probe(device.ip, SICCT_PORT); } catch { /* unreachable: treated like no answer */ }
+  if (state === 'open') return { telematik: true, reason: 'sicct', ports: [...GENTLE_PORTS] };
+  return { telematik: false, reason: '', ports: DEEP_PORTS };
 }
 
 /** Adds the hosts of one target to the list - an address already found through an earlier (overlapping) target is skipped */
@@ -69,7 +90,7 @@ export function bestWebUrl(ip, facts = {}, type = '') {
   return `${proto}://${ip}${def ? '' : `:${port}`}/`;
 }
 
-export function createScanner({ db, settings, inventory }) {
+export function createScanner({ db, settings, inventory, probe = tcpProbe }) {
   const running = new Map(); // scanId → progress
   const finishedHooks = [];
 
@@ -289,17 +310,20 @@ export function createScanner({ db, settings, inventory }) {
   }
 
   async function runDeep(scanId, device) {
-    const facts = JSON.parse(device.facts || '{}');
-    const telematik = isTelematik(device.type) || isTelematik(facts.classification?.type);
     const progress = running.get(scanId);
     progress.phase = 'probe';
     progress.total = 1;
     progress.hosts = 1;
+    const mac = device.mac || readArpTable().get(device.ip) || null;
+    // Before the long list: is this (perhaps unclassified) device a Telematik device?
+    const plan = await deepPlan(device, { probe, vendor: lookupVendor(normalizeMac(mac)).vendor });
+    const telematik = plan.telematik;
+    if (plan.reason === 'sicct') log.info(`Deep check ${device.ip}: port ${SICCT_PORT} (SICCT) answers - gentle port list only`);
     const limiter = createRateLimiter(telematik ? 5 : Math.min(settings.get('scan.rate'), 25));
     const pr = settings.get('scan.ping') && (await pingAvailable()) ? await ping(device.ip, 1) : null;
-    const r = await probeHost(device.ip, { ports: telematik ? [...GENTLE_PORTS] : DEEP_PORTS, limiter, mac: device.mac || readArpTable().get(device.ip) || null,
+    const r = await probeHost(device.ip, { ports: plan.ports, limiter, mac,
       pingRes: pr, isGateway: defaultGateways().includes(device.ip), onStop: () => progress.cancelled });
-    r.facts.deep = { at: new Date().toISOString(), gentle: telematik };
+    r.facts.deep = { at: new Date().toISOString(), gentle: telematik, ...(plan.reason ? { gentleReason: plan.reason } : {}) };
     const id = insertResult.run({ scan_id: scanId, ...r, facts: JSON.stringify(r.facts), location_id: device.location_id }).lastInsertRowid;
     inventory.applyResult(id, { deep: true });
     progress.done = 1; progress.probed = 1;

@@ -1,5 +1,5 @@
 // Inventory list with search, filters and grouping.
-import { h, mount, clear, debounce, fmtAgo, fmtDate, modal, toast, confirmDialog, busy } from '../dom.js';
+import { h, mount, clear, debounce, fmtAgo, fmtDate, modal, toast, confirmDialog } from '../dom.js';
 import { get, post } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
@@ -162,7 +162,7 @@ export async function renderInventory(main) {
 }
 
 function addDevice(locations, types, sugg) {
-  const form = h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); save(); } },
+  const form = h('form', { class: 'form-grid' },
     h('div', { class: 'full' }, field(t('f.name'), input('name', '', { required: true, maxlength: 120 }))),
     field(t('f.type'), select('type', typeOptions(types), 'unknown')),
     field(t('f.location'), select('location_id', [['', t('none')], ...locations.map((l) => [String(l.id), l.name])], '')),
@@ -172,21 +172,17 @@ function addDevice(locations, types, sugg) {
     field(t('f.model'), input('model', '', { list: 'dl-model', autocomplete: 'off' })),
     suggestionLists(sugg));
   wireModelAutofill(form, sugg);
-  const saveBtn = h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save() }, t('save'));
-  const m = modal(t('inv.add'), form, { wide: true, actions: [
+  const m = modal(t('inv.add'), form, { wide: true, onSubmit: save, actions: [
     btn(t('cancel'), { onclick: () => m.close() }),
-    saveBtn,
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t('save')),
   ] });
   async function save() {
-    if (!form.reportValidity()) return;
-    await busy(saveBtn, async () => {
-      try {
-        const d = await post('/devices', formData(form));
-        m.close();
-        toast(t('saved'));
-        navigate(`/devices/${d.id}`);
-      } catch (e) { fail(e); }
-    });
+    try {
+      const d = await post('/devices', formData(form));
+      m.close();
+      toast(t('saved'));
+      navigate(`/devices/${d.id}`);
+    } catch (e) { fail(e); }
   }
 }
 
@@ -210,22 +206,22 @@ function bulkEdit(deviceIds, locations, types, sugg, done) {
     field(t('inv.tagsRemove'), input('tagsRemove', '', { list: 'dl-tags', autocomplete: 'off' }), t('f.tagsHint')),
     suggestionLists(sugg));
   wireModelAutofill(form, sugg);
-  const dlg = modal(t('inv.bulkEdit'), form, { wide: true, actions: [
+  const dlg = modal(t('inv.bulkEdit'), form, { wide: true, onSubmit: async () => {
+    const d = formData(form);
+    const set = {};
+    for (const k of ['location_id', 'type']) if (d[k] !== KEEP) set[k] = d[k];
+    for (const k of ['vendor', 'model', 'os', 'owner', 'supplier', 'purchase_date', 'warranty_until', 'maintenance_until']) if (d[k].trim()) set[k] = d[k].trim();
+    const split = (v) => v.split(',').map((x) => x.trim()).filter(Boolean);
+    const body = { ids: deviceIds, set, tagsAdd: split(d.tagsAdd), tagsRemove: split(d.tagsRemove) };
+    if (!Object.keys(set).length && !body.tagsAdd.length && !body.tagsRemove.length) { dlg.close(); return; }
+    try {
+      const r = await post('/devices/bulk', body);
+      dlg.close();
+      toast(t('inv.bulkSaved', { n: r.updated }));
+      done();
+    } catch (e) { fail(e); }
+  }, actions: [
     btn(t('cancel'), { onclick: () => dlg.close() }),
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
-      const d = formData(form);
-      const set = {};
-      for (const k of ['location_id', 'type']) if (d[k] !== KEEP) set[k] = d[k];
-      for (const k of ['vendor', 'model', 'os', 'owner', 'supplier', 'purchase_date', 'warranty_until', 'maintenance_until']) if (d[k].trim()) set[k] = d[k].trim();
-      const split = (v) => v.split(',').map((x) => x.trim()).filter(Boolean);
-      const body = { ids: deviceIds, set, tagsAdd: split(d.tagsAdd), tagsRemove: split(d.tagsRemove) };
-      if (!Object.keys(set).length && !body.tagsAdd.length && !body.tagsRemove.length) { dlg.close(); return; }
-      try {
-        const r = await post('/devices/bulk', body);
-        dlg.close();
-        toast(t('inv.bulkSaved', { n: r.updated }));
-        done();
-      } catch (e) { fail(e); }
-    } }, t('inv.bulkApply')),
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t('inv.bulkApply')),
   ] });
 }

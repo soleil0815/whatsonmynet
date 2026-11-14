@@ -1,5 +1,5 @@
 // Locations with their subnets.
-import { h, mount, modal, toast, confirmDialog, busy } from '../dom.js';
+import { h, mount, modal, toast, confirmDialog } from '../dom.js';
 import { get, post, put, del } from '../api.js';
 import { t } from '../i18n.js';
 import { icon } from '../icons.js';
@@ -46,28 +46,24 @@ function editor(loc, net, done) {
   if (!loc?.subnets?.length) addRow(loc ? '' : (net.suggestions[0] || ''));
   const name = input('name', loc?.name || '', { required: true, maxlength: 80 });
   const desc = input('description', loc?.description || '', { maxlength: 500 });
-  const form = h('form', { class: 'form', onsubmit: (e) => { e.preventDefault(); save(); } },
+  const form = h('form', { class: 'form' },
     field(t('loc.name'), name), field(t('loc.description'), desc),
     h('div', { class: 'field' }, t('loc.subnets'), rows,
       h('div', { class: 'actions' }, btn(t('loc.addSubnet'), { class: 'btn btn-sm', onclick: () => addRow() }, 'plus'),
         net.suggestions.map((c) => h('button', { type: 'button', class: 'chip', onclick: () => addRow(c) }, c)))));
-  const saveBtn = h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save() }, t('save'));
-  const m = modal(loc ? loc.name : t('loc.add'), form, { wide: true, actions: [
+  const m = modal(loc ? loc.name : t('loc.add'), form, { wide: true, onSubmit: save, actions: [
     btn(t('cancel'), { onclick: () => m.close() }),
-    saveBtn,
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t('save')),
   ] });
   name.focus();
   async function save() {
-    if (!form.reportValidity()) return;
     const subnets = [...rows.querySelectorAll('.subnet-row')].map((r) => ({ cidr: r.querySelector('[name=cidr]').value.trim(), label: r.querySelector('[name=label]').value.trim() })).filter((s) => s.cidr);
-    await busy(saveBtn, async () => {
-      try {
-        const body = { name: name.value, description: desc.value, subnets };
-        if (loc) await put(`/locations/${loc.id}`, body); else await post('/locations', body);
-        m.close();
-        toast(t('saved'));
-        done();
-      } catch (e) { fail(e); }
-    });
+    try {
+      const body = { name: name.value, description: desc.value, subnets };
+      if (loc) await put(`/locations/${loc.id}`, body); else await post('/locations', body);
+      m.close();
+      toast(t('saved'));
+      done();
+    } catch (e) { fail(e); }
   }
 }

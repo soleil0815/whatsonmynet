@@ -1,6 +1,6 @@
 // Monitoring: list of monitors with heartbeat bar, detail with response time chart and events,
 // form to add or edit a monitor, maintenance windows.
-import { h, mount, modal, toast, confirmDialog, fmtDate, fmtAgo, busy } from '../dom.js';
+import { h, mount, modal, toast, confirmDialog, fmtDate, fmtAgo } from '../dom.js';
 import { get, post, put, del } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
@@ -92,6 +92,12 @@ export function nowParts(m) {
   if (isValueType(m)) return { main: valueText(m), sub: '', tone: m.status === 'down' ? 'bad' : 'ok' };
   if (m.status === 'up' && m.last_ms !== null && m.last_ms !== undefined) return { main: `${m.last_ms} ms`, sub: '', tone: 'ok', plain: true };
   return { main: '–', sub: '', tone: 'muted', plain: true };
+}
+
+/** Paused because the device got a new IP and the stored password belongs to the old one: { from, to } or null */
+function ipMoved(m) {
+  const x = m && !m.enabled && m.data && m.data.ipMoved;
+  return x && x.from && x.to ? { from: x.from, to: x.to } : null;
 }
 
 function nowCell(m) {
@@ -227,7 +233,8 @@ export async function renderMonitoring(main, id, sub) {
     return h('tr', { class: 'click', onclick: (e) => { if (!e.target.closest('a,button')) navigate(`/monitoring/${m.id}`); } },
       h('td', {}, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
         h('div', { style: { minWidth: 0 } }, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
-          h('div', { class: 'sub' }, m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, checkText(m.last_message, getLang()))
+          h('div', { class: 'sub' }, ipMoved(m) ? h('span', { class: 'tone-bad' }, t('mon.ipMoved', ipMoved(m)))
+            : m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, checkText(m.last_message, getLang()))
             : m.status === 'unreachable' ? h('span', {}, t('mon.behind', { name: byId.get(m.parent_id)?.name || '?' }))
               : h('span', { class: 'mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`))))),
       h('td', { class: 'hide-sm' }, beatsBar(m.beats, 40, isValueType(m))),
@@ -436,6 +443,7 @@ async function renderDetail(main, id) {
     const span = h('div', { class: 'seg' }, [[24, '24 h'], [72, t('mon.r.3d')], [168, t('mon.r.7d')], [720, t('mon.r.30d')], [2160, t('mon.r.90d')], [8784, t('mon.r.1y')]].map(([v, l]) => h('button', { type: 'button', class: v === hours ? 'on' : '',
       onclick: () => { hours = v; reload(); } }, l)));
     mount(body,
+      ipMoved(m) ? h('div', { class: 'note bad' }, t('mon.ipMoved', ipMoved(m))) : null,
       m.status === 'down' ? h('div', { class: 'note bad' }, t('mon.downSince', { when: fmtAgo(m.status_since, t), message: checkText(m.last_message, getLang()) })) : null,
       m.status === 'unreachable' && m.parent ? h('div', { class: 'note' }, h('span', {}, t('mon.unreachableNote', { when: fmtAgo(m.status_since, t) }), ' ',
         h('a', { href: `/monitoring/${m.parent.id}`, 'data-link': true }, m.parent.name))) : null,
@@ -473,6 +481,7 @@ function eventLine(e) {
   if (e.kind === 'cert') return t('mon.ev.cert', { n: e.message });
   if (e.kind === 'unreachable') return t('mon.ev.unreachable', { name: e.message });
   if (e.kind === 'escalated') return t('mon.ev.escalated', { n: e.message });
+  if (e.kind === 'ipMoved') return t('mon.ev.ipMoved', { detail: e.message });
   return `${t(`mon.ev.${e.kind}`)}${e.message && e.kind === 'down' ? ` - ${checkText(e.message, getLang())}` : ''}`;
 }
 
@@ -523,19 +532,18 @@ async function startHostScript(preset, done) {
     const all = await get('/devices');
     const list = all.filter((d) => SCRIPT_TYPES.includes(d.type)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     const devSel = select('device_id', [['', t('hs.pickDevice')], ...list.map((d) => [String(d.id), `${d.name}${d.ip ? ` (${d.ip})` : ''}`])], '', { required: true });
-    const form = h('form', { class: 'form', onsubmit: (e) => e.preventDefault() },
+    const form = h('form', { class: 'form' },
       h('p', { style: { margin: 0 } }, t('hs.pickLead')),
       list.length ? field(t('sens.device'), devSel) : h('p', { class: 'muted', style: { margin: 0 } }, t('hs.pickNone')),
       h('div', { class: 'note', style: { margin: 0 } }, h('div', {},
         h('strong', {}, t('hs.pickManyTitle')), h('p', { style: { margin: '4px 0 8px' } }, t('hs.pickMany')),
         btn(t('hs.addShared'), { class: 'btn btn-sm', onclick: () => { dlg.close(); navigate('/settings/hostscripts'); } }, 'computer'))));
-    const dlg = modal(t('mon.pick.script'), form, { actions: [
+    const dlg = modal(t('mon.pick.script'), form, { onSubmit: list.length ? async () => {
+      const d = await get(`/devices/${devSel.value}`).catch((e) => { fail(e); return null; });
+      if (d) { dlg.close(); openHostScript(d, done); }
+    } : null, actions: [
       btn(t('cancel'), { onclick: () => dlg.close() }),
-      list.length ? h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
-        if (!form.reportValidity()) return;
-        const d = await get(`/devices/${devSel.value}`).catch((e) => { fail(e); return null; });
-        if (d) { dlg.close(); openHostScript(d, done); }
-      } }, t('hs.next')) : null] });
+      list.length ? h('button', { class: 'btn btn-primary', type: 'submit' }, t('hs.next')) : null] });
   } catch (e) { fail(e); }
 }
 
@@ -555,7 +563,9 @@ export async function openMonitorForm(m, done, preset = null) {
   // New monitors: admins also find "machine by script" here - it is no monitor type, it opens the script dialog
   const offerScript = !m && state.user.isAdmin;
   const typeSel = select('type', [...TYPES.map((x) => [x, t(`mon.type.${x}`)]), ...(offerScript ? [['script', t('mon.pick.script')]] : [])], v.type === 'proxmox' ? 'sensor' : v.type);
-  const target = input('target', v.target || '', { required: true, class: 'mono', placeholder: 'https://intranet.firma.local/', list: 'dl-containers' });
+  // Paused after an IP change of the device: the new address is offered (the password has to be typed again for it)
+  const moved = ipMoved(m) && m.data.ipMoved.target;
+  const target = input('target', moved || v.target || '', { required: true, class: 'mono', placeholder: 'https://intranet.firma.local/', list: 'dl-containers' });
   const targetLabel = h('span', {}, t('mon.f.target'));
   const port = input('port', v.port || '', { type: 'number', min: 1, max: 65535, class: 'mono' });
   const portBox = h('div', {}, field(t('mon.f.port'), port));
@@ -574,7 +584,8 @@ export async function openMonitorForm(m, done, preset = null) {
     } catch (e) { containerHint.textContent = e.message; }
   }
   hostSel.addEventListener('change', loadContainers);
-  const targetWrap = h('div', {}, h('label', { class: 'field' }, targetLabel, target), containers);
+  const targetWrap = h('div', {}, h('label', { class: 'field' }, targetLabel, target), containers,
+    moved ? h('p', { class: 'note bad small' }, t('mon.ipMovedForm')) : null);
   const dockerBox = h('div', { class: 'form-grid full' },
     dockerHosts.length ? field(t('mon.f.dockerHost'), hostSel, containerHint)
       : h('p', { class: 'full muted small' }, state.user.isAdmin ? t('mon.f.noDockerAdmin') : t('mon.f.noDocker')));
@@ -667,11 +678,14 @@ export async function openMonitorForm(m, done, preset = null) {
     const [kind, id] = srcSel.value.split(':');
     if (!id) { syncMetric(); return; }
     try { choices = await get(`/sensors/choices?${kind}=${id}`); } catch { choices = []; }
+    // Values another sensor already watches are not offered again (this sensor keeps its own)
+    const offered = choices.length;
+    choices = choices.filter((x) => !x.taken || (m && x.taken === m.id) || isCurrent(x));
     if (m && srcOf(m) === srcSel.value && !choices.some(isCurrent)) {
       choices.unshift({ src: m.type === 'sensor' ? 'device' : 'host', device: m.device_id, host: Number(so.host), hostName: '', metric: so.metric, key: so.key || '', name: '',
         kind: ['eq'].includes(so.op) && so.threshold === '' ? 'state' : 'number', current: true, label: so.label || so.metric, group: 'current' });
     }
-    mount(metricSel, choices.length ? choiceOptions(choices) : h('option', { value: '' }, t('sens.noValues')));
+    mount(metricSel, choices.length ? choiceOptions(choices) : h('option', { value: '' }, t(offered ? 'sens.allTaken' : 'sens.noValues')));
     const cur = choices.findIndex(isCurrent);
     if (cur >= 0) metricSel.value = String(cur);
     syncMetric();
@@ -781,7 +795,7 @@ export async function openMonitorForm(m, done, preset = null) {
   const escBox = h('div', { class: 'full field' }, t('mon.f.escalate'),
     h('div', { class: 'esc-row' }, escSel),
     chans.length ? [escChans, h('span', { class: 'hint' }, t('mon.f.escHint'))] : null);
-  const form = h('form', { class: 'form-grid', onsubmit: (e) => { e.preventDefault(); save(); } },
+  const form = h('form', { class: 'form-grid' },
     h('div', { class: 'full' }, field(t('mon.f.name'), nameIn)),
     field(t('mon.f.type'), typeSel, offerScript ? t('mon.f.typeScript') : null),
     targetWrap,
@@ -805,13 +819,11 @@ export async function openMonitorForm(m, done, preset = null) {
         escBox,
         httpBox)));
   sync();
-  const saveBtn = h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save() }, t('save'));
-  const dlg = modal(m ? m.name : t('mon.add'), form, { wide: true, actions: [
+  const dlg = modal(m ? m.name : t('mon.add'), form, { wide: true, onSubmit: save, actions: [
     btn(t('cancel'), { onclick: () => dlg.close() }),
-    saveBtn,
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t('save')),
   ] });
   async function save() {
-    if (!form.reportValidity()) return;
     const d = formData(form);
     const body = { name: d.name, type: d.type, target: d.target.trim(), port: d.port, interval_s: d.interval_s, timeout_s: d.timeout_s,
       fail_threshold: d.fail_threshold, resend_min: d.resend_min, http_status: d.http_status, http_keyword: d.http_keyword,
@@ -848,14 +860,12 @@ export async function openMonitorForm(m, done, preset = null) {
       if (d.password) body.password = d.password;
     }
     if (!m && preset?.device_id && body.type !== 'proxmox' && body.device_id === undefined) body.device_id = preset.device_id;
-    await busy(saveBtn, async () => {
-      try {
-        const r = m ? await put(`/monitors/${m.id}`, body) : await post('/monitors', body);
-        dlg.close();
-        toast(t('saved'));
-        if (done) done(r); else navigate(`/monitoring/${r.id}`);
-      } catch (e) { fail(e); }
-    });
+    try {
+      const r = m ? await put(`/monitors/${m.id}`, body) : await post('/monitors', body);
+      dlg.close();
+      toast(t('saved'));
+      if (done) done(r); else navigate(`/monitoring/${r.id}`);
+    } catch (e) { fail(e); }
   }
 }
 
@@ -998,16 +1008,15 @@ async function maintenanceForm(w, monitors, done, preset = null) {
     onceBox, weeklyBox,
     monitors.length ? h('div', { class: 'full field' }, t('maint.scope'), picker.el, h('span', { class: 'hint' }, t('maint.scopeHint'))) : null);
   sync();
-  const dlg = modal(w ? w.name : t('maint.add'), form, { wide: true, actions: [
+  const dlg = modal(w ? w.name : t('maint.add'), form, { wide: true, onSubmit: async () => {
+    const d = formData(form);
+    const body = { name: d.name, kind: d.kind, enabled: d.enabled,
+      starts_at: d.starts_at ? new Date(d.starts_at).toISOString() : null, ends_at: d.ends_at ? new Date(d.ends_at).toISOString() : null,
+      weekdays: DAYS.filter((x) => d[`d_${x}`]), time_from: d.time_from, time_to: d.time_to,
+      monitor_ids: picker.chosen() };
+    try { if (w) await put(`/maintenance/${w.id}`, body); else await post('/maintenance', body); dlg.close(); toast(t('saved')); done(); } catch (e) { fail(e); }
+  }, actions: [
     btn(t('cancel'), { onclick: () => dlg.close() }),
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
-      if (!form.reportValidity()) return;
-      const d = formData(form);
-      const body = { name: d.name, kind: d.kind, enabled: d.enabled,
-        starts_at: d.starts_at ? new Date(d.starts_at).toISOString() : null, ends_at: d.ends_at ? new Date(d.ends_at).toISOString() : null,
-        weekdays: DAYS.filter((x) => d[`d_${x}`]), time_from: d.time_from, time_to: d.time_to,
-        monitor_ids: picker.chosen() };
-      try { if (w) await put(`/maintenance/${w.id}`, body); else await post('/maintenance', body); dlg.close(); toast(t('saved')); done(); } catch (e) { fail(e); }
-    } }, t('save')),
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t('save')),
   ] });
 }

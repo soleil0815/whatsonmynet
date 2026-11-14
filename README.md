@@ -23,9 +23,9 @@ WhatsOnMyNet scannt dein Netzwerk, erkennt Hersteller und Gerätetyp selbst (Swi
 
 - **Schonender Netzwerkscan** - Geräte im eigenen Netz werden über ARP gefunden (jedes Gerät antwortet darauf, auch mit geschlossener Firewall), in gerouteten Netzen über Ping und wenige TCP-Verbindungsversuche. Geprüft werden nur 26 typische Ports, gedrosselt auf 40 Versuche pro Sekunde. Für eine Firewall sieht das aus wie normaler Netzwerkverkehr.
 - **Automatische Erkennung** - Hersteller aus der MAC-Adresse (IEEE-Liste), Gerätetyp aus offenen Ports, Titel der Weboberfläche, Zertifikat, SNMP (nur lesend), NetBIOS-Name und Reverse DNS. Unsichere Erkennungen sind markiert, den Typ kannst du vor dem Übernehmen ändern.
-- **Telematik** - Kartenterminals (SICCT-Port 4742, ORGA, Cherry …) und TI-Konnektoren (KoCoBox, secunet, RISE …) bekommen ein eigenes Symbol und eine eigene Kategorie. Ihre Tiefenprüfung bleibt immer beim schonenden Profil.
-- **Nur übernehmen, was du willst** - Scan-Ergebnis in vier Reitern: *Neu*, *Geändert*, *Bekannt*, *Ignoriert*. Neue Geräte per Häkchen übernehmen oder dauerhaft ignorieren.
-- **MAC-Adresse als Ausweis** - ändert sich die IP eines bekannten Geräts, übernimmt der nächste Scan die neue Adresse automatisch, mit Eintrag im Verlauf.
+- **Telematik** - Kartenterminals (SICCT-Port 4742, ORGA, Cherry …) und TI-Konnektoren (KoCoBox, secunet, RISE …) bekommen ein eigenes Symbol und eine eigene Kategorie. Ihre Tiefenprüfung bleibt immer beim schonenden Profil - auch bei einem noch unklaren Gerät: Die Tiefenprüfung fragt zuerst nur Port 4742 (SICCT) ab; antwortet er, bleibt es beim schonenden Profil.
+- **Nur übernehmen, was du willst** - Scan-Ergebnis in vier Reitern: *Neu*, *Geändert*, *Bekannt*, *Ignoriert*. Neue Geräte per Häkchen übernehmen oder dauerhaft ignorieren. Übernehmen und Ignorieren geht aus dem neuesten Scan eines Subnetzes; ältere Scans bleiben lesbar, „Nicht mehr ignorieren“ geht auch dort.
+- **MAC-Adresse als Ausweis** - ändert sich die IP eines bekannten Geräts, übernimmt der nächste Scan die neue Adresse automatisch, mit Eintrag im Verlauf. Einen von Hand eingetragenen Rechnernamen lässt der Scan stehen; er füllt den Namen nur, solange er leer ist oder vom Scan stammt.
 - **Inventar** - Suche über alles, Filter nach Typ und Standort, Ansicht als Liste, nach Subnetz oder nach Typ, Status „beim letzten Scan gesehen“, Export als CSV (Excel) und JSON.
 - **Schnellzugriff** - ein Klick öffnet die Weboberfläche des Geräts (Proxmox auf 8006, Synology auf 5001, Drucker …). Die Adresse schlägt der Scan vor.
 - **Kauf, Garantie, Wartung** - optionale Felder mit Hinweis auf der Übersicht, wenn die Garantie bald endet.
@@ -45,9 +45,9 @@ WhatsOnMyNet überwacht Geräte, Dienste und Webseiten und ersetzt damit Uptime 
 - **Ohne Fehlalarme**: Ein Alarm kommt erst nach mehreren Fehlversuchen hintereinander (Standard 3), eine Entwarnung mit der Dauer des Ausfalls. Optional wiederholt sich der Alarm, solange die Störung anhält.
 - **Zertifikate**: Bei HTTPS wird das Ablaufdatum gelesen, gewarnt wird z. B. 30, 14 und 7 Tage vorher, jede Stufe einmal. Die Prüfung von Kette und Name ist für Internetseiten einschaltbar; LAN-Geräte mit selbstsigniertem Zertifikat funktionieren ohne.
 - **Benachrichtigungen** unter *Einstellungen → Benachrichtigungen*: Discord, Slack, Microsoft Teams, Google Chat, Mattermost, Rocket.Chat, Matrix, Signal, WhatsApp (CallMeBot), ntfy, Gotify, Pushover, Pushbullet, Home Assistant und Apprise (über 100 weitere Dienste), jeweils mit kurzer Anleitung im Formular; außerdem E-Mail (über den SMTP-Server), Telegram-Bot (Token von @BotFather, Chat-ID) und Webhook mit eigener JSON-Vorlage (`{{text}}`, `{{name}}`, `{{status}}`, `{{message}}`, `{{target}}`, `{{time}}`) und optionalem Header für einen Schlüssel. Token und Header werden verschlüsselt gespeichert. Jeder Kanal hat eine Testnachricht.
-- **Wartungsfenster** einmalig oder wöchentlich (auch über Mitternacht), für alle oder ausgewählte Monitore - währenddessen keine Alarme.
+- **Wartungsfenster** einmalig oder wöchentlich (auch über Mitternacht), für alle oder ausgewählte Monitore - währenddessen keine Alarme. Der Status „Wartung“ steht ab Beginn des Fensters da, nicht erst nach der nächsten Prüfung.
 - **Verfügbarkeit** über 24 Stunden, 7 und 30 Tage, Antwortzeit als Diagramm, Ereignisse mit Hinweis, an wen gemeldet wurde.
-- **Geräte**: Auf der Seite eines Geräts legt „Überwachen“ einen passenden Monitor an (Weboberfläche, sonst Ping oder ein offener Port). Ändert der Scan die IP-Adresse eines Geräts, ziehen seine Monitore mit.
+- **Geräte**: Auf der Seite eines Geräts legt „Überwachen“ einen passenden Monitor an (Weboberfläche, sonst Ping oder ein offener Port). Ändert der Scan die IP-Adresse eines Geräts, ziehen seine Monitore mit. Ein Monitor mit gespeichertem Passwort (Datenbank, Netzlaufwerk) zieht nicht mit: Er wird pausiert, seine Benachrichtigungskanäle bekommen eine Meldung, und mit dem neu eingegebenen Passwort läuft er an der neuen Adresse weiter - das Passwort geht nie ungefragt an eine andere Adresse. Kehrt das Gerät zur alten Adresse zurück, läuft er von selbst wieder.
 
 Prüfergebnisse bleiben 7 Tage im Detail und stundenweise über ein Jahr gespeichert.
 
@@ -61,7 +61,7 @@ Prüfergebnisse bleiben 7 Tage im Detail und stundenweise über ein Jahr gespeic
 
 Wie bei PRTG lässt sich jeder Wert, den ein Gerät liefert, als eigener Monitor überwachen - mit Verlauf, Alarm und Wartungsfenstern:
 
-- **Sensor (Gerätewert)**: auf der Geräteseite „Sensor anlegen“, dann Wert und Bedingung wählen - z. B. „Toner Cyan kleiner oder gleich 10 %“, „Volume 1 größer oder gleich 85 %“, „Temperatur Drive 2 über 50 °C“, „Port 10 (Uplink) verbunden“, „Festplatte/Speicherpool in Ordnung“, „Störungen am Drucker“. Gelesen wird der letzte Stand der Drucker-/Switch-/NAS-Abfrage, ohne zusätzliche Anfragen ans Gerät.
+- **Sensor (Gerätewert)**: auf der Geräteseite „Sensor anlegen“, dann Wert und Bedingung wählen - z. B. „Toner Cyan kleiner oder gleich 10 %“, „Volume 1 größer oder gleich 85 %“, „Temperatur Drive 2 über 50 °C“, „Port 10 (Uplink) verbunden“, „Festplatte/Speicherpool in Ordnung“, „Störungen am Drucker“. Gelesen wird der letzte Stand der Drucker-/Switch-/NAS-Abfrage, ohne zusätzliche Anfragen ans Gerät. Werte, die schon ein anderer Sensor überwacht, bietet der Dialog nicht noch einmal an.
 - **SNMP-Wert (OID)**: jeder per SNMP lesbare Wert mit eigener Bedingung (kleiner, größer, gleich, enthält Text …) - z. B. Restlaufzeit einer USV, Temperatur einer Klimaanlage, Sitzungen einer Firewall.
 - Der Verlauf zeigt den gemessenen Wert über 24 Stunden bis zu einem Jahr (ab 30 Tagen als Stundenzusammenfassung).
 
@@ -104,7 +104,7 @@ Danach `docker compose up -d`.
 
 Einmal pro Nacht (Standard 02:30 Uhr Ortszeit, `TZ` in der `.env`) sucht WhatsOnMyNet in allen Subnetzen deiner Standorte nur nach Geräten: ARP, NetBIOS und - wenn erlaubt - Ping; in gerouteten Subnetzen zusätzlich wenige TCP-Verbindungsversuche (Ports 443, 80, 22, 445, 3389) und die ARP-Tabelle der Router per SNMP. Keine Port-Prüfung der Geräte, keine Webanfragen. So bleibt der Scan unauffällig.
 
-- Bekannte Geräte bekommen ihre neue IP-Adresse automatisch (die MAC-Adresse ist die Identität), ihre Monitore ziehen mit.
+- Bekannte Geräte bekommen ihre neue IP-Adresse automatisch (die MAC-Adresse ist die Identität), ihre Monitore ziehen mit - außer Monitore mit gespeichertem Passwort: Sie werden pausiert und brauchen das Passwort neu (siehe Monitoring).
 - Unbekannte Geräte landen im Scan-Ergebnis zum Übernehmen oder Ignorieren; die Übersicht zeigt, wie viele warten.
 - **Neue Geräte melden**: Ein Gerät, das zum allerersten Mal auftaucht, wird einmal über die Benachrichtigungskanäle gemeldet. Der erste Scan nach dem Update lernt nur, was schon da ist - keine Flut an Meldungen.
 - Uhrzeit, Kanäle und „Jetzt ausführen“ unter *Einstellungen → Scan*. Nach einem Neustart holt WhatsOnMyNet den Scan bis zu 4 Stunden später nach.
@@ -160,6 +160,8 @@ Unter *Einstellungen → Active Directory* meldest du dich mit dem Windows-Konto
 ## Rechte pro Standort (ab Version 0.3)
 
 Bearbeiter und Leser lassen sich unter *Einstellungen → Benutzer* auf einen oder mehrere Standorte beschränken - etwa für die IT einer Außenstelle. Ein beschränktes Konto sieht und ändert nur Geräte, Scan-Ergebnisse und Monitore dieser Standorte, scannt nur deren Subnetze und zählt auf der Übersicht nur sie. Geräte ohne Standort, freie Subnetze, der nächtliche Scan, Wartungsfenster und Docker-Hosts bleiben unbeschränkten Konten vorbehalten. Administratoren sind nie beschränkt; das gilt auch für Konten aus dem Active Directory.
+
+**Erlaubte Scan-Ziele:** Bearbeiter scannen nur private Netze (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 und 100.64.0.0/10) und die Subnetze, die ein Administrator bei den Standorten eingetragen hat. Öffentliche Adressen - als Subnetz im Scan oder als Tiefenprüfung eines Geräts - darf nur ein Administrator scannen.
 
 ## Scan-Agent für Außenstellen (ab Version 0.3)
 

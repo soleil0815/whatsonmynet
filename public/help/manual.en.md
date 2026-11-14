@@ -21,11 +21,11 @@ The interface always runs over HTTPS. On first start WhatsOnMyNet creates a self
 
 1. **Add a location** (*Locations*): name and subnets, e.g. "Main building" with `192.168.10.0/24`.
 2. **Scan the network** (*Scan network*): tick the location, "Start scan". The radar shows the devices found; the scan is gentle (ARP, 26 typical ports, SNMP read-only).
-3. **Adopt**: in the result under "New" check type and name, tick devices, "Adopt into inventory". What you do not want in the inventory, "Ignore". Ignored by mistake? Tick it in the "Ignored" tab and choose "Stop ignoring" (it is listed under "New" again) or "Adopt into inventory" right away. The full list is under *Settings → Ignored devices*.
+3. **Adopt**: in the result under "New" check type and name, tick devices, "Adopt into inventory". What you do not want in the inventory, "Ignore". Ignored by mistake? Tick it in the "Ignored" tab and choose "Stop ignoring" (it is listed under "New" again) or "Adopt into inventory" right away. The full list is under *Settings → Ignored devices*. Adopt and ignore work only from the newest scan of a subnet - once a newer scan has covered the subnet, an older scan stays readable, adopting or ignoring happens in the newer one. "Stop ignoring" works in the older scan too.
 
 ![Scan with radar](img/scan-en.png)
 
-The MAC address is the identity of a device: if it gets a new IP, the next scan takes it over automatically and records it in the history.
+The MAC address is the identity of a device: if it gets a new IP, the next scan takes it over automatically and records it in the history. A host name you typed by hand stays; the scan only fills the host name while the field is empty or the name came from the scan. If you empty the field, the scan fills it again.
 
 ## Inventory
 
@@ -35,7 +35,7 @@ The MAC address is the identity of a device: if it gets a new IP, the next scan 
 - **Device page**: all details, purchase and warranty dates, notes, quick access to the web interface, what the scan detected, history of all changes.
 - **Suggestions while typing**: manufacturer, model, operating system, owner, supplier and tags suggest what is already in the inventory. A known model fills in manufacturer and type.
 - **Multiple selection**: tick devices and edit them together (type, location, manufacturer, model, dates, tags) or delete them.
-- **Deep check**: checks one device with a longer port list. Telematik devices (connector, card terminal) are always checked gently.
+- **Deep check**: checks one device with a longer port list. Telematik devices (connector, card terminal) are always checked gently. For a device not yet recognised, the deep check first asks port 4742 (SICCT) alone - if a card terminal answers, the gentle profile stays.
 
 ## Nightly light scan
 
@@ -54,7 +54,7 @@ A monitor checks regularly (20 seconds to 24 hours) and reports only after sever
 - **Network drive (SMB)**: Windows shares and NAS - see below
 - **Sensor** (value of a device, a machine with script, a hypervisor or controller) and **SNMP value (OID)** - see below
 
-On the device page "Monitor" creates a fitting monitor. If the IP of a device changes, its monitors follow. If you rename the device, its monitors and sensors take the new name too, so an alarm names it as it is called now (a monitor with a name of your own without the device name stays as it is).
+On the device page "Monitor" creates a fitting monitor. If the IP of a device changes, its monitors follow. Exception: a monitor with a stored password (database, network share) is paused, because the password was entered for the old address and is never sent to another one unasked. It shows "Device has a new IP - please enter the password again", its notification channels get a message, and the edit dialog already has the new address filled in: saved with the password, it runs again. When the device returns to the old address, it runs on by itself. If you rename the device, its monitors and sensors take the new name too, so an alarm names it as it is called now (a monitor with a name of your own without the device name stays as it is).
 
 ![Monitor with history](img/monitor-en.png)
 
@@ -67,7 +67,7 @@ On the device page "Monitor" creates a fitting monitor. If the IP of a device ch
 
 Tokens, keys and webhook addresses are stored encrypted and never shown again. Outages arrive with high priority on push services.
 
-**Maintenance windows** (*Monitoring → Monitoring → Maintenance windows*): once or on certain weekdays from-to (also over midnight). A window is for the ticked monitors and sensors - the choice is grouped by device or hypervisor, with search, a tick at the device takes all of it. Nothing ticked = everything. Quicker for a single one: on the page of the monitor or sensor under *Times without alarm* → **Time window without alarm** (preset: daily 20-23 h, e.g. for the time of the backup in which an SSD gets warm). Checks and history go on in a maintenance window, only the messages are silent.
+**Maintenance windows** (*Monitoring → Monitoring → Maintenance windows*): once or on certain weekdays from-to (also over midnight). A window is for the ticked monitors and sensors - the choice is grouped by device or hypervisor, with search, a tick at the device takes all of it. Nothing ticked = everything. Quicker for a single one: on the page of the monitor or sensor under *Times without alarm* → **Time window without alarm** (preset: daily 20-23 h, e.g. for the time of the backup in which an SSD gets warm). Checks and history go on in a maintenance window, only the messages are silent. The status "maintenance" is shown from the start of the window (not only after the next check) and goes with its end.
 
 **What an alarm says:** web page, port and ping report "is down". A measured value reports "limit exceeded - 83.9 °C (≥ 80)" and later "back in the normal range", a state (service, VM, disk, container …) "fault" and "fine again", a sensor without current values "no current values".
 
@@ -136,7 +136,7 @@ The *Network map* shows from MAC tables and LLDP which device hangs at which por
 
 ## Sensors
 
-Every value a device delivers can become a monitor of its own - with history, alarm and maintenance windows. All sensors are listed under *Monitoring → Sensors*. "Add sensor" is on the device page, at the host under *Virtualization* and under *Monitoring → Sensors*. It is always the same dialog: choose device or host, then value and condition, e.g.:
+Every value a device delivers can become a monitor of its own - with history, alarm and maintenance windows. All sensors are listed under *Monitoring → Sensors*. "Add sensor" is on the device page, at the host under *Virtualization* and under *Monitoring → Sensors*. It is always the same dialog: choose device or host, then value and condition. Values another sensor already watches are not offered again (also not through the hypervisor when the Linux script delivers the same value). Examples:
 
 - "toner cyan less than or equal 10 %"
 - "usage /volume1 greater than or equal 85 %"
@@ -347,7 +347,7 @@ Under *Monitoring → Reports* reports go out by e-mail at set times - e.g. the 
 
 ## Users and rights
 
-- **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*.
+- **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*. Editors only scan private networks (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) and the subnets of the locations; public addresses only administrators.
 - **Locations**: editors and viewers can be limited to locations - they then only see and change devices, scans and monitors of these.
 - **Active Directory**: sign-in with the Windows account, see the next section.
 - **Two-factor sign-in** (*My account*): scan the QR code with an authenticator app, confirm a code, keep the recovery codes. It can be made mandatory for administrators under *Settings → General*.

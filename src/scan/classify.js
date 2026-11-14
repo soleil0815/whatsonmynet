@@ -25,6 +25,8 @@ const UPS_VENDORS = /^(APC|Eaton|Riello|Socomec|CyberPower|Legrand|Vertiv|Lieber
 const NAS_VENDORS = /^(Synology|QNAP|Asustor|TerraMaster|Western Digital|Buffalo|Netgear ReadyNAS)/i;
 const TI_CONNECTOR_VENDORS = /^(secunet|Research Industrial Systems|RISE|CompuGroup|KoCo Connector|Telekom Healthcare)/i;
 const TI_TERMINAL_VENDORS = /^(Ingenico|Cherry|Worldline|ORGA|Celectronic|Bluechip)/i;
+/** Manufacturer (OUI name) of a TI connector or card terminal - such a device always gets the gentle port list */
+export const isTelematikVendor = (vendor) => !!vendor && (TI_CONNECTOR_VENDORS.test(vendor) || TI_TERMINAL_VENDORS.test(vendor));
 const VM_VENDORS = /^(QEMU\/KVM|VMware|Microsoft|Proxmox|Xen|Parallels|innotek|Oracle VirtualBox)/i;
 
 // sysObjectID enterprise numbers (1.3.6.1.4.1.<n>)

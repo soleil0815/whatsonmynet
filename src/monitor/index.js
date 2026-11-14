@@ -11,6 +11,7 @@ import { encrypt, decrypt } from '../lib/crypto.js';
 import { pingAvailable } from '../scan/probes.js';
 import { bestWebUrl } from '../scan/engine.js';
 import { forgetMonitors } from '../lib/idlists.js';
+import { onIpMovedPaused } from '../devicechange.js';
 
 const HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 const MAX_PARALLEL = 25;
@@ -23,7 +24,7 @@ const hourOf = (d) => `${d.toISOString().slice(0, 13)}:00`;
 export function parseCertDays(v) {
   const list = String(v ?? '30,14,7').split(/[,\s]+/).filter(Boolean).map(Number);
   if (!list.length) return [];
-  if (list.some((n) => !Number.isInteger(n) || n < 1 || n > 365) || list.length > 5) throw new HttpError(400, 'err.certDays');
+  if (list.some((n) => !Number.isInteger(n) || n < 1 || n > 365) || list.length > 5) throw new HttpError(400, 'err.certDays', undefined, 'cert_days');
   return [...new Set(list)].sort((a, b) => b - a);
 }
 
@@ -194,9 +195,9 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       })(),
       escalate_channels: JSON.stringify(ids(input.escalate_channels ?? parse(old?.escalate_channels, []), 50)),
     };
-    if (!v.name) throw new HttpError(400, 'err.nameRequired');
+    if (!v.name) throw new HttpError(400, 'err.nameRequired', undefined, 'name');
     v.parent_id = cleanParent(input, old);
-    if (!validStatusSpec(v.http_status)) throw new HttpError(400, 'err.httpStatus');
+    if (!validStatusSpec(v.http_status)) throw new HttpError(400, 'err.httpStatus', undefined, 'http_status');
     v.timeout_s = Math.min(v.timeout_s, v.interval_s - 1);
     for (const c of parse(v.channels, [])) if (!db.prepare('SELECT 1 FROM channels WHERE id=?').get(c)) throw new HttpError(400, 'err.channel');
     const target = line(input.target ?? old?.target, 1000);
@@ -230,21 +231,21 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       v.target = (base.label || metric).slice(0, 200);
       v.port = null;
     } else if (type === 'snmp') {
-      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
       v.target = target.toLowerCase();
       const p = int(String(input.port ?? old?.port ?? '')) || 161;
-      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port', undefined, 'port');
       v.port = p;
       const prev = old && old.type === 'snmp' ? parse(old.options, {}) : {};
       const oid = line(input.options?.oid ?? prev.oid ?? '', 200).replace(/^\./, '');
-      if (!validOid(oid)) throw new HttpError(400, 'err.oid');
+      if (!validOid(oid)) throw new HttpError(400, 'err.oid', undefined, 'oid');
       v.options = JSON.stringify({ oid, ...sensorOptions(input, old && old.type === 'snmp' ? old : null) });
     } else if (type === 'smb') {
       // Network drive: \\host\share, optional folder or file, read-only account, warning below free space
-      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
       v.target = target.toLowerCase();
       const p = int(String(input.port ?? old?.port ?? '')) || 445;
-      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port', undefined, 'port');
       v.port = p;
       const prev = old && old.type === 'smb' ? parse(old.options, {}) : {};
       const o = input.options && typeof input.options === 'object' ? input.options : {};
@@ -265,17 +266,17 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       else if (old && old.type === 'smb') v.secret = keepSecret(old, v);
       else v.secret = '';
     } else if (type === 'docker') {
-      if (!CONTAINER_NAME.test(target)) throw new HttpError(400, 'err.container');
+      if (!CONTAINER_NAME.test(target)) throw new HttpError(400, 'err.container', undefined, 'target');
       const hostId = int(String(input.docker_host_id ?? old?.docker_host_id ?? ''));
-      if (!hostId || !db.prepare('SELECT 1 FROM docker_hosts WHERE id=?').get(hostId)) throw new HttpError(400, 'err.dockerHost');
+      if (!hostId || !db.prepare('SELECT 1 FROM docker_hosts WHERE id=?').get(hostId)) throw new HttpError(400, 'err.dockerHost', undefined, 'docker_host_id');
       v.target = target;
       v.docker_host_id = hostId;
       v.port = null;
     } else if (DB_TYPES.includes(type)) {
-      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
       v.target = target.toLowerCase();
       const p = int(String(input.port ?? old?.port ?? '')) || DEFAULT_PORTS[type];
-      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+      if (p < 1 || p > 65535) throw new HttpError(400, 'err.port', undefined, 'port');
       v.port = p;
       const oldOpts = old && old.type === type ? parse(old.options, {}) : {};
       const o = input.options && typeof input.options === 'object' ? input.options : {};
@@ -293,16 +294,16 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       else v.secret = '';
     } else if (type === 'http') {
       let u;
-      try { u = new URL(target); } catch { throw new HttpError(400, 'err.url'); }
-      if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw new HttpError(400, 'err.url');
+      try { u = new URL(target); } catch { throw new HttpError(400, 'err.url', undefined, 'target'); }
+      if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw new HttpError(400, 'err.url', undefined, 'target');
       v.target = u.toString();
       v.port = null;
     } else {
-      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host');
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
       v.target = target.toLowerCase();
       if (type === 'tcp') {
         const p = int(String(input.port ?? old?.port ?? ''));
-        if (!p || p < 1 || p > 65535) throw new HttpError(400, 'err.port');
+        if (!p || p < 1 || p > 65535) throw new HttpError(400, 'err.port', undefined, 'port');
         v.port = p;
       } else {
         v.port = null;
@@ -353,9 +354,14 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const old = db.prepare('SELECT * FROM monitors WHERE id=?').get(id);
     if (!old) throw new HttpError(404, 'err.notFound');
     const v = await clean(input, old);
+    // Paused because its device got a new IP (see devicechange.js): saved with a newly typed password it runs again
+    // (at the address it was saved for - the dialog offers the new one)
+    const ipMoved = !old.enabled && !!parse(old.data, {})?.ipMoved;
+    const resumed = ipMoved && typeof input.password === 'string' && input.password !== '' && !!v.secret && !('enabled' in input && !input.enabled);
+    if (resumed) { v.enabled = 1; v.last_message = ''; v.data = '{}'; }
     const keys = Object.keys(v);
     db.prepare(`UPDATE monitors SET ${keys.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...keys.map((k) => v[k]), iso(), id);
-    if (v.target !== old.target || v.type !== old.type || v.port !== old.port || v.docker_host_id !== old.docker_host_id || ('device_id' in v && v.device_id !== old.device_id)) {
+    if (resumed || v.target !== old.target || v.type !== old.type || v.port !== old.port || v.docker_host_id !== old.docker_host_id || ('device_id' in v && v.device_id !== old.device_id)) {
       db.prepare("UPDATE monitors SET status='pending', status_since=?, fail_count=0, cert_valid_to=NULL, cert_alert_days=NULL, data='{}' WHERE id=?").run(iso(), id);
     }
     nextRun.set(id, 0);
@@ -363,8 +369,10 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   }
 
   function setEnabled(id, on) {
-    const r = db.prepare(`UPDATE monitors SET enabled=?, status=?, status_since=?, fail_count=0, updated_at=? WHERE id=?`)
-      .run(on ? 1 : 0, on ? 'pending' : 'paused', iso(), iso(), id);
+    // Resumed by hand: the note about a new IP of the device is done with (the monitor keeps its address)
+    const r = db.prepare(`UPDATE monitors SET enabled=?, status=?, status_since=?, fail_count=0, updated_at=?,
+      data=CASE WHEN ? AND json_valid(data) AND json_extract(data,'$.ipMoved') IS NOT NULL THEN json_remove(data,'$.ipMoved') ELSE data END WHERE id=?`)
+      .run(on ? 1 : 0, on ? 'pending' : 'paused', iso(), iso(), on ? 1 : 0, id);
     if (!r.changes) throw new HttpError(404, 'err.notFound');
     nextRun.set(id, 0);
     return get(id);
@@ -404,14 +412,27 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     return [...out.values()].map(({ n, sum, ...b }) => ({ ...b, avg: n ? Math.round((sum / n) * 100) / 100 : null }));
   }
 
+  /**
+   * Status as the user sees it: a maintenance window shows "maintenance" from its first minute (not only after the next
+   * check), and a window that is over no longer does ("pending" until the next check says up or down). Only what is
+   * shown changes - the stored status, alarms and dependencies still follow the checks.
+   */
+  function shownStatus(m, at = now()) {
+    if (!m.enabled || m.status === 'paused') return m.status;
+    if (maintenance?.activeFor?.(m.id, at)) return 'maintenance';
+    return m.status === 'maintenance' ? 'pending' : m.status;
+  }
+
   function shape(m) {
     if (!m) return null;
     const certDays = m.cert_valid_to ? Math.floor((Date.parse(m.cert_valid_to) - now().getTime()) / 86400000) : null;
     const { secret, data, ...rest } = m;
-    return { ...rest, data: parse(data, {}), channels: parse(m.channels, []), escalate_channels: parse(m.escalate_channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
+    return { ...rest, status: shownStatus(m), data: parse(data, {}), channels: parse(m.channels, []), escalate_channels: parse(m.escalate_channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
       cert_check: !!m.cert_check, cert_days_left: certDays,
       docker_host: m.docker_host_id ? db.prepare('SELECT id, name FROM docker_hosts WHERE id=?').get(m.docker_host_id) || null : null };
   }
+
+  const brief = (r) => (r ? { id: r.id, name: r.name, status: shownStatus(r) } : null);
 
   function get(id) { return shape(db.prepare('SELECT * FROM monitors WHERE id=?').get(id)); }
 
@@ -440,8 +461,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       checks,
       ...(long ? { history: history(id, span), bucketHours: bucketHours(span) } : {}),
       events: db.prepare('SELECT * FROM monitor_events WHERE monitor_id=? ORDER BY id DESC LIMIT 100').all(id),
-      parent: m.parent_id ? db.prepare('SELECT id, name, status FROM monitors WHERE id=?').get(m.parent_id) || null : null,
-      dependents: db.prepare('SELECT id, name, status FROM monitors WHERE parent_id=? ORDER BY name').all(id),
+      parent: m.parent_id ? brief(db.prepare('SELECT id, name, status, enabled FROM monitors WHERE id=?').get(m.parent_id)) : null,
+      dependents: db.prepare('SELECT id, name, status, enabled FROM monitors WHERE parent_id=? ORDER BY name').all(id).map(brief),
       candidates: childCandidates(id).length,
       maintenance: !!maintenance.activeFor(id, now()),
     };
@@ -449,7 +470,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
 
   /** keep(m): optional filter (location limit of the user) */
   function summary(keep = null) {
-    const rows = db.prepare('SELECT id, name, type, status, status_since, last_message, enabled, cert_valid_to, device_id FROM monitors').all().filter((m) => !keep || keep(m));
+    const rows = db.prepare('SELECT id, name, type, status, status_since, last_message, enabled, cert_valid_to, device_id FROM monitors').all().filter((m) => !keep || keep(m))
+      .map((m) => ({ ...m, status: shownStatus(m) }));
     const soon = rows.filter((m) => m.cert_valid_to && (Date.parse(m.cert_valid_to) - now().getTime()) / 86400000 <= 30)
       .map((m) => ({ id: m.id, name: m.name, cert_valid_to: m.cert_valid_to }));
     return {
@@ -468,7 +490,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   function deviceStatus() {
     const order = { down: 6, unreachable: 5, pending: 4, maintenance: 3, up: 2, paused: 1 };
     const map = {};
-    for (const m of db.prepare('SELECT device_id, status FROM monitors WHERE device_id IS NOT NULL').all()) {
+    for (const row of db.prepare('SELECT id, device_id, status, enabled FROM monitors WHERE device_id IS NOT NULL').all()) {
+      const m = { ...row, status: shownStatus(row) };
       if (!map[m.device_id] || (order[m.status] || 0) > (order[map[m.device_id]] || 0)) map[m.device_id] = m.status;
     }
     return map;
@@ -478,6 +501,19 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   function event(m, kind, message, notified = []) {
     db.prepare('INSERT INTO monitor_events(monitor_id,at,kind,message,notified) VALUES(?,?,?,?,?)').run(m.id, iso(now()), kind, String(message).slice(0, 500), notified.join(', '));
   }
+
+  // A monitor with a stored password paused because its device has a new IP (devicechange.js): its channels are
+  // told like for any other alarm - a database or share check must not stop silently
+  onIpMovedPaused(db, async (list) => {
+    for (const x of list) {
+      const ev = db.prepare("SELECT id, at FROM monitor_events WHERE id=? AND monitor_id=? AND kind='ipMoved'").get(x.eventId, x.monitorId);
+      const m = ev && db.prepare('SELECT * FROM monitors WHERE id=?').get(x.monitorId);
+      if (!m) continue; // rolled back or deleted meanwhile
+      const mon = { id: m.id, name: m.name, type: m.type, label: parse(m.options, {}).label || '', target: m.type === 'tcp' ? `${m.target}:${m.port}` : m.target, channels: m.channels };
+      const reached = await channels.notify(mon, { kind: 'ipMoved', from: x.from, to: x.to, message: `${x.from} → ${x.to}`, monitor: mon, at: ev.at });
+      db.prepare('UPDATE monitor_events SET notified=? WHERE id=?').run(reached.join(', '), ev.id);
+    }
+  });
 
   async function checkNow(id) {
     const m = db.prepare('SELECT * FROM monitors WHERE id=?').get(id);

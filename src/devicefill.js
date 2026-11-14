@@ -11,6 +11,7 @@
 // Every change is in the device history.
 import { line } from './lib/http.js';
 import { TYPES } from './scan/classify.js';
+import { onDeviceChanged } from './devicechange.js';
 
 const FIELDS = ['serial', 'model', 'vendor', 'os', 'hostname', 'type'];
 const HARDWARE = ['serial', 'model', 'vendor', 'os', 'type'];
@@ -57,7 +58,8 @@ export function fillDevice(db, deviceId, facts, source = 'SNMP', { mayReplace = 
     if (otherSerial && !mayReplace && HARDWARE.includes(k)) continue;
     // "unknown" is no real type - like an empty field
     const cur = k === 'type' && d[k] === 'unknown' ? '' : String(d[k] ?? '').trim();
-    if (same(cur, v)) { nextAuto[k] = cur; continue; }
+    // (a host name typed by hand - auto_fields.hostname = null - stays the user's even when the device reports the same)
+    if (same(cur, v)) { if (!(k === 'hostname' && auto[k] === null)) nextAuto[k] = cur; continue; }
     const fillOnly = FILL_ONLY.includes(k) || (k === 'type' && TYPE_FILL_ONLY.includes(source));
     const followsDevice = !cur || (!fillOnly && auto[k] !== undefined && same(auto[k], cur)) || (replaced && HARDWARE.includes(k) && !fillOnly);
     if (!followsDevice) continue;
@@ -78,6 +80,8 @@ export function fillDevice(db, deviceId, facts, source = 'SNMP', { mayReplace = 
     const hist = db.prepare('INSERT INTO device_history(device_id,at,user,kind,detail) VALUES(?,?,?,?,?)');
     if (replaced) hist.run(deviceId, at, who, 'replaced', JSON.stringify({ source, from: d.serial, to: got.serial, mac: d.mac || null }));
     if (changes.length) hist.run(deviceId, at, who, 'snmp', JSON.stringify({ source, fields: changes }));
+    // Another type reported: the same follow-ups as after a manual edit (SNMP data of the old type goes)
+    if (set.type) onDeviceChanged(db, { id: deviceId, type: d.type }, { id: deviceId, type: set.type }, source, { user: who, ts: at });
   })();
   return { fields: changes.map((c) => c.field), replaced };
 }
