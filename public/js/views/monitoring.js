@@ -8,7 +8,7 @@ import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, btn, formData } from './common.js';
 import { openHostScript } from './hostscripts.js';
 import { checkText } from '../checktext.js';
-import { historyChart } from './monchart.js';
+import { historyChart, duration } from './monchart.js';
 
 
 export function statusPill(status) {
@@ -74,7 +74,7 @@ export function nowParts(m) {
     if (d.uptime) parts.push(t('val.since', { time: fmtUptime(d.uptime) }));
     // UPS: battery charge and how long it lasts
     if (d.charge !== null && d.charge !== undefined) parts.push(t('ups.chargeShort', { n: d.charge }));
-    if (d.runtime !== null && d.runtime !== undefined) parts.push(t('ups.leftShort', { time: fmtUptime(d.runtime) }));
+    if (d.runtime !== null && d.runtime !== undefined) parts.push(t('ups.leftShort', { time: duration(d.runtime * 1000) })); // "25 Min.", not "0 Std."
     if (d.node && m.options?.metric === 'guestRunning') parts.push(t('val.onNode', { node: d.node }));
     if (up && d.cpu !== null && d.cpu !== undefined) parts.push(`CPU ${d.cpu} %`);
     if (up && d.mem !== null && d.mem !== undefined) parts.push(`RAM ${d.mem} %`);
@@ -300,9 +300,10 @@ export async function renderMonitoring(main, id, sub) {
   }
   function afterBulk() { selected.clear(); clearTimeout(timer); load(); }
   async function bulkRun(e, action) {
+    // the button before waiting for the question: once the event is over, e.currentTarget is null
+    const b = e.currentTarget;
     const n = selected.size;
     if (action === 'delete' && !await confirmDialog(t('inv.bulkDelete'), t(kind === 'sensors' ? 'mon.bulkDeleteConfirmSensors' : 'mon.bulkDeleteConfirm', { n }), t('delete'), t('cancel'), { danger: true })) return;
-    const b = e.currentTarget;
     b.disabled = true;
     try {
       const r = await post('/monitors/bulk', { ids: [...selected], action });
@@ -442,8 +443,9 @@ function depPanel(m, edit, reload) {
     offer ? h('div', { class: 'note', style: { marginTop: '12px' } }, h('div', {},
       h('p', { style: { margin: '0 0 8px' } }, t('mon.dep.offer', { n: m.candidates })),
       btn(t('mon.dep.adopt'), { class: 'btn btn-sm', onclick: async (e) => {
-        e.currentTarget.disabled = true;
-        try { const r = await post(`/monitors/${m.id}/children`); toast(t('mon.dep.adopted', { n: r.count })); reload(); } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
+        const b = e.currentTarget;
+        b.disabled = true;
+        try { const r = await post(`/monitors/${m.id}/children`); toast(t('mon.dep.adopted', { n: r.count })); reload(); } catch (ex) { fail(ex); b.disabled = false; }
       } }, 'switch'))) : null);
 }
 
