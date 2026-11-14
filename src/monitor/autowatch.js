@@ -16,9 +16,15 @@ const SETTING = 'autowatch.enabled';
 
 // What is worth a sensor right away, per kind of source: [metric, how many, filter]
 const SYSTEM_DRIVE = (x) => /^(c:|\/)$/i.test(String(x.key));
+// A NAS: its data volumes (/volume1, /share/CACHEDEV1_DATA, /mnt/tank) - not the small system partition (/, /opt …)
+// nor the internal folders of the NAS system (/volume1/@docker, /volume1/@accountdb/@accountcache)
+export const DATA_VOLUME = (x) => {
+  const p = String(x.key ?? '');
+  return !/(^|\/)@/.test(p) && !/^\/$/.test(p) && !/^\/(opt|usr|var|etc|boot|root|lib)(\/|$)/i.test(p);
+};
 export const DEVICE_PICKS = {
   printer: [['supply', 4, (x) => !x.receptacle], ['printerErrors', 1]],
-  nas: [['volume', 4], ['raid', 2], ['health', 1], ['temp', 1], ['upsPower', 1]],
+  nas: [['volume', 4, DATA_VOLUME], ['raid', 2], ['health', 1], ['temp', 1], ['upsPower', 1]],
   ups: [['upsPower', 1], ['upsCharge', 1], ['upsRuntime', 1]],
   switch: [],
   host: [['hostOnline', 1], ['hostCpu', 1], ['hostMem', 1], ['hostDisk', 1, SYSTEM_DRIVE], ['hostTempMax', 1], ['servicesFailed', 1]],
@@ -37,8 +43,8 @@ export function pick(metrics, picks, taken = new Set()) {
   const out = [];
   for (const [metric, n, filter] of picks) {
     let list = metrics.filter((x) => x.metric === metric && (!filter || filter(x)));
-    // the system drive, else the first one
-    if (metric === 'hostDisk' && !list.length) list = metrics.filter((x) => x.metric === 'hostDisk');
+    // the system drive, else the first one; no data volume to be found: the first one
+    if ((metric === 'hostDisk' || metric === 'volume') && !list.length) list = metrics.filter((x) => x.metric === metric).slice(0, 1);
     for (const x of list.slice(0, n)) if (!taken.has(`${x.metric}|${x.key ?? ''}`)) out.push(x);
   }
   return out;

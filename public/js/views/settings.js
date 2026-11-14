@@ -134,8 +134,9 @@ async function lightPanel(ls) {
   lastLine,
   h('div', { class: 'actions' },
     h('button', { class: 'btn', type: 'button', onclick: async (e) => {
-      e.currentTarget.disabled = true;
-      try { const r = await post('/lightscan/run', {}); navigate(`/scan/${r.id}`); } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
+      const b = e.currentTarget;
+      b.disabled = true;
+      try { const r = await post('/lightscan/run', {}); navigate(`/scan/${r.id}`); } catch (ex) { fail(ex); b.disabled = false; }
     } }, h('span', { html: icon('radar') }), t('light.runNow')),
     h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))));
   return panel(t('light.title'), form);
@@ -835,10 +836,11 @@ async function backup(body, _s, reload) {
   const confirmRestore = (what) => confirmDialog(t('bk.restore'), t('bk.restoreConfirm', { what }), t('bk.restore'), t('cancel'), { danger: true });
   const file = h('input', { type: 'file', accept: '.sqlite,.db,application/octet-stream' });
   const upload = btn(t('bk.restoreUpload'), { class: 'btn btn-danger', onclick: async (e) => {
+    const b = e.currentTarget;
     const f = file.files[0];
     if (!f) { toast(t('bk.chooseFile'), 'error'); return; }
     if (!await confirmRestore(f.name)) return;
-    const b = e.currentTarget; b.disabled = true;
+    b.disabled = true;
     try { await api('/backups/restore', { method: 'POST', raw: f, headers: { 'X-WOMN-Confirm': 'restore' } }); waitForRestart(); } catch (ex) { fail(ex); b.disabled = false; }
   } }, 'history');
   mount(body,
