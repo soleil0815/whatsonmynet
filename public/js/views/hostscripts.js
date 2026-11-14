@@ -50,12 +50,20 @@ export function scriptDialog(title, r, { where = 'host', onClose } = {}) {
   { wide: true, onClose, onSubmit: () => m.close(), actions: [h('button', { class: 'btn btn-primary', type: 'submit' }, t('virt.done'))] });
 }
 
+// The section of the manual about the script (opens the help in a new tab, so a dialog stays open)
+const HELP_ID = { de: 'windows-und-linux-rechner-per-skript-ohne-agent', en: 'windows-and-linux-machines-by-script-without-agent' };
+/** "What does the script bring?" - to the section of the help that explains it */
+export function helpLink() {
+  return h('a', { class: 'help-link small', href: `/help#${HELP_ID[getLang() === 'en' ? 'en' : 'de']}`, target: '_blank', rel: 'noopener' },
+    h('span', { html: icon('help') }), t('hs.whatFor'));
+}
+
 /** Device page: "Monitor with script" - choose Windows/Linux, get the script with the key of this device */
 export async function openHostScript(d, reload) {
   const guess = /linux|ubuntu|debian|centos|rhel|red hat|suse|alma|rocky|alpine/i.test(d.os || '') ? 'linux' : 'windows';
   const os = select('os', [['windows', 'Windows'], ['linux', 'Linux']], d.hostScript?.os || guess);
   const form = h('form', { class: 'form' },
-    h('p', { style: { margin: 0 } }, t('hs.lead')),
+    h('p', { style: { margin: 0 } }, t('hs.lead'), ' ', helpLink()),
     field(t('hs.os'), os),
     d.hostScript ? h('p', { class: 'note warn', style: { margin: 0 } }, t('hs.replace')) : null);
   const m = modal(`${t('hs.title')}: ${d.name}`, form, { onSubmit: async () => {
@@ -194,7 +202,7 @@ export async function hostScriptsSettings(body, reload) {
   const addShared = () => {
     const name = input('name', '', { required: true, maxlength: 80, placeholder: t('hs.sharedPh') });
     const os = select('os', [['windows', 'Windows'], ['linux', 'Linux']], 'windows');
-    const form = h('form', { class: 'form' }, h('p', { style: { margin: 0 } }, t('hs.sharedLead')), field(t('px.name'), name), field(t('hs.os'), os));
+    const form = h('form', { class: 'form' }, h('p', { style: { margin: 0 } }, t('hs.sharedLead'), ' ', helpLink()), field(t('px.name'), name), field(t('hs.os'), os));
     const m = modal(t('hs.addShared'), form, { onSubmit: async () => {
       try { const r = await post('/hosts', { name: name.value, os: os.value, server: location.origin }); m.close(); scriptDialog(r.name, r, { onClose: reload }); } catch (ex) { fail(ex); }
     }, actions: [
@@ -204,7 +212,7 @@ export async function hostScriptsSettings(body, reload) {
   const uninstall = async (kind) => { try { const u = await get(`/hosts/uninstall/${kind}`); download(u.file, u.text); } catch (ex) { fail(ex); } };
   mount(body, h('section', { class: 'panel' },
     h('div', { class: 'panel-head', style: { paddingBottom: '12px', flexWrap: 'wrap' } }, h('h2', {}, t('set.hostscripts')), btn(t('hs.addShared'), { class: 'btn btn-primary', onclick: addShared }, 'plus')),
-    h('p', { class: 'muted', style: { padding: '0 20px' } }, t('hs.settingsLead')),
+    h('p', { class: 'muted', style: { padding: '0 20px' } }, t('hs.settingsLead'), ' ', helpLink()),
     tokens.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, h('th', {}, t('px.name')), h('th', {}, t('hs.os')), h('th', {}, t('hs.for')), h('th', { class: 'hide-sm' }, t('hs.last')), h('th', {}))),
       h('tbody', {}, tokens.map((x) => h('tr', {},

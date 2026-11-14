@@ -192,6 +192,25 @@ export function hostTempsByName(db) {
   return out;
 }
 
+/** Short names of the machines whose script reports (current reports only) */
+export function reportingHostNames(db) {
+  const out = new Set();
+  for (const r of db.prepare('SELECT d.name, d.hostname, h.at, h.data FROM host_reports h JOIN devices d ON d.id=h.device_id').all()) {
+    if (Date.now() - Date.parse(r.at) > STALE_MIN * 60 * 1000) continue;
+    let x = {};
+    try { x = JSON.parse(r.data) || {}; } catch { /* name of the device only */ }
+    for (const n of [x.hostname, r.hostname, r.name]) { const k = String(n || '').toLowerCase().split('.')[0].trim(); if (k) out.add(k); }
+  }
+  return out;
+}
+
+/** Node list of a hypervisor: which nodes run the script (the interface offers it for the others) */
+export function nodeScriptsInto(db, data) {
+  if (!Array.isArray(data?.nodes) || !data.nodes.length) return data;
+  const names = reportingHostNames(db);
+  return { ...data, nodes: data.nodes.map((n) => ({ ...n, script: names.has(String(n.name || '').toLowerCase().split('.')[0]) })) };
+}
+
 /** Node list of a hypervisor with the temperature of each node that runs the Linux script (current reports only) */
 export function nodeTempsInto(db, data) {
   if (!Array.isArray(data?.nodes) || !data.nodes.length) return data;

@@ -334,6 +334,10 @@ Sensors (*Add sensor*): overall health, server switched on, every fan, temperatu
 
 ## Windows and Linux machines by script (without agent)
 
+**What is the script for?** Many values of a machine are known only to its operating system: temperatures of CPU and NVMe, the health of the disks (SMART), services, pending updates. Big servers deliver part of it through their management chip (iDRAC, iLO, XClarity - see *Server hardware*). A mini PC, a self-built server or a Proxmox node in a homelab has nothing like that - here the script fetches this information. For Proxmox: the API delivers nodes, VMs, storage and backups; temperatures, disks, services and updates of the nodes only come with the script.
+
+**The tip in the program:** machines, servers, VMs and hypervisors with Windows or Linux that have no system values yet show the tip "Monitor with script" on the device page; under *Virtualisation* it appears for Proxmox nodes without the script. It disappears by itself as soon as the device delivers values - through the script or through the server hardware (iDRAC, iLO …). If you deliberately do not want the script for a device, **Do not show again** hides the tip there for good; *More → Monitor with script* still works at any time.
+
 Servers and PCs can be monitored without an agent: a small script on the machine reports **CPU, RAM, drives, uptime and services** every 5 minutes, plus a connected **UPS** (see above).
 
 On top comes what an administrator wants to know about a server. Everything is on the device page in the *System* area, and every value can become a sensor with alarm:
