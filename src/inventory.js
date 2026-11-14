@@ -2,14 +2,14 @@
 //
 // A device is recognised by its MAC address (stays the same when the IP changes). Devices without MAC (only in
 // routed subnets without SNMP/NetBIOS) are recognised by their IP address.
-// After every scan: known devices get their new IP, host name and last-seen time automatically (with an entry in
-// the history); new devices only appear in the scan result until the admin adopts or ignores them.
+// After every scan: known devices get their new IP, host name (unless typed in by hand) and last-seen time automatically
+// (with an entry in the history); new devices only appear in the scan result until the admin adopts or ignores them.
 import { HttpError, line, str, isoDate, oneOf } from './lib/http.js';
 import { normalizeMac, isIPv4, ipSortKey, cidrContains } from './lib/net.js';
 import { TYPES, isTelematik, suggestName } from './scan/classify.js';
 import { bestWebUrl } from './scan/engine.js';
 import { forgetDevices } from './lib/idlists.js';
-import { log } from './lib/log.js';
+import { onDeviceChanged, followUrl } from './devicechange.js';
 
 const EDITABLE = ['name', 'type', 'vendor', 'model', 'ip', 'mac', 'hostname', 'os', 'location_id', 'owner', 'notes', 'tags',
   'web_url', 'serial', 'supplier', 'purchase_date', 'warranty_until', 'maintenance_until'];
@@ -17,22 +17,10 @@ const EDITABLE = ['name', 'type', 'vendor', 'model', 'ip', 'mac', 'hostname', 'o
 const now = () => new Date().toISOString();
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
 
-/**
- * A device link (web interface, ssh://, rdp:// ...) after an IP change: only when its host is exactly the old address
- * (192.168.1.1 → .77 must leave https://192.168.1.10/ alone). Returns the new link or null.
- */
-export function followUrl(url, from, to) {
-  if (!url || !from || !to) return null;
-  let host;
-  try { host = new URL(url).hostname; } catch { return null; }
-  if (host !== from) return null;
-  const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const out = String(url).replace(new RegExp(`^([a-z][a-z0-9+.-]*://(?:[^@/?#]*@)?)${esc}(?=[:/?#]|$)`, 'i'), `$1${to}`);
-  return out === url ? null : out;
-}
+// Re-exported: callers and tests import it from here
+export { followUrl };
 
-// Monitors whose target is the address of the device itself
-const ADDRESS_MONITORS = ['ping', 'tcp', 'snmp', 'smb', 'mysql', 'postgres', 'redis'];
+const parseAuto = (s) => { try { return JSON.parse(s) || {}; } catch { return {}; } };
 
 export function createInventory(db) {
   const getDevice = db.prepare('SELECT * FROM devices WHERE id=?');
@@ -81,49 +69,30 @@ export function createInventory(db) {
     const set = { last_seen: ts, facts: JSON.stringify(merged), updated_at: ts };
     if (device.ip !== r.ip) { changes.push({ field: 'ip', from: device.ip, to: r.ip }); set.ip = r.ip; }
     if (!device.mac && mac) { changes.push({ field: 'mac', from: null, to: mac }); set.mac = mac; }
+    // Host name (DNS/NetBIOS): the scan owns it only while it is empty or still holds what a scan (or the device)
+    // set last time (auto_fields.hostname). Typed in by hand (auto_fields.hostname = null) it is left alone.
+    // Devices from before this rule have no entry: the scan keeps them up to date as it always did.
+    const auto = parseAuto(device.auto_fields);
     if (r.hostname && device.hostname !== r.hostname) {
-      if (device.hostname) changes.push({ field: 'hostname', from: device.hostname, to: r.hostname });
-      set.hostname = r.hostname;
-    }
+      const scanOwned = !device.hostname || auto.hostname === undefined || (auto.hostname !== null && auto.hostname === device.hostname);
+      if (scanOwned) {
+        if (device.hostname) changes.push({ field: 'hostname', from: device.hostname, to: r.hostname });
+        set.hostname = r.hostname;
+        set.auto_fields = JSON.stringify({ ...auto, hostname: r.hostname });
+      }
+    } else if (r.hostname && auto.hostname === undefined) set.auto_fields = JSON.stringify({ ...auto, hostname: r.hostname });
     if (!device.vendor && r.vendor) set.vendor = r.vendor;
     if (!device.os && facts.classification?.os && !facts.light) set.os = facts.classification.os;
     if (!device.web_url) { const u = bestWebUrl(r.ip, facts, device.type); if (u) set.web_url = u; }
-    else if (set.ip) { const u = followUrl(device.web_url, device.ip, r.ip); if (u) set.web_url = u; }
     const keys = Object.keys(set);
     db.transaction(() => {
       db.prepare(`UPDATE devices SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`).run(...keys.map((k) => set[k]), device.id);
-      for (const c of changes) history(device.id, c.field === 'ip' ? 'ip' : 'change', c, 'scan');
-      // Monitors of this device follow the new address
-      if (set.ip && device.ip) moveMonitors(device.id, device.ip, set.ip, ts);
+      for (const c of changes) if (c.field !== 'ip') history(device.id, 'change', c, 'scan');
+      // New address: history, monitors and web link follow (same rules for every path that changes a device)
+      onDeviceChanged(db, device, { ...device, ...set }, 'scan', { user: 'scan', ts });
       if (deep) history(device.id, 'deep', { ports: facts.ports?.length || 0 }, 'scan');
       db.prepare('UPDATE scan_results SET status=?, device_id=? WHERE id=?').run(changes.some((c) => c.field === 'ip' || c.field === 'mac') ? 'changed' : 'known', device.id, resultId);
     })();
-  }
-
-  /**
-   * Monitors of a device follow it to its new address: every monitor whose target is the old address and web checks
-   * whose URL points at it. A monitor with a stored password stays where it is - the password was entered for that
-   * address and is never sent to another one without being typed in again (a spoofed MAC or an edited address must
-   * not lure it elsewhere). Returns { moved, kept }.
-   */
-  function moveMonitors(deviceId, from, to, ts = now()) {
-    let moved = 0;
-    const kept = [];
-    for (const mon of db.prepare('SELECT id, name, type, target, secret FROM monitors WHERE device_id=?').all(deviceId)) {
-      let target = null;
-      if (ADDRESS_MONITORS.includes(mon.type) && String(mon.target).toLowerCase() === from) target = to;
-      else if (mon.type === 'http') {
-        try {
-          const u = new URL(mon.target);
-          if (u.hostname === from) { u.hostname = to; target = u.toString(); }
-        } catch { /* not a URL */ }
-      }
-      if (!target) continue;
-      if (mon.secret) { kept.push(mon.name); continue; }
-      moved += db.prepare('UPDATE monitors SET target=?, updated_at=? WHERE id=?').run(target, ts, mon.id).changes;
-    }
-    if (kept.length) log.info(`Device ${deviceId} moved from ${from} to ${to}: ${kept.length} monitor(s) with a stored password stay at the old address`);
-    return { moved, kept: kept.length };
   }
 
   function finishScan(scanId) {
@@ -202,36 +171,17 @@ export function createInventory(db) {
       const ts = now();
       db.prepare(`UPDATE devices SET ${changed.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...changed.map((k) => v[k]), ts, id);
       history(id, 'edit', { fields: changed.map((k) => ({ field: k, from: k === 'notes' ? undefined : cur[k], to: k === 'notes' ? undefined : v[k] })) }, user);
-      // Monitors and sensors of the device carry its name ("NAS", "NAS - Sensor") - they follow a new name, so an alarm
-      // names the device as it is called now. A monitor named by hand without the old name stays as it is.
-      if (changed.includes('name') && cur.name) renamed = renameMonitors(id, cur.name, v.name);
-      // A new address typed in: monitors and the web link (unless changed in the same edit) follow, as after a scan
-      if (changed.includes('ip') && cur.ip && v.ip) {
-        moveMonitors(id, cur.ip, v.ip, ts);
-        const u = !changed.includes('web_url') ? followUrl(cur.web_url, cur.ip, v.ip) : null;
-        if (u) db.prepare('UPDATE devices SET web_url=? WHERE id=?').run(u, id);
+      // A host name typed in belongs to the user from now on (scans leave it alone); cleared, the scan fills it again
+      if (changed.includes('hostname')) {
+        const auto = parseAuto(cur.auto_fields);
+        if (v.hostname) auto.hostname = null; else delete auto.hostname;
+        db.prepare('UPDATE devices SET auto_fields=? WHERE id=?').run(JSON.stringify(auto), id);
       }
-      // Another type: what SNMP read for the old type (NAS problems, MAC table of a switch) no longer applies - it
-      // would stay on the dashboard for good. The next poll reads it again if the device is of such a type.
-      if (changed.includes('type')) {
-        db.prepare('DELETE FROM snmp_status WHERE device_id=?').run(id);
-        db.prepare('DELETE FROM switch_macs WHERE switch_id=?').run(id);
-      }
+      // Monitors follow a new name and address, the web link a new address (unless changed in the same edit), SNMP
+      // data of the old type goes - the same rules as for a scan or a device report
+      renamed = onDeviceChanged(db, cur, { ...cur, ...v }, 'manual', { user, ts, ipHistory: false, webUrlEdited: changed.includes('web_url') }).renamed;
     })();
     return renamed ? { ...get(id), renamedMonitors: renamed } : get(id);
-  }
-
-  function renameMonitors(deviceId, from, to) {
-    let n = 0;
-    for (const m of db.prepare('SELECT id, name FROM monitors WHERE device_id=?').all(deviceId)) {
-      // Only the device name at the start, as a whole word ("NAS", "NAS: Web", "NAS - Sensor") - never inside
-      // another word ("SNAS Web", "NASA")
-      if (!m.name.startsWith(from) || !(m.name.length === from.length || /^[\s:-]/.test(m.name.slice(from.length)))) continue;
-      const name = (to + m.name.slice(from.length)).slice(0, 120);
-      if (name === m.name) continue;
-      n += db.prepare('UPDATE monitors SET name=?, updated_at=? WHERE id=?').run(name, now(), m.id).changes;
-    }
-    return n;
   }
 
   function remove(id) {
@@ -292,9 +242,44 @@ export function createInventory(db) {
     return { first: row?.first && row.first < own ? row.first : own, last: row?.last && row.last > own ? row.last : own };
   }
 
+  /**
+   * Is a newer finished scan covering the address of this result there? Then the result is outdated: it can still be
+   * looked at, but not adopted or ignored (its address, name or the device itself may be gone by now). Covering means
+   * a target subnet containing the address at the same location (overlapping subnets of two sites with scan agents);
+   * a scan without location counts for any. A full network scan outdates everything older; a light
+   * scan (ping/ARP only) outdates older light scan results only - a nightly light scan must not make the last full scan
+   * unusable.
+   */
+  const scanOf = db.prepare('SELECT id, kind FROM scans WHERE id=?');
+  function newerScans(scanId) {
+    const own = scanOf.get(scanId);
+    if (!own) return [];
+    const kinds = own.kind === 'light' ? ['network', 'light'] : ['network'];
+    return db.prepare(`SELECT targets FROM scans WHERE id>? AND status='done' AND kind IN (${kinds.map(() => '?').join(',')})`).all(own.id, ...kinds);
+  }
+  function isOutdated(r, newer = newerScans(r.scan_id)) {
+    return newer.some((s) => parse(s.targets, []).some((t) => t && t.cidr && cidrContains(t.cidr, r.ip) && (t.locationId == null || r.location_id == null || t.locationId === r.location_id)));
+  }
+
+  /** Ids of the results of a scan that are outdated by a newer scan (for the scan view) */
+  function outdatedResults(scanId) {
+    const newer = newerScans(scanId);
+    if (!newer.length) return new Set();
+    return new Set(db.prepare('SELECT id, scan_id, ip, location_id FROM scan_results WHERE scan_id=?').all(scanId).filter((r) => isOutdated(r, newer)).map((r) => r.id));
+  }
+
+  /** Adopting or ignoring only from the newest scan of a subnet - an old result is refused as a whole */
+  function refuseOutdated(resultIds) {
+    for (const rid of resultIds) {
+      const r = getResult.get(rid);
+      if (r && !r.device_id && isOutdated(r)) throw new HttpError(409, 'err.scanOutdated');
+    }
+  }
+
   /** Adopts scan results into the inventory (optional type/name per result chosen in the UI). */
   function adopt(resultIds, overrides = {}, user = '') {
     const created = [];
+    refuseOutdated(resultIds);
     db.transaction(() => {
       for (const rid of resultIds) {
         const r = getResult.get(rid);
@@ -316,7 +301,8 @@ export function createInventory(db) {
         }, user);
         db.prepare("UPDATE scan_results SET device_id=?, handled='adopted', status='known' WHERE id=?").run(d.id, rid);
         // What the scan guessed (model, OS, manufacturer from the MAC) may be replaced by what the device itself reports
-        const guessed = Object.fromEntries(['vendor', 'model', 'os', 'type'].filter((k) => d[k]).map((k) => [k, d[k]]));
+        // The host name came from the scan too: the scan keeps it up to date until someone types in another one
+        const guessed = Object.fromEntries(['vendor', 'model', 'os', 'type', 'hostname'].filter((k) => d[k]).map((k) => [k, d[k]]));
         if (Object.keys(guessed).length) db.prepare('UPDATE devices SET auto_fields=? WHERE id=?').run(JSON.stringify(guessed), d.id);
         // Remove the device from the ignore list if it was there (devices without MAC are on it by IP)
         unlistIgnored(mac, r.ip);
@@ -328,6 +314,7 @@ export function createInventory(db) {
 
   function ignore(resultIds, user = '') {
     let n = 0;
+    refuseOutdated(resultIds);
     db.transaction(() => {
       for (const rid of resultIds) {
         const r = getResult.get(rid);
@@ -450,8 +437,14 @@ export function createInventory(db) {
   }
 
   // From a form only the fields a person may set: facts, first/last seen and the source come from scans alone
-  const createFromForm = (input, user) => create(Object.fromEntries(EDITABLE.filter((k) => input && typeof input === 'object' && k in input).map((k) => [k, input[k]])), user);
-  return { applyResult, finishScan, create: createFromForm, update, remove, get, list, historyOf, adopt, ignore, unignore, stats, history, suggestions, bulkUpdate, bulkRemove };
+  // A host name typed into the form belongs to the user (scans do not overwrite it)
+  const createFromForm = (input, user) => {
+    const d = create(Object.fromEntries(EDITABLE.filter((k) => input && typeof input === 'object' && k in input).map((k) => [k, input[k]])), user);
+    if (!d.hostname) return d;
+    db.prepare('UPDATE devices SET auto_fields=? WHERE id=?').run(JSON.stringify({ ...parseAuto(d.auto_fields), hostname: null }), d.id);
+    return get(d.id);
+  };
+  return { applyResult, finishScan, create: createFromForm, update, remove, get, list, historyOf, adopt, ignore, unignore, outdatedResults, stats, history, suggestions, bulkUpdate, bulkRemove };
 }
 
 /** CSV export (semicolon, UTF-8 with BOM - opens correctly in Excel) */
@@ -460,8 +453,10 @@ export function toCsv(devices) {
     'supplier', 'purchase_date', 'warranty_until', 'maintenance_until', 'web_url', 'last_seen', 'notes'];
   const esc = (v) => {
     let s = String(v ?? '');
-    // Formula injection: cells starting with = + - @ are shown as text in spreadsheets
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    // Formula injection: a cell starting with = + - @ (also after leading spaces, tabs or line breaks), starting with a
+    // tab or CR, or holding a comma followed by one of them (Excel with comma as list separator splits the cell there)
+    // is shown as text in spreadsheets. Every column is text (dates are ISO strings), so "-5" becomes text as well.
+    if (/^[\t\r]|^\s*[=+\-@]|,\s*[=+\-@]/.test(s)) s = `'${s}`;
     return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return '﻿' + [cols.join(';'), ...devices.map((d) => cols.map((c) => esc(d[c])).join(';'))].join('\r\n') + '\r\n';

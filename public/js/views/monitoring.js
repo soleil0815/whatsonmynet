@@ -94,6 +94,12 @@ export function nowParts(m) {
   return { main: '–', sub: '', tone: 'muted', plain: true };
 }
 
+/** Paused because the device got a new IP and the stored password belongs to the old one: { from, to } or null */
+function ipMoved(m) {
+  const x = m && !m.enabled && m.data && m.data.ipMoved;
+  return x && x.from && x.to ? { from: x.from, to: x.to } : null;
+}
+
 function nowCell(m) {
   const n = nowParts(m);
   return h('div', { class: `now${n.plain ? ' plain' : ''}` },
@@ -227,7 +233,8 @@ export async function renderMonitoring(main, id, sub) {
     return h('tr', { class: 'click', onclick: (e) => { if (!e.target.closest('a,button')) navigate(`/monitoring/${m.id}`); } },
       h('td', {}, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
         h('div', { style: { minWidth: 0 } }, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
-          h('div', { class: 'sub' }, m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, checkText(m.last_message, getLang()))
+          h('div', { class: 'sub' }, ipMoved(m) ? h('span', { class: 'tone-bad' }, t('mon.ipMoved', ipMoved(m)))
+            : m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, checkText(m.last_message, getLang()))
             : m.status === 'unreachable' ? h('span', {}, t('mon.behind', { name: byId.get(m.parent_id)?.name || '?' }))
               : h('span', { class: 'mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`))))),
       h('td', { class: 'hide-sm' }, beatsBar(m.beats, 40, isValueType(m))),
@@ -436,6 +443,7 @@ async function renderDetail(main, id) {
     const span = h('div', { class: 'seg' }, [[24, '24 h'], [72, t('mon.r.3d')], [168, t('mon.r.7d')], [720, t('mon.r.30d')], [2160, t('mon.r.90d')], [8784, t('mon.r.1y')]].map(([v, l]) => h('button', { type: 'button', class: v === hours ? 'on' : '',
       onclick: () => { hours = v; reload(); } }, l)));
     mount(body,
+      ipMoved(m) ? h('div', { class: 'note bad' }, t('mon.ipMoved', ipMoved(m))) : null,
       m.status === 'down' ? h('div', { class: 'note bad' }, t('mon.downSince', { when: fmtAgo(m.status_since, t), message: checkText(m.last_message, getLang()) })) : null,
       m.status === 'unreachable' && m.parent ? h('div', { class: 'note' }, h('span', {}, t('mon.unreachableNote', { when: fmtAgo(m.status_since, t) }), ' ',
         h('a', { href: `/monitoring/${m.parent.id}`, 'data-link': true }, m.parent.name))) : null,
@@ -473,6 +481,7 @@ function eventLine(e) {
   if (e.kind === 'cert') return t('mon.ev.cert', { n: e.message });
   if (e.kind === 'unreachable') return t('mon.ev.unreachable', { name: e.message });
   if (e.kind === 'escalated') return t('mon.ev.escalated', { n: e.message });
+  if (e.kind === 'ipMoved') return t('mon.ev.ipMoved', { detail: e.message });
   return `${t(`mon.ev.${e.kind}`)}${e.message && e.kind === 'down' ? ` - ${checkText(e.message, getLang())}` : ''}`;
 }
 
@@ -555,7 +564,9 @@ export async function openMonitorForm(m, done, preset = null) {
   // New monitors: admins also find "machine by script" here - it is no monitor type, it opens the script dialog
   const offerScript = !m && state.user.isAdmin;
   const typeSel = select('type', [...TYPES.map((x) => [x, t(`mon.type.${x}`)]), ...(offerScript ? [['script', t('mon.pick.script')]] : [])], v.type === 'proxmox' ? 'sensor' : v.type);
-  const target = input('target', v.target || '', { required: true, class: 'mono', placeholder: 'https://intranet.firma.local/', list: 'dl-containers' });
+  // Paused after an IP change of the device: the new address is offered (the password has to be typed again for it)
+  const moved = ipMoved(m) && m.data.ipMoved.target;
+  const target = input('target', moved || v.target || '', { required: true, class: 'mono', placeholder: 'https://intranet.firma.local/', list: 'dl-containers' });
   const targetLabel = h('span', {}, t('mon.f.target'));
   const port = input('port', v.port || '', { type: 'number', min: 1, max: 65535, class: 'mono' });
   const portBox = h('div', {}, field(t('mon.f.port'), port));
@@ -574,7 +585,8 @@ export async function openMonitorForm(m, done, preset = null) {
     } catch (e) { containerHint.textContent = e.message; }
   }
   hostSel.addEventListener('change', loadContainers);
-  const targetWrap = h('div', {}, h('label', { class: 'field' }, targetLabel, target), containers);
+  const targetWrap = h('div', {}, h('label', { class: 'field' }, targetLabel, target), containers,
+    moved ? h('p', { class: 'note bad small' }, t('mon.ipMovedForm')) : null);
   const dockerBox = h('div', { class: 'form-grid full' },
     dockerHosts.length ? field(t('mon.f.dockerHost'), hostSel, containerHint)
       : h('p', { class: 'full muted small' }, state.user.isAdmin ? t('mon.f.noDockerAdmin') : t('mon.f.noDocker')));

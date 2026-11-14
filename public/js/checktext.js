@@ -53,6 +53,7 @@ const PATTERNS = [
   [/^up · (.*)$/, 'verbunden · $1'],
   [/^unexpected answer (.*)$/, 'unerwartete Antwort $1'],
   [/^failed: (.*)$/, 'gestört: $1'],
+  [/^device has a new IP \((.*)\) - please enter the password again$/, 'Gerät hat neue IP ($1) – Passwort bitte neu eingeben'],
   [/^(\S+): no such value$/, '$1: diesen Wert gibt es nicht'],
   [/^(on|off|partial) \(off: (.*)\)$/, (_, s, l) => `${WORDS[s]} (aus: ${l})`],
 ];
