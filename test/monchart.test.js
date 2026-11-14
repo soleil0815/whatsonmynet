@@ -39,3 +39,12 @@ test('lengths in words', () => {
   assert.equal(duration(3 * 3600000), '3 Std.');
   assert.equal(duration((3 * 24 + 4) * 3600000), '3 Tg. 4 Std.');
 });
+
+test('the reason of an outage keeps its first letter', async () => {
+  const { shortReason } = await import('../public/js/views/monchart.js');
+  assert.equal(shortReason('Connection refused'), 'Connection refused');
+  assert.equal(shortReason('Name nicht gefunden oder nicht erreichbar'), 'Name nicht gefunden oder nicht erreichbar');
+  assert.equal(shortReason('Docker: Verbindung abgelehnt'), 'Verbindung abgelehnt');
+  assert.equal(shortReason('Temperatur: NVMe: 73,3 °C', 'Temperatur'), 'NVMe: 73,3 °C');
+  assert.equal(shortReason(''), '');
+});

@@ -115,6 +115,18 @@ function timeTicks(start, end, most = 7) {
  * m: the monitor as /monitors/:id sends it. hours: shown range.
  * opts: { valueMode, unit } - sensors show their measured value with unit and their alarm limit.
  */
+/**
+ * The reason of an outage without what the heading says already: "Temperatur: NVMe: 73,3 °C" → "NVMe: 73,3 °C" when
+ * the label is "Temperatur", else up to the first ": ". A text without ": " stays whole ("Connection refused" - it
+ * lost its first letter before).
+ */
+export function shortReason(s, label = '') {
+  const text = String(s ?? '');
+  if (label && text.startsWith(`${label}: `)) return text.slice(label.length + 2);
+  const i = text.indexOf(': ');
+  return i >= 0 ? text.slice(i + 2) : text;
+}
+
 export function historyChart(m, hours, { valueMode = false } = {}) {
   const id = `c${++uid}`;
   // Phones get a narrower drawing, so text and lines stay readable when it is scaled down
@@ -124,11 +136,7 @@ export function historyChart(m, hours, { valueMode = false } = {}) {
   const unit = valueMode ? (m.data?.unit || '') : 'ms';
   // "Temperatur: NVMe nvme0 Sensor 2: 73.3 °C" → "73,3 °C" (the label of the sensor is in the heading already)
   const label = m.options?.label || '';
-  const reason = (msg) => {
-    const s = checkText(msg || '', getLang());
-    const l = label && s.startsWith(`${label}: `) ? label.length + 2 : s.indexOf(': ') + 2;
-    return s.slice(Math.max(0, l));
-  };
+  const reason = (msg) => shortReason(checkText(msg || '', getLang()), label);
   const fmtV = (v) => (v === null || v === undefined ? '–' : `${num(v, valueMode ? 1 : 0)}${unit ? ` ${unit}` : ''}`);
   const svg = svgEl('svg', { class: 'mon-chart2', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': valueMode ? t('sens.chart') : t('mon.chart') });
   const wrap = h('div', { class: 'chart-wrap' });
