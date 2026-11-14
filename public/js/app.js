@@ -100,7 +100,7 @@ function sidebar(active) {
       // For everyone: version, source code (AGPL), what is new
       h('div', { class: 'foot-links' },
         h('button', { type: 'button', class: 'version', title: t('about.title'), onclick: openAbout }, `WhatsOnMyNet ${state.boot.version}`),
-        h('a', { class: 'coffee-link', href: COFFEE, target: '_blank', rel: 'noopener noreferrer', title: t('about.coffee') }, h('span', { html: icon('coffee') }), t('about.coffeeShort')))),
+        h('a', { class: 'coffee-link', href: COFFEE, target: '_blank', rel: 'noopener noreferrer', title: t('about.coffee') }, h('img', { src: '/img/bmc-logo.svg', alt: '', class: 'bmc-logo', width: 14, height: 14 }), t('about.coffeeShort')))),
   );
 }
 
