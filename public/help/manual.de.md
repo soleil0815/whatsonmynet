@@ -71,6 +71,10 @@ Tokens, Schlüssel und Webhook-Adressen werden verschlüsselt gespeichert und ni
 
 **Was in einem Alarm steht:** Webseite, Port und Ping melden „ist nicht erreichbar“. Ein Messwert meldet „Grenzwert überschritten - 83,9 °C (≥ 80)“ und später „wieder im normalen Bereich“, ein Zustand (Dienst, VM, Festplatte, Container …) „Störung“ und „wieder in Ordnung“, ein Sensor ohne aktuelle Werte „keine aktuellen Werte“. Deutsche Kanäle bekommen auch die Einzelheiten auf Deutsch.
 
+### Mehrere Monitore oder Sensoren auf einmal ändern
+
+In den Listen *Monitore* und *Sensoren* hat jede Zeile ein Kästchen, das Kästchen im Tabellenkopf nimmt alle gerade angezeigten (Suche und Filter gelten). Darüber erscheint eine Leiste mit der Anzahl und den Knöpfen **Pausieren**, **Fortsetzen**, **Löschen** (mit Rückfrage) und **Gemeinsam bearbeiten**. Im Dialog stehen die Felder aus *Erweitert*: Prüfen alle, Alarm nach … Fehlversuchen, Zeitlimit, Alarm wiederholen, Eskalation sowie - nach einem Haken bei *Kanäle ändern* - die Eskalations- und Benachrichtigungskanäle; bei Sensoren außerdem Bedingung und Grenzwert. Alle Felder stehen auf *unverändert*: Geändert wird nur, was du ausfüllst, alles andere bleibt bei jedem Monitor, wie es war. Ist ein Wert ungültig (z. B. weniger als 20 Sekunden), wird nichts geändert. Bedingung und Grenzwert gehen nur an Sensoren mit Zahlenwert; Zustands-Sensoren (online, in Ordnung …) werden dabei übersprungen, die Meldung nennt ihre Anzahl. Bearbeiter mit Standort-Beschränkung können nur Monitore ihrer Standorte auswählen.
+
 ### Eskalation
 
 Bleibt eine Störung zu lange bestehen, soll es noch jemand anderes erfahren, z. B. die Leitung oder eine zweite Bereitschaft. Dafür gibt es die **Eskalation**.

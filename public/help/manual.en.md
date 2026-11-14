@@ -71,6 +71,10 @@ Tokens, keys and webhook addresses are stored encrypted and never shown again. O
 
 **What an alarm says:** web page, port and ping report "is down". A measured value reports "limit exceeded - 83.9 °C (≥ 80)" and later "back in the normal range", a state (service, VM, disk, container …) "fault" and "fine again", a sensor without current values "no current values".
 
+### Changing several monitors or sensors at once
+
+In the *Monitors* and *Sensors* lists every row has a box; the box in the table header takes all rows shown right now (search and filter apply). A bar above shows the number and the buttons **Pause**, **Resume**, **Delete** (asks first) and **Edit together**. The dialog holds the fields of *Advanced*: check every, alarm after … failed checks, time limit, repeat the alarm, escalation and - after ticking *Change channels* - the escalation and notification channels; for sensors also condition and limit. Every field starts as *unchanged*: only what you fill in changes, everything else stays as it was for each monitor. If a value is invalid (e.g. less than 20 seconds), nothing changes. Condition and limit only go to sensors with a numeric value; state sensors (online, healthy …) are skipped, the message says how many. Editors limited to locations can only select monitors of their locations.
+
 ### Escalation
 
 When an outage lasts too long, someone else should know as well, e.g. the management or a second on-call team. That is what **escalation** is for.
