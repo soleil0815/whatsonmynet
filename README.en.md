@@ -4,18 +4,35 @@
 
 **Find what is on your network - keep what matters.**
 
-WhatsOnMyNet scans your network, recognises manufacturer and device type by itself (switches, Proxmox, Synology, printers, Telematik components …) and lets you tick what goes into your inventory. No typing of manufacturers and models, no marathon of required fields. After signing in you only see your clean inventory - new devices only when you start a scan yourself.
+Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans your network, recognises devices by itself, watches websites, services, servers and hypervisors and tells you before someone calls. Runs locally, loads nothing from the internet, only reads other systems.
 
 ![Overview](public/help/img/dashboard-en.png)
 
-📖 **Manual:** [as PDF](public/help/WhatsOnMyNet-Manual.pdf) · in the app under *Help* · [deutsches Handbuch](public/help/WhatsOnMyNet-Handbuch.pdf)
+📖 **Manual:** [as PDF](public/help/WhatsOnMyNet-Manual.pdf) · in the app under *Help* · [deutsches Handbuch](public/help/WhatsOnMyNet-Handbuch.pdf) · **What's new:** [CHANGELOG.en.md](CHANGELOG.en.md)
+
+### At a glance
+
+| | |
+|---|---|
+| 🔍 **Scan and inventory** | Gentle scan with radar, manufacturer and device type by itself (Telematik too), inventory by ticking, MAC as identity, network map from the switches |
+| 📈 **Monitoring** | Web, TCP, ping, network drives, Docker, MariaDB/PostgreSQL/Redis, certificates - with escalation, dependencies, maintenance windows and a year of history |
+| 🌡️ **Sensors like PRTG** | Toner, disks, ports, UPS, every temperature, CPU, RAM, VMs and backups - with limit, alarm and a chart that shows outages with start, end and length |
+| 🖥️ **Virtualization and hardware** | Proxmox VE/Backup Server (clusters too), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity via Redfish |
+| 💻 **Machines without agent** | Windows and Linux report through a small script: CPU, RAM, drives, services, updates, antivirus, temperatures |
+| 🔔 **Notifications** | E-mail, Telegram, Teams, Slack, Discord, Matrix, Signal, ntfy, Gotify, Pushover, Home Assistant, webhook and 100 more through Apprise |
+| 🛟 **Failover** | A second WhatsOnMyNet as standby takes over when the master fails and hands back - paired with a code |
+| 🔒 **Security** | HTTPS from the first start, Active Directory, two-factor sign-in, rights per location, passwords encrypted, read-only access to other systems |
 
 | | | |
 |---|---|---|
 | ![Scan with radar](public/help/img/scan-en.png) | ![Network map](public/help/img/topology-en.png) | ![Monitoring](public/help/img/monitoring-en.png) |
 | Gentle scan with radar | Network map from the switches | Monitoring with history |
-| ![Printer](public/help/img/printer-en.png) | ![Switch](public/help/img/switch-en.png) | ![Proxmox](public/help/img/proxmox-en.png) |
-| Toner, drum, counter | Ports and attached devices | Proxmox VE and Backup Server |
+| ![Monitor with outages](public/help/img/monitor-en.png) | ![Sensor with limit](public/help/img/sensor-en.png) | ![Sensors](public/help/img/sensors-en.png) |
+| Outages with start, end and length | Sensor with limit and alarm periods | Sensors: temperature, RAM, storage, VMs |
+| ![Printer](public/help/img/printer-en.png) | ![Switch](public/help/img/switch-en.png) | ![Virtualization](public/help/img/proxmox-en.png) |
+| Toner, drum, counter | Ports and attached devices | Proxmox, Hyper-V and more |
+| ![Failover](public/help/img/failover-en.png) | ![Report](public/help/img/report-en.png) | ![Notifications](public/help/img/settings-en.png) |
+| Failover with standby | Scheduled reports by e-mail | Notifications and escalation |
 
 > Built for own use. Whoever uses WhatsOnMyNet does so at their own risk.
 

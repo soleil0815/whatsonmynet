@@ -6,6 +6,7 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- New pictures in the project description and the manual: chart with outages, sensor with limit, sensors, failover; "At a glance" overview
 - Changelog also as a file in the project (CHANGELOG.md, English CHANGELOG.en.md) and as the text of every release on GitHub - the same texts as here
 
 ## 0.20.0 - 2026-11-14
