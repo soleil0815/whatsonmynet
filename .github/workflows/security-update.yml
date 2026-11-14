@@ -360,3 +360,33 @@ jobs:
           make_latest: 'true'
           body_path: release-notes.md
           files: release/*
+
+  # Candidate images of this run (<version>-kandidat-<run id>[-<arch>]): removed from the registry when the run
+  # ends - after publishing, when nothing changed, after a failure or a cancel. Never deleted: a version that also carries a real version
+  # tag or latest (after publishing that is the checked candidate itself) and the platform images the published
+  # image points to (see the script).
+  cleanup-candidates:
+    needs: [prepare, build, publish]
+    if: always() && needs.prepare.result == 'success' && needs.build.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/delete-candidates.sh
+          sparse-checkout-cone-mode: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Delete the candidate images of this run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_OWNER_TYPE: ${{ github.event.repository.owner.type == 'Organization' && 'orgs' || 'users' }}
+        run: sh .github/scripts/delete-candidates.sh "$IMAGE" "$GITHUB_RUN_ID"
