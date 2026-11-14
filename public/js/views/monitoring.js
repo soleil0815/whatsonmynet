@@ -678,11 +678,14 @@ export async function openMonitorForm(m, done, preset = null) {
     const [kind, id] = srcSel.value.split(':');
     if (!id) { syncMetric(); return; }
     try { choices = await get(`/sensors/choices?${kind}=${id}`); } catch { choices = []; }
+    // Values another sensor already watches are not offered again (this sensor keeps its own)
+    const offered = choices.length;
+    choices = choices.filter((x) => !x.taken || (m && x.taken === m.id) || isCurrent(x));
     if (m && srcOf(m) === srcSel.value && !choices.some(isCurrent)) {
       choices.unshift({ src: m.type === 'sensor' ? 'device' : 'host', device: m.device_id, host: Number(so.host), hostName: '', metric: so.metric, key: so.key || '', name: '',
         kind: ['eq'].includes(so.op) && so.threshold === '' ? 'state' : 'number', current: true, label: so.label || so.metric, group: 'current' });
     }
-    mount(metricSel, choices.length ? choiceOptions(choices) : h('option', { value: '' }, t('sens.noValues')));
+    mount(metricSel, choices.length ? choiceOptions(choices) : h('option', { value: '' }, t(offered ? 'sens.allTaken' : 'sens.noValues')));
     const cur = choices.findIndex(isCurrent);
     if (cur >= 0) metricSel.value = String(cur);
     syncMetric();
