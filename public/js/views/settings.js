@@ -9,15 +9,7 @@ import { openMonitorForm } from './monitoring.js';
 import { scriptDialog, hostScriptsSettings } from './hostscripts.js';
 import { aboutContent } from './about.js';
 import { hardwareDetail } from './hardware.js';
-
-// Grouped so that related settings stand together; Proxmox and reports have their own pages under "Monitoring"
-const GROUPS = [
-  ['access', [['general', 'settings'], ['users', 'users'], ['ad', 'user']]],
-  ['scan', [['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['agents', 'location'], ['ignored', 'eyeoff']]],
-  ['connect', [['docker', 'server'], ['hostscripts', 'computer'], ['notify', 'bell'], ['smtp', 'mail']]],
-  ['system', [['https', 'lock'], ['backup', 'download'], ['audit', 'history'], ['about', 'shield']]],
-];
-const SECTIONS = GROUPS.flatMap(([, list]) => list);
+import { SECTIONS, settingsNav } from './settingsnav.js';
 
 export async function renderSettings(main, section = 'general') {
   if (!state.user.isAdmin) { navigate('/', { replace: true }); return; }
@@ -28,16 +20,9 @@ export async function renderSettings(main, section = 'general') {
   mount(main, h('div', { class: 'page' },
     pageHead(t('set.title'), null),
     h('div', { class: 'settings' },
-      h('nav', { class: 'subnav', 'aria-label': t('set.title') }, GROUPS.map(([g, list]) => [h('div', { class: 'subnav-group' }, t(`set.group.${g}`)),
-        list.map(([s, ico]) => h('a', { href: `/settings/${s}`, 'data-link': true,
-          class: s === section ? 'active' : '', 'aria-current': s === section ? 'page' : null }, h('span', { html: icon(ico) }), t(`set.${s}`)))])),
+      // links on wide screens, a <select> on phones (≤ 820 px)
+      settingsNav(section, (s) => navigate(`/settings/${s}`)),
       body)));
-  // On narrow screens the sub navigation is a horizontal strip: bring the current entry into view (only sideways)
-  const nav = main.querySelector('.subnav'); const cur = nav?.querySelector('a.active');
-  if (nav && cur && nav.scrollWidth > nav.clientWidth) {
-    const n = nav.getBoundingClientRect(); const c = cur.getBoundingClientRect();
-    nav.scrollLeft += c.left - n.left - (n.width - c.width) / 2;
-  }
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev', 'notify'].includes(section) ? await get('/settings') : null;
   const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), ad, agents, backup, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
@@ -216,15 +201,14 @@ async function docker(body, _s, reload) {
     const form = h('form', { class: 'form' },
       field(t('dock.name'), input('name', x?.name || '', { required: true, maxlength: 80, placeholder: 'docker01' })),
       field(t('dock.url'), input('url', x?.url || '', { required: true, class: 'mono', placeholder: 'http://10.0.0.5:2375' }), t('dock.urlHint')));
-    const dlg = modal(x ? x.name : t('dock.add'), form, { wide: true, actions: [
+    const dlg = modal(x ? x.name : t('dock.add'), form, { wide: true, onSubmit: async () => {
+      try {
+        if (x) await put(`/docker/hosts/${x.id}`, formData(form)); else await post('/docker/hosts', formData(form));
+        dlg.close(); toast(t('saved')); reload();
+      } catch (ex) { fail(ex); }
+    }, actions: [
       btn(t('cancel'), { onclick: () => dlg.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
-        if (!form.reportValidity()) return;
-        try {
-          if (x) await put(`/docker/hosts/${x.id}`, formData(form)); else await post('/docker/hosts', formData(form));
-          dlg.close(); toast(t('saved')); reload();
-        } catch (ex) { fail(ex); }
-      }) }, t('save'))] });
+      h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   };
   const result = h('div');
   async function test(x, button) {
@@ -373,23 +357,22 @@ async function users(body, _s, reload) {
     function syncLoc() { const r = form.querySelector('[name=role]')?.value || u?.role; locBox.hidden = r === 'admin' || !locs.length; }
     form.querySelector('[name=role]')?.addEventListener('change', syncLoc);
     syncLoc();
-    const m = modal(u ? u.username : t('users.add'), form, { actions: [
+    const m = modal(u ? u.username : t('users.add'), form, { onSubmit: async () => {
+      const d = formData(form);
+      for (const k of Object.keys(d)) if (k.startsWith('loc_')) delete d[k];
+      d.locations = locs.filter((l) => form.querySelector(`[name=loc_${l.id}]`)?.checked).map((l) => l.id);
+      try { if (u) await patch(`/users/${u.id}`, d); else await post('/users', d); m.close(); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
+    }, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
-        if (!form.reportValidity()) return;
-        const d = formData(form);
-        for (const k of Object.keys(d)) if (k.startsWith('loc_')) delete d[k];
-        d.locations = locs.filter((l) => form.querySelector(`[name=loc_${l.id}]`)?.checked).map((l) => l.id);
-        try { if (u) await patch(`/users/${u.id}`, d); else await post('/users', d); m.close(); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
-      }) }, t('save'))] });
+      h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   };
   const setPw = (u) => {
     const pw = input('password', '', { type: 'password', minlength: 10, required: true, autocomplete: 'new-password' });
-    const m = modal(`${t('users.resetPassword')}: ${u.username}`, h('form', { class: 'form' }, field(t('users.newPassword'), pw, t('user.passwordHint'))), { actions: [
+    const m = modal(`${t('users.resetPassword')}: ${u.username}`, h('form', { class: 'form' }, field(t('users.newPassword'), pw, t('user.passwordHint'))), { onSubmit: async () => {
+      try { await post(`/users/${u.id}/password`, { password: pw.value }); m.close(); toast(t('saved')); } catch (ex) { fail(ex); }
+    }, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
-        try { await post(`/users/${u.id}/password`, { password: pw.value }); m.close(); toast(t('saved')); } catch (ex) { fail(ex); }
-      }) }, t('save'))] });
+      h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   };
   mount(body, h('section', { class: 'panel' },
     h('div', { class: 'panel-head', style: { paddingBottom: '12px' } }, h('h2', {}, t('set.users')), btn(t('users.add'), { class: 'btn btn-primary btn-sm', onclick: () => edit(null) }, 'plus')),
@@ -542,12 +525,12 @@ function proxmoxSetup(kindSel) {
 function confirmServerCert(r, kind) {
   return new Promise((resolve) => {
     let result = null;
-    const ok = h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { result = r.pem; m.close(); } }, t('adc.trust'));
+    const ok = h('button', { class: 'btn btn-primary', type: 'submit' }, t('adc.trust'));
     const m = modal(t('adc.checkTitle'), h('div', {},
       h('p', { style: { marginTop: 0 } }, rich(t(kind === 'pbs' ? 'pxs.compare.pbs' : kind === 'pve' ? 'pxs.compare.pve' : 'virt.compare'))),
       h('div', { class: 'cert-list' }, r.certs.map((c) => certRow(c, { full: true }))),
       h('div', { class: 'note', style: { marginTop: '14px', marginBottom: 0 } }, r.publicTrust ? t('pxs.public') : t('pxs.pinned'))),
-    { wide: true, onClose: () => resolve(result), actions: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, t('cancel')), ok] });
+    { wide: true, onClose: () => resolve(result), onSubmit: () => { result = r.pem; m.close(); }, actions: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, t('cancel')), ok] });
   });
 }
 
@@ -608,21 +591,19 @@ function editVirt(x, kind, reload) {
         field(t('px.ca'), ca, t('virt.caHint')),
         field(t('px.verify'), verify, t('px.verifyHint'))));
   }
-  const m = modal(x ? x.name : HW.includes(kind) ? t('hw.add') : `${t(NET.includes(kind) ? 'net.add' : 'virt.add')}: ${t(`virt.k.${kind}`)}`, form, { wide: true, actions: [
+  const m = modal(x ? x.name : HW.includes(kind) ? t('hw.add') : `${t(NET.includes(kind) ? 'net.add' : 'virt.add')}: ${t(`virt.k.${kind}`)}`, form, { wide: true, onSubmit: async () => {
+    const d = { ...formData(form), kind };
+    if (!d.secret) delete d.secret;
+    try {
+      const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d);
+      m.close();
+      if (push && !x) { showScript(r, reload); return; }
+      toast(push || r.last_ok ? t('saved') : r.last_error, push || r.last_ok ? undefined : 'error');
+      reload();
+    } catch (ex) { fail(ex); }
+  }, actions: [
     btn(t('cancel'), { onclick: () => m.close() }),
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
-      if (!form.reportValidity()) return;
-      e.currentTarget.disabled = true;
-      const d = { ...formData(form), kind };
-      if (!d.secret) delete d.secret;
-      try {
-        const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d);
-        m.close();
-        if (push && !x) { showScript(r, reload); return; }
-        toast(push || r.last_ok ? t('saved') : r.last_error, push || r.last_ok ? undefined : 'error');
-        reload();
-      } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
-    } }, push ? t('save') : t('pxs.save'))] });
+    h('button', { class: 'btn btn-primary', type: 'submit' }, push ? t('save') : t('pxs.save'))] });
 }
 
 /** Hyper-V / KVM: token + script for the host, shown once, with the steps to run it every 5 minutes */
@@ -681,15 +662,13 @@ async function proxmox(body, _s, reload, scope = 'virt') {
       h('details', { class: 'cert-manual' }, h('summary', {}, t('pxs.expert')),
         field(t('px.ca'), ca, t('px.caHint')),
         field(t('px.verify'), verify, t('px.verifyHint'))));
-    const m = modal(x ? x.name : t('px.add'), form, { wide: true, actions: [
+    const m = modal(x ? x.name : t('px.add'), form, { wide: true, onSubmit: async () => {
+      const d = formData(form);
+      if (!d.secret) delete d.secret;
+      try { const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d); m.close(); toast(r.last_ok ? t('px.connected') : r.last_error, r.last_ok ? undefined : 'error'); reload(); } catch (ex) { fail(ex); }
+    }, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
-        if (!form.reportValidity()) return;
-        e.currentTarget.disabled = true;
-        const d = formData(form);
-        if (!d.secret) delete d.secret;
-        try { const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d); m.close(); toast(r.last_ok ? t('px.connected') : r.last_error, r.last_ok ? undefined : 'error'); reload(); } catch (ex) { fail(ex); e.currentTarget.disabled = false; }
-      } }, t('pxs.save'))] });
+      h('button', { class: 'btn btn-primary', type: 'submit' }, t('pxs.save'))] });
   };
   const admin = state.user.isAdmin;
   const add = () => pickVirt((kind) => (kind === 'pve' || kind === 'pbs' ? edit(null, kind) : editVirt(null, kind, reload)), kinds);
@@ -945,21 +924,20 @@ async function reports(body, _s, reload) {
     syncFreq();
     form.addEventListener('change', (e) => { if (/^(sec|loc)_/.test(e.target.name || '')) renderDevices(); });
     renderDevices();
-    const m = modal(r ? r.name : t('rep.add'), form, { wide: true, actions: [
+    const m = modal(r ? r.name : t('rep.add'), form, { wide: true, onSubmit: async () => {
+      const d = formData(form);
+      const payload = { name: d.name, sections: SECS.filter((x) => d[`sec_${x}`]), recipients: d.recipients,
+        schedule: { freq: d.freq, weekday: Number(d.weekday), day: Number(d.day), time: d.time }, location_ids: locs.filter((l) => d[`loc_${l.id}`]).map((l) => l.id),
+        subject: d.subject, intro: d.intro, signature: d.signature, from_name: d.from_name, language: d.language, only_attention: d.only_attention, enabled: r ? d.enabled : true,
+        pick: pickSel.value, device_ids: [...chosen].filter((x) => x[0] === 'd').map((x) => Number(x.slice(1))), monitor_ids: [...chosen].filter((x) => x[0] === 'm').map((x) => Number(x.slice(1))) };
+      try { if (r) await put(`/reports/${r.id}`, payload); else await post('/reports', payload); m.close(); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
+    }, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
-        if (!form.reportValidity()) return;
-        const d = formData(form);
-        const payload = { name: d.name, sections: SECS.filter((x) => d[`sec_${x}`]), recipients: d.recipients,
-          schedule: { freq: d.freq, weekday: Number(d.weekday), day: Number(d.day), time: d.time }, location_ids: locs.filter((l) => d[`loc_${l.id}`]).map((l) => l.id),
-          subject: d.subject, intro: d.intro, signature: d.signature, from_name: d.from_name, language: d.language, only_attention: d.only_attention, enabled: r ? d.enabled : true,
-          pick: pickSel.value, device_ids: [...chosen].filter((x) => x[0] === 'd').map((x) => Number(x.slice(1))), monitor_ids: [...chosen].filter((x) => x[0] === 'm').map((x) => Number(x.slice(1))) };
-        try { if (r) await put(`/reports/${r.id}`, payload); else await post('/reports', payload); m.close(); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
-      } }, t('save'))] });
+      h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   };
   const preview = (r) => {
     const frame = h('iframe', { src: `/api/reports/${r.id}/preview`, title: t('rep.preview'), class: 'report-frame', sandbox: '' });
-    const m = modal(`${t('rep.preview')}: ${r.name}`, frame, { wide: true, actions: [btn(t('agent.done'), { class: 'btn btn-primary', onclick: () => m.close() })] });
+    const m = modal(`${t('rep.preview')}: ${r.name}`, frame, { wide: true, onSubmit: () => m.close(), actions: [h('button', { class: 'btn btn-primary', type: 'submit' }, t('agent.done'))] });
   };
   const sendNow = async (r, test, b) => {
     b.disabled = true;
@@ -1000,24 +978,23 @@ async function agents(body, _s, reload) {
       h('p', { class: 'muted', style: { margin: 0 } }, t('agent.envLead')),
       h('pre', { class: 'code wrap' }, env),
       cert.source === 'custom' ? h('p', { class: 'muted small', style: { margin: 0 } }, t('agent.customCaHint')) : null,
-      h('p', { class: 'muted small', style: { margin: 0 } }, t('agent.composeHint'))), { wide: true, actions: [
+      h('p', { class: 'muted small', style: { margin: 0 } }, t('agent.composeHint'))), { wide: true, onSubmit: () => { m.close(); reload(); }, actions: [
       btn(t('agent.copy'), { onclick: async () => { try { await navigator.clipboard.writeText(env); toast(t('agent.copied')); } catch { /* not allowed */ } } }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { m.close(); reload(); } }, t('agent.done'))] });
+      h('button', { class: 'btn btn-primary', type: 'submit' }, t('agent.done'))] });
   };
   const edit = (a) => {
     const form = h('form', { class: 'form' },
       field(t('agent.name'), input('name', a?.name || '', { required: true, maxlength: 80, placeholder: t('ph.agentName') })),
       field(t('agent.location'), select('location_id', locs.map((l) => [String(l.id), l.name]), a ? String(a.location_id) : String(locs[0]?.id || '')), t('agent.locationHint')),
       a ? field(t('user.active'), h('input', { type: 'checkbox', name: 'enabled', checked: !!a.enabled })) : null);
-    const m = modal(a ? a.name : t('agent.add'), form, { actions: [
+    const m = modal(a ? a.name : t('agent.add'), form, { onSubmit: async () => {
+      try {
+        if (a) { await put(`/agents/${a.id}`, formData(form)); m.close(); toast(t('saved')); reload(); }
+        else { const r = await post('/agents', formData(form)); m.close(); showToken(r); }
+      } catch (ex) { fail(ex); }
+    }, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
-        if (!form.reportValidity()) return;
-        try {
-          if (a) { await put(`/agents/${a.id}`, formData(form)); m.close(); toast(t('saved')); reload(); }
-          else { const r = await post('/agents', formData(form)); m.close(); showToken(r); }
-        } catch (ex) { fail(ex); }
-      }) }, t('save'))] });
+      h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   };
   const seen = (a) => {
     if (!a.last_seen) return h('span', { class: 'badge' }, t('agent.never'));
@@ -1180,17 +1157,16 @@ function adCertBlock(cert, formValues, reload) {
     reload();
   };
   const confirmFetched = (r) => {
-    const save = h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
-      save.disabled = true;
-      try { const res = await put('/settings/ad/cert', { ...form(), pem: r.pem }); m.close(); afterSave(res); } catch (ex) { save.disabled = false; fail(ex); }
-    } }, t('adc.trust'));
+    const save = h('button', { class: 'btn btn-primary', type: 'submit' }, t('adc.trust'));
     const m = modal(t('adc.checkTitle'), h('div', {},
       h('p', { style: { marginTop: 0 } }, t('adc.checkLead')),
       r.nameOk ? null : h('div', { class: 'note warn' }, t('adc.nameMismatch', { host: r.host, names: r.certs[0].names.join(', ') || r.certs[0].cn })),
       h('div', { class: 'cert-list' }, r.certs.map((c) => certRow(c, { full: true }))),
       h('div', { class: `note${r.complete ? '' : ' warn'}`, style: { marginTop: '14px', marginBottom: 0 } }, r.complete ? t('adc.complete') : t('adc.incomplete')),
       r.aiaTried.some((x) => x.error) ? h('p', { class: 'muted small' }, t('adc.aiaFailed'), ' ', r.aiaTried.filter((x) => x.error).map((x) => h('span', { class: 'mono' }, `${x.url} (${x.error}) `))) : null),
-    { wide: true, actions: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, t('cancel')), save] });
+    { wide: true, onSubmit: async () => {
+      try { const res = await put('/settings/ad/cert', { ...form(), pem: r.pem }); m.close(); afterSave(res); } catch (ex) { fail(ex); }
+    }, actions: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, t('cancel')), save] });
   };
   const fetchBtn = h('button', { class: 'btn', type: 'button', html: `${icon('download')}<span>${t('adc.fetch')}</span>`, onclick: async () => {
     fetchBtn.disabled = true;
@@ -1314,18 +1290,17 @@ async function notify(body, s, reload) {
       field(t('ch.language'), select('language', [['de', 'Deutsch'], ['en', 'English']], c?.language || getLang())),
       field(t('ch.default'), h('input', { type: 'checkbox', name: 'is_default', checked: c ? c.is_default : true }), t('ch.defaultHint')),
       field(t('user.active'), h('input', { type: 'checkbox', name: 'enabled', checked: c ? c.enabled : true })));
-    const dlg = modal(c ? c.name : `${t('ch.add')}: ${t(`ch.type.${ty}`)}`, form, { wide: true, actions: [
+    const dlg = modal(c ? c.name : `${t('ch.add')}: ${t(`ch.type.${ty}`)}`, form, { wide: true, onSubmit: async () => {
+      const d = formData(form);
+      const { name, language, is_default: isDefault, enabled, ...config } = d;
+      try {
+        const payload = { name, language, is_default: isDefault, enabled, type: ty, config };
+        if (c) await put(`/channels/${c.id}`, payload); else await post('/channels', payload);
+        dlg.close(); toast(t('saved')); reload();
+      } catch (ex) { fail(ex); }
+    }, actions: [
       btn(t('cancel'), { onclick: () => dlg.close() }),
-      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
-        if (!form.reportValidity()) return;
-        const d = formData(form);
-        const { name, language, is_default: isDefault, enabled, ...config } = d;
-        try {
-          const payload = { name, language, is_default: isDefault, enabled, type: ty, config };
-          if (c) await put(`/channels/${c.id}`, payload); else await post('/channels', payload);
-          dlg.close(); toast(t('saved')); reload();
-        } catch (ex) { fail(ex); }
-      } }, t('save'))] });
+      h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   };
   const chooser = h('div', { class: 'actions' }, btn(t('ch.add'), { class: 'btn btn-primary', onclick: () => pickChannel(edit) }, 'plus'));
   mount(body, h('section', { class: 'panel' },
