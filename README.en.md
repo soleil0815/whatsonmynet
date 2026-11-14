@@ -160,6 +160,20 @@ The *Network map* shows from the MAC tables and LLDP data of the switches which 
 
 WhatsOnMyNet runs without root. Ping then only works if the host allows ICMP for normal users (`net.ipv4.ping_group_range`, default on Debian, Ubuntu and Proxmox). Without ping the scan still finds local devices via ARP and remote ones via TCP; the program shows a notice.
 
+**Docker in a Proxmox LXC: allow ping.** In an LXC, ICMP for normal users is usually off (`cat /proc/sys/net/ipv4/ping_group_range` shows `1 0`). As WhatsOnMyNet runs in the host network, the setting of the LXC applies - set it **inside the LXC** (not on the Proxmox host and not in `docker-compose.yml`; Docker does not allow `sysctls` in the host network):
+
+```sh
+# inside the LXC as root - permanent, also after a restart
+echo 'net.ipv4.ping_group_range = 0 2147483647' > /etc/sysctl.d/99-ping.conf
+sysctl -p /etc/sysctl.d/99-ping.conf
+# check: now "0 2147483647"
+cat /proc/sys/net/ipv4/ping_group_range
+# restart WhatsOnMyNet so it detects ping again
+docker compose restart
+```
+
+Then the "ping not possible" notice of the scan is gone and ping monitors work. This works in an unprivileged LXC too, without giving the container more rights.
+
 ### SNMP
 
 By default the scan asks devices with the community `public` (SNMP v2c, else v1) for name, description and vendor ID - read-only. Own communities go under *Settings → Scan*; they are stored encrypted. Devices without SNMP (e.g. simple TP-Link switches) are still recognised, just with fewer details.
@@ -270,6 +284,8 @@ What is new is in [CHANGELOG.en.md](CHANGELOG.en.md) (the same texts as in the p
 - WhatsOnMyNet writes a daily database backup to `data/backups/` (number under *Settings → General*). Back up the whole `data/` folder, including `secret.key` and `tls/`.
 
 Under *Settings → Backup* (from 0.4) you download a current backup at any time, create one or restore one - uploaded or from the list on the server. The file is checked first (WhatsOnMyNet database, not newer than this version, same key), the current state is kept as `whatsonmynet-before-restore-…`, then the program restarts. **Keep `data/secret.key` (or your `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
+
+**Diagnostic package** (from 0.22): *Settings → Diagnostics* makes a ZIP for troubleshooting - log of the last 1–30 days or since the last update, warnings and errors, monitors, sensors, devices with their values, hypervisors, scans, settings. Anonymised by default (placeholders such as GERAET-001 that stay the same in every package and can be looked up), never with passwords or keys, nothing is sent anywhere by itself.
 
 **Rebuild the manual** (after changes to `public/help/manual.*.md` or the images): `node tools/build-manual.mjs` - needs Playwright with Chromium, ImageMagick makes the PDFs smaller.
 

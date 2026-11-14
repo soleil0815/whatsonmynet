@@ -15,7 +15,17 @@ WhatsOnMyNet läuft als Docker-Container mit Host-Netzwerk - nur so sieht der Sc
 
 Die Oberfläche läuft immer über HTTPS. Beim ersten Start erzeugt WhatsOnMyNet ein selbstsigniertes Zertifikat; ein eigenes (PEM oder PFX) lädst du unter *Einstellungen → HTTPS-Zertifikat* hoch.
 
-**Ping:** Der Container läuft ohne Root-Rechte. Ping funktioniert, wenn der Host normalen Benutzern ICMP erlaubt (`net.ipv4.ping_group_range`, bei Debian/Ubuntu/Proxmox Standard; in LXC-Containern `0 65535` setzen). Ohne Ping findet der Scan Geräte trotzdem über ARP und TCP.
+**Ping:** Der Container läuft ohne Root-Rechte. Ping funktioniert, wenn der Host normalen Benutzern ICMP erlaubt (`net.ipv4.ping_group_range`, bei Debian/Ubuntu/Proxmox Standard). Ohne Ping findet der Scan Geräte trotzdem über ARP und TCP.
+
+**Ping im Proxmox-LXC freischalten** (im LXC ist es meist aus - `cat /proc/sys/net/ipv4/ping_group_range` zeigt `1 0`). Im LXC als root, nicht auf dem Proxmox-Host:
+
+```sh
+echo 'net.ipv4.ping_group_range = 0 2147483647' > /etc/sysctl.d/99-ping.conf
+sysctl -p /etc/sysctl.d/99-ping.conf
+docker compose restart
+```
+
+Die Einstellung bleibt nach einem Neustart erhalten und braucht keine zusätzlichen Rechte für den Container. In der `docker-compose.yml` geht es nicht: Docker erlaubt `sysctls` im Host-Netzwerk nicht.
 
 ## Erste Schritte
 
@@ -445,4 +455,5 @@ Beim Koppeln übernimmt der Standby **alle Daten des Masters** (Geräte, Monitor
 - **Keine Drucker-/Switch-Daten**: SNMP am Gerät einschalten, Community unter *Einstellungen → Scan* prüfen, auf der Geräteseite „Jetzt abfragen“.
 - **Ausgesperrt**: `docker compose exec whatsonmynet womn-admin reset <benutzer>` setzt ein neues Passwort, macht das Konto wieder zum Administrator und schaltet die Zwei-Faktor-Anmeldung aus. `womn-admin create <benutzer>` legt einen neuen Administrator an.
 - **Netzlaufwerk meldet „protocol not supported“**: Das Gerät kann nur das alte SMB1 - das wird aus Sicherheitsgründen nicht verwendet. SMB2/3 am Gerät einschalten (bei Synology: *Dateidienste → SMB → Erweitert*).
+- **Diagnosepaket**: *Einstellungen → Diagnose* erstellt ein ZIP mit Protokoll (wird 30 Tage aufbewahrt), Warnungen und Fehlern, Monitoren und Sensoren samt Prüfungen, Geräten mit den Werten, die ihre Sensoren sehen, Hypervisoren, Scans, Einstellungen und den Änderungen seit der ältesten Version im Zeitraum - für die letzten 1 bis 30 Tage oder seit dem letzten Update. Standardmäßig anonymisiert: Namen und Adressen werden zu Platzhaltern (GERAET-001, 10.99.0.7 …), die in jedem Paket gleich bleiben und sich dort nachschlagen lassen. Kennwörter, Schlüssel und Communities sind nie enthalten; verschickt wird nichts.
 - **Protokoll**: *Einstellungen → Protokoll* zeigt, wer was geändert hat; technische Meldungen stehen im Container-Log.

@@ -15,7 +15,17 @@ WhatsOnMyNet runs as a Docker container with host networking - only this way the
 
 The interface always runs over HTTPS. On first start WhatsOnMyNet creates a self-signed certificate; upload your own (PEM or PFX) under *Settings → HTTPS certificate*.
 
-**Ping:** the container runs without root rights. Ping works if the host allows ICMP for normal users (`net.ipv4.ping_group_range`, default on Debian/Ubuntu/Proxmox; set `0 65535` in LXC containers). Without ping the scan still finds devices via ARP and TCP.
+**Ping:** the container runs without root rights. Ping works if the host allows ICMP for normal users (`net.ipv4.ping_group_range`, default on Debian/Ubuntu/Proxmox). Without ping the scan still finds devices via ARP and TCP.
+
+**Allow ping in a Proxmox LXC** (it is usually off there - `cat /proc/sys/net/ipv4/ping_group_range` shows `1 0`). Inside the LXC as root, not on the Proxmox host:
+
+```sh
+echo 'net.ipv4.ping_group_range = 0 2147483647' > /etc/sysctl.d/99-ping.conf
+sysctl -p /etc/sysctl.d/99-ping.conf
+docker compose restart
+```
+
+The setting survives a restart and needs no extra rights for the container. It cannot go into `docker-compose.yml`: Docker does not allow `sysctls` in the host network.
 
 ## First steps
 
@@ -445,4 +455,5 @@ When pairing, the standby takes **all data of the master** (devices, monitors, u
 - **No printer/switch data**: switch on SNMP at the device, check the community under *Settings → Scan*, "Query now" on the device page.
 - **Locked out**: `docker compose exec whatsonmynet womn-admin reset <user>` sets a new password, makes the account administrator again and switches two-factor sign-in off. `womn-admin create <user>` adds a new administrator.
 - **Network drive reports "protocol not supported"**: the device only speaks the old SMB1 - it is not used for security reasons. Switch on SMB2/3 at the device (Synology: *File Services → SMB → Advanced*).
+- **Diagnostic package**: *Settings → Diagnostics* makes a ZIP with the log (kept for 30 days), warnings and errors, monitors and sensors with their checks, devices with the values their sensors see, hypervisors, scans, settings and the changes since the oldest version in the period - for the last 1 to 30 days or since the last update. Anonymised by default: names and addresses become placeholders (GERAET-001, 10.99.0.7 …) that stay the same in every package and can be looked up there. Passwords, keys and communities are never included; nothing is sent anywhere.
 - **Log**: *Settings → Log* shows who changed what; technical messages are in the container log.

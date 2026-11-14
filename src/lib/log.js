@@ -15,11 +15,34 @@ export function redact(value, depth = 0) {
   return out;
 }
 
+// Besides stdout the lines also go to the program's own log (table server_log - for the diagnostic package).
+// Lines written before it is attached (start, migrations) wait in a small buffer.
+let sink = null;
+let inSink = false;
+const early = [];
+const EARLY_MAX = 500;
+/** fn({ at, level, message }) or null; never throws into the caller and never logs about itself */
+export function setLogSink(fn) {
+  sink = typeof fn === 'function' ? fn : null;
+  if (sink) for (const e of early.splice(0)) toSink(e);
+}
+function toSink(e) {
+  if (inSink) return;
+  inSink = true;
+  try { sink(e); } catch { /* the log never stops the program */ } finally { inSink = false; }
+}
+
+// The program's log keeps info and above even when less is printed (WOMN_LOG_LEVEL=warn); debug only when printed
+const stored = Math.min(current, levels.info);
+
 function write(level, msg, extra) {
-  if (levels[level] < current) return;
-  const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} ${msg}`;
+  if (levels[level] < current && levels[level] < stored) return;
+  const at = new Date().toISOString();
   const tail = extra === undefined ? '' : ' ' + JSON.stringify(redact(extra));
-  (level === 'error' || level === 'warn' ? console.error : console.log)(line + tail);
+  if (levels[level] >= current) (level === 'error' || level === 'warn' ? console.error : console.log)(`${at} ${level.toUpperCase().padEnd(5)} ${msg}${tail}`);
+  const e = { at, level, message: `${msg}${tail}` };
+  if (sink) toSink(e);
+  else if (early.length < EARLY_MAX) early.push(e);
 }
 
 export const log = {
