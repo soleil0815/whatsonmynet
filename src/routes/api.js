@@ -289,6 +289,7 @@ export function createApi(ctx) {
     if (req.scope && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
     const d = inventory.create(req.body, who(req));
     audit(req, 'device.create', d.name);
+    ctx.autoWatch.markDevices([d.id], req.user.language);
     res.status(201).json(d);
   });
   r.patch('/devices/:id', editor, (req, res) => {
@@ -409,7 +410,9 @@ export function createApi(ctx) {
     }
     const created = inventory.adopt(resultIds, overrides, who(req));
     if (created.length) audit(req, 'inventory.adopt', `${created.length} device(s) from scan ${scanId}`);
-    res.json({ created });
+    // watched from the start: a first monitor now, sensors once the devices deliver values
+    const watched = ctx.autoWatch.markDevices(created, req.user.language);
+    res.json({ created, watched });
   });
   r.post('/scans/:id/ignore', editor, (req, res) => {
     const scanId = idParam(req);
@@ -551,7 +554,7 @@ export function createApi(ctx) {
   r.get('/settings', admin, (_req, res) => {
     res.json({ security: { require2faAdmins: !!settings.get('security.require2faAdmins') }, general: settings.publicGroup('general'), scan: settings.publicGroup('scan'), smtp: settings.publicGroup('smtp'), backup: settings.publicGroup('backup'),
       lightscan: { ...settings.publicGroup('lightscan'), last: ctx.nightly.lastLight() }, printer: settings.publicGroup('printer'),
-      snmpdev: settings.publicGroup('snmpdev'), nas: settings.publicGroup('nas'), escalate: settings.publicGroup('escalate') });
+      snmpdev: settings.publicGroup('snmpdev'), nas: settings.publicGroup('nas'), escalate: settings.publicGroup('escalate'), autowatch: settings.publicGroup('autowatch') });
   });
   r.put('/settings/escalate', admin, (req, res) => {
     const b = req.body;
@@ -559,6 +562,11 @@ export function createApi(ctx) {
     if ('channels' in b) settings.set('escalate.channels', channelIds(b.channels));
     audit(req, 'settings.escalate');
     res.json(settings.publicGroup('escalate'));
+  });
+  r.put('/settings/autowatch', admin, (req, res) => {
+    settings.set('autowatch.enabled', !!req.body.enabled);
+    audit(req, 'settings.autowatch', req.body.enabled ? 'on' : 'off');
+    res.json(settings.publicGroup('autowatch'));
   });
   r.put('/settings/general', admin, (req, res) => {
     settings.set('general.title', line(req.body.title, 60) || 'WhatsOnMyNet');

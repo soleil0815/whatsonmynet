@@ -152,7 +152,13 @@ export function createMonitoringApi(ctx) {
     const list = ctx.proxmox.list();
     res.json(req.user.role === 'admin' ? list : list.map((h) => ({ id: h.id, name: h.name, kind: h.kind })));
   });
-  r.post('/proxmox', admin, async (req, res) => { const h = ctx.proxmox.create(req.body); audit(req, 'proxmox.create', `${h.name} (${h.url})`); res.status(201).json(await ctx.proxmox.poll(h.id)); });
+  r.post('/proxmox', admin, async (req, res) => {
+    const h = ctx.proxmox.create(req.body);
+    audit(req, 'proxmox.create', `${h.name} (${h.url})`);
+    // watched from the start: a few sensors once the first values are there
+    ctx.autoWatch.markHost(h.id, req.user.language);
+    res.status(201).json(await ctx.proxmox.poll(h.id));
+  });
   r.put('/proxmox/:id', admin, async (req, res) => { const h = ctx.proxmox.update(idParam(req), req.body); audit(req, 'proxmox.update', h.name); res.json(await ctx.proxmox.poll(h.id)); });
   r.delete('/proxmox/:id', admin, (req, res) => { ctx.proxmox.remove(idParam(req)); audit(req, 'proxmox.delete', req.params.id); res.json({ ok: true }); });
   r.post('/proxmox/cert', admin, async (req, res) => res.json(await ctx.proxmox.fetchCert(req.body?.url)));
