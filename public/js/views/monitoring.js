@@ -228,9 +228,16 @@ export async function renderMonitoring(main, id, sub) {
   const q = h('input', { type: 'search', placeholder: t('mon.search'), 'aria-label': t('mon.search'), oninput: () => draw() });
   const chips = h('div', { class: 'inv-chips', role: 'group', 'aria-label': t('mon.col.name') });
   const ORDER = ['down', 'unreachable', 'pending', 'maintenance', 'up', 'paused'];
+  // Several at once (editors): tick rows, then change interval/alarm settings, pause, resume or delete them together
+  const selected = new Set();
+  let shown = [];
+  const cols = (kind === 'sensors' ? 4 : 5) + (edit ? 1 : 0);
 
   function row(m) {
-    return h('tr', { class: 'click', onclick: (e) => { if (!e.target.closest('a,button')) navigate(`/monitoring/${m.id}`); } },
+    const box = edit ? h('input', { type: 'checkbox', checked: selected.has(m.id), 'data-id': String(m.id), 'aria-label': `${t('inv.select')}: ${m.name}`,
+      onchange: (e) => { if (e.target.checked) selected.add(m.id); else selected.delete(m.id); e.target.closest('tr').classList.toggle('sel', e.target.checked); renderBulk(); } }) : null;
+    return h('tr', { class: `click${selected.has(m.id) ? ' sel' : ''}`, onclick: (e) => { if (!e.target.closest('a,button,input,label')) navigate(`/monitoring/${m.id}`); } },
+      edit ? h('td', { class: 'min' }, box) : null,
       h('td', {}, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
         h('div', { style: { minWidth: 0 } }, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
           h('div', { class: 'sub' }, ipMoved(m) ? h('span', { class: 'tone-bad' }, t('mon.ipMoved', ipMoved(m)))
@@ -254,17 +261,55 @@ export async function renderMonitoring(main, id, sub) {
       counts.up ? chip('up', t('mon.status.up'), counts.up, 'ok') : null, counts.paused ? chip('paused', t('mon.status.paused'), counts.paused) : null);
     const term = q.value.trim().toLowerCase();
     const list = all.filter((m) => (!filter || m.status === filter) && (!term || `${m.name} ${m.target} ${t(`mon.type.${m.type}`)}`.toLowerCase().includes(term)));
+    // the selection follows what is shown: a filter that hides a row also takes it out of the selection
+    shown = list;
+    for (const id of [...selected]) if (!list.some((m) => m.id === id)) selected.delete(id);
+    // the list is drawn anew every 15 s: a ticked box keeps the keyboard focus
+    const focusId = document.activeElement?.closest?.('.panel') === body ? document.activeElement.dataset?.id : null;
     const rows = [];
     for (const st of ORDER) {
       const part = list.filter((m) => (ORDER.includes(m.status) ? m.status : 'pending') === st);
       if (!part.length) continue;
-      rows.push(h('tr', { class: 'group' }, h('td', { colspan: kind === 'sensors' ? 4 : 5 }, `${t(`mon.status.${st}`)} · ${part.length}`)));
+      rows.push(h('tr', { class: 'group' }, h('td', { colspan: cols }, `${t(`mon.status.${st}`)} · ${part.length}`)));
       for (const m of part) rows.push(row(m));
     }
-    mount(body, h('div', { class: 'table-wrap' }, rows.length ? h('table', { class: 'data' },
-      h('thead', {}, h('tr', {}, h('th', {}, t(kind === 'sensors' ? 'sens.col.name' : 'mon.col.name')), h('th', { class: 'hide-sm' }, t('mon.col.beats')),
+    mount(body, bulk, h('div', { class: 'table-wrap' }, rows.length ? h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, edit ? h('th', { class: 'min' }, allBox) : null, h('th', {}, t(kind === 'sensors' ? 'sens.col.name' : 'mon.col.name')), h('th', { class: 'hide-sm' }, t('mon.col.beats')),
         h('th', {}, t('mon.col.uptime')), h('th', { class: 'hide-sm' }, t('mon.col.now')), kind === 'sensors' ? null : h('th', { class: 'hide-sm' }, t('mon.col.cert')))),
       h('tbody', {}, rows)) : h('div', { class: 'empty' }, t('mon.noMatch'))));
+    renderBulk();
+    if (focusId) body.querySelector(`input[data-id="${focusId}"]`)?.focus();
+  }
+
+  const allBox = h('input', { type: 'checkbox', 'aria-label': t(kind === 'sensors' ? 'mon.bulkAllSensors' : 'mon.bulkAll'), 'data-id': 'all', onchange: (e) => {
+    for (const m of shown) { if (e.target.checked) selected.add(m.id); else selected.delete(m.id); }
+    draw();
+  } });
+  const bulk = h('div', { class: 'bulk', hidden: true, role: 'region', 'aria-label': t('mon.bulkBar') });
+  function renderBulk() {
+    allBox.checked = shown.length > 0 && shown.every((m) => selected.has(m.id));
+    allBox.indeterminate = !allBox.checked && shown.some((m) => selected.has(m.id));
+    bulk.hidden = !selected.size;
+    if (!selected.size) { mount(bulk); return; }
+    const chosen = shown.filter((m) => selected.has(m.id));
+    mount(bulk, h('span', { class: 'count grow', 'aria-live': 'polite' }, t('scan.selected', { n: selected.size })),
+      btn(t('inv.clearSel'), { class: 'btn btn-ghost btn-sm', onclick: () => { selected.clear(); draw(); } }),
+      chosen.some((m) => m.enabled) ? btn(t('mon.pause'), { class: 'btn btn-sm', onclick: (e) => bulkRun(e, 'pause') }) : null,
+      chosen.some((m) => !m.enabled) ? btn(t('mon.resume'), { class: 'btn btn-sm', onclick: (e) => bulkRun(e, 'resume') }) : null,
+      btn(t('inv.bulkDelete'), { class: 'btn btn-danger btn-sm', onclick: (e) => bulkRun(e, 'delete') }, 'trash'),
+      btn(t('mon.bulkEdit'), { class: 'btn btn-primary btn-sm', onclick: () => bulkMonitorEdit(chosen, kind, afterBulk) }, 'edit'));
+  }
+  function afterBulk() { selected.clear(); clearTimeout(timer); load(); }
+  async function bulkRun(e, action) {
+    const n = selected.size;
+    if (action === 'delete' && !await confirmDialog(t('inv.bulkDelete'), t(kind === 'sensors' ? 'mon.bulkDeleteConfirmSensors' : 'mon.bulkDeleteConfirm', { n }), t('delete'), t('cancel'), { danger: true })) return;
+    const b = e.currentTarget;
+    b.disabled = true;
+    try {
+      const r = await post('/monitors/bulk', { ids: [...selected], action });
+      toast(t(`mon.bulkDone.${action}`, { n: r.changed }));
+      afterBulk();
+    } catch (ex) { fail(ex); b.disabled = false; }
   }
 
   // Sensors: the form starts with "value of a device"
@@ -277,6 +322,7 @@ export async function renderMonitoring(main, id, sub) {
     all = list.filter(mine);
     byId = new Map(list.map((m) => [m.id, m]));
     if (!all.length) {
+      selected.clear();
       mount(body, h('div', { class: 'empty' }, h('h2', {}, t(kind === 'sensors' ? 'sens.emptyTitle' : 'mon.emptyTitle')), h('p', {}, t(!edit ? 'mon.emptyViewer' : kind === 'sensors' ? 'sens.emptyText' : 'mon.emptyText')),
         edit ? addBtn() : null));
     } else {
@@ -867,6 +913,65 @@ export async function openMonitorForm(m, done, preset = null) {
       if (done) done(r); else navigate(`/monitoring/${r.id}`);
     } catch (e) { fail(e); }
   }
+}
+
+/**
+ * Change several monitors or sensors at once: the fields of "Advanced" in the single form (and the limit of sensors).
+ * Every field starts as "unchanged"; only what is filled in or switched on is sent, everything else stays per monitor.
+ */
+async function bulkMonitorEdit(list, kind, done) {
+  let chans = [];
+  try { chans = await get('/channels'); } catch { /* list stays empty */ }
+  const KEEP = '__keep__';
+  const keep = t('inv.keep');
+  const numIn = (name, min, max) => input(name, '', { type: 'number', min, max, placeholder: keep, inputmode: 'numeric' });
+  const escDefault = state.meta?.escalateMin ? t('mon.f.escDefaultOn', { n: state.meta.escalateMin }) : t('mon.f.escDefaultOff');
+  const escSel = select('escalate_min', [[KEEP, keep], ['', escDefault], ['0', t('mon.f.escOff')], ...[15, 30, 60, 120, 240, 480].map((n) => [String(n), t('mon.f.escAfter', { n })])], KEEP);
+  // Channels: a plain tick list cannot say "leave as it is" - so the list only counts once "change channels" is on
+  const chanPart = (prefix, title, hint) => {
+    const boxes = h('div', { class: 'chips', hidden: true }, chans.map((c) => h('label', { class: 'check', style: { marginRight: '14px' } },
+      h('input', { type: 'checkbox', name: `${prefix}_${c.id}`, disabled: true }), `${c.name}${prefix === 'ch' && c.is_default ? ` (${t('mon.f.default')})` : ''}`)));
+    const on = h('input', { type: 'checkbox', name: `${prefix}_change`, 'aria-label': `${title}: ${t('mon.bulkChangeChannels')}`, onchange: () => {
+      boxes.hidden = !on.checked;
+      for (const b of boxes.querySelectorAll('input')) b.disabled = !on.checked;
+    } });
+    return h('div', { class: 'full field' }, title, h('label', { class: 'check' }, on, h('span', {}, t('mon.bulkChangeChannels'))), boxes, h('span', { class: 'hint' }, hint));
+  };
+  const sensors = kind === 'sensors';
+  // has_limit (from the server): a sensor with a condition and limit of its own - a state sensor (online, healthy …) has none
+  const withLimit = list.filter((m) => m.has_limit).length;
+  const form = h('form', { class: 'form-grid' },
+    h('p', { class: 'full muted', style: { margin: 0 } }, t(sensors ? 'mon.bulkLeadSensors' : 'mon.bulkLead', { n: list.length })),
+    field(t('mon.f.interval'), numIn('interval_s', 20, 86400), t('mon.f.intervalHint')),
+    field(t('mon.f.retries'), numIn('fail_threshold', 1, 10)),
+    field(t('mon.f.timeout'), numIn('timeout_s', 1, 60)),
+    field(t('mon.f.resend'), numIn('resend_min', 0, 1440), t('mon.f.resendHint')),
+    sensors ? field(t('sens.op'), select('op', [[KEEP, keep], ...OPS.map((x) => [x, t(`sens.op.${x}`)])], KEEP)) : null,
+    sensors ? field(t('sens.threshold'), input('threshold', '', { maxlength: 60, class: 'mono', placeholder: keep }),
+      t('mon.bulkLimitHint', { n: withLimit, total: list.length })) : null,
+    field(t('mon.f.escalate'), escSel),
+    chans.length ? chanPart('esc', t('mon.bulkEscChannels'), t('mon.f.escHint')) : null,
+    chans.length ? chanPart('ch', t('mon.f.channels'), t('mon.f.channelsHint')) : null);
+  const dlg = modal(t(sensors ? 'mon.bulkEditSensors' : 'mon.bulkEdit'), form, { wide: true, onSubmit: async () => {
+    const d = formData(form);
+    const changes = {};
+    for (const k of ['interval_s', 'fail_threshold', 'timeout_s', 'resend_min']) if (String(d[k] ?? '').trim()) changes[k] = d[k].trim();
+    if (d.escalate_min !== KEEP) changes.escalate_min = d.escalate_min === '' ? null : d.escalate_min;
+    if (sensors && d.op !== KEEP) changes.op = d.op;
+    if (sensors && d.threshold.trim()) changes.threshold = d.threshold.trim();
+    if (d.ch_change) changes.channels = chans.filter((c) => d[`ch_${c.id}`]).map((c) => c.id);
+    if (d.esc_change) changes.escalate_channels = chans.filter((c) => d[`esc_${c.id}`]).map((c) => c.id);
+    if (!Object.keys(changes).length) { dlg.close(); return; }
+    try {
+      const r = await post('/monitors/bulk', { ids: list.map((m) => m.id), action: 'edit', changes });
+      dlg.close();
+      toast(r.skipped ? `${t('mon.bulkDone.edit', { n: r.changed })} · ${t('mon.bulkSkipped', { n: r.skipped })}` : t('mon.bulkDone.edit', { n: r.changed }));
+      done();
+    } catch (e) { fail(e); }
+  }, actions: [
+    btn(t('cancel'), { onclick: () => dlg.close() }),
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t('inv.bulkApply')),
+  ] });
 }
 
 // ------------------------------------------------------------------------------------------- maintenance windows

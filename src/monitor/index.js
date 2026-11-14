@@ -58,6 +58,24 @@ const SECRET_TYPES = [...DB_TYPES, 'smb'];
 // Monitors that say whether a device is reachable at all - only these make sense as "everything behind it" parent
 export const REACH_TYPES = ['ping', 'tcp', 'http', 'snmp'];
 const MAX_DEPTH = 20;
+// Allowed ranges of the "how often, when to alarm" values: [min, max, default]. A single monitor clamps to them,
+// a change of several monitors at once refuses a value outside (nobody should get 20 s where he typed 5 without noticing)
+export const LIMITS = { interval_s: [20, 86400, 60], timeout_s: [1, 60, 10], fail_threshold: [1, 10, 3], resend_min: [0, 1440, 0], escalate_min: [0, 1440, 0] };
+const clamp = (k, raw) => { const [lo, hi, def] = LIMITS[k]; return Math.min(hi, Math.max(lo, int(String(raw)) || def)); };
+// Values that are a state (on/off, healthy …): no own condition and limit, always "alarm when not ok"
+export const SENSOR_STATE_METRICS = ['printerErrors', 'health', 'disk', 'raid', 'port', 'hostOnline', 'service', 'upsPower', 'hostPdHealth', 'hostReboot', 'hostAv', 'hostFirewall'];
+export const PROXMOX_STATE_METRICS = ['nodeOnline', 'guestRunning', 'netOnline', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume'];
+/** Does this monitor compare a measured value against a limit of its own (condition + threshold)? */
+export function hasLimit(m) {
+  const metric = (typeof m.options === 'string' ? parse(m.options, {}) : m.options || {}).metric;
+  if (m.type === 'snmp') return true;
+  if (m.type === 'sensor') return !SENSOR_STATE_METRICS.includes(metric);
+  if (m.type === 'proxmox') return !PROXMOX_STATE_METRICS.includes(metric);
+  return false;
+}
+// What a change of several monitors at once may set (the "advanced" part of the form plus the limit of sensors)
+const BULK_FIELDS = ['interval_s', 'fail_threshold', 'timeout_s', 'resend_min', 'escalate_min', 'escalate_channels', 'channels', 'op', 'threshold'];
+export const BULK_MAX = 1000;
 
 export function createMonitoring({ db, channels, maintenance, settings = null, now = () => new Date() }) {
   const checkCtx = {
@@ -177,10 +195,10 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const v = {
       name: line(input.name ?? old?.name, 120),
       type,
-      interval_s: Math.min(86400, Math.max(20, int(String(input.interval_s ?? old?.interval_s ?? 60)) || 60)),
-      timeout_s: Math.min(60, Math.max(1, int(String(input.timeout_s ?? old?.timeout_s ?? 10)) || 10)),
-      fail_threshold: Math.min(10, Math.max(1, int(String(input.fail_threshold ?? old?.fail_threshold ?? 3)) || 3)),
-      resend_min: Math.min(1440, Math.max(0, int(String(input.resend_min ?? old?.resend_min ?? 0)) || 0)),
+      interval_s: clamp('interval_s', input.interval_s ?? old?.interval_s ?? 60),
+      timeout_s: clamp('timeout_s', input.timeout_s ?? old?.timeout_s ?? 10),
+      fail_threshold: clamp('fail_threshold', input.fail_threshold ?? old?.fail_threshold ?? 3),
+      resend_min: clamp('resend_min', input.resend_min ?? old?.resend_min ?? 0),
       http_status: line(input.http_status ?? old?.http_status ?? '200-399', 60) || '200-399',
       http_keyword: str(input.http_keyword ?? old?.http_keyword ?? '', 200),
       tls_verify: (input.tls_verify ?? old?.tls_verify) ? 1 : 0,
@@ -191,7 +209,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       escalate_min: (() => {
         const raw = input.escalate_min !== undefined ? input.escalate_min : old?.escalate_min;
         if (raw === null || raw === undefined || raw === '') return null;
-        return Math.min(1440, Math.max(0, int(String(raw)) || 0));
+        return clamp('escalate_min', raw);
       })(),
       escalate_channels: JSON.stringify(ids(input.escalate_channels ?? parse(old?.escalate_channels, []), 50)),
     };
@@ -213,7 +231,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       const deviceId = input.device_id !== undefined && input.device_id !== null && input.device_id !== '' ? Number(input.device_id) : old?.device_id;
       if (!deviceId || !db.prepare('SELECT 1 FROM devices WHERE id=?').get(deviceId)) throw new HttpError(400, 'err.sensorDevice');
       if (old) v.device_id = deviceId;
-      const base = ['printerErrors', 'health', 'disk', 'raid', 'port', 'hostOnline', 'service', 'upsPower', 'hostPdHealth', 'hostReboot', 'hostAv', 'hostFirewall'].includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'sensor' ? old : null);
+      const base = SENSOR_STATE_METRICS.includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'sensor' ? old : null);
       v.options = JSON.stringify({ metric, key: line(o.key ?? prev.key ?? '', 120), ...base });
       v.target = (base.label || metric).slice(0, 200);
       v.port = null;
@@ -224,7 +242,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       if (!host || !db.prepare('SELECT 1 FROM proxmox_hosts WHERE id=?').get(host)) throw new HttpError(400, 'err.proxmoxHost');
       const metric = o.metric ?? prev.metric;
       if (!PROXMOX_METRICS.includes(metric)) throw new HttpError(400, 'err.sensorMetric');
-      const base = ['nodeOnline', 'guestRunning', 'netOnline', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume'].includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'proxmox' ? old : null);
+      const base = PROXMOX_STATE_METRICS.includes(metric) ? { op: 'eq', threshold: '', label: line(o.label ?? prev.label ?? '', 120) } : sensorOptions(input, old && old.type === 'proxmox' ? old : null);
       v.options = JSON.stringify({ host, metric, key: line(o.key ?? prev.key ?? '', 200), ...base });
       // A device sensor that becomes a hypervisor value no longer belongs to the device (hypervisors have no location)
       if (old && old.type === 'sensor') v.device_id = null;
@@ -386,6 +404,94 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     nextRun.delete(id);
   }
 
+  // ---------------------------------------------------------------------------------------------------- several at once
+  /** What a change of several monitors may set, checked once: { input, limit } (limit = { op?, threshold? } or null) */
+  function bulkChanges(changes) {
+    if (!changes || typeof changes !== 'object' || Array.isArray(changes)) throw new HttpError(400, 'err.bulkNothing');
+    for (const k of Object.keys(changes)) if (!BULK_FIELDS.includes(k)) throw new HttpError(400, 'err.badRequest', k);
+    const input = {};
+    const ranged = (k, raw) => {
+      const n = int(String(raw));
+      const [lo, hi] = LIMITS[k];
+      if (n === null || n < lo || n > hi) throw new HttpError(400, 'err.range', `${lo}–${hi}`, k);
+      return n;
+    };
+    const empty = (x) => x === undefined || x === null || x === '';
+    for (const k of ['interval_s', 'timeout_s', 'fail_threshold', 'resend_min']) if (!empty(changes[k])) input[k] = ranged(k, changes[k]);
+    // escalation: null or '' = back to the setting for all monitors
+    if ('escalate_min' in changes) input.escalate_min = empty(changes.escalate_min) ? null : ranged('escalate_min', changes.escalate_min);
+    for (const k of ['channels', 'escalate_channels']) {
+      if (changes[k] === undefined) continue;
+      if (!Array.isArray(changes[k])) throw new HttpError(400, 'err.channel');
+      input[k] = ids(changes[k], 50);
+    }
+    let limit = null;
+    if (!empty(changes.op)) {
+      if (!OPS.includes(changes.op)) throw new HttpError(400, 'err.sensorOp', undefined, 'op');
+      limit = { op: changes.op };
+    }
+    if (!empty(changes.threshold) && line(changes.threshold, 60)) limit = { ...limit, threshold: line(changes.threshold, 60) };
+    if (!Object.keys(input).length && !limit) throw new HttpError(400, 'err.bulkNothing');
+    return { input, limit };
+  }
+
+  /**
+   * Several monitors at once (the caller has checked that the user may change each of them).
+   * action: edit | pause | resume | delete. edit: only the fields in `changes` change; every monitor goes through the
+   * same clean() as a single edit, and one invalid value refuses the whole change. A condition or limit only goes to
+   * monitors that compare a value against one (not to state sensors) - the others count as skipped.
+   * → { changed, skipped }
+   */
+  async function bulk(idList, action, changes) {
+    const rows = idList.map((id) => db.prepare('SELECT * FROM monitors WHERE id=?').get(id)).filter(Boolean);
+    let changed = 0; let skipped = 0;
+    if (action === 'pause' || action === 'resume') {
+      const on = action === 'resume';
+      db.transaction(() => {
+        for (const m of rows) {
+          if (!!m.enabled === on) { skipped++; continue; }
+          setEnabled(m.id, on);
+          changed++;
+        }
+      })();
+      return { changed, skipped };
+    }
+    if (action === 'delete') {
+      db.transaction(() => {
+        for (const m of rows) changed += db.prepare('DELETE FROM monitors WHERE id=?').run(m.id).changes;
+        forgetMonitors(db, rows.map((m) => m.id));
+      })();
+      for (const m of rows) nextRun.delete(m.id);
+      return { changed, skipped };
+    }
+    if (action !== 'edit') throw new HttpError(400, 'err.badRequest', action);
+    const { input, limit } = bulkChanges(changes);
+    // Checked first for all, written afterwards in one go: an error leaves every monitor as it was
+    const cols = [...Object.keys(input), 'timeout_s'];
+    const plans = [];
+    for (const old of rows) {
+      const own = { ...input };
+      if (limit && hasLimit(old)) own.options = limit;
+      else if (limit) skipped++;
+      if (!Object.keys(own).length) continue;
+      const v = await clean(own, old);
+      // only what was asked for (and the timeout, which never may reach the interval) - nothing else is rewritten
+      const set = {};
+      for (const k of own.options ? [...cols, 'options'] : cols) if (k in v && v[k] !== old[k]) set[k] = v[k];
+      plans.push({ id: old.id, set });
+    }
+    const ts = iso();
+    db.transaction(() => {
+      for (const p of plans) {
+        const keys = Object.keys(p.set);
+        if (keys.length) db.prepare(`UPDATE monitors SET ${keys.map((k) => `${k}=?`).join(',')}, updated_at=? WHERE id=?`).run(...keys.map((k) => p.set[k]), ts, p.id);
+      }
+    })();
+    // like a single edit: checked again right away with the new settings
+    for (const p of plans) if (Object.keys(p.set).length) nextRun.set(p.id, 0);
+    return { changed: plans.length, skipped };
+  }
+
   // ---------------------------------------------------------------------------------------------------- stats
   function uptime(id, hours) {
     const since = hourOf(new Date(now().getTime() - hours * 3600 * 1000));
@@ -428,7 +534,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const certDays = m.cert_valid_to ? Math.floor((Date.parse(m.cert_valid_to) - now().getTime()) / 86400000) : null;
     const { secret, data, ...rest } = m;
     return { ...rest, status: shownStatus(m), data: parse(data, {}), channels: parse(m.channels, []), escalate_channels: parse(m.escalate_channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
-      cert_check: !!m.cert_check, cert_days_left: certDays,
+      cert_check: !!m.cert_check, cert_days_left: certDays, has_limit: hasLimit(m),
       docker_host: m.docker_host_id ? db.prepare('SELECT id, name FROM docker_hosts WHERE id=?').get(m.docker_host_id) || null : null };
   }
 
@@ -692,7 +798,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   }
 
   return {
-    create, update, remove, get, list, detail, summary, deviceStatus, suggestionFor, checkNow, childCandidates, adoptChildren,
+    create, update, remove, bulk, get, list, detail, summary, deviceStatus, suggestionFor, checkNow, childCandidates, adoptChildren,
     pause: (id) => setEnabled(id, false),
     resume: (id) => setEnabled(id, true),
     record,
