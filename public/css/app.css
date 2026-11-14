@@ -85,7 +85,9 @@ p { margin: 0 0 .8em; }
 .foot-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; padding-right: 10px; }
 .coffee-link { display: inline-flex; align-items: center; gap: 5px; padding: 6px 0 0 10px; font-size: 11.5px; color: var(--rack-muted); text-decoration: none; }
 .coffee-link span { display: inline-flex; }
-.coffee-link svg { width: 14px; height: 14px; }
+.coffee-link svg, .coffee-link .bmc-logo { width: 14px; height: 14px; }
+/* the black Buy Me a Coffee cup on the dark menu: on a small yellow badge, like the official button */
+.coffee-link .bmc-logo { background: #ffdd00; border-radius: 3px; padding: 1px; box-sizing: content-box; }
 .coffee-link:hover, .coffee-link:focus-visible { color: var(--rack-ink, #fff); text-decoration: underline; }
 /* Low windows: tighter menu, so that as much as possible fits without scrolling */
 @media (max-height: 820px) and (min-width: 821px) {
@@ -99,9 +101,11 @@ p { margin: 0 0 .8em; }
 .coffee { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius, 6px); }
 .coffee .btn span { display: inline-flex; }
 /* the coffee button: yellow with black text in both themes so it stands out, but small */
-.btn.btn-coffee { height: 30px; padding: 0 12px; gap: 6px; font-size: 13px; font-weight: 600; background: #ffdd00; color: #000; border-color: #e6c700; border-radius: 8px; text-decoration: none; }
+.btn.btn-coffee { height: 36px; padding: 0 14px; gap: 8px; font-size: 13px; font-weight: 600; background: #ffdd00; color: #000; border-color: #e6c700; border-radius: 8px; text-decoration: none; }
 .btn.btn-coffee:hover { background: #ffe94d; border-color: #000; color: #000; }
 .btn.btn-coffee span svg { width: 16px; height: 16px; }
+.btn.btn-coffee img { width: 20px; height: 20px; display: block; }
+.btn.btn-coffee .bmc-text { font-size: 14px; font-weight: 700; letter-spacing: .01em; }
 ul.changes { margin: 0 0 14px; padding-left: 20px; }
 ul.changes li { margin: 3px 0; }
 .main { min-width: 0; }
