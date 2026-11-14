@@ -11,6 +11,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 - UPS: runtime left under an hour in minutes ("lasts 25 min" instead of "lasts 0 h")
 - Diagnostic package (Settings → Diagnostics): a ZIP for troubleshooting with log, warnings and errors, monitors, sensors, devices with their values, hypervisors, scans and settings - for 1 to 30 days or since the last update. Anonymised by default with placeholders that stay the same in every package and can be looked up; never with passwords or keys, nothing is sent anywhere. For it the program keeps its log for 30 days
 - Help, manual and project description: allowing ping in a Proxmox LXC (set ping_group_range inside the LXC, step by step); the notice of the scan points there
+- Nothing twice: a monitor or sensor for something watched already is refused (with the name of the existing one) - host name and IP of the same device count as the same target, several services of one server stay possible. Duplicates from before are merged once after the update (the running one stays)
+- Scan: a device found that is probably in the inventory already (same host name, e.g. a second network card, or same IP with another MAC) is listed with a tip and skipped when adopting - "Assign to this device" or "Add as new device anyway"
+- Inventory: devices that are probably in it twice are shown at the top and can be merged (monitors, sensors, history and values go along)
+- Windows and Linux machines without script: tip on the device page "Monitor with script" (CPU, RAM, drives, services, updates); also after adopting from the scan
 
 ## 0.21.0 - 2026-11-14
 

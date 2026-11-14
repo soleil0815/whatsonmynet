@@ -11,6 +11,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 - USV: die Restlaufzeit unter einer Stunde in Minuten („reicht 25 Min.“ statt „reicht 0 Std.“)
 - Diagnosepaket (Einstellungen → Diagnose): ein ZIP für die Fehlersuche mit Protokoll, Warnungen und Fehlern, Monitoren, Sensoren, Geräten mit ihren Werten, Hypervisoren, Scans und Einstellungen - für 1 bis 30 Tage oder seit dem letzten Update. Standardmäßig anonymisiert mit Platzhaltern, die in jedem Paket gleich bleiben und sich nachschlagen lassen; nie mit Kennwörtern oder Schlüsseln, nichts wird verschickt. Das Programm bewahrt sein Protokoll dafür 30 Tage auf
 - Hilfe, Handbuch und Projektbeschreibung: Ping in einem Proxmox-LXC freischalten (ping_group_range im LXC setzen, Schritt für Schritt); der Hinweis beim Scan zeigt dorthin
+- Nichts doppelt: Einen Monitor oder Sensor für etwas, das schon überwacht wird, gibt es kein zweites Mal (Hinweis mit dem Namen des vorhandenen) - Rechnername und IP desselben Geräts gelten als dasselbe Ziel, mehrere Dienste eines Servers bleiben möglich. Schon vorhandene Doppelte werden nach dem Update einmal zusammengelegt (der laufende bleibt)
+- Scan: Ein gefundenes Gerät, das vermutlich schon im Inventar ist (gleicher Rechnername, z. B. zweite Netzwerkkarte, oder gleiche IP mit anderer MAC), steht mit Tipp in der Liste und wird beim Übernehmen übersprungen - „Diesem Gerät zuordnen“ oder „Trotzdem als neues Gerät“
+- Inventar: Geräte, die vermutlich doppelt drin sind, stehen oben als Hinweis und lassen sich zusammenführen (Monitore, Sensoren, Verlauf und Werte gehen mit)
+- Windows- und Linux-Rechner ohne Skript: Tipp auf der Geräteseite „Per Skript überwachen“ (CPU, RAM, Laufwerke, Dienste, Updates); auch nach dem Übernehmen aus dem Scan
 
 ## 0.21.0 - 2026-11-14
 

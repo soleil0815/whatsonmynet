@@ -37,6 +37,10 @@ Die Einstellung bleibt nach einem Neustart erhalten und braucht keine zusätzlic
 
 Die MAC-Adresse ist die Identität eines Geräts: Bekommt es eine neue IP, übernimmt der nächste Scan sie automatisch und schreibt es in den Verlauf. Einen Rechnernamen, den du von Hand eingetragen hast, lässt der Scan stehen; er füllt den Rechnernamen nur, solange das Feld leer ist oder der Name vom Scan stammt. Leerst du das Feld, füllt der Scan es wieder.
 
+**Schon im Inventar?** Findet der Scan ein Gerät, das vermutlich schon im Inventar steht - gleicher Rechnername (z. B. die zweite Netzwerkkarte eines NAS) oder gleiche IP mit anderer MAC (VM, ausgetauschtes Gerät) -, steht in der Liste ein Tipp mit dem vorhandenen Gerät. Beim Übernehmen wird es übersprungen. „Diesem Gerät zuordnen“ übernimmt bei gleicher IP die neue MAC bzw. legt die zweite Netzwerkkarte mit Hinweis auf die Ignorierliste; „Trotzdem als neues Gerät“ nimmt es doch auf. Stehen Geräte schon doppelt im Inventar (gleicher Rechnername), zeigt das Inventar oben einen Hinweis mit „Zusammenführen“.
+
+**Nichts doppelt überwachen:** Einen Monitor oder Sensor für etwas, das schon überwacht wird, legt WhatsOnMyNet kein zweites Mal an - es nennt den vorhandenen. Rechnername und IP desselben Geräts gelten als dasselbe Ziel; mehrere Dienste eines Servers (Weboberfläche, SSH, Datenbank …) gehen natürlich. Windows- und Linux-Rechner ohne Skript zeigen auf der Geräteseite den Tipp „Per Skript überwachen“.
+
 ## Inventar
 
 ![Inventar](img/inventory-de.png)

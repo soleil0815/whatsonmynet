@@ -277,7 +277,7 @@ export function createInventory(db) {
   }
 
   /** Adopts scan results into the inventory (optional type/name per result chosen in the UI). */
-  function adopt(resultIds, overrides = {}, user = '') {
+  function adopt(resultIds, overrides = {}, user = '', skipped = []) {
     const created = [];
     refuseOutdated(resultIds);
     db.transaction(() => {
@@ -291,6 +291,9 @@ export function createInventory(db) {
         // second device
         if (!mac && byIpNoMac.get(r.ip)) continue;
         const o = overrides[rid] || {};
+        // Probably in the inventory already (same address or host name): only when asked for ("add as new anyway")
+        const maybe = o.force ? null : likelyExisting(r);
+        if (maybe) { skipped.push({ id: rid, device: maybe }); continue; }
         const type = TYPES.includes(o.type) ? o.type : r.detected_type;
         const seen = seenTimes(r, mac);
         const d = create({
@@ -310,6 +313,123 @@ export function createInventory(db) {
       }
     })();
     return created;
+  }
+
+  // Names too general to say "the same device" (many devices answer with them)
+  const GENERIC_HOST = /^(localhost|unknown|android|iphone|ipad|espressif|esp[-_]?\w*|wlan\w*|dhcp\w*|.{0,2})$/i;
+  const sameHost = db.prepare(`SELECT id, name, mac, ip FROM devices WHERE lower(hostname)=? OR substr(lower(hostname),1,length(?)+1)=?||'.'
+    OR (hostname='' AND lower(name)=?) ORDER BY id LIMIT 1`);
+  const sameIp = db.prepare('SELECT id, name, mac, ip FROM devices WHERE ip=? ORDER BY id LIMIT 1');
+
+  /**
+   * A new scan result that is probably a device of the inventory already (shown as a tip, not adopted by itself):
+   *   'ip'        the same address, another MAC (a VM with a new MAC, a device exchanged, a changing WLAN MAC)
+   *   'hostname'  the same host name, another address and MAC (a second network card, e.g. a NAS with two ports)
+   * Returns { id, name, why } or null. Several services of one server are not concerned (they are no devices).
+   */
+  function likelyExisting(r) {
+    if (!r || r.device_id) return null;
+    const mac = normalizeMac(r.mac);
+    const ip = sameIp.get(r.ip);
+    if (ip && ip.mac && ip.mac !== mac) return { id: ip.id, name: ip.name, why: 'ip' };
+    const facts = parse(r.facts);
+    for (const raw of [r.hostname, facts.netbios?.name]) {
+      const short = String(raw || '').trim().toLowerCase().split('.')[0];
+      if (!short || GENERIC_HOST.test(short)) continue;
+      const d = sameHost.get(short, short, short, short);
+      if (d && (!mac || d.mac !== mac)) return { id: d.id, name: d.name, why: 'hostname' };
+    }
+    return null;
+  }
+
+  /**
+   * "Belongs to that device": the result is marked as the device. The same address with a new MAC: the device takes
+   * the new MAC (the next scan finds it by it). A second network card (same host name): its MAC/address is put on the
+   * ignore list with a note, so it does not come back as new.
+   */
+  function linkResults(resultIds, user = '') {
+    let n = 0;
+    refuseOutdated(resultIds);
+    db.transaction(() => {
+      for (const rid of resultIds) {
+        const r = getResult.get(rid);
+        const m = likelyExisting(r);
+        if (!m || r.handled) continue;
+        const mac = normalizeMac(r.mac);
+        const d = getDevice.get(m.id);
+        if (m.why === 'ip' && mac && !byMac.get(mac)) {
+          db.prepare('UPDATE devices SET mac=?, last_seen=?, updated_at=? WHERE id=?').run(mac, now(), now(), d.id);
+          history(d.id, 'change', { field: 'mac', from: d.mac, to: mac, linked: true }, user);
+        } else {
+          const label = `→ ${d.name}${r.hostname ? ` (${r.hostname})` : ''}`.slice(0, 200);
+          if (mac) db.prepare('INSERT INTO ignored(mac,ip,label,created_at,created_by) VALUES(?,?,?,?,?) ON CONFLICT(mac) DO UPDATE SET ip=excluded.ip, label=excluded.label').run(mac, r.ip, label, now(), user);
+          else if (!isIgnored.get(null, r.ip)) db.prepare('INSERT INTO ignored(mac,ip,label,created_at,created_by) VALUES(NULL,?,?,?,?)').run(r.ip, label, now(), user);
+          history(d.id, 'linked', { ip: r.ip, mac: mac || null }, user);
+        }
+        db.prepare("UPDATE scan_results SET device_id=?, handled='linked', status='known' WHERE id=?").run(d.id, rid);
+        n++;
+      }
+    })();
+    return n;
+  }
+
+  /** Devices of the inventory that are probably one and the same (same host name): shown as a tip */
+  function duplicates() {
+    const out = [];
+    const seen = new Map();
+    for (const d of db.prepare("SELECT id, name, ip, mac, hostname FROM devices WHERE hostname <> '' ORDER BY id").all()) {
+      const short = d.hostname.toLowerCase().split('.')[0];
+      if (!short || GENERIC_HOST.test(short)) continue;
+      if (seen.has(short)) out.push({ keep: seen.get(short), drop: { id: d.id, name: d.name, ip: d.ip, mac: d.mac }, why: 'hostname' });
+      else seen.set(short, { id: d.id, name: d.name, ip: d.ip, mac: d.mac });
+    }
+    return out;
+  }
+
+  /**
+   * Two entries of one device become one: `dropId` goes into `keepId` - its monitors and sensors (watched twice then:
+   * merged), history, script key and reports, values the kept one lacks (SNMP, printer, script), empty fields. Its
+   * MAC/address goes on the ignore list with a note, so the scan does not bring it back as new.
+   */
+  function merge(keepId, dropId, user = '') {
+    if (keepId === dropId) throw new HttpError(400, 'err.badRequest');
+    const keep = getDevice.get(keepId);
+    const drop = getDevice.get(dropId);
+    if (!keep || !drop) throw new HttpError(404, 'err.notFound');
+    db.transaction(() => {
+      db.prepare('UPDATE monitors SET device_id=? WHERE device_id=?').run(keepId, dropId);
+      db.prepare('UPDATE device_history SET device_id=? WHERE device_id=?').run(keepId, dropId);
+      db.prepare('UPDATE host_tokens SET device_id=? WHERE device_id=?').run(keepId, dropId);
+      db.prepare('UPDATE scan_results SET device_id=? WHERE device_id=?').run(keepId, dropId);
+      for (const tbl of ['snmp_status', 'printer_status', 'host_reports']) {
+        if (!db.prepare(`SELECT 1 FROM ${tbl} WHERE device_id=?`).get(keepId)) db.prepare(`UPDATE ${tbl} SET device_id=? WHERE device_id=?`).run(keepId, dropId);
+      }
+      db.prepare('INSERT OR IGNORE INTO printer_pages(device_id, day, count) SELECT ?, day, count FROM printer_pages WHERE device_id=?').run(keepId, dropId);
+      db.prepare('INSERT OR IGNORE INTO switch_macs(switch_id, mac, if_index, port, vlan, seen_at) SELECT ?, mac, if_index, port, vlan, seen_at FROM switch_macs WHERE switch_id=?').run(keepId, dropId);
+      for (const row of db.prepare("SELECT id, device_ids v FROM reports WHERE device_ids <> '[]'").all()) {
+        const list = parse(row.v, []);
+        if (!Array.isArray(list) || !list.some((x) => Number(x) === dropId)) continue;
+        db.prepare('UPDATE reports SET device_ids=? WHERE id=?').run(JSON.stringify([...new Set(list.map((x) => (Number(x) === dropId ? keepId : Number(x))))]), row.id);
+      }
+      // what the kept one does not know yet
+      const fill = {};
+      for (const k of ['hostname', 'vendor', 'model', 'os', 'owner', 'tags', 'web_url', 'serial', 'supplier', 'purchase_date', 'warranty_until', 'maintenance_until']) {
+        if (!keep[k] && drop[k]) fill[k] = drop[k];
+      }
+      if (!keep.location_id && drop.location_id) fill.location_id = drop.location_id;
+      if (drop.notes && !String(keep.notes || '').includes(drop.notes)) fill.notes = [keep.notes, drop.notes].filter(Boolean).join('\n').slice(0, 4000);
+      db.prepare('DELETE FROM devices WHERE id=?').run(dropId);
+      if (!keep.mac && drop.mac) fill.mac = drop.mac;
+      if (!keep.ip && drop.ip) fill.ip = drop.ip;
+      const keys = Object.keys(fill);
+      if (keys.length) db.prepare(`UPDATE devices SET ${keys.map((k) => `${k}=?`).join(', ')}, updated_at=? WHERE id=?`).run(...keys.map((k) => fill[k]), now(), keepId);
+      // the other card/address of the device: not offered as new again
+      const label = `→ ${keep.name}`.slice(0, 200);
+      if (drop.mac && drop.mac !== (fill.mac ?? keep.mac)) db.prepare('INSERT INTO ignored(mac,ip,label,created_at,created_by) VALUES(?,?,?,?,?) ON CONFLICT(mac) DO UPDATE SET ip=excluded.ip, label=excluded.label').run(drop.mac, drop.ip, label, now(), user);
+      else if (!drop.mac && drop.ip && drop.ip !== (fill.ip ?? keep.ip) && !isIgnored.get(null, drop.ip)) db.prepare('INSERT INTO ignored(mac,ip,label,created_at,created_by) VALUES(NULL,?,?,?,?)').run(drop.ip, label, now(), user);
+      history(keepId, 'merged', { name: drop.name, ip: drop.ip, mac: drop.mac }, user);
+    })();
+    return getDevice.get(keepId);
   }
 
   function ignore(resultIds, user = '') {
@@ -444,7 +564,7 @@ export function createInventory(db) {
     db.prepare('UPDATE devices SET auto_fields=? WHERE id=?').run(JSON.stringify({ ...parseAuto(d.auto_fields), hostname: null }), d.id);
     return get(d.id);
   };
-  return { applyResult, finishScan, create: createFromForm, update, remove, get, list, historyOf, adopt, ignore, unignore, outdatedResults, stats, history, suggestions, bulkUpdate, bulkRemove };
+  return { likelyExisting, linkResults, duplicates, merge, applyResult, finishScan, create: createFromForm, update, remove, get, list, historyOf, adopt, ignore, unignore, outdatedResults, stats, history, suggestions, bulkUpdate, bulkRemove };
 }
 
 /** CSV export (semicolon, UTF-8 with BOM - opens correctly in Excel) */
