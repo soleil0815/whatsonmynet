@@ -577,6 +577,23 @@ export const MIGRATIONS = [
   `ALTER TABLE monitors ADD COLUMN escalate_min INTEGER;
    ALTER TABLE monitors ADD COLUMN escalate_channels TEXT NOT NULL DEFAULT '[]';
    ALTER TABLE monitors ADD COLUMN escalated_at TEXT;`,
+  // 22: host names typed by hand before the ownership rule (auto_fields.hostname = null: scans leave it alone) had no
+  // entry and were still overwritten by scans. A device whose newest host name change in its history was a manual
+  // edit ('edit' with a hostname field - not a scan 'change' or an SNMP/script report 'snmp') that set the name it
+  // still has gets the entry now (a name cleared by hand and filled by a scan later stays the scan's).
+  // Only devices without any hostname entry and with a host name; the host names themselves are never changed.
+  `UPDATE devices SET auto_fields = json_set(CASE WHEN json_valid(auto_fields) AND json_type(auto_fields) = 'object' THEN auto_fields ELSE '{}' END, '$.hostname', json('null'))
+   WHERE hostname <> ''
+     AND CASE WHEN json_valid(auto_fields) THEN json_type(auto_fields) <> 'object' OR json_type(auto_fields, '$.hostname') IS NULL ELSE 1 END
+     AND (SELECT CASE WHEN h.kind = 'edit' THEN (SELECT json_extract(f.value, '$.to') FROM json_each(h.detail, '$.fields') f
+                   WHERE f.type = 'object' AND json_extract(f.value, '$.field') = 'hostname' LIMIT 1) END
+          FROM device_history h
+          WHERE h.device_id = devices.id AND CASE WHEN NOT json_valid(h.detail) THEN 0
+            WHEN h.kind IN ('edit', 'snmp') THEN json_type(h.detail, '$.fields') = 'array'
+              AND EXISTS (SELECT 1 FROM json_each(h.detail, '$.fields') f WHERE f.type = 'object' AND json_extract(f.value, '$.field') = 'hostname')
+            WHEN h.kind = 'change' THEN json_extract(h.detail, '$.field') IS 'hostname'
+            ELSE 0 END
+          ORDER BY h.id DESC LIMIT 1) = devices.hostname;`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

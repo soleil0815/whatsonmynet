@@ -11,6 +11,12 @@
 # - untagged versions (not ours to judge).
 # If the published images cannot be read, nothing is deleted.
 #
+# The workflows do not call this when the publish job failed: that run keeps its candidates, so that "Re-run failed
+# jobs" still finds them (a run that is never re-run leaves them behind - they carry the run id and can be deleted by
+# hand). After publishing, a skipped publish (failed build or check, nothing to publish) or a cancel they go.
+# A token without access to the package (HTTP 403/404 from the API) is only a warning and exit 0 - the release itself
+# went fine and must not turn red because of the cleanup; every other error still ends with exit 1.
+#
 # Usage: sh .github/scripts/delete-candidates.sh <image> <run id>
 #   image: ghcr.io/<owner>/<name> (or <owner>/<name>)
 # Environment: GH_TOKEN (packages: write), PACKAGE_OWNER_TYPE=users|orgs (default users)
@@ -53,9 +59,18 @@ version_of() { printf '%s\n' "${1%%-kandidat-*}"; }
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+# 0 = the gh error output says the token may not see or change the package (HTTP 403, or 404 for a package it cannot see)
+no_access() { grep -qE '\(HTTP 40[34]\)' "$1"; }
+
 # One line per version: id <TAB> digest <TAB> tags (space separated)
-gh api --paginate "$api?per_page=100" \
-  --jq '.[] | [(.id | tostring), .name, ((.metadata.container.tags // []) | join(" "))] | join("\t")' > "$work/versions"
+if ! gh api --paginate "$api?per_page=100" \
+  --jq '.[] | [(.id | tostring), .name, ((.metadata.container.tags // []) | join(" "))] | join("\t")' > "$work/versions" 2> "$work/list.err"; then
+  if no_access "$work/list.err"; then
+    echo "::warning::No access to the package versions of $registry ($(cat "$work/list.err")) - candidate images of run $run not deleted"
+    exit 0
+  fi
+  echo "::error::Cannot list the package versions of $registry ($(cat "$work/list.err"))" >&2; exit 1
+fi
 
 tab="$(printf '\t')"
 : > "$work/delete"
@@ -110,10 +125,12 @@ for pass in index platform; do
       echo "Kept $id ($tags): platform image of a published image"
       continue
     fi
-    if gh api -X DELETE "$api/$id" > /dev/null; then
+    if gh api -X DELETE "$api/$id" > /dev/null 2> "$work/delete.err"; then
       echo "Deleted $id ($tags)"
+    elif no_access "$work/delete.err"; then
+      echo "::warning::No permission to delete $id ($tags): $(cat "$work/delete.err")"
     else
-      echo "::warning::Could not delete $id ($tags)"
+      echo "::warning::Could not delete $id ($tags): $(cat "$work/delete.err")"
       failed=1
     fi
   done < "$work/delete"

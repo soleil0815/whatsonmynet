@@ -99,6 +99,7 @@ const de = {
   'scan.inInventory': 'Im Inventar als „{name}“', 'scan.view': 'Ergebnis ansehen', 'scan.targets': 'Ziele', 'scan.when': 'Gestartet', 'scan.by': 'von {user}',
   'scan.kind.deep': 'Tiefenprüfung', 'scan.kind.network': 'Netzwerkscan', 'scan.adoptHint': 'Typ und Name kannst du vor dem Übernehmen anpassen.',
   'scan.outdatedHint': 'Ein neuerer Scan hat dieses Subnetz erfasst - übernehmen oder ignorieren bitte dort.',
+  'scan.outdatedHintIgnored': 'Ein neuerer Scan hat dieses Subnetz erfasst - übernehmen bitte dort. Nicht mehr ignorieren geht auch hier.',
   'scan.unignore': 'Nicht mehr ignorieren', 'scan.unignoreHint': 'Wieder unter „Neu“ anzeigen oder gleich übernehmen.', 'scan.unignoredN': '{n} Geräte stehen wieder unter „Neu“', 'scan.noIgnored': 'Hier wird nichts ignoriert.',
   'scan.radarEmpty': 'Gefundene Geräte erscheinen hier.', 'scan.privateMac': 'Private MAC',
   // locations
@@ -719,6 +720,7 @@ const en = {
   'scan.inInventory': 'In the inventory as “{name}”', 'scan.view': 'View result', 'scan.targets': 'Targets', 'scan.when': 'Started', 'scan.by': 'by {user}',
   'scan.kind.deep': 'Deep check', 'scan.kind.network': 'Network scan', 'scan.adoptHint': 'You can adjust type and name before adopting.',
   'scan.outdatedHint': 'A newer scan covered this subnet - please adopt or ignore there.',
+  'scan.outdatedHintIgnored': 'A newer scan covered this subnet - please adopt there. Stop ignoring works here too.',
   'scan.unignore': 'Stop ignoring', 'scan.unignoreHint': 'Show under “New” again or adopt right away.', 'scan.unignoredN': '{n} devices are listed under “New” again', 'scan.noIgnored': 'Nothing is ignored here.',
   'scan.radarEmpty': 'Devices found appear here.', 'scan.privateMac': 'Private MAC',
   'loc.title': 'Locations', 'loc.lead': 'A location groups subnets. Before a scan you just tick it, and devices found get their location automatically.',

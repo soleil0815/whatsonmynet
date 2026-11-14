@@ -34,7 +34,7 @@ export function validateTargets(targets, maxTotal = MAX_TOTAL_HOSTS) {
   for (const t of targets) {
     const c = parseCidr(t.cidr);
     if (!c) throw new HttpError(400, 'err.cidr', String(t.cidr).slice(0, 40));
-    if (c.hosts > MAX_PREFIX_HOSTS) throw new HttpError(400, 'err.cidrTooLarge', c.cidr);
+    if (c.hosts > MAX_PREFIX_HOSTS) throw new HttpError(400, 'err.cidrTooLarge', String(t.cidr).slice(0, 40));
     if (seen.has(c.cidr)) continue;
     seen.add(c.cidr);
     list.push({ c, locationId: t.locationId || null });
