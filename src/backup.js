@@ -80,7 +80,15 @@ export function applyPendingRestore(dbFile, backupsDir) {
     fs.chmodSync(keep, 0o600);
     log.info(`Restore: the previous database was kept as ${keep}`);
   }
-  for (const f of [`${dbFile}-wal`, `${dbFile}-shm`]) fs.rmSync(f, { force: true });
+  // Sessions in the backup were open when it was made: signed out or revoked since, they must not come back to life
+  try {
+    const r = new Database(pending);
+    try {
+      r.prepare('DELETE FROM sessions').run();
+      r.pragma('wal_checkpoint(TRUNCATE)');
+    } finally { r.close(); }
+  } catch (e) { log.warn(`Restore: could not remove the sessions of the restored database: ${e.message}`); }
+  for (const f of [`${dbFile}-wal`, `${dbFile}-shm`, `${pending}-wal`, `${pending}-shm`]) fs.rmSync(f, { force: true });
   fs.renameSync(pending, dbFile);
   fs.chmodSync(dbFile, 0o600);
   log.info('Restore: the restored database is now in use');

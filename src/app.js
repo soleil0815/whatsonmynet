@@ -60,6 +60,10 @@ export function applyTrustProxy(app, raw) {
  * @param opts.tls certificate store (src/tls.js) - optional in tests
  * @param opts.plainHttp tests only: serve the app on plain HTTP instead of redirecting
  */
+const PERMISSIONS_POLICY = ['camera=()', 'microphone=()', 'geolocation=()', 'payment=()', 'usb=()', 'serial=()', 'hid=()', 'bluetooth=()',
+  'midi=()', 'magnetometer=()', 'gyroscope=()', 'accelerometer=()', 'display-capture=()', 'screen-wake-lock=()', 'xr-spatial-tracking=()',
+  'publickey-credentials-get=()', 'fullscreen=(self)', 'clipboard-read=()', 'clipboard-write=(self)'].join(', ');
+
 export function createApp(db, { tls = null, plainHttp = false } = {}) {
   const settings = createSettings(db);
   const sessions = createSessions(db);
@@ -129,9 +133,14 @@ export function createApp(db, { tls = null, plainHttp = false } = {}) {
     // HSTS: see https.js (never with a self-signed certificate)
     strictTransportSecurity: false,
     crossOriginOpenerPolicy: { policy: 'same-origin' },
+    // The interface loads nothing from other origins; the report preview frame is same-origin
+    crossOriginEmbedderPolicy: { policy: 'require-corp' },
+    crossOriginResourcePolicy: { policy: 'same-origin' },
     referrerPolicy: { policy: 'same-origin' },
   }));
-  app.use(directHstsMiddleware({ hsts: config.hsts, certSource: () => tls?.describe()?.source }));
+  // Browser features the interface never needs are switched off; clipboard-write stays for the copy buttons
+  app.use((_req, res, next) => { res.setHeader('Permissions-Policy', PERMISSIONS_POLICY); next(); });
+  app.use(directHstsMiddleware({ hsts: config.hsts, cert: () => tls?.describe() }));
   const proxy = proxyHttpsMiddleware(app, { baseUrl: config.baseUrl, hsts: config.hsts, hosts: createHttpsHosts(paths.httpsHosts) });
   if (proxy) app.use(proxy);
 

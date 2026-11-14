@@ -3,6 +3,7 @@ import { hashPassword, verifyPassword, encrypt, decrypt } from '../lib/crypto.js
 import { newSecret, verifyTotp, newRecoveryCodes, useRecoveryCode } from './totp.js';
 import { HttpError, line, oneOf } from '../lib/http.js';
 import { ROLES } from './session.js';
+import { log } from '../lib/log.js';
 
 export const MIN_PASSWORD = 10;
 export const LANGS = ['de', 'en'];
@@ -127,7 +128,14 @@ export function createUsers(db) {
         db.prepare("INSERT INTO users(username,display_name,email,password_hash,role,source,ext_dn,created_at) VALUES(?,?,?,'',?,'ldap',?,?)")
           .run(info.username, info.display_name || '', info.email || '', info.role, info.dn, now);
       } else {
-        db.prepare('UPDATE users SET display_name=?, email=?, role=?, ext_dn=? WHERE id=?').run(info.display_name || cur.display_name, info.email || cur.email, info.role, info.dn, cur.id);
+        // The directory must never leave the program without an active admin (wrong group change, renamed group):
+        // the last one keeps the role until another admin exists
+        let role = info.role;
+        if (cur.role === 'admin' && cur.active && role !== 'admin' && adminsLeft(cur.id) === 0) {
+          log.warn(`Directory user "${cur.username}" would get the role ${role}, but is the last active admin - keeps the admin role`);
+          role = 'admin';
+        }
+        db.prepare('UPDATE users SET display_name=?, email=?, role=?, ext_dn=? WHERE id=?').run(info.display_name || cur.display_name, info.email || cur.email, role, info.dn, cur.id);
       }
       const u = byName.get(info.username);
       return u.active ? u : null;

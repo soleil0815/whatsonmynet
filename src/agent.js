@@ -18,7 +18,7 @@ import { openDatabase } from './db.js';
 import { createSettings } from './settings.js';
 import { createInventory } from './inventory.js';
 import { createScanner } from './scan/engine.js';
-import { isDue, localDay } from './scan/nightly.js';
+import { dueDay } from './scan/nightly.js';
 
 const ALIVE = '/tmp/womn-agent.ok';
 
@@ -137,8 +137,10 @@ async function main() {
       const info = await client.poll();
       fs.writeFileSync(ALIVE, new Date().toISOString());
       for (const j of info.jobs || []) await run(j.kind, info, j.id);
-      if (info.nightly?.enabled && isDue(new Date(), info.nightly.time, state.lastNightly)) {
-        state.lastNightly = localDay(new Date());
+      const nightlyDay = info.nightly?.enabled ? dueDay(new Date(), info.nightly.time, state.lastNightly) : null;
+      if (nightlyDay) {
+        // the day of the scheduled run (a run after midnight belongs to the evening before)
+        state.lastNightly = nightlyDay;
         save();
         await run('light', info);
       }

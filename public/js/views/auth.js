@@ -17,7 +17,15 @@ function art() {
 
 function langSwitch(rerender) {
   return h('div', { class: 'seg', role: 'group', 'aria-label': t('language') },
-    ['de', 'en'].map((l) => h('button', { type: 'button', class: getLang() === l ? 'on' : '', onclick: () => { setLang(l); rerender(); } }, l.toUpperCase())));
+    ['de', 'en'].map((l) => h('button', { type: 'button', class: getLang() === l ? 'on' : '', 'aria-pressed': getLang() === l ? 'true' : 'false', onclick: (e) => {
+      // Switching the language draws the form again: keep what was already typed
+      const old = e.currentTarget.closest('form');
+      const kept = old ? [...old.querySelectorAll('input[name]')].map((x) => [x.name, x.value]) : [];
+      setLang(l);
+      rerender();
+      const now = document.querySelector('.auth-form form');
+      for (const [name, value] of kept) { const x = now?.querySelector(`input[name="${name}"]`); if (x) x.value = value; }
+    } }, l.toUpperCase())));
 }
 
 export function renderSetup(root) {

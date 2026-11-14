@@ -96,6 +96,8 @@ test('directory settings: no plain LDAP, filter and CA checked, password kept', 
 test('directory accounts: created at sign-in, no local password, role follows AD', () => {
   const db = memoryDb();
   const users = createUsers(db);
+  // another active admin: otherwise AD may not take the admin role away from anna (she would be the last one)
+  users.create({ username: 'boss', password: 'Lokal-Passwort-1', role: 'admin' });
   const u = users.upsertDirectory({ username: 'anna', display_name: 'Anna', email: 'a@x.de', role: 'admin', dn: 'CN=Anna' });
   assert.equal(u.source, 'ldap');
   assert.equal(users.authenticate('anna', ''), null);
