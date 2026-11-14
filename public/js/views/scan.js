@@ -84,7 +84,7 @@ export async function renderScan(main, scanId) {
     usable.length ? usable.map((l, i) => h('label', { class: 'target' },
       h('input', { type: 'checkbox', name: 'loc', value: l.id, checked: i === 0 && usable.length === 1 }),
       h('div', {}, h('strong', {}, l.name), h('div', { class: 'cidrs' }, l.subnets.map((x) => x.cidr).join(', ')))))
-      : h('p', { class: 'muted' }, t('scan.noLocations')));
+      : h('p', { class: 'muted' }, t(locations.length ? 'scan.noSubnets' : 'scan.noLocations')));
   if (!usable.length && net.suggestions[0] && !state.user.locations) cidrs.value = net.suggestions[0];
 
   const radar = createRadar();
@@ -116,7 +116,8 @@ export async function renderScan(main, scanId) {
     h('div', { class: 'scan-layout' },
       h('div', { class: 'stack' },
         !net.hostNetwork ? h('div', { class: 'note warn' }, t('scan.noHostNet')) : null,
-        h('section', { class: 'panel panel-pad' },
+        // Viewers cannot start scans: explain that instead of showing a form they cannot use
+        !edit ? h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, t('scan.viewOnly'))) : h('section', { class: 'panel panel-pad' },
           h('h2', { class: 'section-title' }, t('scan.locations')), targets,
           // Users limited to locations scan only the subnets of their locations
           state.user.locations ? null : [
@@ -128,7 +129,7 @@ export async function renderScan(main, scanId) {
                 if (!cur.includes(c)) cidrs.value = [...cur, c].join(', ');
               } }, c))) : null],
           h('div', { class: 'actions', style: { marginTop: '18px' } },
-            edit ? h('button', { class: 'btn btn-primary btn-big', type: 'button', onclick: (e) => start(e.currentTarget) }, h('span', { html: icon('radar') }), t('scan.start')) : null)),
+            h('button', { class: 'btn btn-primary btn-big', type: 'button', onclick: (e) => start(e.currentTarget) }, h('span', { html: icon('radar') }), t('scan.start')))),
         history),
       rp.el)));
   return null;

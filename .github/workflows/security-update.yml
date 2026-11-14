@@ -177,11 +177,13 @@ jobs:
           docker pull "$IMAGE:$CAND"
           sh .github/scripts/smoke-test.sh "$IMAGE:$CAND"
       - name: Package lists (new build and published image)
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
-          sh .github/scripts/image-packages.sh "$IMAGE:$CAND" > "new-${{ matrix.arch }}.txt"
-          : > "old-${{ matrix.arch }}.txt"
-          if docker pull -q --platform "linux/${{ matrix.arch }}" "$IMAGE:latest" >/dev/null 2>&1; then
-            sh .github/scripts/image-packages.sh "$IMAGE:latest" "linux/${{ matrix.arch }}" > "old-${{ matrix.arch }}.txt"
+          sh .github/scripts/image-packages.sh "$IMAGE:$CAND" > "new-$ARCH.txt"
+          : > "old-$ARCH.txt"
+          if docker pull -q --platform "linux/$ARCH" "$IMAGE:latest" >/dev/null 2>&1; then
+            sh .github/scripts/image-packages.sh "$IMAGE:latest" "linux/$ARCH" > "old-$ARCH.txt"
           fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

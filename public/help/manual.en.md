@@ -20,7 +20,7 @@ The interface always runs over HTTPS. On first start WhatsOnMyNet creates a self
 ## First steps
 
 1. **Add a location** (*Locations*): name and subnets, e.g. "Main building" with `192.168.10.0/24`.
-2. **Scan the network** (*Scan network*): tick the location, "Start scan". The radar shows the devices found; the scan is gentle (ARP, about 25 typical ports, SNMP read-only).
+2. **Scan the network** (*Scan network*): tick the location, "Start scan". The radar shows the devices found; the scan is gentle (ARP, 26 typical ports, SNMP read-only).
 3. **Adopt**: in the result under "New" check type and name, tick devices, "Adopt into inventory". What you do not want in the inventory, "Ignore". Ignored by mistake? Tick it in the "Ignored" tab and choose "Stop ignoring" (it is listed under "New" again) or "Adopt into inventory" right away. The full list is under *Settings → Ignored devices*.
 
 ![Scan with radar](img/scan-en.png)
@@ -39,7 +39,7 @@ The MAC address is the identity of a device: if it gets a new IP, the next scan 
 
 ## Nightly light scan
 
-Every night (default 02:30) WhatsOnMyNet looks for devices in all subnets of your locations - no ports, no SNMP. Known devices get their new IP; a device showing up for the very first time is reported once. Settings, time and "Run now" are under *Settings → Scan*.
+Every night (default 02:30) WhatsOnMyNet only looks for devices in all subnets of your locations: ARP, NetBIOS and - if allowed - ping; in routed subnets also a few TCP connection attempts (ports 443, 80, 22, 445, 3389) and the ARP table of the routers via SNMP. No port check of the devices, no web requests. Known devices get their new IP; a device showing up for the very first time is reported once. Settings, time and "Run now" are under *Settings → Scan*.
 
 ## Monitoring
 
@@ -171,7 +171,7 @@ WhatsOnMyNet reads Proxmox VE and the Proxmox Backup Server through their built-
 
 **Cluster:** entering one node is enough. WhatsOnMyNet asks the cluster which nodes there are, at which address they are reachable and which certificate they have (again every 6 hours). If the entered node does not answer, the next node is asked - with the same token (it is valid in the whole cluster) and only after its certificate has been checked. The virtualisation page then shows "read through node pve2". The Proxmox Backup Server knows no cluster: each one is entered on its own.
 
-**Temperatures of the nodes:** the Proxmox interface knows no temperatures. If a node also runs the Linux script (see *Windows and Linux machines by script*), its highest temperature is shown at the node on the virtualisation page. A sensor for it: at the Proxmox host or at the device **Add sensor** → *Temperature: the highest of all sensors* (alarm from the chip's warning limit, can be changed); single sensors (CPU, NVMe …) are in the same list under "Node pve1". They are matched by name: node `pve1` ↔ machine `pve1` or `pve1.firma.local`.
+**Temperatures of the nodes:** the Proxmox interface knows no temperatures. If a node also runs the Linux script (see *Windows and Linux machines by script*), its highest temperature is shown at the node on the virtualisation page. A sensor for it: at the Proxmox host or at the device **Add sensor** → *Temperature: the highest of all sensors* (alarm from 85 °C, can be changed; single sensors with the chip's warning limit); single sensors (CPU, NVMe …) are in the same list under "Node pve1". They are matched by name: node `pve1` ↔ machine `pve1` or `pve1.firma.local`.
 
 ### Step 1: prepare Proxmox (once)
 
@@ -385,7 +385,7 @@ For a branch office a second container runs there as scan agent. Under *Settings
 
 ## Backup and updates
 
-- Every night WhatsOnMyNet backs up the database to `data/backups/`; additionally before every database update.
+- Once a day WhatsOnMyNet backs up the database to `data/backups/` (the first time one hour after the start); additionally before every database update.
 - *Settings → Backup*: download a backup, back up now, restore a backup (the current state is backed up first, then the program restarts).
 - **Keep `data/secret.key` (or `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 - Updates: in Dockhand/Watchtower or `docker compose pull && docker compose up -d`. Once a month a security update with new packages is released.

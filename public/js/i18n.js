@@ -613,6 +613,14 @@ const de = {
   'nas.st.systemPartitionFailed': 'Systempartition defekt', 'nas.st.rwError': 'Lese-/Schreibfehler', 'nas.st.invalid': 'ungültig', 'nas.st.raidSyncing': 'synchronisiert',
   'nas.k.system': 'System', 'nas.k.power': 'Netzteil', 'nas.k.fan': 'Lüfter', 'nas.k.raid': 'RAID', 'nas.k.disk': 'Festplatte', 'nas.k.volume': 'Volume voll',
   'nas.volumeFull': '{name} zu {pct} % voll',
+  // audit 2026-11: placeholders, empty states for viewers, accessibility
+  'ph.smtpHost': 'mail.firma.local', 'ph.recipients': 'buero@firma.local, einkauf@firma.local', 'ph.agentName': 'Außenstelle Nord',
+  'scan.noSubnets': 'Deine Standorte haben noch keine Subnetze. Trag sie unter „Standorte“ ein oder gib unten ein Subnetz ein.',
+  'scan.viewOnly': 'Scans starten können Bearbeiter und Administratoren. Hier siehst du die bisherigen Scans.',
+  'dash.noScanViewer': 'Noch kein Scan.', 'dash.seenOf': '{n} von {total} gesehen',
+  'mon.emptyViewer': 'Noch wird nichts überwacht. Monitore legen Bearbeiter und Administratoren an.',
+  'snmp.err.snmpNone': 'Das Gerät antwortet nicht auf SNMP. Ist SNMP eingeschaltet und stimmt die Community (Einstellungen → Scan)?',
+  'nav.skip': 'Zum Inhalt springen',
 };
 
 const en = {
@@ -1216,6 +1224,14 @@ const en = {
   'nas.st.systemPartitionFailed': 'system partition failed', 'nas.st.rwError': 'read/write error', 'nas.st.invalid': 'invalid', 'nas.st.raidSyncing': 'syncing',
   'nas.k.system': 'System', 'nas.k.power': 'Power', 'nas.k.fan': 'Fan', 'nas.k.raid': 'RAID', 'nas.k.disk': 'Disk', 'nas.k.volume': 'Volume full',
   'nas.volumeFull': '{name} is {pct} % full',
+  // audit 2026-11: placeholders, empty states for viewers, accessibility
+  'ph.smtpHost': 'mail.firma.local', 'ph.recipients': 'office@firma.local, purchasing@firma.local', 'ph.agentName': 'Branch office North',
+  'scan.noSubnets': 'Your locations have no subnets yet. Add them under “Locations” or enter a subnet below.',
+  'scan.viewOnly': 'Editors and administrators can start scans. Here you see the previous scans.',
+  'dash.noScanViewer': 'No scan yet.', 'dash.seenOf': '{n} of {total} seen',
+  'mon.emptyViewer': 'Nothing is monitored yet. Editors and administrators add monitors.',
+  'snmp.err.snmpNone': 'The device does not answer SNMP. Is SNMP switched on and is the community right (Settings → Scan)?',
+  'nav.skip': 'Skip to content',
 };
 
 let lang = 'de';

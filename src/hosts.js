@@ -98,18 +98,27 @@ export function createHosts({ db }) {
     })();
   }
 
-  /** Which inventory device sent this? Device key: that one. Shared key: MAC, then host name, then IP. */
+  /**
+   * Which inventory device sent this? Device key: that one. Shared key: MAC, then host name, then IP.
+   * Returns { id, sure } - sure: matched by device key or MAC (only then may the report say the hardware was exchanged).
+   */
   function match(t, r, remoteIp) {
-    if (t.device_id) return t.device_id;
+    if (t.device_id) return { id: t.device_id, sure: true };
     // The shared key never reaches a device that has a key of its own (its reports come only with that key)
     const free = 'id NOT IN (SELECT device_id FROM host_tokens WHERE device_id IS NOT NULL)';
-    for (const m of r.macs) { const d = db.prepare(`SELECT id FROM devices WHERE mac=? AND ${free}`).get(m); if (d) return d.id; }
+    for (const m of r.macs) { const d = db.prepare(`SELECT id FROM devices WHERE mac=? AND ${free}`).get(m); if (d) return { id: d.id, sure: true }; }
+    // A reused IP address never reaches a device with another MAC (it would mix two machines). The host name may: a
+    // laptop docked on cable reports only that MAC while the inventory knows its Wi-Fi MAC. Such a match is not "sure",
+    // so serial, model and MAC of the device are never overwritten by it.
+    const macs = r.macs.length ? ` AND (mac IS NULL OR mac IN (${r.macs.map(() => '?').join(',')}))` : '';
     const short = r.hostname.toLowerCase().split('.')[0];
     // "name" or "name.domain" - compared as text (no LIKE: % and _ in a reported name would be wildcards)
-    const byName = short ? db.prepare(`SELECT id FROM devices WHERE (lower(hostname)=@n OR lower(name)=@n OR substr(lower(hostname),1,length(@n)+1)=@n||'.'
-      OR substr(lower(name),1,length(@n)+1)=@n||'.') AND ${free} ORDER BY id LIMIT 1`).get({ n: short }) : null;
-    if (byName) return byName.id;
-    for (const ip of [...r.ips, remoteIp].filter(Boolean)) { const d = db.prepare(`SELECT id FROM devices WHERE ip=? AND ${free}`).get(ip); if (d) return d.id; }
+    const byName = short ? db.prepare(`SELECT id FROM devices WHERE (lower(hostname)=? OR lower(name)=? OR substr(lower(hostname),1,length(?)+1)=?||'.'
+      OR substr(lower(name),1,length(?)+1)=?||'.') AND ${free} ORDER BY id LIMIT 1`).get(short, short, short, short, short, short) : null;
+    if (byName) return { id: byName.id, sure: false };
+    for (const ip of r.ips) { const d = db.prepare(`SELECT id FROM devices WHERE ip=? AND ${free}${macs}`).get(ip, ...r.macs); if (d) return { id: d.id, sure: false }; }
+    // The sender address (may be a NAT or proxy address) only for devices without MAC
+    if (remoteIp) { const d = db.prepare(`SELECT id FROM devices WHERE ip=? AND mac IS NULL AND ${free}`).get(remoteIp); if (d) return { id: d.id, sure: false }; }
     return null;
   }
 
@@ -121,7 +130,8 @@ export function createHosts({ db }) {
     const at = now();
     db.prepare('UPDATE host_tokens SET last_used=?, reports=reports+1 WHERE id=?').run(at, t.id);
     const ip = IPV4.test(String(remoteIp).replace(/^::ffff:/, '')) ? String(remoteIp).replace(/^::ffff:/, '') : '';
-    const deviceId = match(t, r, ip);
+    const found = match(t, r, ip);
+    const deviceId = found?.id || null;
     if (!deviceId) {
       db.prepare(`INSERT INTO host_unmatched(hostname,ip,os,token_id,at) VALUES(?,?,?,?,?)
         ON CONFLICT(hostname) DO UPDATE SET ip=excluded.ip, os=excluded.os, token_id=excluded.token_id, at=excluded.at`).run(r.hostname, r.ips[0] || ip, r.os, t.id, at);
@@ -135,7 +145,8 @@ export function createHosts({ db }) {
     // Operating system and host name from the machine itself into empty fields of the device
     // … and what the machine knows about its hardware (manufacturer, model, serial number; a VM is a VM)
     const hw = r.hw || {};
-    fillDevice(db, deviceId, { os: r.os, hostname: r.hostname, vendor: hw.vendor, model: hw.model, serial: hw.serial, type: hw.virtual ? 'vm' : undefined }, 'script');
+    // A match by name or address alone is not sure enough to declare the hardware exchanged (MAC dropped, serial replaced)
+    fillDevice(db, deviceId, { os: r.os, hostname: r.hostname, vendor: hw.vendor, model: hw.model, serial: hw.serial, type: hw.virtual ? 'vm' : undefined }, 'script', { mayReplace: found.sure });
     return { ok: true, device: deviceId };
   }
 

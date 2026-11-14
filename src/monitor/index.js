@@ -526,8 +526,25 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     // Measured values: without a value in this check the old one must not stay on display
     else if (['sensor', 'snmp', 'proxmox'].includes(m.type)) set.data = '{}';
     let notifyEv = null;
+    // Start of the outage that was alarmed: a maintenance window in between moved status_since to its own start, the
+    // "down" event of the alarm still has the real one
+    // (the first "down" event after the last "up" - later ones are repeated alarms)
+    const outageStart = () => {
+      if (m.status !== 'maintenance') return m.status_since;
+      const ev = db.prepare(`SELECT MIN(at) at FROM monitor_events WHERE monitor_id=? AND kind='down'
+        AND id > COALESCE((SELECT MAX(id) FROM monitor_events WHERE monitor_id=? AND kind='up'), 0)`).get(m.id, m.id);
+      return ev?.at && ev.at <= m.status_since ? ev.at : m.status_since;
+    };
+    // Alarmed outage, maintenance over, still failing: the same outage goes on - back to down without a second alarm
+    // (only when no check inside the window succeeded - a recovery in between makes the next failure a new outage)
+    const outageGoesOn = !inMaintenance && !ok && m.status === 'maintenance' && !!m.notified_down
+      && !db.prepare('SELECT 1 FROM checks WHERE monitor_id=? AND ok=1 AND at>=? LIMIT 1').get(m.id, m.status_since);
 
-    if (inMaintenance) {
+    if (outageGoesOn) {
+      set.fail_count = Math.max(m.fail_count + 1, m.fail_threshold);
+      set.status = 'down';
+      set.status_since = outageStart();
+    } else if (inMaintenance) {
       if (m.status !== 'maintenance') { set.status = 'maintenance'; set.status_since = iso(at); event(m, 'maintenance', msg); }
       set.fail_count = 0;
     } else if (ok) {
@@ -536,7 +553,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
         set.status = 'up';
         set.status_since = iso(at);
         if (m.notified_down) {
-          const downSince = Date.parse(m.status_since) || at.getTime();
+          const downSince = Date.parse(outageStart()) || at.getTime();
           notifyEv = { kind: 'up', downtimeMin: Math.max(1, Math.round((at.getTime() - downSince) / 60000)) };
           set.notified_down = 0;
         }

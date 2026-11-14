@@ -10,6 +10,8 @@ const list = (v, n) => (Array.isArray(v) ? v.slice(0, n) : v && typeof v === 'ob
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
 const bool = (v) => (v === true || v === false ? v : null);
 const isoOrNull = (v) => { const t = Date.parse(v); return Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : null; };
+/** Journal time (microseconds since 1970) → ISO, or null when it is outside what a date can hold */
+const usToIso = (us) => { if (!us || us <= 0) return null; const d = new Date(us / 1000); return Number.isFinite(d.getTime()) ? d.toISOString() : null; };
 
 /** Model, serial number, BIOS, processors, memory modules, network cards */
 export function cleanHw(raw) {
@@ -120,7 +122,7 @@ export function cleanEvents(raw) {
     ? list(e.journal, 10).map((j) => {
       const p = Number(j?.PRIORITY);
       const us = num(j?.__REALTIME_TIMESTAMP);
-      return { at: us ? new Date(us / 1000).toISOString() : null, level: p <= 2 ? 'critical' : 'error',
+      return { at: usToIso(us), level: p <= 2 ? 'critical' : 'error',
         source: clip(j?.SYSLOG_IDENTIFIER || j?._COMM || j?._SYSTEMD_UNIT, 80), id: null, message: typeof j?.MESSAGE === 'string' ? clip(j.MESSAGE, 300) : '' };
     })
     : list(e.items, 10).map((i) => ({ at: isoOrNull(i?.at), level: i?.level === 'critical' ? 'critical' : 'error', source: clip(i?.source, 80), id: nonNeg(i?.id, 1e9), message: clip(i?.message, 300) }));

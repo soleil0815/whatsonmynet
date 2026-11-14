@@ -56,7 +56,10 @@ export function createAgents({ db, settings, inventory, scanner }) {
     const subnets = subnetsOf(agent.location_id).map(parseCidr).filter(Boolean);
     const list = Array.isArray(body.results) ? body.results.slice(0, MAX_RESULTS) : [];
     const ts = new Date().toISOString();
-    const startedAt = /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(String(body.startedAt || '')) ? body.startedAt : ts;
+    // The agent's clock is not trusted: a start in the future (or no valid time) is the time it arrived here - a scan
+    // "from the future" would make every device seen by later scans look missing
+    const sent = /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(String(body.startedAt || '')) ? Date.parse(body.startedAt) : NaN;
+    const startedAt = Number.isFinite(sent) && sent <= Date.parse(ts) ? new Date(sent).toISOString() : ts;
     const scanId = Number(db.prepare('INSERT INTO scans(kind,status,targets,started_at,finished_at,user,stats) VALUES(?,?,?,?,?,?,?)').run(kind, 'done',
       JSON.stringify(subnets.map((c) => ({ cidr: c.cidr, locationId: agent.location_id }))), startedAt, ts, `agent:${agent.name}`,
       JSON.stringify({ probed: 0, durationMs: Math.max(0, Date.parse(ts) - Date.parse(startedAt)), agent: agent.name })).lastInsertRowid);
@@ -77,6 +80,8 @@ export function createAgents({ db, settings, inventory, scanner }) {
     inventory.finishScan(scanId);
     const jobId = Number(body.jobId) || null;
     if (jobId) db.prepare('UPDATE agent_jobs SET done_at=?, scan_id=? WHERE id=? AND agent_id=?').run(ts, scanId, jobId, agent.id);
+    // Old scans go like after a local scan (otherwise every agent report would be kept forever)
+    scanner?.pruneOld?.();
     return { scanId, accepted: n, rejected };
   }
 

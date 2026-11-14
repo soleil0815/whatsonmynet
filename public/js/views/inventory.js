@@ -1,5 +1,5 @@
 // Inventory list with search, filters and grouping.
-import { h, mount, clear, debounce, fmtAgo, fmtDate, modal, toast, confirmDialog } from '../dom.js';
+import { h, mount, clear, debounce, fmtAgo, fmtDate, modal, toast, confirmDialog, busy } from '../dom.js';
 import { get, post } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
@@ -172,18 +172,21 @@ function addDevice(locations, types, sugg) {
     field(t('f.model'), input('model', '', { list: 'dl-model', autocomplete: 'off' })),
     suggestionLists(sugg));
   wireModelAutofill(form, sugg);
+  const saveBtn = h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save() }, t('save'));
   const m = modal(t('inv.add'), form, { wide: true, actions: [
     btn(t('cancel'), { onclick: () => m.close() }),
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => save() }, t('save')),
+    saveBtn,
   ] });
   async function save() {
     if (!form.reportValidity()) return;
-    try {
-      const d = await post('/devices', formData(form));
-      m.close();
-      toast(t('saved'));
-      navigate(`/devices/${d.id}`);
-    } catch (e) { fail(e); }
+    await busy(saveBtn, async () => {
+      try {
+        const d = await post('/devices', formData(form));
+        m.close();
+        toast(t('saved'));
+        navigate(`/devices/${d.id}`);
+      } catch (e) { fail(e); }
+    });
   }
 }
 
