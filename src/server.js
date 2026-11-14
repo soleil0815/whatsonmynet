@@ -43,6 +43,8 @@ async function main() {
   const tls = createTls();
   await tls.ensure();
   const { app, ctx } = createApp(db, { tls });
+  // From here on the log also goes to the database (diagnostic package; the lines of the start wait until now)
+  ctx.diagnostics.start();
 
   const cur = tls.current();
   const httpsServer = https.createServer({ ...TLS_OPTIONS, cert: cur.cert, key: cur.key }, app);
@@ -71,6 +73,7 @@ async function main() {
     try { ctx.sessions.purgeExpired(); } catch (e) { log.warn(`Session cleanup failed: ${e.message}`); }
     try { ctx.monitoring.cleanup(); } catch (e) { log.warn(`Monitoring cleanup failed: ${e.message}`); }
     try { ctx.nightly.cleanup(); } catch (e) { log.warn(`Sightings cleanup failed: ${e.message}`); }
+    try { ctx.diagnostics.prune(); } catch (e) { log.warn(`Log cleanup failed: ${e.message}`); }
     try { await backupDatabase(db, ctx.settings.get('backup.keep')); } catch (e) { log.error(`Daily backup failed: ${e.message}`); }
     try { if (await tls.ensure()) ctx.applyTls(); } catch (e) { log.error(`Certificate check failed: ${e.message}`); }
   };
@@ -81,7 +84,7 @@ async function main() {
     log.info(`${sig} received, shutting down ...`);
     ctx.failover.stop();
     httpServer?.close();
-    httpsServer.close(() => { db.close(); process.exit(0); });
+    httpsServer.close(() => { ctx.diagnostics.stop(); db.close(); process.exit(0); });
     setTimeout(() => process.exit(0), 5000).unref();
   };
   // Safety net: a promise of some check that fails without a handler is logged, not the end of the whole program

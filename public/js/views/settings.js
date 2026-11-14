@@ -11,6 +11,7 @@ import { aboutContent } from './about.js';
 import { hardwareDetail } from './hardware.js';
 import { SECTIONS, settingsNav } from './settingsnav.js';
 import { failoverSettings } from './failover.js';
+import { diagnosticsSettings } from './diagnostics.js';
 
 export async function renderSettings(main, section = 'general') {
   if (!state.user.isAdmin) { navigate('/', { replace: true }); return; }
@@ -25,7 +26,7 @@ export async function renderSettings(main, section = 'general') {
       settingsNav(section, (s) => navigate(`/settings/${s}`)),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev', 'notify'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), ad, agents, backup, failover: failoverSettings, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), ad, agents, backup, failover: failoverSettings, diag: diagnosticsSettings, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
 }
 

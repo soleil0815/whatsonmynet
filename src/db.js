@@ -598,6 +598,26 @@ export const MIGRATIONS = [
   // (NULL = never - nothing changes for what is there already)
   `ALTER TABLE devices ADD COLUMN auto_watch TEXT;
    ALTER TABLE proxmox_hosts ADD COLUMN auto_watch TEXT;`,
+  // 24: diagnostic package - the program's own log (30 days), since when which version runs, and the placeholders of
+  // the anonymised packages (the same in every package). All three stay with each installation (failover).
+  `CREATE TABLE IF NOT EXISTS server_log (
+     id INTEGER PRIMARY KEY,
+     at TEXT NOT NULL,
+     level TEXT NOT NULL,
+     message TEXT NOT NULL
+   );
+   CREATE INDEX IF NOT EXISTS server_log_at ON server_log(at);
+   CREATE TABLE IF NOT EXISTS version_history (
+     started_at TEXT PRIMARY KEY,
+     version TEXT NOT NULL
+   );
+   CREATE TABLE IF NOT EXISTS diag_alias (
+     kind TEXT NOT NULL,
+     real TEXT NOT NULL,
+     alias TEXT NOT NULL UNIQUE,
+     created_at TEXT NOT NULL,
+     PRIMARY KEY (kind, real)
+   );`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

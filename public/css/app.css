@@ -154,6 +154,9 @@ input.mono { font-family: var(--mono); }
 /* ---------- Panels, badges ---------- */
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-m); }
 .panel-pad { padding: 18px 20px; }
+.diag-search { display: flex; gap: 8px; max-width: 520px; }
+.diag-search input { flex: 1; min-width: 0; }
+.diag-lookup { margin-top: 12px; }
 .panel > h2:not(.section-title), .panel-head { padding: 16px 20px 0; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 @media (max-width: 560px) { .panel-head .seg { width: 100%; } .panel-head .seg button { flex: 1; padding: 6px 4px; } }
