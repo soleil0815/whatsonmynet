@@ -6,6 +6,11 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- New look: calmer and lighter in the style of a Mac app - system font (San Francisco on a Mac, Inter elsewhere), soft surfaces, rounded buttons, tabs as segments, a translucent sidebar; the sign-in page with the radar on deep blue
+- Light is the default now. Everyone switches to dark or "like the system" under My account → Appearance; accounts still on the old default "like the system" are light now
+
+## 0.23.0 - 2026-11-14
+
 - Tip "Monitor with script" now also for Linux machines and hypervisors such as Proxmox (so far mainly Windows), and under Virtualisation for Proxmox nodes without the script - in friendly words: additional information about the system. It disappears by itself once the device delivers values (script or iDRAC/iLO) and can be hidden per device with "Do not show again"
 - Script dialogs and tip: link "What does the script bring?" straight to the matching section of the help; help and manual explain in more detail what the script is good for (especially on mini PCs without server hardware)
 
