@@ -239,6 +239,8 @@ export async function renderDevice(main, id) {
       state.user.isAdmin && !ti ? h('button', { type: 'button', title: t('hs.menuHint'), onclick: (e) => { e.currentTarget.closest('details').open = false; openHostScript(d, () => renderDevice(main, id)); } },
         d.hostScript ? t('hs.menuRenew') : t('hs.menu')) : null,
       d.ip ? h('button', { type: 'button', title: ti ? t('dev.deepTi') : t('dev.deepHint'), onclick: (e) => { e.currentTarget.closest('details').open = false; deep(e.currentTarget); } }, t('dev.deep')) : null,
+      // what this device sent by itself (syslog, traps, Windows events): the messages page for this sender only
+      d.ip && (state.user.canEditServer ?? state.user.canEdit) ? h('button', { type: 'button', onclick: () => navigate(`/events?from=${encodeURIComponent(d.ip)}`) }, t('ev.deviceMessages')) : null,
       h('button', { type: 'button', class: 'danger', onclick: (e) => { e.currentTarget.closest('details').open = false; remove(); } }, t('dev.delete')))) : null;
 
   mount(main, h('div', { class: 'page' },

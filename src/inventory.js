@@ -402,6 +402,7 @@ export function createInventory(db) {
       db.prepare('UPDATE host_tokens SET device_id=? WHERE device_id=?').run(keepId, dropId);
       db.prepare('UPDATE scan_results SET device_id=? WHERE device_id=?').run(keepId, dropId);
       db.prepare('UPDATE events_in SET device_id=? WHERE device_id=?').run(keepId, dropId);
+      db.prepare('UPDATE event_senders SET device_id=? WHERE device_id=?').run(keepId, dropId);
       db.prepare("UPDATE event_rules SET match=json_set(match, '$.deviceId', ?) WHERE json_extract(match, '$.deviceId') = ?").run(keepId, dropId);
       for (const tbl of ['snmp_status', 'printer_status', 'host_reports']) {
         if (!db.prepare(`SELECT 1 FROM ${tbl} WHERE device_id=?`).get(keepId)) db.prepare(`UPDATE ${tbl} SET device_id=? WHERE device_id=?`).run(keepId, dropId);

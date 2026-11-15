@@ -107,3 +107,44 @@ test('limit: the oldest go when the file is full, the disk keeps room, the page 
   } finally { fs.statfsSync = real; }
   db.close();
 });
+
+test('umlauts in the code page of Windows (NXLog) are read right; UTF-8 stays UTF-8', async () => {
+  const { parseSyslog, decodeText } = await import('../src/events.js');
+  const cp = Buffer.concat([Buffer.from('2026-11-15 10:00:00 PC-0011 INFO 4624 Konto: NT-AUTORIT'), Buffer.from([0xc4]), Buffer.from('T\\SYSTEM')]);
+  assert.equal(parseSyslog(cp).text, 'Konto: NT-AUTORITÄT\\SYSTEM');
+  assert.equal(decodeText(Buffer.from('Grüße – €', 'utf8')), 'Grüße – €');
+  assert.equal(decodeText(Buffer.from([0x80, 0x20, 0xfc])), '€ ü', 'Windows-1252, not only Latin-1');
+});
+
+test('by sender: one row per address with its newest message and the last 24 hours; one sender\'s messages', () => {
+  const dir = dirOf('evs');
+  const file = path.join(dir, 'whatsonmynet.sqlite');
+  // a messages file of the first shape with messages: the senders are filled in from them
+  let db = openDatabase(file);
+  db.pragma('ev.user_version = 1');
+  db.exec('DROP TABLE ev.event_senders; DROP INDEX ev.events_in_source');
+  const ins = db.prepare("INSERT INTO events_in(at,kind,source_ip,severity,host,text,event_id) VALUES(?, 'syslog', ?, ?, ?, ?, ?)");
+  ins.run(new Date(Date.now() - 3600000).toISOString(), '10.0.10.21', 3, 'PC-0021', 'old error', 7000);
+  ins.run(new Date().toISOString(), '10.0.10.21', 6, '', 'newest', 7036);
+  ins.run(new Date(Date.now() - 3 * 86400000).toISOString(), '10.0.10.8', 6, 'DC01', 'days ago', 4624);
+  db.close();
+  db = openDatabase(file);
+  const ev = createEvents({ db, settings: createSettings(db) });
+  let s = ev.senders();
+  assert.deepEqual(s.map((x) => [x.source_ip, x.host, x.last_text, x.day, x.err, x.warn]), [['10.0.10.21', '', 'newest', 2, 1, 1], ['10.0.10.8', 'DC01', 'days ago', 0, 0, 0]]);
+  // new messages: a host name fills in, an empty one does not empty it
+  ev.receive('syslog', '10.0.10.8', { severity: 4, host: 'DC01', text: 'locked', eventId: 4740 });
+  ev.receive('syslog', '10.0.10.8', { severity: 6, host: '', text: 'no name' });
+  s = ev.senders({ fresh: true });
+  assert.deepEqual([s[0].source_ip, s[0].host, s[0].last_text, s[0].day, s[0].warn], ['10.0.10.8', 'DC01', 'no name', 2, 1]);
+  assert.deepEqual(ev.senders({ q: 'dc0' }).map((x) => x.source_ip), ['10.0.10.8']);
+  assert.deepEqual(ev.list({ source: '10.0.10.21' }).map((r) => r.text), ['newest', 'old error']);
+  // a sender whose messages are all gone leaves the overview
+  createSettings(db).set('events.keepDays', 1);
+  ev.prune();
+  assert.deepEqual(db.prepare('SELECT source_ip FROM event_senders ORDER BY source_ip').all().map((r) => r.source_ip), ['10.0.10.21', '10.0.10.8']);
+  db.prepare("UPDATE events_in SET at='2000-01-01T00:00:00.000Z' WHERE source_ip='10.0.10.21'").run();
+  ev.prune();
+  assert.deepEqual(db.prepare('SELECT source_ip FROM event_senders').all().map((r) => r.source_ip), ['10.0.10.8']);
+  db.close();
+});

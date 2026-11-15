@@ -192,7 +192,9 @@ Ohne `Exec` im Ausgang schickt NXLog Zeit, Rechner, Stufe, Ereignisnummer und Te
     Exec   to_syslog_bsd();
 ```
 
-Auch `Exec $Message = to_json(); to_syslog_ietf();` (alle Felder als JSON) wird verstanden. Die Suche findet eine Ereignisnummer, wenn man nur die Zahl eingibt.
+Auch `Exec $Message = to_json(); to_syslog_ietf();` (alle Felder als JSON) wird verstanden. Die Suche findet eine Ereignisnummer, wenn man nur die Zahl eingibt. Umlaute in der Codepage von Windows (z. B. „NT-AUTORITÄT“) werden richtig gelesen.
+
+**Nach Absender:** Die Seite zeigt zuerst je Rechner oder Gerät eine Zeile - mit der letzten Meldung und den Meldungen, Warnungen und Fehlern der letzten 24 Stunden - statt alle Meldungen untereinander. Ein Klick auf den Absender zeigt nur seine Meldungen; *Alle Meldungen* zeigt wie bisher alles. Auf der Seite eines Geräts führt *Mehr → Meldungen des Geräts* direkt dorthin.
 
 ### Ereignisregeln: ausgewählte Meldungen per Mail oder ans Ticketsystem
 

@@ -65,6 +65,8 @@ test('off until an admin switches it on; viewers cannot', async () => {
   assert.equal(r.data.settings.trapPort, Number(process.env.WOMN_TRAP_PORT));
   assert.equal((await call('PUT', '/api/events/settings', { traps: true, syslog: true }, { who: 'viewer' })).status, 403);
   assert.equal((await call('GET', '/api/events', undefined, { who: 'viewer' })).status, 403);
+  assert.equal((await call('GET', '/api/events/senders', undefined, { who: 'viewer' })).status, 403);
+  assert.ok(Array.isArray((await call('GET', '/api/events/senders')).data.senders));
   assert.equal((await call('PUT', '/api/events/settings', { traps: true, syslog: true, keepDays: 0 })).status, 400);
   const on = await call('PUT', '/api/events/settings', { traps: true, syslog: true, communities: 'Trap-Geheim, zweite' });
   assert.equal(on.status, 200);

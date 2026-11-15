@@ -335,6 +335,9 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
         FROM events_in WHERE at >= ? GROUP BY k`).map((r) => [r.k, r.n])),
       matched_to_device: q('SELECT SUM(device_id IS NOT NULL) yes, SUM(device_id IS NULL) no FROM events_in WHERE at >= ?')[0],
       senders: q('SELECT COUNT(DISTINCT source_ip) n FROM events_in WHERE at >= ?')[0].n,
+      senders_known: db.prepare('SELECT COUNT(*) n FROM event_senders').get().n,
+      // texts that were not UTF-8 (read as Windows-1252, e.g. NXLog on a German Windows)
+      text_with_replacement_char: q("SELECT COUNT(*) n FROM events_in WHERE at >= ? AND instr(text, char(65533)) > 0")[0].n,
       top_sources: q("SELECT app, COUNT(*) n FROM events_in WHERE at >= ? AND app <> '' GROUP BY app ORDER BY n DESC LIMIT 15"),
       top_event_ids: q('SELECT event_id, COUNT(*) n FROM events_in WHERE at >= ? AND event_id IS NOT NULL GROUP BY event_id ORDER BY n DESC LIMIT 15'),
     };
