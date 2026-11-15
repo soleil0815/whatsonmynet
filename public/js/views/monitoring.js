@@ -165,6 +165,9 @@ const noUnit = (s) => String(s || '').replace(/\s\((%|h|°C)\)$/, '');
 export function targetText(m) {
   if (m.type === 'proxmox') return noUnit(m.target);
   if (m.type === 'event') return m.target === '*' ? t('ev.f.anySender') : m.target;
+  if (m.type === 'dns') return `${m.target} (${m.options?.rtype || 'A'})${m.options?.server ? ` @ ${m.options.server}` : ''}`;
+  if (m.type === 'mssql' && m.options?.instance) return `${m.target}\\${m.options.instance}${m.port ? `:${m.port}` : ''}`;
+  if (['mail', 'ldap', 'ntp', 'mssql'].includes(m.type)) return `${m.target}:${m.port}`;
   if (m.type === 'docker') return m.docker_host ? `${m.target} @ ${m.docker_host.name}` : m.target;
   if (m.type === 'sensor') return m.device_name ? `${m.device_name} · ${noUnit(m.target)}` : noUnit(m.target);
   if (m.type === 'snmp') return `${m.target}:${m.port} · ${m.options?.oid || ''}`;
@@ -447,6 +450,11 @@ export function howPanel(m) {
     smb: () => t('how.smb', { target }),
     docker: () => t('how.docker', { host: w.dockerHost || '–', target }),
     sensor: () => t('how.sensor', { label: w.label, src: t(`how.src.${w.source?.kind || 'none'}`) }),
+    dns: () => [t('how.dns', { name: m.target, type: w.rtype || 'A', server: w.server || t('how.dnsSystem') }), w.expect ? t('how.dnsExpect', { text: w.expect }) : ''].filter(Boolean).join(' · '),
+    mail: () => [t('how.mail', { proto: String(w.proto || 'smtp').toUpperCase(), target }), t(`how.tls.${w.tlsMode || 'none'}`), w.tlsMode && w.tlsMode !== 'none' ? t(w.verify ? 'how.tlsOn' : 'how.tlsOff') : ''].filter(Boolean).join(' · '),
+    ldap: () => [t('how.ldap', { target }), t(`how.tls.${w.tlsMode || 'none'}`), w.tlsMode && w.tlsMode !== 'none' ? t(w.verify ? 'how.tlsOn' : 'how.tlsOff') : ''].filter(Boolean).join(' · '),
+    ntp: () => t('how.ntp', { target }),
+    mssql: () => t('how.mssql', { target }),
     event: () => t('how.event', { kind: w.eventSource === 'any' ? t('ev.f.anyKind') : w.eventSource === 'trap' ? 'SNMP-Trap' : 'Syslog', from: w.device || t('ev.f.anySender'),
       sev: w.maxSeverity >= 7 ? t('ev.f.every') : t('ev.f.upTo', { sev: t(`ev.sev.${['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'][w.maxSeverity]}`) }) })
       + (w.match ? ` · ${t('how.eventMatch', { text: w.match })}` : ''),
@@ -475,6 +483,12 @@ export function howPanel(m) {
     when = [t('how.alarmReach'), w.minFreePct ? t('how.smbPct', { n: w.minFreePct }) : '', w.minFreeGb ? t('how.smbGb', { n: w.minFreeGb }) : ''].filter(Boolean).join(' · ');
   } else if (m.type === 'event') {
     when = t('how.alarmEvent', { n: w.holdMin });
+  } else if (m.type === 'ntp') {
+    when = [t('how.alarmReach'), t('how.ntpWhen', { n: w.maxOffsetMs })].join(' · ');
+  } else if (m.type === 'ldap') {
+    when = [t('how.alarmReach'), t('how.ldapWhen')].join(' · ');
+  } else if (m.type === 'dns') {
+    when = t('how.dnsWhen');
   } else if (m.type === 'snmp' && w.op) {
     when = t('how.alarmLimit', { op: OP_SIGN[w.op] || w.op, limit: `${w.threshold}${w.unit ? ` ${w.unit}` : ''}` });
   } else when = t('how.alarmReach');
@@ -519,7 +533,8 @@ function depPanel(m, edit, reload) {
 
 /** Form to add or edit a monitor. `preset` fills a new one (e.g. from a device). */
 // Step 1 of "Add monitor": what should be watched? One tile per kind, with a sentence what it checks
-const PICK = [['http', 'open'], ['ping', 'radar'], ['tcp', 'switch'], ['smb', 'nas'], ['sensor', 'gauge'], ['docker', 'server'], ['mysql', 'inventory'], ['snmp', 'router'], ['event', 'bell']];
+const PICK = [['http', 'open'], ['ping', 'radar'], ['tcp', 'switch'], ['smb', 'nas'], ['sensor', 'gauge'], ['docker', 'server'], ['mysql', 'inventory'], ['snmp', 'router'], ['event', 'bell'],
+  ['mail', 'mail'], ['dns', 'link'], ['ldap', 'users'], ['ntp', 'history']];
 function pickKind(done, preset) {
   const tile = (type, ico, onclick) => h('button', { type: 'button', class: 'pick', onclick },
     h('span', { class: 'pick-ico', html: icon(ico) }), h('span', { class: 'pick-title' }, t(`mon.pick.${type}`)), h('span', { class: 'pick-text' }, t(`mon.pick.${type}.d`)));
@@ -567,7 +582,9 @@ export async function openMonitorForm(m, done, preset = null) {
     tls_verify: false, cert_check: true, cert_days: '30,14,7', channels: [], ...(preset || {}) };
   let dockerHosts = [];
   try { dockerHosts = await get('/docker/hosts'); } catch { /* none or no right */ }
-  const TYPES = ['http', 'tcp', 'ping', 'smb', 'sensor', 'snmp', 'event', 'docker', 'mysql', 'postgres', 'redis'];
+  const TYPES = ['http', 'tcp', 'ping', 'smb', 'sensor', 'snmp', 'event', 'docker', 'mysql', 'postgres', 'redis', 'mssql', 'mail', 'dns', 'ldap', 'ntp'];
+  const PROTO = ['dns', 'mail', 'ldap', 'ntp', 'mssql'];
+  const PROTO_PORT = { dns: 53, ldap: { ldaps: 636, starttls: 389, none: 389 }, ntp: 123, mssql: 1433, mail: { smtp: { none: 25, starttls: 587, implicit: 465 }, imap: { none: 143, starttls: 143, implicit: 993 }, pop3: { none: 110, starttls: 110, implicit: 995 } } };
   const DBT = ['mysql', 'postgres', 'redis'];
   const DEF_PORT = { mysql: 3306, postgres: 5432, redis: 6379 };
   // New monitors: admins also find "machine by script" here - it is no monitor type, it opens the script dialog
@@ -623,6 +640,32 @@ export async function openMonitorForm(m, done, preset = null) {
     field(t('smb.minPct'), input('smb_min_pct', o.minFreePct || '', { type: 'number', min: 0, max: 99, step: '0.1', placeholder: '10' }), t('smb.minPctHint')),
     field(t('smb.minGb'), input('smb_min_gb', o.minFreeGb || '', { type: 'number', min: 0, step: '0.1', placeholder: '50' }), t('smb.minGbHint')),
     h('p', { class: 'full muted small', style: { margin: 0 } }, t('smb.hint')));
+  // Protocol checks: what to ask the service
+  const po = PROTO.includes(v.type) ? v.options || {} : {};
+  const dnsType = select('dns_rtype', ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'PTR', 'SOA'].map((x) => [x, x]), po.rtype || 'A');
+  const mailProto = select('mail_proto', [['smtp', 'SMTP'], ['imap', 'IMAP'], ['pop3', 'POP3']], po.proto || 'smtp');
+  const mailTls = select('mail_tls', [['starttls', 'STARTTLS'], ['implicit', t('pr.tlsImplicit')], ['none', t('pr.tlsNone')]], po.tls || 'starttls');
+  const ldapTls = select('ldap_tls', [['ldaps', 'LDAPS'], ['starttls', 'StartTLS'], ['none', t('pr.tlsNone')]], po.tls || 'ldaps');
+  const protoBoxes = {
+    dns: h('div', { class: 'form-grid full' },
+      field(t('pr.dnsServer'), input('dns_server', po.server || '', { class: 'mono', maxlength: 64, placeholder: '10.0.0.1' }), t('pr.dnsServerHint')),
+      field(t('pr.dnsType'), dnsType),
+      h('div', { class: 'full' }, field(t('pr.dnsExpect'), input('dns_expect', po.expect || '', { maxlength: 200, class: 'mono', placeholder: '10.0.0.5' }), t('pr.dnsExpectHint')))),
+    mail: h('div', { class: 'form-grid full' }, field(t('pr.mailProto'), mailProto), field(t('pr.tls'), mailTls, t('pr.mailHint'))),
+    ldap: h('div', { class: 'form-grid full' }, field(t('pr.tls'), ldapTls, t('pr.ldapHint'))),
+    ntp: h('div', { class: 'form-grid full' }, field(t('pr.ntpMax'), input('ntp_max', po.maxOffsetMs || 1000, { type: 'number', min: 1, max: 600000 }), t('pr.ntpHint'))),
+    mssql: h('div', { class: 'form-grid full' }, field(t('pr.sqlInstance'), input('sql_instance', po.instance || '', { maxlength: 16, class: 'mono', placeholder: 'SQLEXPRESS' }), t('pr.sqlHint'))),
+  };
+  const protoPort = () => {
+    const ty = typeSel.value;
+    const p = PROTO_PORT[ty];
+    if (ty === 'mail') return p[mailProto.value][mailTls.value];
+    if (ty === 'ldap') return p[ldapTls.value];
+    if (ty === 'mssql') return protoBoxes.mssql.querySelector('[name=sql_instance]').value.trim() ? t('pr.sqlBrowser') : p;
+    return p;
+  };
+  for (const el of [mailProto, mailTls, ldapTls]) el.addEventListener('change', () => { port.placeholder = String(protoPort()); });
+  protoBoxes.mssql.querySelector('[name=sql_instance]').addEventListener('input', () => { port.placeholder = String(protoPort()); });
   // Messages a device sends (trap/syslog): from which device (or any), which kind, how severe, which text
   const eo = v.type === 'event' ? v.options || {} : {};
   const evDev = h('select', { name: 'ev_device' }, h('option', { value: '' }, t('ev.f.anySender')),
@@ -735,9 +778,10 @@ export async function openMonitorForm(m, done, preset = null) {
   const oid = input('oid', so.oid || '', { class: 'mono', placeholder: '1.3.6.1.2.1.33.1.2.4.0' });
   const snmpBox = h('div', { class: 'form-grid full' },
     h('div', { class: 'full' }, field('OID', oid, t('sens.oidHint'))));
+  const httpOnly = [field(t('mon.f.status'), input('http_status', v.http_status, { class: 'mono' }), t('mon.f.statusHint')),
+    field(t('mon.f.keyword'), input('http_keyword', v.http_keyword, { maxlength: 200 }), t('mon.f.keywordHint'))];
   const httpBox = h('div', { class: 'form-grid full' },
-    field(t('mon.f.status'), input('http_status', v.http_status, { class: 'mono' }), t('mon.f.statusHint')),
-    field(t('mon.f.keyword'), input('http_keyword', v.http_keyword, { maxlength: 200 }), t('mon.f.keywordHint')),
+    ...httpOnly,
     h('div', { class: 'full' }, field(t('mon.f.tlsVerify'), h('input', { type: 'checkbox', name: 'tls_verify', checked: !!v.tls_verify }), t('mon.f.tlsVerifyHint'))),
     field(t('mon.f.certCheck'), h('input', { type: 'checkbox', name: 'cert_check', checked: v.cert_check !== false })),
     field(t('mon.f.certDays'), input('cert_days', v.cert_days, { class: 'mono' }), t('mon.f.certDaysHint')));
@@ -755,18 +799,22 @@ export async function openMonitorForm(m, done, preset = null) {
     condBox.hidden = !(ty === 'snmp' || ty === 'sensor');
     if (ty === 'sensor') syncMetric();
     if (ty === 'sensor' && !choices.length && srcSel.value) loadMetrics();
-    portBox.hidden = ty !== 'tcp' && ty !== 'snmp' && ty !== 'smb' && !isDb;
+    portBox.hidden = ty !== 'tcp' && ty !== 'snmp' && ty !== 'smb' && !isDb && !PROTO.includes(ty);
+    for (const [k, box] of Object.entries(protoBoxes)) box.hidden = ty !== k;
     smbBox.hidden = ty !== 'smb';
     smbShare.required = ty === 'smb';
-    httpBox.hidden = ty !== 'http';
+    // the certificate fields also serve mail and LDAP (TLS); status and keyword only web pages
+    httpBox.hidden = !['http', 'mail', 'ldap'].includes(ty);
+    for (const f of httpOnly) f.hidden = ty !== 'http';
     dockerBox.hidden = ty !== 'docker';
     dbBox.hidden = !isDb;
     dbName.hidden = ty === 'redis';
     port.required = ty === 'tcp';
-    port.placeholder = isDb ? String(DEF_PORT[ty]) : ty === 'snmp' ? '161' : ty === 'smb' ? '445' : '';
+    port.placeholder = isDb ? String(DEF_PORT[ty]) : ty === 'snmp' ? '161' : ty === 'smb' ? '445' : PROTO.includes(ty) ? String(protoPort()) : '';
     hostSel.required = ty === 'docker';
-    targetLabel.textContent = ty === 'docker' ? t('mon.f.container') : ty === 'smb' ? t('smb.server') : t('mon.f.target');
-    target.placeholder = ty === 'http' ? 'https://intranet.firma.local/' : ty === 'docker' ? 'nextcloud' : ty === 'smb' ? t('smb.serverPh') : '192.168.1.10';
+    targetLabel.textContent = ty === 'docker' ? t('mon.f.container') : ty === 'smb' ? t('smb.server') : ty === 'dns' ? t('pr.dnsName') : t('mon.f.target');
+    target.placeholder = ty === 'http' ? 'https://intranet.firma.local/' : ty === 'docker' ? 'nextcloud' : ty === 'smb' ? t('smb.serverPh')
+      : { dns: 'intranet.firma.local', mail: 'mail.firma.local', ldap: 'dc01.firma.local', ntp: 'ptbtime1.ptb.de', mssql: 'sql01.firma.local' }[ty] || '192.168.1.10';
     if (ty === 'docker' && !containers.children.length) loadContainers();
   };
   // Switching the kind carries the address over in the form the new kind needs: https://10.0.0.5:8443/ for a web
@@ -842,6 +890,7 @@ export async function openMonitorForm(m, done, preset = null) {
     sensorBox,
     snmpBox,
     eventBox,
+    Object.values(protoBoxes),
     condBox,
     dockerBox,
     dbBox,
@@ -888,6 +937,11 @@ export async function openMonitorForm(m, done, preset = null) {
       }
     }
     if (d.type === 'snmp') body.options = { oid: d.oid.trim(), op: d.op, threshold: d.threshold, label: '' };
+    if (d.type === 'dns') body.options = { server: d.dns_server.trim(), rtype: d.dns_rtype, expect: d.dns_expect.trim() };
+    if (d.type === 'mail') body.options = { proto: d.mail_proto, tls: d.mail_tls };
+    if (d.type === 'ldap') body.options = { tls: d.ldap_tls };
+    if (d.type === 'ntp') body.options = { maxOffsetMs: Number(d.ntp_max) || 1000 };
+    if (d.type === 'mssql') body.options = { instance: d.sql_instance.trim() };
     if (d.type === 'event') {
       body.target = '';
       body.device_id = d.ev_device ? Number(d.ev_device) : null;

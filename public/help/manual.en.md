@@ -76,6 +76,12 @@ A monitor checks regularly (20 seconds to 24 hours) and reports only after sever
 - **Docker container** (through a socket proxy, *Settings → Docker*): running, restarting all the time, health check "unhealthy"
 - **Databases**: MariaDB/MySQL, PostgreSQL, Redis/Valkey - sign-in and one harmless query
 - **Network drive (SMB)**: Windows shares and NAS - see below
+- **Mail server**: SMTP, IMAP or POP3 - greeting, STARTTLS or TLS and certificate expiry; without signing in, no mail is sent
+- **DNS resolution**: a name (A, AAAA, MX, TXT, SRV …) at a given DNS server, optionally with an expected answer - e.g. whether the internal DNS gives the right IP
+- **LDAP / Active Directory**: reads the rootDSE without signing in (LDAPS or StartTLS) - reports when a domain controller is not synchronized; plus certificate expiry
+- **Time server (NTP)**: answers, is synchronized itself, and its clock differs at most so many milliseconds from the WhatsOnMyNet server's
+- **Microsoft SQL Server**: pre-login (PRELOGIN) without an account - version and encryption; named instances through the SQL Browser
+- **Message (trap/syslog)**: see *Messages of the devices*
 - **Sensor** (value of a device, a machine with script, a hypervisor or controller) and **SNMP value (OID)** - see below
 
 On the device page "Monitor" creates a fitting monitor. If the IP of a device changes, its monitors follow. Exception: a monitor with a stored password (database, network share) is paused, because the password was entered for the old address and is never sent to another one unasked. It shows "Device has a new IP - please enter the password again", its notification channels get a message, and the edit dialog already has the new address filled in: saved with the password, it runs again. When the device returns to the old address, it runs on by itself. If you rename the device, its monitors and sensors take the new name too, so an alarm names it as it is called now (a monitor with a name of your own without the device name stays as it is).
