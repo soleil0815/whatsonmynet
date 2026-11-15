@@ -19,6 +19,7 @@ import tls from 'node:tls';
 import snmp from 'net-snmp';
 import { log } from './lib/log.js';
 import { config } from './config.js';
+import { parseEventIds } from './eventrules.js';
 
 export const SEVERITIES = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'];
 const GB = 1024 ** 3;
@@ -83,14 +84,44 @@ function finish(out, rest) {
   return out;
 }
 
-// Text of a message: UTF-8 - and when it is none, Windows-1252: NXLog and older devices send umlauts in the code page of
-// Windows ("NT-AUTORITÄT" would show as "NT-AUTORIT\uFFFDT")
+// Text of a message: UTF-8 - and where a byte is no UTF-8, Windows-1252. NXLog and older devices send umlauts in the code
+// page of Windows, sometimes mixed with UTF-8 in the same line ("NT-AUTORITÄT" from the account, "für" from the text):
+// each valid UTF-8 sequence is read as UTF-8, every other byte as Windows-1252.
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
-let CP1252 = null;
-try { CP1252 = new TextDecoder('windows-1252'); } catch { /* a Node without the code pages: Latin-1 below */ }
+// 0x80-0x9F of Windows-1252 (the rest of 0xA0-0xFF is Latin-1)
+const CP1252_HIGH = '\u20ac\ufffd\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\ufffd\u017d\ufffd\ufffd\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\ufffd\u017e\u0178';
+const cp1252 = (b) => (b >= 0x80 && b < 0xa0 ? CP1252_HIGH[b - 0x80] : String.fromCharCode(b));
+/** Length of a valid UTF-8 sequence starting at i (2-4), or 0 */
+function utf8Seq(buf, i) {
+  const b = buf[i];
+  const cont = (j) => j < buf.length && (buf[j] & 0xc0) === 0x80;
+  if (b >= 0xc2 && b <= 0xdf) return cont(i + 1) ? 2 : 0;
+  if (b >= 0xe0 && b <= 0xef) {
+    if (!cont(i + 1) || !cont(i + 2)) return 0;
+    if (b === 0xe0 && buf[i + 1] < 0xa0) return 0;           // overlong
+    if (b === 0xed && buf[i + 1] >= 0xa0) return 0;          // surrogates
+    return 3;
+  }
+  if (b >= 0xf0 && b <= 0xf4) {
+    if (!cont(i + 1) || !cont(i + 2) || !cont(i + 3)) return 0;
+    if (b === 0xf0 && buf[i + 1] < 0x90) return 0;
+    if (b === 0xf4 && buf[i + 1] >= 0x90) return 0;
+    return 4;
+  }
+  return 0;
+}
 export function decodeText(buf) {
   if (!Buffer.isBuffer(buf)) return String(buf ?? '');
-  try { return UTF8.decode(buf); } catch { return CP1252 ? CP1252.decode(buf) : buf.toString('latin1'); }
+  try { return UTF8.decode(buf); } catch { /* not all UTF-8: byte by byte below */ }
+  let out = ''; let start = 0;
+  for (let i = 0; i < buf.length;) {
+    if (buf[i] < 0x80) { i++; continue; }
+    const n = utf8Seq(buf, i);
+    if (n) { i += n; continue; }
+    out += buf.toString('utf8', start, i) + cp1252(buf[i]);
+    i++; start = i;
+  }
+  return out + buf.toString('utf8', start);
 }
 
 /** One syslog datagram → { severity, facility, host, app, text, eventId?, channel?, account? } */
@@ -259,6 +290,17 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   let trapRx = null; let sysSock = null; let tcpServer = null; let tlsServer = null;
   const conns = new Set();
   let skipped = 0;
+  // Windows events by number: only these are taken (empty = all) / these never - against the flood of a busy network
+  // (group policy every 90 minutes, logons …). Other messages (switches, NAS, traps) are not touched.
+  let idFilter = null; let filtered = 0;
+  const ranges = (k) => parseEventIds(String(settings.get(k) || '')) || [];
+  const inRanges = (list, id) => list.some(([a, b]) => id >= a && id <= b);
+  function idWanted(id) {
+    if (!Number.isInteger(id)) return true;
+    if (!idFilter) idFilter = { allow: ranges('events.winAllow'), deny: ranges('events.winDeny') };
+    if (idFilter.allow.length && !inRanges(idFilter.allow, id)) return false;
+    return !inRanges(idFilter.deny, id);
+  }
   let stats = null; let statsAt = 0; let receivedSince = 0; // the space figures for the page (see storage)
   // one row per sender: the newest message, the computer name it gave (a name only fills in, never empties it)
   const senderUp = db.prepare(`INSERT INTO event_senders(source_ip, device_id, host, first_at, last_at, last_id) VALUES(?,?,?,?,?,?)
@@ -293,6 +335,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     if (!allowed(addr)) return null;
     const device = deviceOf(addr);
     if (settings.get('events.onlyKnown') && !device) return null;
+    if (!idWanted(ev.eventId)) { filtered++; return null; }
     const row = { at: at.toISOString(), kind, source_ip: addr, device_id: device, severity: Math.max(0, Math.min(7, Number(ev.severity) || 0)), facility: ev.facility ?? null,
       host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, 1000) || '(empty)',
       event_id: Number.isInteger(ev.eventId) ? ev.eventId : null, channel: clip(ev.channel, 120), account: clip(ev.account, 120) };
@@ -404,6 +447,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   }
   /** (Re)opens the receivers as the settings say */
   function apply() {
+    idFilter = null;
     stopAll();
     if (settings.get('events.traps')) startTraps();
     if (settings.get('events.syslog')) startSyslog();
@@ -521,7 +565,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   return {
     receive, list, senders, prune, apply, communities,
     reloadTls,
-    status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, total: storage().total,
+    status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, filtered, total: storage().total,
       last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null, storage: storage() }),
     storage,
     /** Receivers as set, and the cleanup every 10 minutes (the limit holds between the daily rounds too) */

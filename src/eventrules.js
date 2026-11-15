@@ -35,6 +35,14 @@ export function parseEventIds(text) {
   return out;
 }
 
+/** Is [a, b] fully inside the ranges? */
+export function covered(a, b, list) {
+  let at = a;
+  for (const [x, y] of [...list].sort((p, q) => p[0] - q[0])) { if (x > at) break; if (y >= at) at = y + 1; if (at > b) return true; }
+  return at > b;
+}
+const overlaps = (a, b, list) => list.some(([x, y]) => x <= b && y >= a);
+
 /** The filter of a rule from the form → the stored shape (throws HttpError naming the field) */
 export function cleanMatch(m = {}) {
   const kind = ['syslog', 'trap'].includes(m.kind) ? m.kind : '';
@@ -83,7 +91,7 @@ export function ruleMatches(m, row) {
 
 const parse = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
 
-export function createEventRules({ db, channels, now = () => new Date() }) {
+export function createEventRules({ db, channels, settings = null, now = () => new Date() }) {
   let running = false; let timer = null; let rounds = 0;
   let cache = null; let cacheAt = 0;
   const singles = new Map();     // rule id → times of single notifications in the last hour
@@ -106,10 +114,22 @@ export function createEventRules({ db, channels, now = () => new Date() }) {
   }
   const forget = () => { cache = null; };
 
+  /** The ids of a rule the receiving does not take (Messages → Receiving settings → Windows events) */
+  function blockedIds(eventIds) {
+    if (!eventIds || !settings) return [];
+    const allow = parseEventIds(String(settings.get('events.winAllow') || '')) || [];
+    const deny = parseEventIds(String(settings.get('events.winDeny') || '')) || [];
+    return (parseEventIds(eventIds) || []).filter(([a, b]) => (allow.length && !covered(a, b, allow)) || overlaps(a, b, deny))
+      .map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`));
+  }
+
   function clean(input = {}, old = null) {
     const name = line(input.name ?? old?.name, 120).trim();
     if (!name) throw new HttpError(400, 'err.nameRequired', undefined, 'name');
     const match = cleanMatch(input.match ?? old?.match ?? {});
+    const bad = blockedIds(match.eventIds);
+    // a rule for numbers the receiving does not take would never fire: said at once, not found out weeks later
+    if (bad.length) throw new HttpError(400, 'err.ruleIdsFiltered', bad.join(', '), 'eventIds');
     if (match.deviceId && !db.prepare('SELECT 1 FROM devices WHERE id=?').get(match.deviceId)) throw new HttpError(400, 'err.notFound', undefined, 'deviceId');
     const ids = [...new Set((Array.isArray(input.channels) ? input.channels : old?.channels || []).map(Number).filter((x) => Number.isInteger(x) && x > 0))].slice(0, 20);
     const known = ids.filter((id) => db.prepare('SELECT 1 FROM channels WHERE id=?').get(id));
@@ -213,7 +233,7 @@ export function createEventRules({ db, channels, now = () => new Date() }) {
   }
 
   return {
-    list: () => db.prepare('SELECT * FROM event_rules ORDER BY name COLLATE NOCASE').all().map((r) => ({ ...shape(r), ...stats(r.id) })),
+    list: () => db.prepare('SELECT * FROM event_rules ORDER BY name COLLATE NOCASE').all().map((r) => { const x = shape(r); return { ...x, ...stats(r.id), blocked: blockedIds(x.match.eventIds) }; }),
     get: (id) => shape(db.prepare('SELECT * FROM event_rules WHERE id=?').get(id)),
     create(input) {
       const c = clean(input);

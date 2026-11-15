@@ -148,3 +148,38 @@ test('by sender: one row per address with its newest message and the last 24 hou
   assert.deepEqual(db.prepare('SELECT source_ip FROM event_senders').all().map((r) => r.source_ip), ['10.0.10.8']);
   db.close();
 });
+
+test('UTF-8 and the code page of Windows mixed in one line: each part read right', async () => {
+  const { decodeText } = await import('../src/events.js');
+  const line = Buffer.concat([Buffer.from('NT-AUTORIT'), Buffer.from([0xc4]), Buffer.from('T\\SYSTEM Die manuelle Verarbeitung der Richtlinie für Computer FIRMA\\PC-0012$ wurde in 3 Sekunden abgeschlossen.')]);
+  assert.equal(decodeText(line), 'NT-AUTORITÄT\\SYSTEM Die manuelle Verarbeitung der Richtlinie für Computer FIRMA\\PC-0012$ wurde in 3 Sekunden abgeschlossen.');
+  assert.equal(decodeText(Buffer.from([0xe2, 0x82, 0xac, 0x20, 0x80, 0x20, 0xc3])), '€ € Ã', 'a cut UTF-8 sequence at the end is one Windows byte');
+  assert.equal(decodeText(Buffer.from([0xed, 0xa0, 0x80])), 'í €', 'no surrogates out of UTF-8');
+});
+
+test('Windows events by id: only these / never these; other messages untouched; rules for dropped ids refused', async () => {
+  const { createEventRules } = await import('../src/eventrules.js');
+  const db = openDatabase(path.join(dirOf('evid'), 'whatsonmynet.sqlite'));
+  const settings = createSettings(db);
+  const ev = createEvents({ db, settings });
+  const win = (id) => ev.receive('syslog', `10.0.20.${id % 200}`, { severity: 6, host: 'PC-0012', text: `event ${id}`, eventId: id });
+  settings.set('events.winDeny', '8004, 4624, 4634');
+  ev.apply(); ev.stop();
+  assert.equal(win(8004), null);
+  assert.ok(win(1116));
+  assert.ok(ev.receive('syslog', '10.0.30.1', { severity: 3, text: 'switch port down' }), 'not a Windows event: taken');
+  settings.set('events.winAllow', '1116, 1117, 4740, 865-868');
+  ev.apply(); ev.stop();
+  assert.equal(win(7036), null);
+  assert.ok(win(866));
+  assert.ok(ev.receive('syslog', '10.0.30.1', { severity: 3, text: 'NAS volume degraded' }));
+  assert.equal(ev.status().filtered, 2);
+  const chan = Number(db.prepare("INSERT INTO channels(name,type,config,language,is_default,enabled,created_at) VALUES('T','email','x','de',0,1,'x')").run().lastInsertRowid);
+  const rules = createEventRules({ db, channels: { notifyIds: async () => [] }, settings });
+  assert.throws(() => rules.create({ name: 'GPO', match: { eventIds: '8004' }, channels: [chan] }), (e) => e.code === 'err.ruleIdsFiltered' && e.detail === '8004');
+  assert.throws(() => rules.create({ name: 'SRP', match: { eventIds: '860-868' }, channels: [chan] }), (e) => e.detail === '860-868', 'part of the range is not taken');
+  const ok = rules.create({ name: 'Virus', match: { eventIds: '1116-1117' }, channels: [chan] });
+  settings.set('events.winAllow', '4740');
+  assert.deepEqual(rules.list().find((r) => r.id === ok.id).blocked, ['1116-1117'], 'the list says when a rule can no longer fire');
+  db.close();
+});

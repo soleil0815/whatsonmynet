@@ -6,6 +6,7 @@ import { BULK_MAX } from '../monitor/index.js';
 import { requireRole } from '../auth/session.js';
 import { inScope } from '../auth/scope.js';
 import { config } from '../config.js';
+import { parseEventIds } from '../eventrules.js';
 
 export function createMonitoringApi(ctx) {
   const { db, monitoring, channels, maintenance, dockerHosts, settings } = ctx;
@@ -151,7 +152,7 @@ export function createMonitoringApi(ctx) {
   // Messages devices sent (SNMP traps, syslog): the list for editors; switching the receivers on for admins
   const eventSettings = () => ({ traps: !!settings.get('events.traps'), syslog: !!settings.get('events.syslog'), syslogTcp: !!settings.get('events.syslogTcp'), syslogTls: !!settings.get('events.syslogTls'),
     syslogTcpPort: config.syslogTcpPort, syslogTlsPort: config.syslogTlsPort, communitiesSet: !!settings.get('events.communities'),
-    onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, maxGb: Number(settings.get('events.maxGb')) || 2, trapPort: config.trapPort, syslogPort: config.syslogPort });
+    onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, maxGb: Number(settings.get('events.maxGb')) || 2, winAllow: String(settings.get('events.winAllow') || ''), winDeny: String(settings.get('events.winDeny') || ''), trapPort: config.trapPort, syslogPort: config.syslogPort });
   r.get('/events', editor, unscoped, (req, res) => {
     const q = req.query || {};
     res.json({ status: ctx.events.status(), settings: eventSettings(),
@@ -172,6 +173,13 @@ export function createMonitoringApi(ctx) {
     settings.set('events.onlyKnown', !!b.onlyKnown);
     settings.set('events.keepDays', keep);
     settings.set('events.maxGb', Math.round(maxGb * 10) / 10);
+    // Windows event ids: "1116, 4740, 865-868" - stored in the same tidy form the rules use
+    for (const [field, key] of [['winAllow', 'events.winAllow'], ['winDeny', 'events.winDeny']]) {
+      if (b[field] === undefined) continue;
+      const list = parseEventIds(String(b[field] ?? '').slice(0, 2000));
+      if (!list || list.length > 200) throw new HttpError(400, 'err.ruleEventIds', undefined, field);
+      settings.set(key, list.map(([x, y]) => (x === y ? `${x}` : `${x}-${y}`)).join(', '));
+    }
     if (typeof b.communities === 'string' && b.communities.trim()) {
       const list = b.communities.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
       if (list.length > 10 || list.some((c) => c.length > 64 || /[\x00-\x1f]/.test(c))) throw new HttpError(400, 'err.snmpCommunity', undefined, 'communities');
