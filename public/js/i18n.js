@@ -121,7 +121,7 @@ const de = {
   // settings
   'set.title': 'Einstellungen', 'set.general': 'Allgemein', 'set.scan': 'Scan', 'set.smtp': 'E-Mail (SMTP)', 'set.https': 'HTTPS-Zertifikat',
   'set.users': 'Benutzer', 'set.ignored': 'Ignorierte Geräte', 'set.audit': 'Protokoll', 'set.about': 'Über',
-  'set.instance': 'Name dieser Installation', 'set.backupKeep': 'Tägliche Sicherungen aufbewahren', 'set.backupHint': 'Sicherungen liegen im Datenordner unter backups/.',
+  'set.instance': 'Name dieser Installation', 'set.backupKeep': 'Tägliche Sicherungen aufbewahren', 'set.backupHint': 'Sicherungen liegen komprimiert (.sqlite.gz) im Datenordner unter backups/. Standard: 10.',
   'set.ping': 'Ping verwenden (wenn der Host es erlaubt)', 'set.snmp': 'Geräte per SNMP fragen (nur lesend)', 'set.httpTitles': 'Titel der Weboberflächen lesen',
   'set.communities': 'SNMP-Communities', 'set.communitiesHint': 'Eine pro Zeile, höchstens 5. Leer = „public“. Wird verschlüsselt gespeichert.',
   'set.communitiesSet': 'Gespeichert (aus Sicherheitsgründen nicht angezeigt). Neu eingeben, um sie zu ersetzen.',
@@ -1021,7 +1021,7 @@ const en = {
   'loc.deleteConfirm': 'Delete location “{name}”? The devices stay in the inventory without a location.', 'loc.noSubnets': 'No subnets',
   'set.title': 'Settings', 'set.general': 'General', 'set.scan': 'Scan', 'set.smtp': 'Email (SMTP)', 'set.https': 'HTTPS certificate',
   'set.users': 'Users', 'set.ignored': 'Ignored devices', 'set.audit': 'Log', 'set.about': 'About',
-  'set.instance': 'Name of this installation', 'set.backupKeep': 'Keep daily backups', 'set.backupHint': 'Backups are in the data folder under backups/.',
+  'set.instance': 'Name of this installation', 'set.backupKeep': 'Keep daily backups', 'set.backupHint': 'Backups are compressed (.sqlite.gz) in the data folder under backups/. Default: 10.',
   'set.ping': 'Use ping (if the host allows it)', 'set.snmp': 'Ask devices via SNMP (read-only)', 'set.httpTitles': 'Read the title of web interfaces',
   'set.communities': 'SNMP communities', 'set.communitiesHint': 'One per line, at most 5. Empty = “public”. Stored encrypted.',
   'set.communitiesSet': 'Stored (not shown for security). Enter new ones to replace them.',

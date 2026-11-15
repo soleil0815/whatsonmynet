@@ -718,7 +718,7 @@ export function createApi(ctx) {
     res.json({ ok: true });
   });
   r.put('/settings/backup', admin, (req, res) => {
-    settings.set('backup.keep', Math.min(90, Math.max(1, int(String(req.body.keep)) || 7)));
+    settings.set('backup.keep', Math.min(90, Math.max(1, int(String(req.body.keep)) || 10)));
     res.json(settings.publicGroup('backup'));
   });
 

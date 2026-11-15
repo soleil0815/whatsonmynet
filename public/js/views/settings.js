@@ -1109,7 +1109,7 @@ async function backup(body, _s, reload) {
   const { list, keep } = await get('/backups');
   const size = (n) => `${(n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
   const confirmRestore = (what) => confirmDialog(t('bk.restore'), t('bk.restoreConfirm', { what }), t('bk.restore'), t('cancel'), { danger: true });
-  const file = h('input', { type: 'file', accept: '.sqlite,.db,application/octet-stream' });
+  const file = h('input', { type: 'file', accept: '.sqlite,.gz,.db,application/octet-stream,application/gzip' });
   const upload = btn(t('bk.restoreUpload'), { class: 'btn btn-danger', onclick: async (e) => {
     const b = e.currentTarget;
     const f = file.files[0];

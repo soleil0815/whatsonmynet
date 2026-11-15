@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import { paths } from './config.js';
 import { encrypt, decrypt } from './lib/crypto.js';
 import { log } from './lib/log.js';
+import { gzipFile, gzipFileSync, freeName } from './lib/gz.js';
 
 export class DatabaseTooNewError extends Error {}
 export class WrongKeyError extends Error {}
@@ -691,6 +692,8 @@ export const MIGRATIONS = [
   // 33: the look follows the system again by default (light or dark as the computer is set) - accounts on light, which
   // migration 26 made of "like the system", go back to it; dark stays dark
   `UPDATE users SET theme='system' WHERE theme='light';`,
+  // 34: ten daily backups by default (they are compressed now) - an installation still on the old default 7 gets 10
+  `UPDATE settings SET value='10' WHERE key='backup.keep' AND value='7';`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached
@@ -798,9 +801,8 @@ export function openDatabase(file = paths.db) {
     db.pragma('wal_checkpoint(TRUNCATE)');
     const dir = path.join(path.dirname(file), 'backups');
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const target = path.join(dir, `whatsonmynet-before-schema-${version + 1}-${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.sqlite`);
-    fs.copyFileSync(file, target);
-    fs.chmodSync(target, 0o600);
+    const target = freeName(path.join(dir, `whatsonmynet-before-schema-${version + 1}-${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.sqlite.gz`));
+    gzipFileSync(file, target);
     log.info(`Backup before the schema update: ${target}`);
   }
   attachEvents(db, file);
@@ -861,13 +863,42 @@ export function verifyKey(db) {
 }
 
 /** Consistent copy of the database into the backups folder (keeps the newest `keep`). */
-export async function backupDatabase(db, keep = 7, dir = paths.backups) {
+export async function backupDatabase(db, keep = 10, dir = paths.backups) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
-  const target = path.join(dir, `whatsonmynet-${stamp}.sqlite`);
-  await db.backup(target);
-  fs.chmodSync(target, 0o600);
-  const files = fs.readdirSync(dir).filter((f) => /^whatsonmynet-\d{4}-.*\.sqlite$/.test(f)).sort();
-  for (const f of files.slice(0, Math.max(0, files.length - Math.max(1, keep)))) fs.rmSync(path.join(dir, f), { force: true });
+  const target = freeName(path.join(dir, `whatsonmynet-${stamp}.sqlite.gz`));
+  // a consistent copy first (SQLite online backup), then compressed - the database file itself is never read raw
+  const raw = path.join(dir, `.whatsonmynet-${stamp}-${process.pid}.sqlite.tmp`);
+  try {
+    await db.backup(raw);
+    fs.chmodSync(raw, 0o600);
+    await gzipFile(raw, target);
+  } finally { fs.rmSync(raw, { force: true }); }
+  await tidyBackups(dir, keep);
   return target;
+}
+
+const DAILY = /^whatsonmynet-\d{4}-.*\.sqlite(\.gz)?$/;
+const SPECIAL = [/^whatsonmynet-before-schema-.*\.sqlite(\.gz)?$/, /^whatsonmynet-before-restore-.*\.sqlite(\.gz)?$/];
+const SPECIAL_KEEP = 10;
+/**
+ * Older uncompressed copies are compressed once; the daily ones are cut to `keep`, the copies before a schema update
+ * or a restore to the newest 10 each (they used to pile up for ever).
+ */
+async function tidyBackups(dir, keep) {
+  for (const f of fs.readdirSync(dir).filter((x) => /^whatsonmynet-.*\.sqlite$/.test(x))) {
+    const src = path.join(dir, f);
+    try {
+      if (!fs.existsSync(`${src}.gz`)) await gzipFile(src, `${src}.gz`);
+      const st = fs.statSync(src);
+      fs.utimesSync(`${src}.gz`, st.atime, st.mtime);   // the list sorts by time: the copy keeps the date of the original
+      fs.rmSync(src, { force: true });
+    } catch (e) { log.warn(`Backups: could not compress ${f}: ${e.message}`); }
+  }
+  const cut = (re, n) => {
+    const files = fs.readdirSync(dir).filter((f) => re.test(f)).sort();
+    for (const f of files.slice(0, Math.max(0, files.length - Math.max(1, n)))) fs.rmSync(path.join(dir, f), { force: true });
+  };
+  cut(DAILY, keep);
+  for (const re of SPECIAL) cut(re, SPECIAL_KEEP);
 }

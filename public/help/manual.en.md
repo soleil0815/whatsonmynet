@@ -643,8 +643,8 @@ When pairing, the standby takes **all data of the master** (devices, monitors, u
 
 ## Backup and updates
 
-- Once a day WhatsOnMyNet backs up the database to `data/backups/` (the first time one hour after the start); additionally before every database update.
-- *Settings → Backup*: download a backup, back up now, restore a backup (the current state is backed up first, then the program restarts).
+- Once a day WhatsOnMyNet backs up the database compressed to `data/backups/` (`whatsonmynet-….sqlite.gz`, the first time one hour after the start); additionally before every database update. By default the 10 newest are kept (*Settings → General*), of the copies before updates and before a restore the 10 newest each. Older uncompressed backups are compressed once.
+- *Settings → Backup*: download a backup, back up now, restore a backup - `.sqlite` or `.sqlite.gz` (the current state is backed up first, then the program restarts). To open one by hand: `gunzip -k whatsonmynet-….sqlite.gz`.
 - **Keep `data/secret.key` (or `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 - Updates: in Dockhand/Watchtower or `docker compose pull && docker compose up -d`. Once a month a security update with new packages is released.
 
