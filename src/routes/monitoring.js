@@ -158,7 +158,7 @@ export function createMonitoringApi(ctx) {
   });
   r.post('/proxmox', admin, async (req, res) => {
     const h = ctx.proxmox.create(req.body);
-    audit(req, 'proxmox.create', `${h.name} (${h.url})`);
+    audit(req, 'proxmox.create', `${h.name} (${h.url || h.kind})`);
     // watched from the start: a few sensors once the first values are there
     ctx.autoWatch.markHost(h.id, req.user.language);
     res.status(201).json(await ctx.proxmox.poll(h.id));

@@ -13,6 +13,7 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 - Every monitor and sensor shows "How it is checked": what exactly is asked, where the values come from and how old they are, when it alarms (with the margin for the all-clear) and the last answer word for word
 - Proxmox VE and Backup Server: failed tasks show the error lines from the task log and a plain name instead of "aptupdate" or "verificationjob". Upkeep tasks are yellow instead of red
 - Package lists: when only a third-party repository fails (e.g. Webmin), that is a note, not an error - it alarms only when an official Proxmox or Debian repository fails
+- New: cloud - AWS, Microsoft Azure and Google Cloud through an account that may only read: VMs with the checks of the provider (status checks, Resource Health) and scheduled maintenance, databases (RDS, Azure SQL/PostgreSQL/MySQL, Cloud SQL), load balancers, the alarms of the provider and, if wanted, the costs of the month - with sensors. Missing rights are named exactly
 
 ## 0.26.0 - 2026-11-15
 

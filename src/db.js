@@ -624,6 +624,8 @@ export const MIGRATIONS = [
   // 26: light is the default look - accounts still on the old default "like the system" become light (dark stays dark);
   // new accounts are made light (users.js)
   `UPDATE users SET theme='light' WHERE theme='system';`,
+  // 27: cloud accounts (AWS, Azure, Google Cloud) in the hosts table: regions, tenant, subscription, project, costs
+  `ALTER TABLE proxmox_hosts ADD COLUMN options TEXT NOT NULL DEFAULT '{}';`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
