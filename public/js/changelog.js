@@ -3,10 +3,14 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Meldungen nach Absender: je Rechner oder Gerät eine Zeile mit der letzten Meldung und den Meldungen, Warnungen und Fehlern der letzten 24 Stunden; ein Klick zeigt nur seine Meldungen, „Alle Meldungen“ wie bisher alles. Auf der Geräteseite: Mehr → Meldungen des Geräts',
+    'Umlaute in Windows-Meldungen (NXLog in der Codepage von Windows) werden richtig gelesen: „NT-AUTORITÄT“ statt „NT-AUTORIT\uFFFDT“',
     'Diagnosepaket: neue Datei meldungen.json - Empfänger von Syslog und Traps (Ports, Fehler, Verbindungen), Platz der Meldungsdatei, Meldungen im Zeitraum nach Art, Schwere und NXLog-Format, Ereignisregeln mit Treffern, Wartenden und Fehlversuchen; Absender anonymisiert, Wörter der Regeln nur gezählt',
     'Meldungen: Anzahl und Platz stimmen sofort, sobald neue Meldungen kommen (zeigten bis zu einer Minute lang noch den alten Stand, nach dem Einschalten „0 gespeichert“ neben der Liste)',
     'Meldungen in einer eigenen Datei (data/events.sqlite): die Datenbank und ihre täglichen Sicherungen bleiben klein; vorhandene Meldungen ziehen beim Update einmal um. Grenze jetzt in Speicherplatz statt 200 000 Stück: 30 Tage in höchstens 2 GB, bei knappem Datenträger bleiben mindestens 10 % frei. Die Seite zeigt belegten Platz, Meldungen am Tag, wie viele Tage der Platz reicht - und wer die meisten Meldungen schickt, wenn er nicht reicht',
   ], en: [
+    'Messages by sender: one row per computer or device with the last message and the messages, warnings and errors of the last 24 hours; a click shows only its messages, "All messages" everything as before. On the device page: More → Messages of the device',
+    'Umlauts in Windows messages (NXLog in the code page of Windows) are read right: "NT-AUTORITÄT" instead of "NT-AUTORIT\uFFFDT"',
     'Diagnostic package: new file meldungen.json - syslog and trap receivers (ports, errors, connections), space of the messages file, messages in the period by kind, severity and NXLog format, event rules with matches, waiting and failed attempts; senders anonymised, words of the rules only counted',
     'Messages: count and space are right as soon as new messages come (showed the old figures for up to a minute, after switching on "0 stored" next to the list)',
     'Messages in a file of their own (data/events.sqlite): the database and its daily backups stay small; existing messages move once with the update. The limit is now space instead of 200 000 pieces: 30 days in at most 2 GB, with a short disk at least 10 % stay free. The page shows the space used, messages a day, how many days the space lasts - and who sends the most when it does not',
