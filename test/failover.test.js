@@ -95,6 +95,25 @@ test('standby: pairs, takes the data of the master, only reads, alarms nothing',
   assert.equal(w.data.error.code, 'err.foStandby');
   assert.equal((await B.call('GET', '/api/failover/banner')).data.mode, 'standby');
   assert.equal(B.ctx.failover.active(), false);
+  // nothing at all can be set up or changed: channels, mail, settings, users, own password - only failover controls
+  const blocked = [
+    ['POST', '/api/channels', { name: 'Webhook', type: 'webhook', config: { url: 'https://hook.example/x' } }],
+    ['PUT', '/api/settings/smtp', { host: 'smtp.example', from: 'x@example.com' }],
+    ['PUT', '/api/settings/general', { title: 'x' }],
+    ['POST', '/api/users', { username: 'neu', password: 'Neu-Passwort-123', role: 'viewer' }],
+    ['POST', '/api/me/password', { current: 'x', password: 'Neu-Passwort-123' }],
+    ['POST', '/api/failover/master', {}],
+    ['POST', '/api/failover/pair', { address: addr(), code }],
+  ];
+  for (const [m, url, body] of blocked) assert.equal((await B.call(m, url, body)).status, 409, `${m} ${url}`);
+  // the look of one's own account stays changeable - name and mail do not (they come from the master)
+  const me = await B.call('PATCH', '/api/me', { theme: 'dark', display_name: 'Anders', email: 'anders@example.com' });
+  assert.equal(me.status, 200);
+  assert.equal(me.data.theme, 'dark');
+  assert.notEqual(me.data.display_name, 'Anders');
+  assert.notEqual(me.data.email, 'anders@example.com');
+  assert.equal((await B.call('PUT', '/api/failover/delay', { delayMin: 10 })).status, 200);
+
   // the secret is stored only encrypted
   assert.ok(!fs.readFileSync(path.join(dirB, 'failover.json'), 'utf8').includes(parseCode(code).secret));
   // the sessions of the master are not in the copy (they sign in)
@@ -127,6 +146,9 @@ test('the master is gone longer than the set time: the standby takes over; it is
   assert.equal(s.standby.state, 'active');
   assert.equal(B.ctx.failover.active(), true);
   assert.equal((await B.call('GET', '/api/failover/banner')).data.mode, 'active');
+  // while it monitors in place of the master it still only reads (its data come back from the master)
+  assert.equal((await B.call('POST', '/api/monitors', { name: 'y', type: 'ping', target: '10.0.10.2' })).status, 409);
+  assert.equal(B.ctx.failover.readOnly(), true);
   assert.equal(s.takeovers.length, 1);
   assert.equal(s.takeovers[0].to, null);
   // during the takeover something happens here (kept with the takeover, not sent back)

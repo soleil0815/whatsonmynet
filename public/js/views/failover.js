@@ -145,7 +145,25 @@ export async function failoverSettings(body, _s, reload) {
     takeovers(s.takeovers));
 }
 
-const READ_ONLY = ['standby', 'detached', 'yielded'];
+// A standby only shows: also while it monitors in place of the master (its data come back from the master afterwards)
+const READ_ONLY = ['standby', 'active', 'detached', 'yielded'];
+export const isReadOnly = () => READ_ONLY.includes(state.failover?.mode);
+
+/**
+ * On a standby a page only shows: fields and buttons are switched off (the server refuses changes anyway), a note says
+ * why and where to go. keep = names of fields that stay usable (e.g. theme and language of one's own account).
+ */
+export function lockForEditing(root, keep = []) {
+  if (!isReadOnly() || !root) return;
+  for (const el of root.querySelectorAll('input, select, textarea, button')) {
+    if (keep.includes(el.name) || el.closest('[data-keep]')) continue;
+    el.disabled = true;
+    if (el.tagName === 'BUTTON') el.hidden = true;
+  }
+  root.prepend(h('div', { class: 'note', 'data-keep': '' }, h('div', {},
+    h('strong', {}, t('fo.lockTitle')), h('p', { style: { margin: '4px 0 0' } }, t('fo.lockText'), ' ',
+      state.user?.isAdmin ? h('a', { href: '/settings/failover', 'data-link': true }, t('fo.bar.open')) : null))));
+}
 
 /**
  * Asks the server whether this is a standby. While it only reads, nobody may edit here (buttons for creating and

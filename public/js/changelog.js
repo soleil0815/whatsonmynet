@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Ausfallsicherung: Auf dem Standby lässt sich nichts mehr verstellen - keine Kanäle, E-Mail, Webhooks, Einstellungen, Benutzer, Hypervisoren oder Berichte, auch nicht, während er für den Master überwacht. Die Seiten zeigen nur an und sagen warum. Erlaubt bleiben die Steuerung der Ausfallsicherung (Entkoppeln, zum Master machen, Wartezeit) und Hell/Dunkel und Sprache des eigenen Kontos',
+  ], en: [
+    'Failover: nothing can be changed on the standby any more - no channels, e-mail, webhooks, settings, users, hypervisors or reports, also not while it monitors in place of the master. The pages only show and say why. Still possible: the failover controls (unpair, make master, waiting time) and light/dark and language of one\'s own account',
+  ] },
+  { version: '0.25.0', date: '2026-11-14', de: [
     'Benachrichtigungen: Anzeigename (Absender) pro Kanal - steht über jeder Meldung, damit man sieht, woher sie kommt; bei E-Mail als Absendername und im Betreff, bei ntfy, Gotify, Pushover & Co. als Titel, bei Discord und Mattermost als Name des Bots, im Webhook als „sender“',
     'Ausfälle in der Verlaufsgrafik: Bei Gründen ohne Doppelpunkt fehlte der erste Buchstabe („onnection refused“) - jetzt steht der Grund vollständig da',
     'Handbuch, Hilfe und Projektseite: alle Bilder im neuen, hellen Aussehen',

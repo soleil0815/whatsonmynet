@@ -40,7 +40,9 @@ const MAX_SNAPSHOT = 4 * 1024 * 1024 * 1024;
 // Tables that stay with each installation: who is signed in here, its own log, its versions and diagnostic placeholders
 export const LOCAL_TABLES = new Set(['sessions', 'server_log', 'version_history', 'diag_alias']);
 // While standby, the interface may only read - apart from signing in/out and the failover itself
-const WRITE_OK = [/^\/api\/(login|logout|failover)(\/|$)/, /^\/api\/me$/];
+// What a standby lets through: signing in and out, its own failover controls (unpair, promote, takeover time, check -
+// and the answer to a promoted partner), and the look of one's own account (theme, language - the route allows no more)
+const WRITE_OK = [/^\/api\/(login|logout)$/, /^\/api\/failover\/(unpair|promote|delay|check|yield)$/, /^\/api\/me$/];
 
 /** SHA-256 of the public key of a certificate (as curl --pinnedpubkey does), base64url */
 export function spkiPin(certOrPem) {
@@ -402,8 +404,11 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
   // ---------------------------------------------------------------------------------------------- public
   return {
     active,
-    /** Standby (listening, detached) or replaced: the interface only reads */
-    readOnly: () => !active(),
+    /**
+     * A standby - listening, detached, or monitoring while the master is away - and a replaced former master only read:
+     * changes here would be overwritten by the master's data anyway. Unpair or promote first.
+     */
+    readOnly: () => st.role === 'standby' || st.role === 'yielded',
     /** At start: engines when this installation is active, the standby rounds when paired */
     boot() {
       setRunning(active());
@@ -417,7 +422,11 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
     /** Write block for the API while standby */
     middleware() {
       return (req, _res, next) => {
-        if (active() || ['GET', 'HEAD', 'OPTIONS'].includes(req.method) || WRITE_OK.some((re) => re.test(req.originalUrl.split('?')[0]))) return next();
+        const locked = st.role === 'standby' || st.role === 'yielded';
+        const url = req.originalUrl.split('?')[0];
+        // pairing anew: a replaced former master (as the standby of the new one), a standby whose master ended the pairing
+        const mayPair = st.role === 'yielded' || (st.role === 'standby' && st.standby?.state === 'detached');
+        if (!locked || ['GET', 'HEAD', 'OPTIONS'].includes(req.method) || WRITE_OK.some((re) => re.test(url)) || (mayPair && url === '/api/failover/pair')) return next();
         next(new HttpError(409, st.role === 'yielded' ? 'err.foYielded' : 'err.foStandby'));
       };
     },
