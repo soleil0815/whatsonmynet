@@ -102,7 +102,7 @@ test('paused password monitor: nothing is sent when the change was rolled back',
 function oldDb() {
   const db = memoryDb();
   // as before migration 22: what later migrations added is not there yet
-  db.exec('ALTER TABLE devices DROP COLUMN auto_watch; ALTER TABLE proxmox_hosts DROP COLUMN auto_watch; ALTER TABLE devices DROP COLUMN script_tip_hidden; ALTER TABLE proxmox_hosts DROP COLUMN script_tip_hidden; ALTER TABLE proxmox_hosts DROP COLUMN options; DROP TABLE events_in;');
+  db.exec('ALTER TABLE devices DROP COLUMN auto_watch; ALTER TABLE proxmox_hosts DROP COLUMN auto_watch; ALTER TABLE devices DROP COLUMN script_tip_hidden; ALTER TABLE proxmox_hosts DROP COLUMN script_tip_hidden; ALTER TABLE proxmox_hosts DROP COLUMN options; DROP TABLE event_rule_hits; DROP TABLE event_rules; DROP TABLE events_in;');
   db.pragma('user_version = 21');
   return db;
 }
@@ -162,7 +162,7 @@ test('migration: the host name ownership update makes the usual copy of the data
   const file = path.join(dir, 'db.sqlite');
   openDatabase(file).close();
   const raw = new Database(file);
-  raw.exec('ALTER TABLE devices DROP COLUMN auto_watch; ALTER TABLE proxmox_hosts DROP COLUMN auto_watch; ALTER TABLE devices DROP COLUMN script_tip_hidden; ALTER TABLE proxmox_hosts DROP COLUMN script_tip_hidden; ALTER TABLE proxmox_hosts DROP COLUMN options; DROP TABLE events_in;');
+  raw.exec('ALTER TABLE devices DROP COLUMN auto_watch; ALTER TABLE proxmox_hosts DROP COLUMN auto_watch; ALTER TABLE devices DROP COLUMN script_tip_hidden; ALTER TABLE proxmox_hosts DROP COLUMN script_tip_hidden; ALTER TABLE proxmox_hosts DROP COLUMN options; DROP TABLE event_rule_hits; DROP TABLE event_rules; DROP TABLE events_in;');
   raw.pragma('user_version = 21');
   raw.close();
   const db = openDatabase(file);

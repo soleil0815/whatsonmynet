@@ -642,6 +642,35 @@ export const MIGRATIONS = [
    );
    CREATE INDEX events_in_at ON events_in(at);
    CREATE INDEX events_in_device ON events_in(device_id, at);`,
+  // 29: Windows fields of a message (NXLog) and event rules: chosen messages by mail / webhook / ticket system.
+  // The rules travel to the standby; what they matched (event_rule_hits) stays with the installation, like the messages.
+  `ALTER TABLE events_in ADD COLUMN event_id INTEGER;
+   ALTER TABLE events_in ADD COLUMN channel TEXT NOT NULL DEFAULT '';
+   ALTER TABLE events_in ADD COLUMN account TEXT NOT NULL DEFAULT '';
+   CREATE TABLE event_rules (
+     id INTEGER PRIMARY KEY,
+     name TEXT NOT NULL,
+     enabled INTEGER NOT NULL DEFAULT 1,
+     match TEXT NOT NULL DEFAULT '{}',
+     channels TEXT NOT NULL DEFAULT '[]',
+     mode TEXT NOT NULL DEFAULT 'each',
+     digest_min INTEGER NOT NULL DEFAULT 15,
+     max_per_hour INTEGER NOT NULL DEFAULT 20,
+     created_at TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );
+   CREATE TABLE event_rule_hits (
+     id INTEGER PRIMARY KEY,
+     rule_id INTEGER NOT NULL,
+     event_id INTEGER NOT NULL REFERENCES events_in(id) ON DELETE CASCADE,
+     at TEXT NOT NULL,
+     sent_at TEXT,
+     failed INTEGER NOT NULL DEFAULT 0,
+     tries INTEGER NOT NULL DEFAULT 0,
+     next_try TEXT
+   );
+   CREATE INDEX event_rule_hits_open ON event_rule_hits(rule_id, sent_at);
+   CREATE INDEX event_rule_hits_event ON event_rule_hits(event_id);`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

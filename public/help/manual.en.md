@@ -158,7 +158,51 @@ iptables -t nat -A PREROUTING -p tcp --dport 514 -j REDIRECT --to-ports 1514
 
 Other ports: `WOMN_TRAP_PORT`, `WOMN_SYSLOG_PORT` (UDP), `WOMN_SYSLOG_TCP_PORT` and `WOMN_SYSLOG_TLS_PORT` in `.env`.
 
-**Syslog over TCP and TLS:** over UDP messages can get lost or be forged. For more reliability switch on **TCP** too (port 1514, RFC 6587 - both kinds of framing: length first or line by line) and/or **TLS** (port 6514, RFC 5425). TLS uses the certificate of this server; it can be downloaded under *Settings → Prometheus & Grafana* so the sender can check it (e.g. rsyslog: `StreamDriverAuthMode="x509/name"`). At most 10 connections per sender, 200 in all; an hour without a message ends the connection, so do messages that are too long or make no sense.
+**Syslog over TCP and TLS:** over UDP messages can get lost or be forged. For more reliability switch on **TCP** too (port 1514, RFC 6587 - both kinds of framing: length first or line by line) and/or **TLS** (port 6514, RFC 5425). TLS uses the certificate of this server; it can be downloaded under *Settings → Prometheus & Grafana* so the sender can check it (e.g. rsyslog: `StreamDriverAuthMode="x509/name"`). At most 10 connections per sender, 200 in all; an hour without a message ends the connection; a single message that is too long (over 8 KB) is skipped, nonsense lengths end the connection.
+
+### Windows events (NXLog)
+
+With [NXLog](https://nxlog.co) Windows servers and clients send their event log by syslog. WhatsOnMyNet recognises the **event id**, **log**, **source** and **account** in it and shows them below the text of the message - as in the event viewer. An ordinary NXLog configuration is enough; only the output points to WhatsOnMyNet and TCP port 1514 (switch on *Syslog over TCP*):
+
+```
+<Input in>
+    Module im_msvistalog
+</Input>
+
+<Output out>
+    Module om_tcp
+    Host   womn.example.local
+    Port   1514
+</Output>
+
+<Route r1>
+    Path in => out
+</Route>
+```
+
+Without `Exec` in the output NXLog sends time, computer, level, event id and text - source and log are missing then; rules recognise Windows events by their id then. To send them too, add to the output (the message stays readable):
+
+```
+    Exec   $Message = replace($Message, "\r\n", " ");
+    Exec   $Message = replace($Message, "\n", " ");
+    Exec   if not defined $Channel $Channel = "";
+    Exec   $Message = "[" + string($EventID) + "] [" + $Channel + "] " + $Message;
+    Exec   to_syslog_bsd();
+```
+
+`Exec $Message = to_json(); to_syslog_ietf();` (all fields as JSON) is understood too. The search finds an event id when only the number is entered.
+
+### Event rules: chosen messages by mail or to the ticket system
+
+Under *Messages → Event rules* you set which messages go where - **apart from the monitors**: a rule only sends to the recipients ticked in it, never to the default recipients. So "virus found" lands in the mailbox of the ticket system and not on the phone.
+
+- **Ready-made rules:** virus found (Defender 1116/1117), software restriction (865-868), AppLocker (8004/8007), user account locked (4740), member added to a security group (4728/4732/4756), security log cleared (1102), new service (7045), errors of a device (syslog). Everything can be changed afterwards.
+- **Conditions:** event ids (ranges too), source, log, sender (name, device or IP, parts too), words in the text, words that must not be there, kind and severity. All conditions given must match. If source and log are missing in the message (NXLog without `Exec`), the id decides.
+- **Test** shows which of the messages of the last 7 days the rule would have matched - before it is saved. At every message **Rule** turns it into a new rule.
+- **Sending:** *one by one* - one notification per message (with a ticket system: one ticket per event), at most as many per hour as set (default 20); what comes beyond follows collected after the collecting time. *Collected* - one notification with all messages once the oldest is as old as the collecting time (default 15 minutes).
+- **Nothing is lost:** every match is stored first and only marked done once sent. If a recipient cannot be reached it is tried again every 5 minutes - for an hour; the list shows waiting and undelivered messages.
+- The mail names rule, computer, event id and source in the subject, and sender, time, severity, log, account and the whole message in the text. A webhook gets the same as JSON (`rule`, `count`, `events`).
+- With failover only the active installation sends; the rules themselves go to the standby too.
 
 **Watching:** at every message **Watch** turns it into a monitor of the kind *Message (trap/syslog)*: from the same device (or any sender), trap or syslog, from which severity on, optionally with a text the message must contain. When a matching message comes in, the monitor alarms **at once** and stays down as long as set (default 15 minutes); if it comes again, the time starts over.
 
