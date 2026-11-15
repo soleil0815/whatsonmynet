@@ -136,6 +136,7 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
     eventRules.onEvent(row);
   } });
   const apiTokens = createApiTokens({ settings });
+  diagnostics.useSources({ events, eventRules, apiTokens });
   const ctx = { db, settings, events, eventRules, apiTokens, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
