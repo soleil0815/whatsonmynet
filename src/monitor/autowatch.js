@@ -27,7 +27,7 @@ export const DEVICE_PICKS = {
   nas: [['volume', 4, DATA_VOLUME], ['raid', 2], ['health', 1], ['temp', 1], ['upsPower', 1]],
   ups: [['upsPower', 1], ['upsCharge', 1], ['upsRuntime', 1]],
   switch: [],
-  host: [['hostOnline', 1], ['hostCpu', 1], ['hostMem', 1], ['hostDisk', 1, SYSTEM_DRIVE], ['hostTempMax', 1], ['servicesFailed', 1]],
+  host: [['hostOnline', 1], ['hostCpu', 1], ['hostMem', 1], ['hostDisk', 1, SYSTEM_DRIVE], ['hostTempMax', 1], ['servicesFailed', 1], ['localCheck', 20]],
 };
 const NODE_KINDS = ['pve', 'vmware', 'hyperv', 'xcpng', 'nutanix', 'ovirt', 'libvirt'];
 export function hostPicks(kind) {

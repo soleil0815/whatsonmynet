@@ -112,6 +112,8 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
       out.push({ metric: 'hostTempMax', key: '', name: hot.name, value: hot.c, unit: '°C', kind: 'number', op: 'ge', threshold: 85 });
       for (const tp of temps) out.push({ metric: 'hostTemp', key: tp.key, name: tp.name, value: tp.c, unit: '°C', kind: 'number', op: 'ge', threshold: tp.warn });
     }
+    // own checks (scripts in the checks folder of the machine)
+    for (const c of x.checks || []) out.push({ metric: 'localCheck', key: c.name, name: c.name, value: CHECK_STATE[c.status], unit: '', kind: 'state' });
   } else if (s.kind === 'switch') {
     for (const p of (s.data.ports || []).filter((x) => !x.lag)) {
       out.push({ metric: 'port', key: String(p.ifIndex), name: `${p.name}${p.alias ? ` (${p.alias})` : ''}`, value: p.status, unit: '', kind: 'state' });
@@ -195,6 +197,11 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
     case 'servicesFailed': { const f = (s.data.services || []).filter((v) => v.failed); val = num(f.length); if (f.length && compare(o.op, f.length, o.threshold)) return { ok: false, ms: f.length, message: `${label}: ${f.map((v) => v.display || v.name).slice(0, 5).join(', ')}`, data: valueData(f.length, '', o) }; break; }
     case 'service': { const v = (s.data.services || []).find((y) => y.name === o.key); if (!v) return { ok: false, ms: null, message: `${label}: not found` };
       return v.state === 'running' ? { ok: true, ms: null, message: `${label}: running`, data: { state: 'running' } } : { ok: false, ms: null, message: `${label}: ${v.state}`, data: { state: v.state === 'failed' ? 'failed' : 'stopped' } }; }
+    case 'localCheck': {
+      const c = (s.data.checks || []).find((y) => y.name === o.key);
+      if (!c) return { ok: false, ms: null, message: `${label}: not found - the check script no longer reports it`, data: { state: 'unknown' } };
+      return { ok: c.status === 0, ms: c.value === null ? null : Math.round(c.value), message: `${label}: ${CHECK_STATE[c.status].toUpperCase()}${c.text ? ` - ${c.text}` : ''}`, data: { state: CHECK_STATE[c.status] } };
+    }
     case 'portLoad': { const p = (s.data.ports || []).find((y) => String(y.ifIndex) === String(o.key)); if (!p) return { ok: false, ms: null, message: `${label}: not found` };
       // a port that is down carries nothing - whether it should be up, its own sensor says
       if (p.status !== 'up') return { ok: true, ms: 0, message: `${label}: no traffic (port ${p.status})`, data: valueData(0, '%', o) };
@@ -253,6 +260,8 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
 }
 
 /** What the overview shows next to a measured value: the value, its unit and the alarm limit (plus used/total etc.) */
+const CHECK_STATE = ['ok', 'warn', 'crit', 'unknown'];
+
 /** 123456789 → "123.5 Mbit/s" */
 export function bitRate(bps) {
   const n = Number(bps) || 0;
