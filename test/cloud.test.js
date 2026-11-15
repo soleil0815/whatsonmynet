@@ -227,7 +227,8 @@ test('The secret only goes to the provider: links in an answer to other hosts ar
     const r = await px.poll(h.id);
     assert.equal(r.last_ok, false);
     assert.match(r.last_error, /refused to send the account to evil\.example\.com/);
-    assert.equal(seen.includes('evil.example.com'), false);
+    // only the two addresses of Azure were contacted - the link elsewhere never was
+    assert.deepEqual([...new Set(seen)].sort(), ['login.microsoftonline.com', 'management.azure.com']);
   } finally { setCloudTransport(null); }
 });
 
