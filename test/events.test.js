@@ -134,6 +134,11 @@ test('event monitor: alarms on a matching message, quiet again after the hold ti
 });
 
 test('only from inventory devices when asked; each installation keeps its own messages', async () => {
+  const bad = await call('PUT', '/api/events/settings', { traps: false, syslog: false, winAllow: '1116, abc' });
+  assert.deepEqual([bad.status, bad.data.error.field], [400, 'winAllow']);
+  const tidy = await call('PUT', '/api/events/settings', { traps: false, syslog: false, winDeny: '8004 4624,4634' });
+  assert.equal(tidy.data.settings.winDeny, '8004, 4624, 4634');
+  assert.equal((await call('PUT', '/api/events/settings', { traps: false, syslog: false, winDeny: '' })).data.settings.winDeny, '');
   assert.equal((await call('PUT', '/api/events/settings', { traps: false, syslog: false, onlyKnown: true })).status, 200);
   assert.equal(ctx.events.receive('syslog', '10.77.0.1', { severity: 3, text: 'unknown sender' }), null);
   assert.ok(ctx.events.receive('syslog', '127.0.0.1', { severity: 3, text: 'known sender' }));

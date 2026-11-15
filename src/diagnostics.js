@@ -323,6 +323,7 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       const st = s.storage || {};
       out.receivers = Object.fromEntries(['traps', 'syslog', 'syslogTcp', 'syslogTls'].map((k) => [k, s[k] ? { on: !!s[k].on, port: s[k].port, error: an.anon(s[k].error || ''), connections: s[k].connections ?? null } : null]));
       out.skipped_too_long = s.skipped || 0;
+      out.filtered_by_event_id = s.filtered || 0;
       out.storage = { used: st.used, limit: st.limit, cap: st.cap, disk_short: !!st.diskShort, total: st.total, per_day: st.perDay, oldest: st.oldest, keep_days: st.keepDays,
         days_fit: st.daysFit, short: !!st.short, top_senders: (st.topSenders || []).map((x) => ({ name: an.anon(x.name), share: x.share })), top_events: st.topEvents || [] };
     }
@@ -344,7 +345,7 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
     out.event_monitors = db.prepare("SELECT COUNT(*) n, SUM(enabled) enabled FROM monitors WHERE type='event'").get();
     if (src.eventRules) {
       out.rules = src.eventRules.list().map((r) => ({ id: r.id, name: an.anon(r.name), enabled: r.enabled, mode: r.mode, digest_min: r.digest_min, max_per_hour: r.max_per_hour,
-        channels: r.channels, match: ruleMatchOut(r.match, an), hits24h: r.hits24h, open: r.open, failed24h: r.failed24h, last_hit: r.lastHit }));
+        channels: r.channels, match: ruleMatchOut(r.match, an), blocked_ids: r.blocked || [], hits24h: r.hits24h, open: r.open, failed24h: r.failed24h, last_hit: r.lastHit }));
     }
     out.rule_hits_period = q('SELECT COUNT(*) n, SUM(sent_at IS NOT NULL AND failed = 0) sent, SUM(failed) failed, SUM(sent_at IS NULL) open, MAX(tries) max_tries FROM event_rule_hits WHERE at >= ?')[0];
     if (src.apiTokens) out.metrics_keys = src.apiTokens.list().map((k) => ({ created_at: k.created_at, last_used: k.last_used }));

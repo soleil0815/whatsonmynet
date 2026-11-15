@@ -118,7 +118,7 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   // New devices and hosts get a first monitor and a few sensors by themselves
   const autoWatch = createAutoWatch({ db, settings, monitoring });
   // Event rules: chosen messages to chosen channels (mail, ticket system, webhook) - apart from the monitors
-  const eventRules = createEventRules({ db, channels });
+  const eventRules = createEventRules({ db, channels, settings });
   // Failover: what only runs on the installation that is active (alone, master, or a standby that has taken over)
   const failover = createFailover({ db, settings, dataDir,
     engines: [monitoring, nightly, printers, snmpDevices, reports, proxmox, autoWatch, eventRules],
