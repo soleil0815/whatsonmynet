@@ -83,6 +83,9 @@ const PATTERNS = [
   [/^offset ([+-]?\d+) ms · stratum (\d+)$/, 'Abweichung $1 ms · Stratum $2'],
   [/^server refuses \(kiss code (.*)\)$/, 'Server lehnt ab (Kiss-Code $1)'],
   [/^instance (\S+) not found or without TCP$/, 'Instanz $1 nicht gefunden oder ohne TCP'],
+  // switch ports
+  [/^no traffic \(port (\w+)\)$/, (_, st) => `kein Verkehr (Port ${WORDS[st] || st})`],
+  [/^measuring - value after the next query$/, 'wird gemessen - Wert nach der nächsten Abfrage'],
   // cloud accounts
   [/^no value while it does not run$/, 'kein Wert, solange sie nicht läuft'],
   [/^(\S+) - no check while it does not run$/, (_, st) => `${WORDS[st] || st} - keine Prüfung, solange sie nicht läuft`],
@@ -98,9 +101,9 @@ const PATTERNS = [
 ];
 const BITS = [[/, battery low/g, ', Akku schwach'], [/ (\d+) % worn/g, ' $1 % verschlissen'], [/ (\d+) reallocated sectors/g, ' $1 umgelagerte Sektoren'],
   [/ (\d+) min\)/g, ' $1 Min.)'], [/ - newest: /g, ' - neueste: '],
-  [/ · synchronized/g, ' · synchronisiert'], [/ · global catalog/g, ' · globaler Katalog'], [/ · encryption (off|on|required|not supported)/g, (_, x) => ` · Verschlüsselung ${{ off: 'aus', on: 'an', required: 'erforderlich', 'not supported': 'nicht unterstützt' }[x]}`],
+  [/ \(in ([\d.]+ \w?bit\/s), out ([\d.]+ \w?bit\/s)\)/g, ' (ein $1, aus $2)'], [/ · synchronized/g, ' · synchronisiert'], [/ · global catalog/g, ' · globaler Katalog'], [/ · encryption (off|on|required|not supported)/g, (_, x) => ` · Verschlüsselung ${{ off: 'aus', on: 'an', required: 'erforderlich', 'not supported': 'nicht unterstützt' }[x]}`],
   // decimal comma for measured values: 83.9 °C → 83,9 °C (not in addresses or versions)
-  [/(\d+)\.(\d+)(?= ?(°C|%|W|h|ms|RPM)\b|\s?°C)/g, '$1,$2']];
+  [/(\d+)\.(\d+)(?= ?(?:°C|%|W|h|ms|RPM)(?![A-Za-z])|\s?°C| [kMG]?bit\/s)/g, '$1,$2']];
 
 function part(s) {
   if (Object.hasOwn(WORDS, s)) return WORDS[s];

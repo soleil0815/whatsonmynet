@@ -16,6 +16,8 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 - Neu: Cloud - AWS, Microsoft Azure und Google Cloud über ein Konto, das nur lesen darf: VMs mit den Prüfungen des Anbieters (Status-Checks, Resource Health) und geplanten Wartungen, Datenbanken (RDS, Azure SQL/PostgreSQL/MySQL, Cloud SQL), Load Balancer, die Alarme des Anbieters und auf Wunsch die Kosten des Monats - mit Sensoren. Fehlende Rechte werden genau benannt
 - Neu: Meldungen der Geräte - WhatsOnMyNet empfängt SNMP-Traps (v1, v2c) und Syslog, ordnet sie dem Gerät zu und zeigt sie unter Überwachung → Meldungen. Mit „Überwachen“ wird aus einer Meldung ein Monitor, der sofort alarmiert, wenn sie wiederkommt. Aus, bis man es einschaltet; Ports 1162 und 1514 (Umleitung von 162/514 im Handbuch)
 - Neue Prüfarten: Mailserver (SMTP, IMAP, POP3 - STARTTLS/TLS und Ablauf des Zertifikats, ohne Anmeldung), DNS-Auflösung an einem bestimmten Server mit erwarteter Antwort, LDAP/Active Directory (rootDSE, „Domänencontroller nicht synchronisiert“), Zeitserver (NTP: synchronisiert, Abweichung) und Microsoft SQL Server (Version, auch benannte Instanzen)
+- Switches: Auslastung jedes Ports (ein/aus in Mbit/s und Prozent) aus den Byte-Zählern, mit Sensor „Auslastung Port …“ (Alarm ab 80 %) - kein Wert statt eines falschen nach einem Neustart des Switches
+- Deutsche Meldungen: Prozentwerte jetzt mit Komma (85,5 % statt 85.5 %)
 
 ## 0.26.0 - 2026-11-15
 
