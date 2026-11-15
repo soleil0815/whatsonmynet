@@ -162,6 +162,15 @@ Andere Ports: `WOMN_TRAP_PORT`, `WOMN_SYSLOG_PORT` (UDP), `WOMN_SYSLOG_TCP_PORT`
 
 **Syslog über TCP und TLS:** Über UDP können Meldungen verloren gehen oder gefälscht werden. Wer es zuverlässiger will, schaltet zusätzlich **TCP** (Port 1514, RFC 6587 - beide Arten der Trennung: Länge vorweg oder Zeile für Zeile) und/oder **TLS** (Port 6514, RFC 5425) ein. TLS nutzt das Zertifikat dieses Servers; es steht unter *Einstellungen → Prometheus & Grafana* zum Herunterladen, damit der Absender es prüfen kann (z. B. rsyslog: `StreamDriverAuthMode="x509/name"`). Je Absender höchstens 10 Verbindungen, insgesamt 200; eine Stunde ohne Meldung beendet die Verbindung; eine einzelne zu lange Meldung (über 8 KB) wird übersprungen, unsinnige Längenangaben beenden die Verbindung.
 
+### Ereignis-Konsole: Zählen, reguläre Ausdrücke, offene Ereignisse
+
+Ereignisregeln können mehr als „bei jedem Treffer eine Mail“:
+
+- **Zählen:** *Erst ab so vielen Treffern innerhalb von … Minuten*, auf Wunsch **je Absender** - z. B. 5 fehlgeschlagene SSH-Anmeldungen in 10 Minuten am selben Rechner. Dann geht **eine** Nachricht mit allen Treffern hinaus; weniger im Zeitfenster gehen still verloren. Danach wird neu gezählt.
+- **Regulärer Ausdruck** auf den Text (Groß-/Kleinschreibung egal), z. B. `Failed password|Invalid user` oder `Port (\d+) link down`. Vor dem Speichern wird er geprüft: Formen, die sich endlos verrennen können (eine wiederholte Gruppe, die sich selbst wiederholt oder Alternativen hat, Rückverweise), werden abgelehnt, und er wird in einem eigenen Prozess mit Zeitlimit an feindseligen Texten und echten Meldungen ausprobiert. Braucht er im Betrieb trotzdem einmal länger als 20 ms für eine Meldung, wird die Regel ausgeschaltet und zeigt den Grund.
+- **Offene Ereignisse** (*Als offenes Ereignis führen*): Der erste Treffer öffnet ein Ereignis und benachrichtigt; weitere zählen nur hoch, statt erneut zu melden. Jedes Ereignis gehört zu einem Absender und einem **Schlüssel** - der ersten Klammer des Ausdrucks, z. B. der Portnummer. Geschlossen wird es durch die **Gegenmeldung** (Wörter, Ereignisnummern oder Ausdruck - mit Klammer nur das Ereignis mit demselben Schlüssel, also „Port 7 link up“ schließt nur Port 7), von Hand, oder nach einer einstellbaren Zeit ohne neue Meldung. Auf Wunsch kommt bei der Gegenmeldung eine Entwarnung. Unter *Meldungen → Offen* stehen alle offenen Ereignisse; **Quittieren** heißt „gesehen, wird erledigt“.
+- Fertige Regeln dafür: SSH (5 in 10 Min. je Rechner), Windows-Anmeldefehler 4625 (10 in 10 Min. je Rechner), Switch-Port down (offen bis „up“), USV auf Batterie (offen bis Netzbetrieb).
+
 ### Windows-Ereignisse (NXLog)
 
 Mit [NXLog](https://nxlog.co) schicken Windows-Server und -Clients ihre Ereignisanzeige per Syslog. WhatsOnMyNet erkennt darin **Ereignisnummer**, **Protokoll**, **Quelle** und **Konto** und zeigt sie unter dem Meldungstext - so wie in der Ereignisanzeige. Es reicht eine gewöhnliche NXLog-Konfiguration; nur der Ausgang zeigt auf WhatsOnMyNet und TCP-Port 1514 (*Syslog über TCP* einschalten):
