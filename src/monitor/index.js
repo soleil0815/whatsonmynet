@@ -14,6 +14,8 @@ import { forgetMonitors } from '../lib/idlists.js';
 import { onIpMovedPaused } from '../devicechange.js';
 import { findSame } from './dedupe.js';
 import { explain } from './explain.js';
+import { isIP } from 'node:net';
+import { DNS_TYPES, MAIL_PORTS } from './protocols.js';
 
 const HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 const MAX_PARALLEL = 25;
@@ -40,7 +42,7 @@ export function certStep(days, thresholds) {
   return fit.length ? Math.min(...fit) : null;
 }
 
-export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb', 'event'];
+export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb', 'event', 'dns', 'mail', 'ldap', 'ntp', 'mssql'];
 export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'nodeTemp', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed', 'netOnline', 'netClients', 'netCpu', 'netMem', 'clientsTotal', 'netUpdates',
   'rfHealth', 'rfPower', 'rfFan', 'rfTemp', 'rfPsu', 'rfDrive', 'rfDriveLife', 'rfVolume', 'rfWatts',
   'cloudCheck', 'cloudCpu', 'dbState', 'dbCpu', 'dbStorage', 'lbUnhealthy', 'cloudAlarms', 'cloudResources', 'costMonth'];
@@ -270,6 +272,43 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       v.port = null;
       // the first matching message is the alarm - there is nothing to try again
       if (!old) v.fail_threshold = 1;
+    } else if (['dns', 'mail', 'ldap', 'ntp', 'mssql'].includes(type)) {
+      // Protocol checks (protocols.js): the host, its port (default per protocol) and what to ask
+      if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
+      v.target = target.toLowerCase();
+      const prev = old && old.type === type ? parse(old.options, {}) : {};
+      const o = input.options && typeof input.options === 'object' ? input.options : {};
+      const pick = (k, list, def) => (list.includes(o[k] ?? prev[k]) ? (o[k] ?? prev[k]) : def);
+      const rawPort = int(String(input.port ?? (old?.type === type ? old.port : '') ?? ''));
+      if (rawPort && (rawPort < 1 || rawPort > 65535)) throw new HttpError(400, 'err.port', undefined, 'port');
+      if (type === 'dns') {
+        const server = line(o.server ?? prev.server ?? '', 64);
+        if (server && !(isIPv4(server) || isIP(server) === 6)) throw new HttpError(400, 'err.dnsServer', undefined, 'server');
+        const rtype = pick('rtype', DNS_TYPES, 'A');
+        if (rtype === 'PTR' && !isIPv4(v.target)) throw new HttpError(400, 'err.host', undefined, 'target');
+        v.options = JSON.stringify({ server, rtype, expect: line(o.expect ?? prev.expect ?? '', 200) });
+        v.port = rawPort || 53;
+      } else if (type === 'mail') {
+        const proto = pick('proto', ['smtp', 'imap', 'pop3'], 'smtp');
+        const mode = pick('tls', ['starttls', 'implicit', 'none'], 'starttls');
+        v.options = JSON.stringify({ proto, tls: mode });
+        v.port = rawPort || MAIL_PORTS[proto][mode];
+      } else if (type === 'ldap') {
+        const mode = pick('tls', ['ldaps', 'starttls', 'none'], 'ldaps');
+        v.options = JSON.stringify({ tls: mode });
+        v.port = rawPort || (mode === 'ldaps' ? 636 : 389);
+      } else if (type === 'ntp') {
+        const max = Number(o.maxOffsetMs ?? prev.maxOffsetMs ?? 1000);
+        if (!Number.isInteger(max) || max < 1 || max > 600000) throw new HttpError(400, 'err.ntpOffset', undefined, 'maxOffsetMs');
+        v.options = JSON.stringify({ maxOffsetMs: max });
+        v.port = rawPort || 123;
+      } else {
+        const instance = line(o.instance ?? prev.instance ?? '', 16);
+        if (instance && !/^[A-Za-z0-9_$-]{1,16}$/.test(instance)) throw new HttpError(400, 'err.sqlInstance', undefined, 'instance');
+        v.options = JSON.stringify({ instance });
+        // a named instance without port: its port comes from the SQL Browser
+        v.port = rawPort || (instance ? null : 1433);
+      }
     } else if (type === 'snmp') {
       if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
       v.target = target.toLowerCase();

@@ -76,6 +76,12 @@ Ein Monitor prüft regelmäßig (20 Sekunden bis 24 Stunden) und meldet sich ers
 - **Docker-Container** (über einen Socket-Proxy, *Einstellungen → Docker*): läuft, startet ständig neu, Healthcheck „unhealthy“
 - **Datenbanken**: MariaDB/MySQL, PostgreSQL, Redis/Valkey - Anmeldung und eine harmlose Abfrage
 - **Netzlaufwerk (SMB)**: Windows-Freigaben und NAS - siehe unten
+- **Mailserver**: SMTP, IMAP oder POP3 - Begrüßung, STARTTLS bzw. TLS und Ablauf des Zertifikats; ohne Anmeldung, es wird keine Mail verschickt
+- **DNS-Auflösung**: ein Name (A, AAAA, MX, TXT, SRV …) an einem bestimmten DNS-Server, optional mit erwarteter Antwort - z. B. ob der interne DNS die richtige IP liefert
+- **LDAP / Active Directory**: liest die rootDSE ohne Anmeldung (LDAPS oder StartTLS) - meldet, wenn ein Domänencontroller nicht synchronisiert ist; dazu der Ablauf des Zertifikats
+- **Zeitserver (NTP)**: antwortet, ist selbst synchronisiert, und seine Uhr weicht höchstens so viele Millisekunden von der des WhatsOnMyNet-Servers ab
+- **Microsoft SQL Server**: Anmeldevorbereitung (PRELOGIN) ohne Konto - Version und Verschlüsselung; benannte Instanzen über den SQL Browser
+- **Meldung (Trap/Syslog)**: siehe *Meldungen der Geräte*
 - **Sensor** (Wert eines Geräts, Rechners mit Skript, Hypervisors oder Controllers) und **SNMP-Wert (OID)** - siehe unten
 
 Auf der Geräteseite legt „Überwachen“ einen passenden Monitor an. Ändert sich die IP eines Geräts, ziehen seine Monitore mit. Ausnahme: Ein Monitor mit gespeichertem Passwort (Datenbank, Netzlaufwerk) wird pausiert, denn das Passwort wurde für die alte Adresse eingegeben und geht nie ungefragt an eine andere. Er zeigt „Gerät hat neue IP - Passwort bitte neu eingeben“, seine Benachrichtigungskanäle bekommen eine Meldung, und im Bearbeiten-Dialog ist die neue Adresse schon eingetragen: Mit dem Passwort gespeichert läuft er wieder. Kehrt das Gerät zur alten Adresse zurück, läuft er von selbst weiter. Benennst du das Gerät um, heißen seine Monitore und Sensoren auch gleich so, damit ein Alarm den aktuellen Namen nennt (ein Monitor mit selbst vergebenem Namen ohne den Gerätenamen bleibt, wie er ist).
