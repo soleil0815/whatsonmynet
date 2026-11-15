@@ -6,6 +6,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Ereignis-Konsole: Regeln zählen („ab 5 Treffern in 10 Minuten“, auf Wunsch je Absender), prüfen reguläre Ausdrücke (vor dem Speichern auf gefährliche Formen und Tempo geprüft, eine im Betrieb zu langsame Regel schaltet sich ab) und führen offene Ereignisse: der erste Treffer meldet, weitere zählen nur hoch; Quittieren, Schließen durch die Gegenmeldung (z. B. „Port 7 link up“ schließt nur Port 7), von Hand oder nach Zeit; Ansicht Meldungen → Offen. Neue fertige Regeln: SSH- und Windows-Anmeldefehler, Switch-Port down, USV auf Batterie
 - Meldungen: was gespeichert wird - für alle ab einer Schwere (Empfang einstellen) und je Absender eigener Filter (alles, ab Warnung, ab Fehler … oder stumm); stumme Absender bleiben mit der Zahl der verworfenen Meldungen in der Liste
 - Windows-Ereignisse nach Nummer filtern (Empfang einstellen): nur bestimmte Nummern annehmen und/oder bestimmte nie (z. B. 8004 Gruppenrichtlinie, 4624/4634 An- und Abmeldung); Regeln für nicht angenommene Nummern werden abgelehnt, die Regelliste warnt
 - Umlaute: UTF-8 und Codepage von Windows gemischt in einer Zeile werden beide richtig gelesen („NT-AUTORITÄT … für“ statt „… fÃ¼r“)

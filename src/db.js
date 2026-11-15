@@ -686,6 +686,8 @@ export const MIGRATIONS = [
      updated_at TEXT NOT NULL,
      updated_by TEXT NOT NULL DEFAULT ''
    );`,
+  // 32: event rules with counting, a regular expression and open events (their settings - the state is in the messages file)
+  `ALTER TABLE event_rules ADD COLUMN options TEXT NOT NULL DEFAULT '{}';`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached
@@ -736,6 +738,32 @@ const EVENTS_SCHEMA = [
    INSERT OR REPLACE INTO ev.event_senders(source_ip, device_id, host, first_at, last_at, last_id)
      SELECT e.source_ip, e.device_id, e.host, g.first_at, e.at, e.id
      FROM (SELECT source_ip, MIN(at) first_at, MAX(id) last_id FROM ev.events_in GROUP BY source_ip) g JOIN ev.events_in e ON e.id = g.last_id;`,
+  // 3: counting in rules (hits held until N came in the time window, per sender if wanted) and open events: one per
+  // rule, sender and key (the first group of the expression, e.g. the port), acknowledged by a user, closed by the
+  // counter-message ("link up"), by hand or after a while without news
+  `ALTER TABLE ev.event_rule_hits ADD COLUMN held INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE ev.event_rule_hits ADD COLUMN grp TEXT NOT NULL DEFAULT '';
+   CREATE INDEX IF NOT EXISTS ev.event_rule_hits_held ON event_rule_hits(rule_id, held, grp, at);
+   CREATE TABLE IF NOT EXISTS ev.event_open (
+     id INTEGER PRIMARY KEY,
+     rule_id INTEGER NOT NULL,
+     source_ip TEXT NOT NULL,
+     key TEXT NOT NULL DEFAULT '',
+     state TEXT NOT NULL,
+     first_at TEXT NOT NULL,
+     last_at TEXT NOT NULL,
+     count INTEGER NOT NULL DEFAULT 1,
+     first_event INTEGER,
+     last_event INTEGER,
+     ack_by TEXT NOT NULL DEFAULT '',
+     ack_at TEXT,
+     closed_at TEXT,
+     closed_how TEXT NOT NULL DEFAULT '',
+     closed_by TEXT NOT NULL DEFAULT '',
+     close_event INTEGER
+   );
+   CREATE INDEX IF NOT EXISTS ev.event_open_live ON event_open(rule_id, source_ip, key, state);
+   CREATE INDEX IF NOT EXISTS ev.event_open_closed ON event_open(closed_at);`,
 ];
 export const eventsFile = (dbFile) => (dbFile === ':memory:' ? ':memory:' : path.join(path.dirname(dbFile), 'events.sqlite'));
 

@@ -56,6 +56,8 @@ const TEXT = {
     rule: '📋 {rule}: {who} - {what}',
     ruleMany: '📋 {rule}: {n} Meldungen seit {since}',
     ruleEvent: 'Ereignis {id}',
+    ruleCount: '📋 {rule}: {n} Treffer in {min} Min.{who}',
+    ruleClosed: '✅ {rule}: wieder in Ordnung - {who}{key}',
     ruleFrom: 'Absender', ruleSeverity: 'Schweregrad', ruleLog: 'Protokoll', ruleSource: 'Quelle', ruleAccount: 'Konto',
     ruleMore: '… und {n} weitere (Überwachung → Meldungen)',
     sev: ['Notfall', 'Alarm', 'kritisch', 'Fehler', 'Warnung', 'Hinweis', 'Info', 'Debug'],
@@ -97,6 +99,8 @@ const TEXT = {
     rule: '📋 {rule}: {who} - {what}',
     ruleMany: '📋 {rule}: {n} messages since {since}',
     ruleEvent: 'Event {id}',
+    ruleCount: '📋 {rule}: {n} matches in {min} min{who}',
+    ruleClosed: '✅ {rule}: fine again - {who}{key}',
     ruleFrom: 'Sender', ruleSeverity: 'Severity', ruleLog: 'Log', ruleSource: 'Source', ruleAccount: 'Account',
     ruleMore: '… and {n} more (Monitoring → Messages)',
     sev: ['emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug'],
@@ -141,6 +145,8 @@ export function eventText(ev, lang = 'de') {
     case 'logRule': {
       const rule = ev.rule?.name || '';
       const list = ev.events || [];
+      if (ev.closed && list[0]) return fill(T.ruleClosed, { rule, who: ruleWho(list[0]), key: ev.key ? ` (${ev.key})` : '' });
+      if (ev.threshold) return fill(T.ruleCount, { rule, n: ev.count || list.length, min: ev.threshold.minutes, who: ev.threshold.who ? ` - ${ev.threshold.who}` : '' });
       if ((ev.count || list.length) > 1 || !list[0]) {
         return fill(T.ruleMany, { rule, n: ev.count || list.length, since: new Date(ev.since || ev.at || Date.now()).toLocaleTimeString(L === 'en' ? 'en-GB' : 'de-DE', { timeZone: process.env.TZ || undefined, hour: '2-digit', minute: '2-digit' }) });
       }
@@ -168,7 +174,7 @@ function details(ev, lang) {
   if (ev.kind === 'logRule') {
     const list = ev.events || [];
     const when = (e, opts) => new Date(e.at).toLocaleString(lang === 'en' ? 'en-GB' : 'de-DE', { timeZone: process.env.TZ || undefined, ...opts });
-    if ((ev.count || list.length) <= 1 && list[0]) {
+    if ((ev.count || list.length) <= 1 && list[0] && !ev.threshold) {
       const e = list[0];
       return [`${T.ruleFrom}: ${[ruleWho(e), e.source_ip !== ruleWho(e) ? e.source_ip : ''].filter(Boolean).join(' · ')}`, `${T.time}: ${when(e)}`,
         `${T.ruleSeverity}: ${T.sev[e.severity] || e.severity}`, e.event_id !== null && e.event_id !== undefined ? fill(T.ruleEvent, { id: e.event_id }) : '',
@@ -312,7 +318,7 @@ export function createChannels(db, mailer, settings = null) {
     if (PROVIDERS[row.type]) {
       const textPlain = text.replace(/^\S+\s/, '');
       const urgent = ev.kind === 'down' || ev.kind === 'escalate' || (ev.kind === 'failover' && ev.what !== 'back') || (ev.kind === 'cert' && ev.certDays < 0) || (ev.kind === 'supply' && ev.empty) || (ev.kind === 'nas' && !ev.problem?.solved);
-      const good = ev.kind === 'up' || ev.kind === 'test' || (ev.kind === 'failover' && ev.what === 'back') || (ev.kind === 'nas' && !!ev.problem?.solved);
+      const good = ev.kind === 'up' || ev.kind === 'test' || (ev.kind === 'logRule' && !!ev.closed) || (ev.kind === 'failover' && ev.what === 'back') || (ev.kind === 'nas' && !!ev.problem?.solved);
       try {
         await sendProvider(row.type, c, { title: sender || 'WhatsOnMyNet', sender, text: `${head}${text}`, textPlain, more, body: `${text}${more ? `\n${more}` : ''}`, full: `${head}${text}${more ? `\n${more}` : ''}`, urgent, good });
       } catch (e) { throw new Error(`${row.type}: ${e.message}`); }

@@ -1,7 +1,7 @@
 // Messages devices sent by themselves (SNMP traps, syslog): the newest first, filtered and searched; one click turns a
 // message into an event monitor. Admins switch the receivers on here.
 import { h, mount, modal, toast, fmtDate } from '../dom.js';
-import { get, put } from '../api.js';
+import { get, put, post } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, fail, navigate } from '../app.js';
@@ -29,6 +29,8 @@ export async function renderEvents(main) {
   const remember = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private window */ } };
   let view = 'senders';
   try { view = localStorage.getItem('ev.view') === 'all' ? 'all' : 'senders'; } catch { /* default */ }
+  if (new URLSearchParams(location.search).get('view') === 'open') view = 'open';
+  let openList = []; let showClosed = false;
   let source = null; // { ip, label }
   const fromUrl = new URLSearchParams(location.search).get('from');
   if (fromUrl) source = { ip: fromUrl, label: fromUrl };
@@ -36,7 +38,7 @@ export async function renderEvents(main) {
   const q = h('input', { type: 'search', placeholder: t('ev.search'), 'aria-label': t('ev.search') });
   const seg = h('div', { class: 'seg', role: 'group', 'aria-label': t('ev.view') });
   const sourceChip = h('div');
-  const setView = (v) => { view = v; source = null; remember('ev.view', v); q.value = ''; history.replaceState(null, '', '/events'); load(); };
+  const setView = (v) => { view = v; source = null; if (v !== 'open') remember('ev.view', v); q.value = ''; history.replaceState(null, '', v === 'open' ? '/events?view=open' : '/events'); load(); };
   const pick = (s) => { source = { ip: s.source_ip, label: s.device_name || s.host || s.source_ip }; q.value = ''; history.replaceState(null, '', `/events?from=${encodeURIComponent(s.source_ip)}`); load(); };
   const sevSel = h('select', { 'aria-label': t('ev.severity') }, [[7, t('ev.f.all')], [4, t('ev.f.warning')], [3, t('ev.f.err')], [2, t('ev.f.crit')]].map(([v, l]) => h('option', { value: String(v) }, l)));
   const chips = h('div', { class: 'inv-chips', role: 'group' });
@@ -46,6 +48,17 @@ export async function renderEvents(main) {
   const more = h('div', { class: 'actions', style: { justifyContent: 'center' } });
 
   async function load(append = false) {
+    if (view === 'open') {
+      try {
+        const [r, s] = await Promise.all([get(`/events/open${showClosed ? '?all=1' : ''}`), info ? null : get('/events/senders')]);
+        if (s) info = s;
+        info = { ...info, openEvents: r.open };
+        openList = r.list;
+        if (!body.isConnected) return;
+        draw(false);
+      } catch (e) { fail(e); }
+      return;
+    }
     if (view === 'senders' && !source) {
       try {
         const r = await get(`/events/senders?${new URLSearchParams({ q: q.value.trim() })}`);
@@ -92,8 +105,34 @@ export async function renderEvents(main) {
         st.short ? t('ev.shortHelp') : ''].filter(Boolean).join(' ')))) : null);
     const chip = (key, label) => h('button', { type: 'button', class: `fchip${kind === key ? ' on' : ''}`, 'aria-pressed': String(kind === key), onclick: () => { kind = key; load(); } }, label);
     const bySender = view === 'senders' && !source;
-    mount(seg, ...[['senders', t('ev.bySender')], ['all', t('ev.allMessages')]].map(([v, l]) => h('button', { type: 'button', class: (v === 'senders' ? view === 'senders' || source : view === 'all' && !source) ? 'on' : '',
+    const openN = info?.openEvents || 0;
+    mount(seg, ...[['senders', t('ev.bySender')], ['all', t('ev.allMessages')], ['open', openN ? t('ev.openN', { n: openN }) : t('ev.openView')]].map(([v, l]) => h('button', { type: 'button',
+      class: (v === 'senders' ? view === 'senders' || (source && view !== 'open') : v === 'all' ? view === 'all' && !source : view === 'open') ? 'on' : '',
       'aria-pressed': String(v === view), onclick: () => setView(v) }, l)));
+    if (view === 'open') {
+      mount(chips, h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: showClosed, onchange: (e) => { showClosed = e.currentTarget.checked; load(); } }), t('ev.showClosed')));
+      sevSel.hidden = true; q.hidden = true; q.parentElement.hidden = true;
+      mount(sourceChip, null);
+      const stateBadge = (o) => (o.state === 'open' ? h('span', { class: 'badge badge-bad' }, t('ev.st.open')) : o.state === 'ack' ? h('span', { class: 'badge badge-warn' }, t('ev.st.ack'))
+        : h('span', { class: 'badge' }, t(`ev.closed.${o.closed_how || 'user'}`)));
+      mount(listBox, openList.length ? h('div', { class: 'panel' }, h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-table' },
+        h('thead', {}, h('tr', {}, h('th', {}, t('ev.openWhat')), h('th', {}, t('ev.from')), h('th', {}, t('ev.since')), h('th', {}, t('ev.lastMessage')), h('th', {}))),
+        h('tbody', {}, openList.map((o) => h('tr', {},
+          h('td', {}, h('span', { class: 'name' }, o.rule_name || '?'), o.key ? h('span', { class: 'muted' }, ` · ${o.key}`) : null, h('div', {}, stateBadge(o)),
+            o.ack_by ? h('div', { class: 'sub' }, t('ev.ackBy', { who: o.ack_by, at: fmtDate(o.ack_at, getLang()) })) : null),
+          h('td', {}, h('button', { type: 'button', class: 'ev-name-btn', onclick: () => { view = 'senders'; pick({ source_ip: o.source_ip, device_name: o.device_name, host: o.host }); } }, o.device_name || o.host || o.source_ip),
+            h('div', { class: 'sub mono' }, o.source_ip)),
+          h('td', { class: 'small nowrap' }, fmtDate(o.first_at, getLang()), h('div', { class: 'sub' }, t(o.count === 1 ? 'ev.dayCount1' : 'ev.dayCount', { n: o.count }))),
+          h('td', { class: 'ev-text small' }, h('div', { class: 'muted nowrap' }, fmtDate(o.last_at, getLang())), String(o.last_text || '').slice(0, 200)),
+          h('td', { class: 'min nowrap' }, isReadOnly() || o.state === 'closed' ? null : [
+            o.state === 'open' ? btn(t('ev.ack'), { class: 'btn btn-sm', onclick: async () => { try { await post(`/events/open/${o.id}/ack`); load(); } catch (e) { fail(e); } } }, 'check') : null,
+            btn(t('ev.close'), { class: 'btn btn-sm btn-ghost', onclick: async () => { try { await post(`/events/open/${o.id}/close`); toast(t('ev.closedToast')); load(); } catch (e) { fail(e); } } })])))))))
+        : h('div', { class: 'panel panel-pad muted' }, t('ev.noOpen')));
+      mount(more, null);
+      lockForEditing(body);
+      return;
+    }
+    q.hidden = false; q.parentElement.hidden = false;
     mount(chips, bySender ? null : [chip('', t('all')), chip('trap', 'Traps'), chip('syslog', 'Syslog')]);
     sevSel.hidden = bySender;
     q.placeholder = bySender ? t('ev.searchSenders') : t('ev.search');
