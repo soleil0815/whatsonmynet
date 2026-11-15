@@ -24,12 +24,12 @@ const root = document.getElementById('app');
 let cleanup = null;
 
 export function applyTheme(pref) {
-  try { localStorage.setItem('womn-theme', pref || 'light'); } catch { /* storage blocked */ }
+  try { localStorage.setItem('womn-theme', pref || 'system'); } catch { /* storage blocked */ }
   // light unless dark is chosen (or "like the system" on a dark system)
   const dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
 }
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(state.user?.theme || 'light'));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(state.user?.theme || 'system'));
 
 export function navigate(path, { replace = false } = {}) {
   if (replace) history.replaceState({}, '', path); else history.pushState({}, '', path);
