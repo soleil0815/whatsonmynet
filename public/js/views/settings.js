@@ -12,6 +12,7 @@ import { hardwareDetail } from './hardware.js';
 import { SECTIONS, settingsNav } from './settingsnav.js';
 import { failoverSettings, lockForEditing } from './failover.js';
 import { diagnosticsSettings } from './diagnostics.js';
+import { checkText } from '../checktext.js';
 
 export async function renderSettings(main, section = 'general') {
   if (!state.user.isAdmin) { navigate('/', { replace: true }); return; }
@@ -462,7 +463,8 @@ function proxmoxDetail(x) {
     cmdBox(PX_FIX[d.kind === 'pbs' ? 'pbs' : 'pve'](user, x.token_id)),
     h('p', { class: 'small', style: { margin: '6px 0 0' } }, t('px.missingThen')))) : null;
   if (!d.kind) return head;
-  if (d.cloud) return cloudDetail(x, d, head);
+  if (d.cloud) return d.kind === 'm365' ? m365Detail(x, d, head) : cloudDetail(x, d, head);
+  if (d.kind === 'veeam') return veeamDetail(d, head);
   if (d.netdevices) return netDetail(d, head);
   // Cluster: which node answered, and which nodes can stand in
   const via = x.last_ok && d.via ? h('div', { class: 'note warn' }, t('px.via', { node: d.via.node, url: x.url, error: d.via.error || '' })) : null;
@@ -596,19 +598,19 @@ function confirmServerCert(r, kind) {
 }
 
 // Hypervisors beside Proxmox: asked through their API (account with read rights) or sending on their own (script)
-const VIRT = ['pve', 'pbs', 'vmware', 'xcpng', 'hyperv', 'nutanix', 'ovirt', 'libvirt'];
+const VIRT = ['pve', 'pbs', 'veeam', 'vmware', 'xcpng', 'hyperv', 'nutanix', 'ovirt', 'libvirt'];
 const PUSH = ['hyperv', 'libvirt'];
 const NET = ['unifi', 'omada', 'mikrotik'];
 const HW = ['redfish'];
-const CLOUD = ['aws', 'azure', 'gcp'];
-const VIRT_URL = { redfish: 'https://idrac-srv01.firma.local', unifi: 'https://unifi.firma.local', omada: 'https://omada.firma.local:8043', mikrotik: 'https://router.firma.local', vmware: 'https://vcenter.firma.local', xcpng: 'https://xcp-master.firma.local', nutanix: 'https://prism.firma.local:9440', ovirt: 'https://engine.firma.local' };
-const VIRT_USER = { redfish: 'whatsonmynet', unifi: 'whatsonmynet', omada: 'whatsonmynet', mikrotik: 'whatsonmynet', vmware: 'whatsonmynet@vsphere.local', xcpng: 'root', nutanix: 'whatsonmynet', ovirt: 'whatsonmynet@internal' };
+const CLOUD = ['aws', 'azure', 'gcp', 'm365'];
+const VIRT_URL = { veeam: 'https://vbr01.firma.local:9419', redfish: 'https://idrac-srv01.firma.local', unifi: 'https://unifi.firma.local', omada: 'https://omada.firma.local:8043', mikrotik: 'https://router.firma.local', vmware: 'https://vcenter.firma.local', xcpng: 'https://xcp-master.firma.local', nutanix: 'https://prism.firma.local:9440', ovirt: 'https://engine.firma.local' };
+const VIRT_USER = { veeam: 'FIRMA\\womn-viewer', redfish: 'whatsonmynet', unifi: 'whatsonmynet', omada: 'whatsonmynet', mikrotik: 'whatsonmynet', vmware: 'whatsonmynet@vsphere.local', xcpng: 'root', nutanix: 'whatsonmynet', ovirt: 'whatsonmynet@internal' };
 
 /** Step 1: what kind of host */
 function pickVirt(then, kinds = VIRT) {
   if (kinds.length === 1) { then(kinds[0]); return; }
   const dlg = modal(t(kinds === NET ? 'net.add' : kinds === CLOUD ? 'cloud.add' : 'virt.add'), h('div', { class: 'pick-grid' }, kinds.map((k) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); then(k); } },
-    h('span', { class: 'pick-ico', html: icon(k === 'pbs' ? 'download' : NET.includes(k) ? 'accesspoint' : CLOUD.includes(k) ? 'cloud' : 'hypervisor') }),
+    h('span', { class: 'pick-ico', html: icon(k === 'pbs' || k === 'veeam' ? 'download' : NET.includes(k) ? 'accesspoint' : CLOUD.includes(k) ? 'cloud' : 'hypervisor') }),
     h('span', { class: 'pick-title' }, t(`virt.k.${k}`)),
     h('span', { class: 'pick-text' }, t(`virt.what.${k}`))))), { wide: true });
 }
@@ -681,13 +683,15 @@ const money = (amount, currency) => {
 function editCloud(x, kind, reload) {
   const o = x?.options || {};
   const steps = [1, 2, 3, 4].map((n) => t(`cl.${kind}.s${n}`)).filter((s) => !/^cl\./.test(s));
+  const M365_PERMS = ['ServiceHealth.Read.All', 'Organization.Read.All'];
   const guide = h('div', { class: 'px-setup' }, h('h3', { class: 'px-step' }, t('virt.step1', { kind: t(`virt.k.${kind}`) })),
     h('ol', { class: 'px-steps' }, steps.map((s, i) => h('li', {}, rich(s),
       kind === 'aws' && i === 1 ? cmdBox(AWS_POLICY.split('\n')) : null,
-      kind === 'gcp' && i === 1 ? cmdBox(GCP_ROLES) : null))));
+      kind === 'gcp' && i === 1 ? cmdBox(GCP_ROLES) : null,
+      kind === 'm365' && i === 1 ? cmdBox(M365_PERMS) : null))));
   const secretField = (label, hint, extra = {}) => field(label, input('secret', '', { type: 'password', autocomplete: 'new-password', required: !x?.has_secret, class: 'mono',
     placeholder: x?.has_secret ? '••••••' : '', ...extra }), x?.has_secret ? t('set.smtpPasswordSet') : hint);
-  const costs = kind === 'gcp' ? null : field(t('cl.costs'), h('input', { type: 'checkbox', name: 'costs', checked: !!o.costs }), t(`cl.${kind}.costsHint`));
+  const costs = kind === 'gcp' || kind === 'm365' ? null : field(t('cl.costs'), h('input', { type: 'checkbox', name: 'costs', checked: !!o.costs }), t(`cl.${kind}.costsHint`));
   let fields;
   if (kind === 'aws') {
     fields = [
@@ -696,6 +700,12 @@ function editCloud(x, kind, reload) {
         secretField(t('cl.aws.secret'), t('cl.aws.secretHint'))),
       field(t('cl.regions'), input('regions', (o.regions || []).join(', '), { required: true, class: 'mono', placeholder: 'eu-central-1, eu-west-1' }), t('cl.regionsHint')),
       costs];
+  } else if (kind === 'm365') {
+    fields = [
+      h('div', { class: 'form-grid' },
+        field(t('cl.azure.tenant'), input('tenant', o.tenant || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: 'firma.onmicrosoft.com' }), t('cl.azure.tenantHint')),
+        field(t('cl.azure.client'), input('token_id', x?.token_id || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: '00000000-0000-0000-0000-000000000000' }))),
+      secretField(t('cl.azure.secret'), t('cl.azure.secretHint'))];
   } else if (kind === 'azure') {
     fields = [
       h('div', { class: 'form-grid' },
@@ -730,6 +740,45 @@ function editCloud(x, kind, reload) {
   }, actions: [
     btn(t('cancel'), { onclick: () => m.close() }),
     h('button', { class: 'btn btn-primary', type: 'submit' }, t('pxs.save'))] });
+}
+
+/** Veeam: jobs with their last result and next run, repositories with their space */
+function veeamDetail(d, head) {
+  const tone = (r, st) => (st === 'disabled' ? '' : { success: 'ok', warning: 'warn', failed: 'bad' }[String(r).toLowerCase()] || '');
+  const res = (j) => (j.status === 'disabled' ? t('vm.disabled') : t(`vm.r.${String(j.result).toLowerCase()}`) === `vm.r.${String(j.result).toLowerCase()}` ? j.result : t(`vm.r.${String(j.result).toLowerCase()}`));
+  return h('div', {}, head,
+    d.version ? h('p', { class: 'muted small', style: { margin: '0 0 10px' } }, `${d.name || 'Veeam Backup & Replication'} · ${d.version}`) : null,
+    h('h3', { class: 'sub-title' }, t('vm.jobs', { n: (d.jobs || []).length })),
+    (d.jobs || []).length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('cl.name')), h('th', {}, t('vm.result')), h('th', { class: 'hide-sm' }, t('vm.lastRun')), h('th', { class: 'hide-sm' }, t('vm.nextRun')))),
+      h('tbody', {}, d.jobs.map((j) => h('tr', {},
+        h('td', {}, h('span', { class: 'name' }, j.name), h('div', { class: 'sub' }, [j.type, j.repo, j.status === 'running' ? t('vm.running') : ''].filter(Boolean).join(' · '))),
+        h('td', {}, h('span', { class: `badge ${tone(j.result, j.status) ? `badge-${tone(j.result, j.status)}` : ''}` }, res(j))),
+        h('td', { class: 'hide-sm small' }, j.lastRun ? fmtDate(j.lastRun, getLang()) : '–'),
+        h('td', { class: 'hide-sm small' }, j.nextRun ? fmtDate(j.nextRun, getLang()) : '–')))))) : h('p', { class: 'muted small' }, t('vm.noJobs')),
+    h('h3', { class: 'sub-title' }, t('vm.repos')),
+    h('div', { class: 'supplies' }, (d.repos || []).map((r) => meter(`${r.name}${r.online ? '' : ` (${t('vm.offline')})`}`, r.pct, `${bytes(r.used)} / ${bytes(r.total)} · `))));
+}
+
+/** Microsoft 365: services with problems first, open incidents and advisories, subscriptions and free licences */
+function m365Detail(x, d, head) {
+  const missing = x.last_ok && (d.missing || []).length ? h('div', { class: 'note warn' }, h('div', { style: { minWidth: 0, flex: 1 } },
+    h('strong', {}, t('cl.missing', { list: d.missing.join(', ') })), h('p', { style: { margin: '4px 0 0' } }, rich(t('cl.m365.missingFix'))))) : null;
+  const svc = [...(d.services || [])].sort((a, b) => a.good - b.good || a.name.localeCompare(b.name));
+  const lic = d.licenses || [];
+  return h('div', {}, head, missing,
+    h('h3', { class: 'sub-title' }, t('m365.services')),
+    h('div', { class: 'chips' }, svc.map((s) => h('span', { class: `badge ${s.good ? 'badge-ok' : 'badge-bad'}`, title: checkText(s.status, getLang()) }, s.name))),
+    (d.issues || []).length ? [h('h3', { class: 'sub-title' }, t('m365.issues', { n: d.issues.length })), h('ul', { class: 'port-macs' }, d.issues.slice(0, 30).map((i) => h('li', {},
+      h('span', { class: `badge ${i.kind === 'incident' ? 'badge-bad' : ''}` }, t(`m365.k.${i.kind}`) === `m365.k.${i.kind}` ? i.kind : t(`m365.k.${i.kind}`)),
+      h('strong', { class: 'small' }, i.service), h('span', { class: 'small' }, i.title), h('span', { class: 'muted small mono' }, i.id))))] : null,
+    lic.length ? [h('h3', { class: 'sub-title' }, t('m365.licenses')), h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('cl.name')), h('th', {}, t('net.state')), h('th', {}, t('m365.used')), h('th', {}, t('m365.free')))),
+      h('tbody', {}, lic.map((l) => h('tr', {},
+        h('td', {}, h('span', { class: 'name' }, l.name), l.name !== l.sku ? h('div', { class: 'sub mono' }, l.sku) : null),
+        h('td', {}, h('span', { class: `badge ${l.status === 'Enabled' ? 'badge-ok' : l.status === 'Warning' ? 'badge-warn' : 'badge-bad'}` }, checkText(l.status, getLang()))),
+        h('td', { class: 'mono small' }, `${l.used} / ${l.total}`),
+        h('td', { class: `mono small${l.free <= 0 ? ' bad-text' : ''}` }, String(l.free)))))))] : null);
 }
 
 /** A cloud account: what the provider reports as broken first, then instances, databases, load balancers, costs */
@@ -968,6 +1017,29 @@ function hostSummary(x) {
     figures.push(t('vo.fig.stores', { n: (d.datastores || []).length, pct: maxPct }), t('vo.fig.groups', { n: (d.groups || []).length }));
     n.stores = (d.datastores || []).length; n.storesFull = full.length; n.backupHosts = 1; n.backupIssues = old + crit;
     deep.push(...(d.datastores || []).map((y) => y.name), ...(d.groups || []).map((g) => `${g.type}/${g.id} ${g.comment || ''}`));
+  } else if (d.kind === 'm365') {
+    const badSvc = (d.services || []).filter((s) => !s.good).length;
+    if (badSvc) bad(tn('vo.m365Services', { n: badSvc }));
+    const inc = (d.issues || []).filter((i) => i.kind === 'incident').length;
+    if (inc) warn(tn('vo.m365Incidents', { n: inc }));
+    const lic = (d.licenses || []).filter((l) => l.status !== 'Enabled');
+    if (lic.length) (lic.some((l) => l.status !== 'Warning') ? bad : warn)(tn('vo.m365Skus', { n: lic.length }));
+    figures.push(t('vo.fig.services', { ok: (d.services || []).length - badSvc, n: (d.services || []).length }));
+    if ((d.licenses || []).length) figures.push(t('vo.fig.licenses', { free: d.licenses.reduce((a, l) => a + Math.max(0, l.free), 0) }));
+    deep.push(d.account || '', ...(d.services || []).map((s) => s.name), ...(d.issues || []).map((i) => `${i.id} ${i.title}`), ...(d.licenses || []).map((l) => `${l.name} ${l.sku}`));
+  } else if (d.kind === 'veeam') {
+    const failed = (d.jobs || []).filter((j) => j.status !== 'disabled' && String(j.result).toLowerCase() === 'failed').length;
+    const warned = (d.jobs || []).filter((j) => j.status !== 'disabled' && String(j.result).toLowerCase() === 'warning').length;
+    if (failed) bad(tn('vo.jobsFailed', { n: failed }));
+    if (warned) warn(tn('vo.jobsWarning', { n: warned }));
+    const full = (d.repos || []).filter((r) => r.pct >= 85);
+    if (full.length) (full.some((r) => r.pct >= 95) ? bad : warn)(tn('vo.storeFull', { n: full.length }));
+    const off = (d.repos || []).filter((r) => !r.online).length;
+    if (off) bad(tn('vo.reposOffline', { n: off }));
+    figures.push(t('vo.fig.jobs', { n: (d.jobs || []).length }));
+    if ((d.repos || []).length) figures.push(t('vo.fig.repos', { n: d.repos.length, pct: Math.max(0, ...d.repos.map((r) => r.pct || 0)) }));
+    Object.assign(n, { stores: (d.repos || []).length, storesFull: full.length, backupHosts: 1, backupIssues: failed + warned });
+    deep.push(d.name || '', ...(d.jobs || []).map((j) => j.name), ...(d.repos || []).map((r) => r.name));
   } else if (d.cloud) {
     const guests = d.guests || []; const dbs = d.databases || [];
     const on = guests.filter((g) => g.status === 'running').length;
