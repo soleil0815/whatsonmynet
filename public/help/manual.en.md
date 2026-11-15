@@ -148,6 +148,8 @@ Many devices report a problem by themselves the moment it happens: a switch repo
 1. *Monitoring → Messages* → **Switch on receiving**: tick SNMP traps and/or syslog. Traps are only taken with a known community (empty = the communities of the scan).
 2. In the devices enter WhatsOnMyNet as the target - trap receiver or syslog server.
 
+![Messages of the devices](img/events-en.png)
+
 **Ports:** WhatsOnMyNet runs without root rights and therefore listens on **UDP 1162** (traps) and **UDP 1514** (syslog), not on 162/514. Either enter these ports in the devices, or redirect once on the Docker host:
 
 ```
@@ -195,6 +197,8 @@ Without `Exec` in the output NXLog sends time, computer, level, event id and tex
 ### Event rules: chosen messages by mail or to the ticket system
 
 Under *Messages → Event rules* you set which messages go where - **apart from the monitors**: a rule only sends to the recipients ticked in it, never to the default recipients. So "virus found" lands in the mailbox of the ticket system and not on the phone.
+
+![Event rules](img/eventrules-en.png)
 
 - **Ready-made rules:** virus found (Defender 1116/1117), software restriction (865-868), AppLocker (8004/8007), user account locked (4740), member added to a security group (4728/4732/4756), security log cleared (1102), new service (7045), errors of a device (syslog). Everything can be changed afterwards.
 - **Conditions:** event ids (ranges too), source, log, sender (name, device or IP, parts too), words in the text, words that must not be there, kind and severity. All conditions given must match. If source and log are missing in the message (NXLog without `Exec`), the id decides.
@@ -419,6 +423,8 @@ Sensors (*Add sensor*): overall health, server switched on, every fan, temperatu
 ## Cloud: AWS, Azure, Google Cloud
 
 WhatsOnMyNet watches what runs in the cloud through the API of the provider - with an account that may **only read**, every 5 minutes. Nothing is installed or changed there. *Monitoring → Cloud* → **Connect cloud account**; the dialog shows the steps for each provider.
+
+![Cloud](img/cloud-en.png)
 
 **What is read:**
 

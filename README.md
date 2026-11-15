@@ -39,6 +39,8 @@ Netzwerk-Inventar, Monitoring und Sensoren in einem Container: WhatsOnMyNet scan
 | Toner, Trommel, Zähler | Ports und angeschlossene Geräte | Proxmox, Hyper-V und mehr |
 | ![Ausfallsicherung](public/help/img/failover-de.png) | ![Bericht](public/help/img/report-de.png) | ![Benachrichtigungen](public/help/img/settings-de.png) |
 | Ausfallsicherung mit Standby | Geplante Berichte per E-Mail | Benachrichtigungen und Eskalation |
+| ![Meldungen](public/help/img/events-de.png) | ![Ereignisregeln](public/help/img/eventrules-de.png) | ![Cloud](public/help/img/cloud-de.png) |
+| Syslog, Traps und Windows-Ereignisse | Ereignisregeln: Mail oder Ticket | AWS, Azure, Google Cloud |
 
 > Gebaut für den eigenen Einsatz. Wer WhatsOnMyNet nutzt, tut das in eigener Verantwortung.
 
@@ -240,6 +242,29 @@ Unter *Überwachung → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Beric
 - **Inhalt**: Drucker (Toner je Farbe, Trommel, Resttoner, Seitenzähler, Störungen), NAS (Belegung, Platten, Temperatur), Switches und Netzlaufwerke (freier Platz); auf Standorte oder **einzelne Geräte** beschränkbar (z. B. ein Bericht nur für den Drucker im Sekretariat), wahlweise nur Geräte mit Handlungsbedarf. Drucker zeigen die gedruckten Seiten gesamt und im Berichtszeitraum. Was bald nachbestellt werden muss, ist rot markiert.
 - **Neutral**: Die Mail enthält keinen Link und keinen Programmnamen - nur deinen Absendernamen, Betreff (`{kw}`, `{datum}`), Einleitung, die Geräte und deinen Gruß, z. B. „Ihre freundliche IT“.
 - Zeitplan täglich, wöchentlich oder monatlich; Vorschau, „Test an mich“ und „Jetzt senden“ direkt in den Einstellungen.
+
+## Meldungen, Windows-Ereignisse und Ereignisregeln (ab Version 0.27)
+
+- **Empfang** von SNMP-Traps (v1, v2c) und Syslog über UDP, TCP (RFC 6587) und TLS (RFC 5425, mit dem Zertifikat dieses Servers); jede Meldung wird über die Adresse dem Gerät im Inventar zugeordnet. Einschalten unter *Überwachung → Meldungen → Empfang einstellen*.
+- **Windows-Ereignisse** über [NXLog](https://nxlog.co): Ereignisnummer, Protokoll, Quelle und Konto werden erkannt und unter der Meldung gezeigt. Eine gewöhnliche NXLog-Konfiguration reicht, nur der Ausgang zeigt auf WhatsOnMyNet (TCP 1514).
+- **Überwachen** macht aus einer Meldung einen Monitor, der sofort alarmiert. **Ereignisregeln** schicken ausgewählte Meldungen - getrennt von den Monitoren und nie an die Standard-Empfänger - per Mail, Webhook oder ans Ticketsystem: fertige Regeln für Virenfund (Defender), Software-Einschränkung, AppLocker, gesperrtes Konto und mehr, einzeln mit Obergrenze je Stunde oder gesammelt; nichts geht verloren, wenn ein Empfänger kurz nicht erreichbar ist.
+- Die Meldungen liegen in einer **eigenen Datei** (`data/events.sqlite`): 30 Tage in höchstens 2 GB, bei knappem Datenträger bleiben mindestens 10 % frei. Die Seite zeigt, wie lange der Platz reicht und wer die meisten Meldungen schickt.
+
+![Ereignisregeln](public/help/img/eventrules-de.png)
+
+## Cloud, Microsoft 365 und Veeam (ab Version 0.27)
+
+- **AWS, Azure, Google Cloud** über ein Konto, das nur lesen darf: VMs mit den Prüfungen des Anbieters, Datenbanken, Load Balancer, Alarme und Kosten; Sensoren für alles davon.
+- **Microsoft 365** über Microsoft Graph: Zustand der Dienste, offene Störungen, Abonnements und freie Lizenzen.
+- **Veeam Backup & Replication** (ab 12, REST): Jobs mit letztem Ergebnis und nächstem Lauf, Repositories mit Platz.
+
+## Prometheus, Grafana und eigene Prüfungen (ab Version 0.27)
+
+- **/metrics** für Prometheus mit dem Zustand aller Monitore und Sensoren - nur mit Schlüssel, nur lesend; ein fertiges **Grafana-Dashboard** zum Importieren unter *Einstellungen → Prometheus & Grafana*.
+- **Eigene Prüfungen** (Local Checks im Checkmk-Format): Skripte im Ordner `checks` auf Windows- und Linux-Rechnern melden OK, Warnung, kritisch oder unbekannt - es laufen nur Dateien, die niemand sonst ändern kann, jede mit Zeitlimit.
+- **Weitere Prüfarten**: Mailserver (SMTP, IMAP, POP3 mit STARTTLS/TLS und Ablauf des Zertifikats), DNS an einem bestimmten Server, LDAP/Active Directory, Zeitserver (NTP), Microsoft SQL Server; Auslastung jedes Switch-Ports.
+
+Einzelheiten zu allem stehen im Handbuch.
 
 ## HTTPS und Zertifikat
 
