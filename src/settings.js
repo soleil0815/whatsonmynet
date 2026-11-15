@@ -62,7 +62,7 @@ export const DEFAULTS = {
   'smtp.from': '',
   'smtp.allowSelfSigned': false,
   // Backups
-  'backup.keep': 7,
+  'backup.keep': 10,
   // Messages devices send by themselves (SNMP traps, syslog) - off until switched on
   'events.traps': false,
   'events.syslog': false,

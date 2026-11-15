@@ -66,6 +66,9 @@ test('anonymised by default: no real name, address or secret anywhere in the pac
   const dev = JSON.parse(p.files['geraete.json'])[0];
   assert.equal(dev.name, 'GERAET-001');
   // messages: receivers, space, what came in by format, the rules - senders as placeholders, words only counted
+  const env = JSON.parse(p.files['umgebung.json']);
+  assert.equal(env.database.backupKeep, 10);
+  assert.ok(env.database.backupFiles === null || typeof env.database.backupFiles.compressed === 'number');
   const m = JSON.parse(p.files['meldungen.json']);
   assert.deepEqual(Object.keys(m.receivers), ['traps', 'syslog', 'syslogTcp', 'syslogTls']);
   assert.equal(m.storage.total, 2);

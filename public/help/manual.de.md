@@ -643,8 +643,8 @@ Beim Koppeln übernimmt der Standby **alle Daten des Masters** (Geräte, Monitor
 
 ## Sicherung und Updates
 
-- Einmal am Tag sichert WhatsOnMyNet die Datenbank nach `data/backups/` (das erste Mal eine Stunde nach dem Start); vor jedem Update der Datenbank zusätzlich.
-- *Einstellungen → Sicherung*: Sicherung herunterladen, jetzt sichern, Sicherung einspielen (der aktuelle Stand wird vorher gesichert, dann startet das Programm neu).
+- Einmal am Tag sichert WhatsOnMyNet die Datenbank komprimiert nach `data/backups/` (`whatsonmynet-….sqlite.gz`, das erste Mal eine Stunde nach dem Start); vor jedem Update der Datenbank zusätzlich. Aufbewahrt werden standardmäßig die 10 neuesten (*Einstellungen → Allgemein*), von den Kopien vor Updates und vor dem Einspielen je die 10 neuesten. Ältere unkomprimierte Sicherungen werden einmal komprimiert.
+- *Einstellungen → Sicherung*: Sicherung herunterladen, jetzt sichern, Sicherung einspielen - `.sqlite` oder `.sqlite.gz` (der aktuelle Stand wird vorher gesichert, dann startet das Programm neu). Zum Öffnen von Hand: `gunzip -k whatsonmynet-….sqlite.gz`.
 - **Bewahre `data/secret.key` (bzw. `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
 - Updates: in Dockhand/Watchtower oder `docker compose pull && docker compose up -d`. Einmal im Monat erscheint ein Sicherheits-Update mit neuen Paketen.
 
