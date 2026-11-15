@@ -822,3 +822,4 @@ td.nowrap { white-space: nowrap; }
 .ev-toolbar select { width: auto; flex: 0 0 auto; }
 .ev-table .ev-text { min-width: 260px; overflow-wrap: anywhere; }
 .ev-table .nowrap { white-space: nowrap; }
+.port-sq.busy { box-shadow: inset 0 -4px 0 var(--new-fill); }
