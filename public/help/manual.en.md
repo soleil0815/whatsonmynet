@@ -162,6 +162,15 @@ Other ports: `WOMN_TRAP_PORT`, `WOMN_SYSLOG_PORT` (UDP), `WOMN_SYSLOG_TCP_PORT` 
 
 **Syslog over TCP and TLS:** over UDP messages can get lost or be forged. For more reliability switch on **TCP** too (port 1514, RFC 6587 - both kinds of framing: length first or line by line) and/or **TLS** (port 6514, RFC 5425). TLS uses the certificate of this server; it can be downloaded under *Settings → Prometheus & Grafana* so the sender can check it (e.g. rsyslog: `StreamDriverAuthMode="x509/name"`). At most 10 connections per sender, 200 in all; an hour without a message ends the connection; a single message that is too long (over 8 KB) is skipped, nonsense lengths end the connection.
 
+### Event console: counting, regular expressions, open events
+
+Event rules can do more than "a mail at every match":
+
+- **Counting:** *only from this many matches within … minutes*, **per sender** if wanted - e.g. 5 failed SSH logons in 10 minutes on the same computer. Then **one** notification with all matches goes out; fewer in the window are dropped silently. Counting then starts again.
+- **Regular expression** on the text (case does not matter), e.g. `Failed password|Invalid user` or `Port (\d+) link down`. It is checked before saving: shapes that can backtrack without end (a repeated group that repeats itself or has alternatives, backreferences) are refused, and it is tried in a separate process with a time limit on hostile texts and real messages. Should it still take longer than 20 ms on a message while running, the rule is switched off and shows why.
+- **Open events** (*Keep as an open event*): the first match opens an event and notifies; further ones only count up instead of notifying again. Each event belongs to a sender and a **key** - the first group of the expression, e.g. the port number. It is closed by the **counter-message** (words, event ids or expression - with a group only the event with the same key, so "Port 7 link up" only closes port 7), by hand, or after a time without a new message. On request an all-clear comes with the counter-message. *Messages → Open* lists all open events; **Acknowledge** means "seen, being dealt with".
+- Ready-made rules for it: SSH (5 in 10 min per computer), Windows failed logons 4625 (10 in 10 min per computer), switch port down (open until "up"), UPS on battery (open until back on mains).
+
 ### Windows events (NXLog)
 
 With [NXLog](https://nxlog.co) Windows servers and clients send their event log by syslog. WhatsOnMyNet recognises the **event id**, **log**, **source** and **account** in it and shows them below the text of the message - as in the event viewer. An ordinary NXLog configuration is enough; only the output points to WhatsOnMyNet and TCP port 1514 (switch on *Syslog over TCP*):

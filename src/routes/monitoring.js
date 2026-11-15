@@ -155,7 +155,7 @@ export function createMonitoringApi(ctx) {
     onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, maxGb: Number(settings.get('events.maxGb')) || 2, minSeverity: Number(settings.get('events.minSeverity') ?? 7), winAllow: String(settings.get('events.winAllow') || ''), winDeny: String(settings.get('events.winDeny') || ''), trapPort: config.trapPort, syslogPort: config.syslogPort });
   r.get('/events', editor, unscoped, (req, res) => {
     const q = req.query || {};
-    res.json({ status: ctx.events.status(), settings: eventSettings(),
+    res.json({ status: ctx.events.status(), settings: eventSettings(), openEvents: ctx.eventRules.openCount(),
       list: ctx.events.list({ q: String(q.q ?? ''), kind: String(q.kind ?? ''), maxSeverity: q.maxSeverity ?? 7, device: q.device || null, source: String(q.source ?? ''), before: q.before || null, limit: q.limit || 200 }) });
   });
   // What is kept of one sender (admins, like the receiving settings): min severity 0-7, -1 = nothing, null = as for all
@@ -170,7 +170,7 @@ export function createMonitoringApi(ctx) {
     res.json({ ok: true });
   });
   // the overview by sender (the list of all messages floods quickly)
-  r.get('/events/senders', editor, unscoped, (req, res) => res.json({ status: ctx.events.status(), settings: eventSettings(), senders: ctx.events.senders({ q: String(req.query?.q ?? '') }) }));
+  r.get('/events/senders', editor, unscoped, (req, res) => res.json({ status: ctx.events.status(), settings: eventSettings(), openEvents: ctx.eventRules.openCount(), senders: ctx.events.senders({ q: String(req.query?.q ?? '') }) }));
   r.put('/events/settings', admin, (req, res) => {
     const b = req.body || {};
     const keep = Number(b.keepDays ?? settings.get('events.keepDays'));
@@ -210,17 +210,26 @@ export function createMonitoringApi(ctx) {
 
   // Event rules: chosen messages to chosen channels (mail, ticket system, webhook) - for editors, like monitors
   r.get('/event-rules', editor, unscoped, (req, res) => res.json(ctx.eventRules.list()));
-  r.post('/event-rules/test', editor, unscoped, (req, res) => res.json(ctx.eventRules.test(req.body?.match || {})));
-  r.post('/event-rules', editor, unscoped, (req, res) => {
+  r.post('/event-rules/test', editor, unscoped, async (req, res) => {
+    await ctx.eventRules.checkTimes({ match: req.body?.match || {} });
+    res.json(ctx.eventRules.test(req.body?.match || {}));
+  });
+  r.post('/event-rules', editor, unscoped, async (req, res) => {
+    await ctx.eventRules.checkTimes(req.body || {});
     const x = ctx.eventRules.create(req.body || {});
     audit(req, 'eventrule.create', x.name);
     res.status(201).json(x);
   });
-  r.put('/event-rules/:id', editor, unscoped, (req, res) => {
+  r.put('/event-rules/:id', editor, unscoped, async (req, res) => {
+    await ctx.eventRules.checkTimes(req.body || {});
     const x = ctx.eventRules.update(idParam(req), req.body || {});
     audit(req, 'eventrule.update', `${x.name}${x.enabled ? '' : ' (off)'}`);
     res.json(x);
   });
+  // open events: the list, acknowledge, close (editors - like the rules)
+  r.get('/events/open', editor, unscoped, (req, res) => res.json({ list: ctx.eventRules.openEvents({ all: req.query?.all === '1' }), open: ctx.eventRules.openCount() }));
+  r.post('/events/open/:id/ack', editor, unscoped, (req, res) => { ctx.eventRules.ack(idParam(req), who(req)); audit(req, 'eventopen.ack', req.params.id); res.json({ ok: true }); });
+  r.post('/events/open/:id/close', editor, unscoped, (req, res) => { ctx.eventRules.close(idParam(req), who(req)); audit(req, 'eventopen.close', req.params.id); res.json({ ok: true }); });
   r.delete('/event-rules/:id', editor, unscoped, (req, res) => {
     const id = idParam(req);
     const name = ctx.eventRules.get(id)?.name || id;
