@@ -2,7 +2,7 @@
 // The newest version first. Entries of 'next' belong to the version being built: in a released image they are shown
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
-  { version: 'next', de: [
+  { version: '0.30.0', date: '2026-11-15', de: [
     'Ereignis-Konsole: Regeln zählen („ab 5 Treffern in 10 Minuten“, auf Wunsch je Absender), prüfen reguläre Ausdrücke (vor dem Speichern auf gefährliche Formen und Tempo geprüft, eine im Betrieb zu langsame Regel schaltet sich ab) und führen offene Ereignisse: der erste Treffer meldet, weitere zählen nur hoch; Quittieren, Schließen durch die Gegenmeldung (z. B. „Port 7 link up“ schließt nur Port 7), von Hand oder nach Zeit; Ansicht Meldungen → Offen. Neue fertige Regeln: SSH- und Windows-Anmeldefehler, Switch-Port down, USV auf Batterie',
     'Meldungen: was gespeichert wird - für alle ab einer Schwere (Empfang einstellen) und je Absender eigener Filter (alles, ab Warnung, ab Fehler … oder stumm); stumme Absender bleiben mit der Zahl der verworfenen Meldungen in der Liste',
     'Windows-Ereignisse nach Nummer filtern (Empfang einstellen): nur bestimmte Nummern annehmen und/oder bestimmte nie (z. B. 8004 Gruppenrichtlinie, 4624/4634 An- und Abmeldung); Regeln für nicht angenommene Nummern werden abgelehnt, die Regelliste warnt',
