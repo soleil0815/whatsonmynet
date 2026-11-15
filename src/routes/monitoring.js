@@ -152,11 +152,22 @@ export function createMonitoringApi(ctx) {
   // Messages devices sent (SNMP traps, syslog): the list for editors; switching the receivers on for admins
   const eventSettings = () => ({ traps: !!settings.get('events.traps'), syslog: !!settings.get('events.syslog'), syslogTcp: !!settings.get('events.syslogTcp'), syslogTls: !!settings.get('events.syslogTls'),
     syslogTcpPort: config.syslogTcpPort, syslogTlsPort: config.syslogTlsPort, communitiesSet: !!settings.get('events.communities'),
-    onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, maxGb: Number(settings.get('events.maxGb')) || 2, winAllow: String(settings.get('events.winAllow') || ''), winDeny: String(settings.get('events.winDeny') || ''), trapPort: config.trapPort, syslogPort: config.syslogPort });
+    onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, maxGb: Number(settings.get('events.maxGb')) || 2, minSeverity: Number(settings.get('events.minSeverity') ?? 7), winAllow: String(settings.get('events.winAllow') || ''), winDeny: String(settings.get('events.winDeny') || ''), trapPort: config.trapPort, syslogPort: config.syslogPort });
   r.get('/events', editor, unscoped, (req, res) => {
     const q = req.query || {};
     res.json({ status: ctx.events.status(), settings: eventSettings(),
       list: ctx.events.list({ q: String(q.q ?? ''), kind: String(q.kind ?? ''), maxSeverity: q.maxSeverity ?? 7, device: q.device || null, source: String(q.source ?? ''), before: q.before || null, limit: q.limit || 200 }) });
+  });
+  // What is kept of one sender (admins, like the receiving settings): min severity 0-7, -1 = nothing, null = as for all
+  r.put('/events/senders/filter', admin, (req, res) => {
+    const b = req.body || {};
+    const ip = String(b.source ?? '').trim();
+    if (!/^[0-9a-fA-F:.]{2,64}$/.test(ip)) throw new HttpError(400, 'err.badRequest', 'source', 'source');
+    const min = b.min === null || b.min === '' || b.min === undefined ? null : Number(b.min);
+    if (min !== null && (!Number.isInteger(min) || min < -1 || min > 7)) throw new HttpError(400, 'err.badRequest', 'min', 'min');
+    ctx.events.setSenderFilter(ip, min, who(req));
+    audit(req, 'events.senderFilter', `${ip}: ${min === null ? 'as for all' : min === -1 ? 'muted' : `from severity ${min}`}`);
+    res.json({ ok: true });
   });
   // the overview by sender (the list of all messages floods quickly)
   r.get('/events/senders', editor, unscoped, (req, res) => res.json({ status: ctx.events.status(), settings: eventSettings(), senders: ctx.events.senders({ q: String(req.query?.q ?? '') }) }));
@@ -173,6 +184,11 @@ export function createMonitoringApi(ctx) {
     settings.set('events.onlyKnown', !!b.onlyKnown);
     settings.set('events.keepDays', keep);
     settings.set('events.maxGb', Math.round(maxGb * 10) / 10);
+    if (b.minSeverity !== undefined) {
+      const ms = Number(b.minSeverity);
+      if (!Number.isInteger(ms) || ms < 0 || ms > 7) throw new HttpError(400, 'err.badRequest', 'minSeverity', 'minSeverity');
+      settings.set('events.minSeverity', ms);
+    }
     // Windows event ids: "1116, 4740, 865-868" - stored in the same tidy form the rules use
     for (const [field, key] of [['winAllow', 'events.winAllow'], ['winDeny', 'events.winDeny']]) {
       if (b[field] === undefined) continue;

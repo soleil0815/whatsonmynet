@@ -5,7 +5,7 @@ import { get, put } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, fail, navigate } from '../app.js';
-import { pageHead, field, input, btn, formData } from './common.js';
+import { pageHead, field, input, select, btn, formData } from './common.js';
 import { openMonitorForm } from './monitoring.js';
 import { lockForEditing, isReadOnly } from './failover.js';
 import { openRuleForm } from './eventrules.js';
@@ -13,6 +13,9 @@ import { openRuleForm } from './eventrules.js';
 export const SEV = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'];
 const sevTone = (s) => (s <= 3 ? 'bad' : s === 4 ? 'warn' : s === 5 ? '' : 'muted');
 export const sevLabel = (s) => t(`ev.sev.${SEV[s]}`);
+// what is kept: 7 everything … 2 critical and worse, -1 nothing
+const keepOptions = () => [['7', t('ev.keep.all')], ['6', t('ev.keep.noDebug')], ['5', t('ev.keep.notice')], ['4', t('ev.keep.warning')], ['3', t('ev.keep.err')], ['2', t('ev.keep.crit')]];
+const keepLabel = (n) => (n === -1 ? t('ev.keep.none') : (keepOptions().find(([v]) => Number(v) === n) || [])[1] || '');
 const gb = (b) => (b < 1024 ** 3 ? `${Math.max(0.1, b / 1024 ** 2).toLocaleString(getLang(), { maximumFractionDigits: b < 10 * 1024 ** 2 ? 1 : 0 })} MB` : `${(b / 1024 ** 3).toLocaleString(getLang(), { maximumFractionDigits: 1 })} GB`);
 
 export async function renderEvents(main) {
@@ -102,15 +105,18 @@ export async function renderEvents(main) {
         h('thead', {}, h('tr', {}, h('th', {}, t('ev.from')), h('th', {}, t('ev.lastMessage')), h('th', { class: 'nowrap' }, t('ev.last24')), h('th', {}))),
         h('tbody', {}, senders.map((s) => h('tr', {},
           h('td', {}, h('button', { type: 'button', class: 'ev-name-btn', onclick: () => pick(s) }, s.device_name || s.host || s.source_ip),
-            h('div', { class: 'sub mono' }, [s.source_ip, s.host && s.host !== s.device_name ? s.host : ''].filter(Boolean).join(' · '))),
-          h('td', { class: 'ev-text' }, h('div', { class: 'small' }, h('span', { class: 'nowrap muted' }, `${fmtDate(s.last_at, getLang())} `),
+            h('div', { class: 'sub mono' }, [s.source_ip, s.host && s.host !== s.device_name ? s.host : ''].filter(Boolean).join(' · ')),
+            s.filter !== null && s.filter !== undefined ? h('div', {}, h('span', { class: `badge${s.filter === -1 ? ' badge-warn' : ''}`, title: t('ev.filterHint') }, s.filter === -1 ? t('ev.muted') : t('ev.keepsFrom', { what: keepLabel(s.filter) }))) : null,
+            s.dropped ? h('div', { class: 'sub' }, t('ev.droppedSince', { n: s.dropped.toLocaleString(getLang()) })) : null),
+          h('td', { class: 'ev-text' }, h('div', { class: 'small' }, h('span', { class: 'nowrap muted' }, s.last_at ? `${fmtDate(s.last_at, getLang())} ` : `${t('ev.nothingKept')} `),
             s.last_severity !== null ? h('span', { class: `badge ${sevTone(s.last_severity) === 'muted' ? '' : `badge-${sevTone(s.last_severity)}`}` }, sevLabel(s.last_severity)) : null),
             h('div', { class: 'small' }, s.last_event_id !== null && s.last_event_id !== undefined ? `${t('ev.eventId', { id: s.last_event_id })}: ` : s.last_app ? `${s.last_app}: ` : '',
               String(s.last_text || '').length > 160 ? `${String(s.last_text).slice(0, 159)}…` : s.last_text || '')),
           h('td', { class: 'nowrap small' }, t(s.day === 1 ? 'ev.dayCount1' : 'ev.dayCount', { n: s.day }),
             s.err ? h('div', {}, h('span', { class: 'badge badge-bad' }, t(s.err === 1 ? 'ev.errCount1' : 'ev.errCount', { n: s.err }))) : null,
             s.warn - s.err > 0 ? h('div', {}, h('span', { class: 'badge badge-warn' }, t(s.warn - s.err === 1 ? 'ev.warnCount1' : 'ev.warnCount', { n: s.warn - s.err }))) : null),
-          h('td', { class: 'min nowrap' }, btn(t('ev.showMessages'), { class: 'btn btn-sm btn-ghost', onclick: () => pick(s) }, 'inventory'))))))))
+          h('td', { class: 'min nowrap' }, btn(t('ev.showMessages'), { class: 'btn btn-sm btn-ghost', onclick: () => pick(s) }, 'inventory'),
+            admin && !isReadOnly() ? btn(t('ev.filter'), { class: 'btn btn-sm btn-ghost', title: t('ev.filterHint'), onclick: () => senderFilter(s) }, 'settings') : null)))))))
         : h('div', { class: 'panel panel-pad muted' }, off ? t('ev.noneOff') : q.value ? t('ev.noMatch') : t('ev.none')));
       mount(more, null);
       lockForEditing(body);
@@ -152,6 +158,18 @@ export async function renderEvents(main) {
     const what = r.event_id !== null && r.event_id !== undefined ? `${t('ev.eventId', { id: r.event_id })}${r.app ? ` ${r.app.replace(/^Microsoft-Windows-/, '')}` : ''}` : `${r.device_name || r.source_ip}: ${r.app || t('ev.message')}`;
     openRuleForm(null, () => navigate('/events/rules'), { name: what.slice(0, 120), match });
   }
+  // What is kept of one sender: as for all, from a severity on, or nothing
+  function senderFilter(s) {
+    const cfg = info?.settings || {};
+    const sel = select('min', [['', t('ev.keep.asAll', { what: keepLabel(Number(cfg.minSeverity ?? 7)) })], ...keepOptions(), ['-1', t('ev.keep.none')]],
+      s.filter === null || s.filter === undefined ? '' : String(s.filter));
+    const form = h('form', { class: 'form' },
+      h('p', { style: { margin: 0 } }, h('strong', {}, s.device_name || s.host || s.source_ip), ' ', h('span', { class: 'muted mono small' }, s.source_ip)),
+      field(t('ev.keepWhat'), sel, t('ev.filterHint')));
+    const m = modal(t('ev.filterTitle'), form, { onSubmit: async () => {
+      try { await put('/events/senders/filter', { source: s.source_ip, min: sel.value === '' ? null : Number(sel.value) }); m.close(); toast(t('saved')); load(); } catch (e) { fail(e); }
+    }, actions: [btn(t('cancel'), { onclick: () => m.close() }), h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
+  }
   function settingsDialog(cfg) {
     const traps = h('input', { type: 'checkbox', name: 'traps', checked: cfg.traps });
     const syslog = h('input', { type: 'checkbox', name: 'syslog', checked: cfg.syslog });
@@ -163,6 +181,7 @@ export async function renderEvents(main) {
       field(t('ev.s.syslogTcp', { port: cfg.syslogTcpPort }), h('input', { type: 'checkbox', name: 'syslogTcp', checked: cfg.syslogTcp }), t('ev.s.syslogTcpHint')),
       field(t('ev.s.syslogTls', { port: cfg.syslogTlsPort }), h('input', { type: 'checkbox', name: 'syslogTls', checked: cfg.syslogTls }), t('ev.s.syslogTlsHint')),
       field(t('ev.s.onlyKnown'), h('input', { type: 'checkbox', name: 'onlyKnown', checked: cfg.onlyKnown }), t('ev.s.onlyKnownHint')),
+      field(t('ev.s.minSeverity'), select('minSeverity', keepOptions(), String(cfg.minSeverity ?? 7)), t('ev.s.minSeverityHint')),
       field(t('ev.s.winAllow'), input('winAllow', cfg.winAllow || '', { class: 'mono', placeholder: t('ev.s.winAllowPh'), autocomplete: 'off' }), t('ev.s.winAllowHint')),
       field(t('ev.s.winDeny'), input('winDeny', cfg.winDeny || '', { class: 'mono', placeholder: '8004, 4624, 4634', autocomplete: 'off' }), t('ev.s.winDenyHint')),
       field(t('ev.s.keep'), input('keepDays', cfg.keepDays, { type: 'number', min: 1, max: 365 }), t('ev.s.keepHint')),
@@ -176,6 +195,7 @@ export async function renderEvents(main) {
       if (!d.communities.trim()) delete d.communities;
       d.keepDays = Number(d.keepDays);
       d.maxGb = Number(d.maxGb);
+      d.minSeverity = Number(d.minSeverity);
       try { await put('/events/settings', d); m.close(); toast(t('saved')); load(); } catch (ex) { fail(ex); }
     }, actions: [btn(t('cancel'), { onclick: () => m.close() }), h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   }
