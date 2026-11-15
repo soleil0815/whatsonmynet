@@ -519,6 +519,8 @@ The script installs nothing, loads nothing, opens no port and needs no account -
 
 **New version of the script:** when an update brings new values (e.g. the UPS), create the current script under *Settings → Machine scripts* in the row of the existing entry with **New script** and simply run or roll it out again. It overwrites the old copy and the scheduled task. The old key is blocked from then on, so roll it out right away.
 
+**Script block logging (event 4104):** the Windows script reads network cards, disks, Defender and firewall straight from WMI and loads no PowerShell modules for it. With script block logging on, a run therefore leaves only a few entries of level *Verbose* with the path `C:\ProgramData\WhatsOnMyNet\womn-host.ps1` - no warnings. Older scripts (before 0.33) caused some 70 warnings 4104 without a path per run; *New script* makes them go away.
+
 **Removing again:** every script comes with an **uninstall script** (in the script dialog under *Remove again* and under *Settings → Machine scripts*). It removes the scheduled task or cron entry and the script - run or distribute it the same way. Afterwards the machine is as before. Deleting or recreating a script under *Settings → Machine scripts* locks the old key.
 
 If a machine does not report for 15 minutes it counts as offline - the sensor "Machine reports" then raises the alarm.

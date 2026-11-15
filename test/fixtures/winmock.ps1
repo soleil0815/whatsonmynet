@@ -18,19 +18,24 @@ function Get-CimInstance {
     'Win32_BIOS' { & $o @{ SerialNumber = ' 7XK2Q93 '; SMBIOSBIOSVersion = '1.13.2'; ReleaseDate = [datetime]'2024-03-05' } }
     'Win32_PhysicalMemory' { foreach ($s in 'A1', 'B1') { & $o @{ DeviceLocator = $s; Capacity = 17179869184; Speed = 3200; Manufacturer = 'Hynix '; PartNumber = 'HMA82GR7DJR8N-XN    ' } } }
     'AntiVirusProduct' { throw 'Invalid namespace' }
+    # what the WMI classes answer: numbers where the modules show words
+    'MSFT_NetAdapter' { if ($Filter -ne 'ConnectorPresent=TRUE') { throw "filter $Filter" }
+      & $o @{ Name = 'Ethernet 1'; InterfaceDescription = 'Broadcom NetXtreme Gigabit Ethernet'; NetworkAddresses = @('00155D010203'); PermanentAddress = '00155D010203'; Speed = 1000000000; InterfaceOperationalStatus = 1 }
+      & $o @{ Name = 'Ethernet 2'; InterfaceDescription = 'Broadcom NetXtreme Gigabit Ethernet #2'; NetworkAddresses = $null; PermanentAddress = '00155D010204'; Speed = 0; InterfaceOperationalStatus = 2 } }
+    'MSFT_PhysicalDisk' { if ($Namespace -ne 'root/Microsoft/Windows/Storage') { throw 'namespace' }
+      & $o @{ FriendlyName = 'SAMSUNG MZ7LH480'; SerialNumber = ' S45PNA0M123456 '; MediaType = [uint16]4; BusType = [uint16]11; Size = [uint64]480103981056; HealthStatus = [uint16]0 }
+      & $o @{ FriendlyName = 'ST4000NM0035'; SerialNumber = 'ZC1ABCDE'; MediaType = [uint16]3; BusType = [uint16]10; Size = [uint64]4000787030016; HealthStatus = [uint16]1 } }
+    'MSFT_MpComputerStatus' { & $o @{ AntivirusEnabled = $true; RealTimeProtectionEnabled = $true; AntivirusSignatureAge = 1 } }
+    'MSFT_NetFirewallProfile' { foreach ($p in @(@('Domain', 1), @('Private', 1), @('Public', 0))) { & $o @{ Name = $p[0]; Enabled = [uint16]$p[1] } } }
     default { throw "unexpected class $ClassName" }
   }
 }
-function Get-NetAdapter { param([switch]$Physical)
-  & $o @{ Name = 'Ethernet 1'; InterfaceDescription = 'Broadcom NetXtreme Gigabit Ethernet'; MacAddress = '00-15-5D-01-02-03'; Speed = 1000000000; Status = 'Up' }
-  & $o @{ Name = 'Ethernet 2'; InterfaceDescription = 'Broadcom NetXtreme Gigabit Ethernet #2'; MacAddress = '00-15-5D-01-02-04'; Speed = 0; Status = 'Disconnected' } }
-function Get-PhysicalDisk {
-  & $o @{ FriendlyName = 'SAMSUNG MZ7LH480'; SerialNumber = ' S45PNA0M123456 '; MediaType = 'SSD'; BusType = 'SATA'; Size = 480103981056; HealthStatus = 'Healthy' }
-  & $o @{ FriendlyName = 'ST4000NM0035'; SerialNumber = 'ZC1ABCDE'; MediaType = 'HDD'; BusType = 'SAS'; Size = 4000787030016; HealthStatus = 'Warning' } }
-function Get-StorageReliabilityCounter { param([Parameter(ValueFromPipeline = $true)]$Disk)
-  process { if ($Disk.MediaType -eq 'SSD') { & $o @{ Temperature = 34; Wear = 7; PowerOnHours = 21000; ReadErrorsUncorrected = 0; WriteErrorsUncorrected = 0 } } else { throw 'Access denied' } } }
-function Get-MpComputerStatus { & $o @{ AntivirusEnabled = $true; RealTimeProtectionEnabled = $true; AntivirusSignatureAge = 1 } }
-function Get-NetFirewallProfile { foreach ($p in @(@('Domain', 'True'), @('Private', 'True'), @('Public', 'False'))) { & $o @{ Name = $p[0]; Enabled = $p[1] } } }
+function Get-CimAssociatedInstance { param($InputObject, [string]$ResultClassName)
+  if ($ResultClassName -ne 'MSFT_StorageReliabilityCounter') { throw "unexpected $ResultClassName" }
+  if ([int]$InputObject.MediaType -eq 4) { & $o @{ Temperature = 34; Wear = 7; PowerOnHours = 21000; ReadErrorsUncorrected = 0; WriteErrorsUncorrected = 0 } } else { throw 'Access denied' } }
+# The modules must not be used any more (each run would leave ~70 "suspicious" events 4104)
+foreach ($n in 'Get-NetAdapter', 'Get-PhysicalDisk', 'Get-StorageReliabilityCounter', 'Get-MpComputerStatus', 'Get-NetFirewallProfile') {
+  Set-Item -Path "function:global:$n" -Value ([scriptblock]::Create("throw 'module cmdlet $n used'")) }
 function Get-WinEvent { param([hashtable]$FilterHashtable, [int]$MaxEvents)
   & $o @{ Level = 1; TimeCreated = (Get-Date).AddHours(-2); ProviderName = 'Microsoft-Windows-Kernel-Power'; Id = 41; Message = "The system has rebooted without cleanly shutting down first.`r`nMore text" }
   & $o @{ Level = 2; TimeCreated = (Get-Date).AddHours(-5); ProviderName = 'disk'; Id = 7; Message = 'The device, \Device\Harddisk1\DR1, has a bad block.' } }

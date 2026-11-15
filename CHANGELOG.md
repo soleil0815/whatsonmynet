@@ -6,9 +6,16 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
-- Aussehen: Standard ist wieder „wie das System“ - hell oder dunkel, wie der Rechner oder das Handy eingestellt ist; Konten auf „hell“ wurden umgestellt, eine eigene Wahl bleibt unter Mein Konto möglich
+- Windows-Skript der Rechner: liest Netzwerkkarten, Festplatten, Defender und Firewall direkt aus WMI statt über die PowerShell-Module - mit eingeschaltetem Skriptblockprotokoll entstehen pro Lauf nicht mehr rund 70 „verdächtige“ Ereignisse 4104, sondern nur wenige „ausführliche“. Gleiche Werte; wirkt nach Neues Skript unter Einstellungen → Rechner-Skripte und erneutem Ausführen bzw. Verteilen
+
+## 0.32.0 - 2026-11-15
+
 - Sicherungen der Datenbank liegen komprimiert auf dem Server (.sqlite.gz, meist nur ein Bruchteil der Größe); Standard jetzt 10 statt 7 (wer 7 eingestellt hatte, hat jetzt 10). Vorhandene Sicherungen werden einmal komprimiert, Kopien vor Updates und vor dem Einspielen sammeln sich nicht mehr an (je die 10 neuesten). Einspielen geht mit .sqlite und .sqlite.gz
 - Windows-Ereignisse: neue Installationen nehmen das übliche Rauschen gar nicht erst an (An-/Abmeldungen, Prozessstart, Objektzugriffe, Firewall-Verbindungen, Dienststatus 7036, DCOM 10016, WMI 5858 …); bestehende behalten ihre Liste und können sie unter Empfang einstellen mit „Übliches Rauschen einsetzen“ ergänzen. Fehlanmeldungen, Kontosperren und die fertigen Regeln bleiben unberührt
+
+## 0.31.0 - 2026-11-15
+
+- Aussehen: Standard ist wieder „wie das System“ - hell oder dunkel, wie der Rechner oder das Handy eingestellt ist; Konten auf „hell“ wurden umgestellt, eine eigene Wahl bleibt unter Mein Konto möglich
 
 ## 0.30.0 - 2026-11-15
 
