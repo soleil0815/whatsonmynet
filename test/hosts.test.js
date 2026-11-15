@@ -238,6 +238,15 @@ test('Windows setup replaces an older read-only copy and leaves the new one writ
   const end = log.findIndex((l) => l.startsWith('schtasks /End'));
   const create = log.findIndex((l) => l.startsWith('schtasks /Create'));
   assert.ok(end >= 0 && end < create, 'a running report is ended before the copy, the task created after it');
+  // the rights: set on the folder only (a file does not take (OI)(CI) - with /T an existing copy was left without any
+  // rights, the next setup got "access denied"), then what is in it inherits again
+  const acl = log.filter((l) => l.startsWith('icacls'));
+  assert.ok(acl.some((l) => l.includes('/grant:r')), 'folder rights set');
+  assert.ok(acl.filter((l) => l.includes('(OI)(CI)') || l.includes('/setowner')).every((l) => !/\s\/T(\s|$)/.test(l)), 'folder rights never with /T');
+  const reset = acl.findIndex((l) => /\* \/reset \/T/.test(l));
+  assert.ok(reset > acl.findIndex((l) => l.includes('/grant:r')), 'existing files take the folder rights again');
+  assert.deepEqual(acl.filter((l) => l.includes('/remove:g')).map((l) => l.split(' ').find((w) => w.startsWith('*S-'))), ['*S-1-5-21-1000-2000-3000-1104'],
+    'only SYSTEM and Administrators keep rights on the folder');
 });
 
 test('Windows scripts: set up / remove the scheduled task, also the one of version 0.6.0 (Hyper-V)', () => {

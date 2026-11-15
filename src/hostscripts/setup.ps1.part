@@ -11,9 +11,19 @@ if ($Setup) {
   # swap the script that runs as SYSTEM. So no link, owner Administrators, rights only for SYSTEM and Administrators -
   # all of that before the script is copied in.
   if ((Get-Item -LiteralPath $Dir -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "WhatsOnMyNet: $Dir is a link - please remove it and run the setup again." }
-  & icacls.exe $Dir /setowner '*S-1-5-32-544' /T /C | Out-Null
-  & icacls.exe $Dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /T /C | Out-Null
+  # The folder only (no /T): a file does not take the folder flags (OI)(CI) - with /T an existing copy lost all its
+  # rights (inheritance removed, nothing granted) and the next setup was refused with "access denied".
+  & icacls.exe $Dir /setowner '*S-1-5-32-544' /C | Out-Null
+  & icacls.exe $Dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /C | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'WhatsOnMyNet: the rights of the folder could not be set - please run as administrator.' }
+  # Nobody else: entries given to other accounts by hand go (they could swap the script that runs as SYSTEM)
+  foreach ($r in @((Get-Acl -LiteralPath $Dir).GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]))) {
+    $sid = $r.IdentityReference.Value
+    if (@('S-1-5-18', 'S-1-5-32-544') -notcontains $sid) { & icacls.exe $Dir /remove:g "*$sid" /C | Out-Null }
+  }
+  # What is already in it (an older copy, the update status, own checks) takes the rights of the folder again - also
+  # a copy an earlier setup left without any rights
+  if (@(Get-ChildItem -LiteralPath $Dir -Force).Count) { & icacls.exe (Join-Path $Dir '*') /reset /T /C | Out-Null }
   # Replacing an older copy: it may be read-only (Copy-Item carries the attribute over when the setup file came from a
   # package folder or a share - the next update was then refused with "access denied") or just being run by the task.
   # So: let a running report finish, clear the attributes, try a few times - and never leave the copy read-only.
