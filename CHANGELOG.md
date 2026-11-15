@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Meldungen in einer eigenen Datei (data/events.sqlite): die Datenbank und ihre täglichen Sicherungen bleiben klein; vorhandene Meldungen ziehen beim Update einmal um. Grenze jetzt in Speicherplatz statt 200 000 Stück: 30 Tage in höchstens 2 GB, bei knappem Datenträger bleiben mindestens 10 % frei. Die Seite zeigt belegten Platz, Meldungen am Tag, wie viele Tage der Platz reicht - und wer die meisten Meldungen schickt, wenn er nicht reicht
+
+## 0.27.0 - 2026-11-15
+
 - NAS (gefunden im ersten echten Diagnosepaket): Antwortet ein beschäftigtes NAS nur halb, galten Platten, Volumes und Speicherpools für eine Abfrage als „nicht gefunden“ - nachts kamen so Dutzende Fehlalarme und Entwarnungen. Jetzt fragt WhatsOnMyNet die Tabellen nacheinander ab, erkennt unvollständige Antworten und behält fehlende Einträge bis zu zwei Abfragen lang
 - Sensoren mit Grenze geben erst mit Abstand Entwarnung (2 °C bzw. 2 Prozentpunkte) - ein Fühler, der um seine Grenze pendelt, alarmiert nicht mehr alle 5 Minuten
 - Proxmox: Fehlt ein Wert nur einmal, heißt es „gerade kein Wert (vom Host nicht geliefert)“ statt „dem Konto fehlen wohl Leserechte“ - das nur noch, wenn wirklich Rechte fehlen

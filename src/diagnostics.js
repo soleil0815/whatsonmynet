@@ -10,6 +10,7 @@
 // HOST-003, 10.99.0.7 …). They stay the same in every package (table diag_alias), so "GERAET-004" is the same NAS
 // next month. Only the administrators of this installation can look them up. Passwords, keys, tokens and
 // communities are never in a package - anonymised or not.
+import { eventsFile } from './db.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import { config, paths } from './config.js';
@@ -245,7 +246,8 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       uptime_s: Math.round(process.uptime()), system_uptime_s: Math.round(os.uptime()), timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
       config: { httpsPort: config.httpsPort, httpPort: config.httpPort, baseUrl: an.anon(config.baseUrl), hsts: config.hsts, trustProxy: an.anon(config.trustProxy),
         logLevel: config.logLevel, sessionHours: config.sessionHours, composeVersion: config.composeVersion },
-      database: { schema: db.pragma('user_version', { simple: true }), size: sizeOf(dbFile), wal: sizeOf(`${dbFile}-wal`), backups: dirSize(backupsDir), tables },
+      database: { schema: db.pragma('user_version', { simple: true }), size: sizeOf(dbFile), wal: sizeOf(`${dbFile}-wal`), backups: dirSize(backupsDir), tables,
+        events: { size: sizeOf(eventsFile(dbFile)), wal: sizeOf(`${eventsFile(dbFile)}-wal`), rows: db.prepare('SELECT COUNT(*) n FROM events_in').get().n } },
       failover: fo,
     };
   }

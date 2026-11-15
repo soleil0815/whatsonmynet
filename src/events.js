@@ -6,10 +6,14 @@
 // with the certificate of this server) - not 162/514, because WhatsOnMyNet runs without root rights; a port redirect on the
 // host or the port set on the device does the rest (see the manual).
 //
-// Each installation keeps what it received itself (failover: send to both). Kept 30 days, at most 200 000 messages.
+// Each installation keeps what it received itself (failover: send to both), in a file of its own (data/events.sqlite,
+// see db.js): kept 30 days, in at most 2 GB - and never so much that less than 10 % of the disk (at least 1 GB) is left.
+// Whatever comes first: the oldest messages go.
 // A flood (a device in a loop, or someone sending on purpose) is cut: at most 20 messages per second per sender and
 // 300 in all; text is cut to 1000 characters. UDP has no sender check - traps at least need a known community.
 import dgram from 'node:dgram';
+import fs from 'node:fs';
+import path from 'node:path';
 import net from 'node:net';
 import tls from 'node:tls';
 import snmp from 'net-snmp';
@@ -17,7 +21,10 @@ import { log } from './lib/log.js';
 import { config } from './config.js';
 
 export const SEVERITIES = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'];
-const MAX_ROWS = 200000;
+const GB = 1024 ** 3;
+export const MAX_GB_DEFAULT = 2;
+const PRUNE_MS = 10 * 60 * 1000;
+const STATS_MS = 60 * 1000;
 const PER_SENDER = 20;
 const PER_SECOND = 300;
 const clip = (s, n) => String(s ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -400,20 +407,85 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       .all(...args, Math.max(1, Math.min(1000, Number(limit) || 200)));
   }
 
-  function prune() {
-    const days = Math.max(1, Math.min(365, Number(settings.get('events.keepDays')) || 30));
-    db.prepare('DELETE FROM events_in WHERE at < ?').run(new Date(Date.now() - days * 86400000).toISOString());
-    const n = db.prepare('SELECT COUNT(*) n FROM events_in').get().n;
-    if (n > MAX_ROWS) db.prepare('DELETE FROM events_in WHERE id <= (SELECT id FROM events_in ORDER BY id DESC LIMIT 1 OFFSET ?)').run(MAX_ROWS);
+  // ------------------------------------------------------------------------------------------- space and age
+  const evFile = () => db.pragma('database_list').find((d) => d.name === 'ev')?.file || '';
+  /** Bytes the messages take in their file (without the free pages SQLite keeps for reuse) */
+  const usedBytes = () => (db.pragma('ev.page_count', { simple: true }) - db.pragma('ev.freelist_count', { simple: true })) * db.pragma('ev.page_size', { simple: true });
+  /** The limit: as set (GB) - lower when the disk gets short (at least 10 % of it, and 1 GB, stay free) */
+  function limits(used = usedBytes()) {
+    const want = Math.round(Math.max(0.001, Math.min(1000, Number(settings.get('events.maxGb')) || MAX_GB_DEFAULT)) * GB);
+    let cap = want; let diskFree = null;
+    const file = evFile();
+    if (file) {
+      try {
+        const st = fs.statfsSync(path.dirname(file));
+        diskFree = st.bavail * st.bsize;
+        const reserve = Math.max(GB, st.blocks * st.bsize * 0.1);
+        cap = Math.min(want, Math.max(50 * 1024 * 1024, used + diskFree - reserve));
+      } catch { /* not known - the setting alone */ }
+    }
+    return { want, cap, diskShort: cap < want, diskFree };
   }
+
+  /** Old messages out: older than the days set, then the oldest until the file fits its limit. Returns rows deleted. */
+  function prune() {
+    let deleted = 0;
+    const days = Math.max(1, Math.min(365, Number(settings.get('events.keepDays')) || 30));
+    deleted += db.prepare('DELETE FROM events_in WHERE at < ?').run(new Date(Date.now() - days * 86400000).toISOString()).changes;
+    for (let round = 0; round < 20; round++) {
+      const used = usedBytes();
+      const { cap } = limits(used);
+      if (used <= cap) break;
+      const n = db.prepare('SELECT COUNT(*) n FROM events_in').get().n;
+      if (!n) break;
+      // down to 95 % of the limit, so that it does not run for every new message; at most 20 000 at a time
+      const rows = Math.min(20000, Math.max(100, Math.ceil(((used - cap * 0.95) / used) * n)));
+      deleted += db.prepare('DELETE FROM events_in WHERE id IN (SELECT id FROM events_in ORDER BY id LIMIT ?)').run(rows).changes;
+    }
+    if (deleted) {
+      try { db.pragma('ev.incremental_vacuum'); } catch { /* an older file without auto-vacuum keeps its pages for reuse */ }
+      stats = null;
+      log.info(`Messages: ${deleted} old message(s) removed`);
+    }
+    return deleted;
+  }
+
+  // How the space goes: for the page (cached a minute - counting a few million rows is not free)
+  let stats = null; let statsAt = 0;
+  function storage() {
+    if (stats && Date.now() - statsAt < STATS_MS) return stats;
+    const used = usedBytes();
+    const lim = limits(used);
+    const total = db.prepare('SELECT COUNT(*) n FROM events_in').get().n;
+    const since = new Date(Date.now() - 86400000).toISOString();
+    const day = db.prepare('SELECT COUNT(*) n FROM events_in WHERE at >= ?').get(since).n;
+    const oldest = db.prepare('SELECT at FROM events_in ORDER BY id LIMIT 1').get()?.at || null;
+    const perRow = total ? used / total : 900;
+    const perDay = day * perRow;
+    const keepDays = Math.max(1, Math.min(365, Number(settings.get('events.keepDays')) || 30));
+    const daysFit = perDay > 0 ? Math.floor(lim.cap / perDay) : null;
+    // who fills it: the biggest senders and Windows events of the last day (with their share)
+    const top = (sql) => (day ? db.prepare(sql).all(since).map((r) => ({ name: String(r.name ?? ''), share: Math.round((r.n / day) * 100) })).filter((r) => r.share >= 10) : []);
+    stats = { used, limit: lim.want, cap: lim.cap, diskShort: lim.diskShort, total, perDay: day, oldest, keepDays, daysFit, short: daysFit !== null && daysFit < keepDays,
+      topSenders: top("SELECT COALESCE(NULLIF(host,''), source_ip) name, COUNT(*) n FROM events_in WHERE at >= ? GROUP BY name ORDER BY n DESC LIMIT 3"),
+      topEvents: top('SELECT event_id name, COUNT(*) n FROM events_in WHERE at >= ? AND event_id IS NOT NULL GROUP BY event_id ORDER BY n DESC LIMIT 3') };
+    statsAt = Date.now();
+    return stats;
+  }
+  let pruneTimer = null;
 
   return {
     receive, list, prune, apply, communities,
     reloadTls,
-    status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, total: db.prepare('SELECT COUNT(*) n FROM events_in').get().n,
-      last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null }),
-    start: apply,
-    stop: stopAll,
+    status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, total: storage().total,
+      last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null, storage: storage() }),
+    storage,
+    /** Receivers as set, and the cleanup every 10 minutes (the limit holds between the daily rounds too) */
+    start() {
+      apply();
+      if (!pruneTimer) { pruneTimer = setInterval(() => { try { prune(); } catch (e) { log.warn(`Messages cleanup failed: ${e.message}`); } }, PRUNE_MS); pruneTimer.unref(); }
+    },
+    stop() { clearInterval(pruneTimer); pruneTimer = null; stopAll(); },
   };
 }
 

@@ -151,7 +151,7 @@ export function createMonitoringApi(ctx) {
   // Messages devices sent (SNMP traps, syslog): the list for editors; switching the receivers on for admins
   const eventSettings = () => ({ traps: !!settings.get('events.traps'), syslog: !!settings.get('events.syslog'), syslogTcp: !!settings.get('events.syslogTcp'), syslogTls: !!settings.get('events.syslogTls'),
     syslogTcpPort: config.syslogTcpPort, syslogTlsPort: config.syslogTlsPort, communitiesSet: !!settings.get('events.communities'),
-    onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, trapPort: config.trapPort, syslogPort: config.syslogPort });
+    onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, maxGb: Number(settings.get('events.maxGb')) || 2, trapPort: config.trapPort, syslogPort: config.syslogPort });
   r.get('/events', editor, unscoped, (req, res) => {
     const q = req.query || {};
     res.json({ status: ctx.events.status(), settings: eventSettings(),
@@ -161,18 +161,22 @@ export function createMonitoringApi(ctx) {
     const b = req.body || {};
     const keep = Number(b.keepDays ?? settings.get('events.keepDays'));
     if (!Number.isInteger(keep) || keep < 1 || keep > 365) throw new HttpError(400, 'err.eventKeep', undefined, 'keepDays');
+    const maxGb = Number(b.maxGb ?? settings.get('events.maxGb') ?? 2);
+    if (!Number.isFinite(maxGb) || maxGb < 0.1 || maxGb > 1000) throw new HttpError(400, 'err.eventMaxGb', undefined, 'maxGb');
     settings.set('events.traps', !!b.traps);
     settings.set('events.syslog', !!b.syslog);
     settings.set('events.syslogTcp', !!b.syslogTcp);
     settings.set('events.syslogTls', !!b.syslogTls);
     settings.set('events.onlyKnown', !!b.onlyKnown);
     settings.set('events.keepDays', keep);
+    settings.set('events.maxGb', Math.round(maxGb * 10) / 10);
     if (typeof b.communities === 'string' && b.communities.trim()) {
       const list = b.communities.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
       if (list.length > 10 || list.some((c) => c.length > 64 || /[\x00-\x1f]/.test(c))) throw new HttpError(400, 'err.snmpCommunity', undefined, 'communities');
       settings.set('events.communities', list.join('\n'));
     } else if (b.clearCommunities) settings.set('events.communities', '');
     ctx.events.apply();
+    try { ctx.events.prune(); } catch { /* the next round */ }
     audit(req, 'events.settings', `traps ${b.traps ? 'on' : 'off'}, syslog UDP ${b.syslog ? 'on' : 'off'}, TCP ${b.syslogTcp ? 'on' : 'off'}, TLS ${b.syslogTls ? 'on' : 'off'}`);
     // the sockets open asynchronously - a moment later the state is known
     setTimeout(() => res.json({ status: ctx.events.status(), settings: eventSettings() }), 300);

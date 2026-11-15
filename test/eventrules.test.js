@@ -156,8 +156,8 @@ test('rules: a deleted channel or device switches the rule off; hits stay with t
   assert.equal(rules.get(a.id).enabled, true);
   forgetChannel(db, null, chan);
   assert.deepEqual([rules.get(a.id).enabled, rules.get(a.id).channels], [false, []]);
-  assert.ok(LOCAL_TABLES.has('event_rule_hits'), 'what was sent stays with the installation (failover)');
-  assert.ok(!LOCAL_TABLES.has('event_rules'), 'the rules go to the standby');
+  assert.ok(db.prepare("SELECT 1 FROM ev.sqlite_master WHERE name='event_rule_hits'").get(), 'what was sent stays with the installation, in the messages file');
+  assert.ok(db.prepare("SELECT 1 FROM main.sqlite_master WHERE name='event_rules'").get() && !LOCAL_TABLES.has('event_rules'), 'the rules go to the standby');
 });
 
 test('notifications: mail for the ticket system - subject, details, collected list; webhook with the fields', async () => {
