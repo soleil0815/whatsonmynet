@@ -10,7 +10,7 @@ import { scriptDialog, hostScriptsSettings, helpLink } from './hostscripts.js';
 import { aboutContent } from './about.js';
 import { hardwareDetail } from './hardware.js';
 import { SECTIONS, settingsNav } from './settingsnav.js';
-import { failoverSettings } from './failover.js';
+import { failoverSettings, lockForEditing } from './failover.js';
 import { diagnosticsSettings } from './diagnostics.js';
 
 export async function renderSettings(main, section = 'general') {
@@ -28,6 +28,8 @@ export async function renderSettings(main, section = 'general') {
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev', 'notify'].includes(section) ? await get('/settings') : null;
   const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), ad, agents, backup, failover: failoverSettings, diag: diagnosticsSettings, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
+  // a standby only shows its settings - except its own failover controls and what only reads (about, log, diagnostics)
+  if (!['failover', 'about', 'audit', 'diag'].includes(section)) lockForEditing(body);
 }
 
 /** Proxmox VE / Backup Server: own page under "Monitoring" (editors see it, admins change it) */
@@ -36,6 +38,7 @@ export async function renderProxmox(main) {
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderProxmox(main), 'virt');
+  lockForEditing(body);
 }
 
 /** UniFi, Omada, MikroTik: own page under "Monitoring" (same building blocks as the hypervisors) */
@@ -44,6 +47,7 @@ export async function renderControllers(main) {
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderControllers(main), 'net');
+  lockForEditing(body);
 }
 
 /** Server hardware through the management chip (Redfish): own page under "Monitoring" */
@@ -52,6 +56,7 @@ export async function renderHardware(main) {
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderHardware(main), 'hw');
+  lockForEditing(body);
 }
 
 /** Planned reports: own page under "Monitoring" */
@@ -60,6 +65,7 @@ export async function renderReports(main) {
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await reports(body, null, () => renderReports(main));
+  lockForEditing(body);
 }
 
 const panel = (title, ...content) => h('section', { class: 'panel panel-pad' }, title ? h('h2', { class: 'section-title' }, title) : null, content);

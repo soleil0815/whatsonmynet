@@ -193,8 +193,8 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
     next();
   });
   // Failover: the endpoints for the standby and the settings; on a standby the rest of the API only reads
-  app.use('/api', createFailoverApi(ctx));
   app.use('/api', failover.middleware());
+  app.use('/api', createFailoverApi(ctx));
   app.use('/api', createApi(ctx));
   app.use('/api', createDiagnosticsApi(ctx));
   app.use('/api', createMonitoringApi(ctx));

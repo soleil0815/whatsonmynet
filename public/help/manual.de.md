@@ -440,6 +440,8 @@ Beim Koppeln übernimmt der Standby **alle Daten des Masters** (Geräte, Monitor
 - Der **Standby** fragt jede Minute beim Master nach und holt alle 5 Minuten dessen Daten. Er prüft nichts, scannt nichts und alarmiert nicht. Oben steht ein Hinweis; ändern lässt sich dort nichts (bitte am Master).
 - Die Verbindung läuft über HTTPS, der Standby prüft dabei den Fingerabdruck des Master-Zertifikats aus dem Code. Bleibt der Schlüssel des Zertifikats bei einer Erneuerung gleich (beim selbstsignierten immer), muss man nichts tun. Bei einem neuen Zertifikat mit neuem Schlüssel am Master einen neuen Code erzeugen und neu koppeln.
 
+**Auf dem Standby lässt sich nichts verstellen** - weder Kanäle, E-Mail-Adressen und Webhooks noch Einstellungen, Benutzer, Monitore oder Geräte, auch nicht, während er für den Master überwacht: Seine Daten kommen ja vom Master und würden beim nächsten Abgleich überschrieben. Die Seiten zeigen nur an. Erlaubt sind nur die Steuerung unter *Ausfallsicherung* (entkoppeln, zum Master machen, Wartezeit) sowie Hell/Dunkel und Sprache im eigenen Konto.
+
 **Wenn der Master ausfällt:** Antwortet er länger als die eingestellte Zeit nicht, **übernimmt der Standby**. Er prüft und alarmiert dann selbst und meldet an alle Standard-Kanäle: „Ausfallsicherung: Der Master … ist seit 10 Min. nicht erreichbar - dieses System hat die Überwachung übernommen.“ Für eine längere Wartung am Master stellst du die Zeit vorher am Standby hoch.
 
 **Wenn der Master wiederkommt:** Sobald er antwortet, ist der Standby wieder still („… ist wieder da“) und holt sich dessen Daten. **Zum Master geht nichts zurück.** Was der Standby in der Zeit gemeldet hat, steht am Standby unter *Übernahmen*.
