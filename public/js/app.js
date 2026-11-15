@@ -13,6 +13,7 @@ import { renderTopology } from './views/topology.js';
 import { renderHelp } from './views/help.js';
 import { renderSettings, renderProxmox, renderControllers, renderHardware, renderCloud, renderReports } from './views/settings.js';
 import { renderEvents } from './views/events.js';
+import { renderEventRules } from './views/eventrules.js';
 import { renderAccount } from './views/account.js';
 import { renderMonitoring } from './views/monitoring.js';
 import { openAbout, COFFEE } from './views/about.js';
@@ -64,6 +65,7 @@ const ROUTES = [
   [/^\/hardware$/, renderHardware, 'hardware'],
   [/^\/cloud$/, renderCloud, 'cloud'],
   [/^\/events$/, renderEvents, 'events'],
+  [/^\/events\/rules$/, renderEventRules, 'events'],
   [/^\/reports$/, renderReports, 'reports'],
   [/^\/topology$/, renderTopology, 'topology'],
   [/^\/help$/, renderHelp, 'help'],
