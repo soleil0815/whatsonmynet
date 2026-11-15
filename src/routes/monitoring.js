@@ -5,9 +5,10 @@ import { HttpError, int, str, ids } from '../lib/http.js';
 import { BULK_MAX } from '../monitor/index.js';
 import { requireRole } from '../auth/session.js';
 import { inScope } from '../auth/scope.js';
+import { config } from '../config.js';
 
 export function createMonitoringApi(ctx) {
-  const { db, monitoring, channels, maintenance, dockerHosts } = ctx;
+  const { db, monitoring, channels, maintenance, dockerHosts, settings } = ctx;
   const r = express.Router();
   const choices = ctx.sensorChoices;
   const editor = requireRole('editor');
@@ -145,6 +146,33 @@ export function createMonitoringApi(ctx) {
     }
     if (created.length) audit(req, 'docker.monitorAll', `${created.length} monitor(s) on ${host.name}`);
     res.json({ created: created.length });
+  });
+
+  // Messages devices sent (SNMP traps, syslog): the list for editors; switching the receivers on for admins
+  const eventSettings = () => ({ traps: !!settings.get('events.traps'), syslog: !!settings.get('events.syslog'), communitiesSet: !!settings.get('events.communities'),
+    onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, trapPort: config.trapPort, syslogPort: config.syslogPort });
+  r.get('/events', editor, unscoped, (req, res) => {
+    const q = req.query || {};
+    res.json({ status: ctx.events.status(), settings: eventSettings(),
+      list: ctx.events.list({ q: String(q.q ?? ''), kind: String(q.kind ?? ''), maxSeverity: q.maxSeverity ?? 7, device: q.device || null, before: q.before || null, limit: q.limit || 200 }) });
+  });
+  r.put('/events/settings', admin, (req, res) => {
+    const b = req.body || {};
+    const keep = Number(b.keepDays ?? settings.get('events.keepDays'));
+    if (!Number.isInteger(keep) || keep < 1 || keep > 365) throw new HttpError(400, 'err.eventKeep', undefined, 'keepDays');
+    settings.set('events.traps', !!b.traps);
+    settings.set('events.syslog', !!b.syslog);
+    settings.set('events.onlyKnown', !!b.onlyKnown);
+    settings.set('events.keepDays', keep);
+    if (typeof b.communities === 'string' && b.communities.trim()) {
+      const list = b.communities.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+      if (list.length > 10 || list.some((c) => c.length > 64 || /[\x00-\x1f]/.test(c))) throw new HttpError(400, 'err.snmpCommunity', undefined, 'communities');
+      settings.set('events.communities', list.join('\n'));
+    } else if (b.clearCommunities) settings.set('events.communities', '');
+    ctx.events.apply();
+    audit(req, 'events.settings', `traps ${b.traps ? 'on' : 'off'}, syslog ${b.syslog ? 'on' : 'off'}`);
+    // the sockets open asynchronously - a moment later the state is known
+    setTimeout(() => res.json({ status: ctx.events.status(), settings: eventSettings() }), 300);
   });
 
   // Proxmox hosts: names and values for editors (monitor form), everything else for admins
