@@ -25,6 +25,7 @@ const GB = 1024 ** 3;
 export const MAX_GB_DEFAULT = 2;
 const PRUNE_MS = 10 * 60 * 1000;
 const STATS_MS = 60 * 1000;
+const STATS_FRESH_MS = 15 * 1000;
 const PER_SENDER = 20;
 const PER_SECOND = 300;
 const clip = (s, n) => String(s ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -248,6 +249,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   let trapRx = null; let sysSock = null; let tcpServer = null; let tlsServer = null;
   const conns = new Set();
   let skipped = 0;
+  let stats = null; let statsAt = 0; let receivedSince = 0; // the space figures for the page (see storage)
   const insert = db.prepare('INSERT INTO events_in(at, kind, source_ip, device_id, severity, facility, host, app, oid, text, event_id, channel, account) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
   let index = null; let indexAt = 0;
   // ip → inventory device (refreshed every minute; a new device is matched soon after the scan took it)
@@ -281,6 +283,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, 1000) || '(empty)',
       event_id: Number.isInteger(ev.eventId) ? ev.eventId : null, channel: clip(ev.channel, 120), account: clip(ev.account, 120) };
     row.id = insert.run(row.at, row.kind, row.source_ip, row.device_id, row.severity, row.facility, row.host, row.app, row.oid, row.text, row.event_id, row.channel, row.account).lastInsertRowid;
+    receivedSince++;
     try { onEvent(row); } catch (e) { log.warn(`Messages: ${e.message}`); }
     return row;
   }
@@ -450,10 +453,13 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     return deleted;
   }
 
-  // How the space goes: for the page (cached a minute - counting a few million rows is not free)
-  let stats = null; let statsAt = 0;
+  // How the space goes: for the page (cached a minute - counting a few million rows is not free; once new messages
+  // came in, after 15 seconds - the page must not say "0 stored" next to a list of them)
   function storage() {
-    if (stats && Date.now() - statsAt < STATS_MS) return stats;
+    // the very first messages show at once
+    const maxAge = receivedSince ? (stats?.total === 0 ? 0 : STATS_FRESH_MS) : STATS_MS;
+    if (stats && Date.now() - statsAt < maxAge) return stats;
+    receivedSince = 0;
     const used = usedBytes();
     const lim = limits(used);
     const total = db.prepare('SELECT COUNT(*) n FROM events_in').get().n;

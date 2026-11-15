@@ -21,6 +21,10 @@ test('a file of its own: not in the database, not in the backups, kept across a 
   const file = path.join(dir, 'whatsonmynet.sqlite');
   let db = openDatabase(file);
   const ev = createEvents({ db, settings: createSettings(db) });
+  assert.equal(ev.storage().total, 0);
+  ev.receive('syslog', '10.0.9.1', { severity: 6, text: 'first' });
+  assert.equal(ev.storage().total, 1, 'the first message shows at once, not after the cache minute');
+  db.prepare("DELETE FROM events_in WHERE text='first'").run();
   for (let i = 0; i < 40; i++) assert.ok(ev.receive('syslog', `10.0.10.${i}`, { severity: 6, text: `m ${i}` }));
   for (let i = 0; i < 10; i++) msg(db, i);
   assert.ok(fs.existsSync(path.join(dir, 'events.sqlite')));
@@ -67,6 +71,10 @@ test('limit: the oldest go when the file is full, the disk keeps room, the page 
   const settings = createSettings(db);
   const ev = createEvents({ db, settings });
   db.transaction(() => { for (let i = 0; i < 3000; i++) msg(db, i); })();
+  // the page never says "0 stored" next to new messages
+  assert.equal(ev.storage().total, 3000);
+  ev.receive('syslog', '10.0.10.99', { severity: 6, text: 'one more' });
+  db.prepare('DELETE FROM events_in WHERE text=?').run('one more');
   const before = ev.storage();
   assert.equal(before.total, 3000);
   assert.ok(before.used > 2 * 1024 * 1024, `${before.used}`);
