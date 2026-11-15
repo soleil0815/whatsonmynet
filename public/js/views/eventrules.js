@@ -64,7 +64,7 @@ export async function renderEventRules(main) {
           btn(t('delete'), { class: 'btn btn-sm btn-ghost', onclick: async () => {
             if (!await confirmDialog(t('delete'), t('er.deleteConfirm', { name: r.name }), t('delete'), t('cancel'), { danger: true })) return;
             try { await del(`/event-rules/${r.id}`); toast(t('deleted')); load(); } catch (e) { fail(e); }
-          } }, 'trash')]))))))
+          } }, 'trash')])))))))
       : h('div', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: '0 0 10px' } }, t('er.none')),
         isReadOnly() ? null : btn(t('er.new'), { class: 'btn btn-primary btn-sm', onclick: () => openRuleForm(null, load) }, 'plus')));
     lockForEditing(body);
