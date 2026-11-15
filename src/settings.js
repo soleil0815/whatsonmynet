@@ -69,6 +69,8 @@ export const DEFAULTS = {
   'events.communities': '',       // encrypted; empty = the SNMP communities of the scan (else "public")
   'events.onlyKnown': false,      // only from devices in the inventory
   'events.keepDays': 30,
+  // Prometheus keys: [{ id, name, hash, prefix, created_at, created_by }] - only the SHA-256 of a key is kept
+  'api.tokens': [],
 };
 
 const SECRET = new Set(['smtp.password', 'scan.snmpCommunities', 'ad.bindPassword', 'events.communities']);
