@@ -50,6 +50,7 @@ differently – and whether the code below is affected. Old and new versions mus
 | Code page: UTF-8 mixed with Windows-1252 | `src/events.js` (`decodeText`) | – |
 | rsyslog, Synology Log Center (sending), switches/firewalls (remote syslog) | manual | default formats in new releases |
 | Windows event ids in ready-made rules: Defender 1116/1117, SRP 865-868, AppLocker 8004/8007, 4740, 4728/4732/4756, 1102, 7045, 4625 | `public/js/views/eventrules.js` (`RULE_PRESETS`) | Microsoft docs: ids moved, renamed sources, new Defender/AppLocker/App Control events |
+| Default noise list of Windows event ids not taken on new installations (`WIN_NOISE`) | `src/settings.js` | Microsoft docs: ids reused by other sources (like 8004 for AppLocker), ids that became important |
 | Text of common device messages used by presets (sshd "Failed password/Invalid user", "Port N … down/up", UPS "on battery") | `RULE_PRESETS` | OpenSSH log wording changes |
 
 ## 5. Computers (scripts without an agent)

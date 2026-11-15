@@ -31,7 +31,10 @@ test('a file of its own: not in the database, not in the backups, kept across a 
   assert.equal(db.prepare("SELECT 1 FROM main.sqlite_master WHERE name IN ('events_in','event_rule_hits')").get(), undefined);
   assert.equal((fs.statSync(path.join(dir, 'events.sqlite')).mode & 0o777).toString(8), '600');
   const backup = await backupDatabase(db, 7, path.join(dir, 'backups'));
-  const b = new Database(backup, { readonly: true });
+  assert.match(backup, /\.sqlite\.gz$/);
+  const unpacked = path.join(dir, 'backup.sqlite');
+  fs.writeFileSync(unpacked, (await import('node:zlib')).gunzipSync(fs.readFileSync(backup)));
+  const b = new Database(unpacked, { readonly: true });
   assert.equal(b.prepare("SELECT 1 FROM sqlite_master WHERE name='events_in'").get(), undefined, 'the backup has no messages');
   b.close();
   db.close();

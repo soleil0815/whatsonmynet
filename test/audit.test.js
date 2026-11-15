@@ -335,7 +335,7 @@ test('scan agent results never change a device of another location', () => {
   assert.deepEqual(after, { ip: '10.0.0.1', hostname: '' });
 });
 
-test('restore: schema 0, no admin and a failing schema update are refused; the copy before keeps the latest changes', () => {
+test('restore: schema 0, no admin and a failing schema update are refused; the copy before keeps the latest changes', async () => {
   const dir = fs.mkdtempSync(path.join(tmp, 'rs-'));
   const mk = (name, fn) => { const f = path.join(dir, name); const d = openDatabase(f); fn?.(d); d.pragma('wal_checkpoint(TRUNCATE)'); d.close(); return f; };
   const admin = (d) => d.prepare("INSERT INTO users(username,password_hash,role,created_at) VALUES('a','x','admin',?)").run(ts());
@@ -355,7 +355,10 @@ test('restore: schema 0, no admin and a failing schema update are refused; the c
   fs.copyFileSync(mk('new.sqlite', admin), pendingPath(live));
   applyPendingRestore(live, path.join(dir, 'backups'));
   const kept = fs.readdirSync(path.join(dir, 'backups')).find((f) => f.includes('before-restore'));
-  const k = new Database(path.join(dir, 'backups', kept), { readonly: true });
+  assert.match(kept, /\.sqlite\.gz$/, 'kept compressed');
+  const unpacked = path.join(dir, 'kept.sqlite');
+  fs.writeFileSync(unpacked, (await import('node:zlib')).gunzipSync(fs.readFileSync(path.join(dir, 'backups', kept))));
+  const k = new Database(unpacked, { readonly: true });
   assert.equal(k.prepare('SELECT COUNT(*) n FROM t').get().n, 50);
   k.close();
 });

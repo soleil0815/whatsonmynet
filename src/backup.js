@@ -4,6 +4,7 @@
 // the key (data/secret.key or WOMN_SECRET) - a restore only works with the same key.
 // Restore: the file is checked (SQLite, schema not newer, same key), stored as data/restore-pending.sqlite and the
 // program restarts; at the next start the current database is moved to the backups and the new one takes its place.
+// Backups on the server are compressed (.sqlite.gz); a restore takes compressed and uncompressed files alike.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -12,9 +13,12 @@ import { HttpError } from './lib/http.js';
 import { decrypt } from './lib/crypto.js';
 import { log } from './lib/log.js';
 import { backupDatabase, MIGRATIONS, migrate } from './db.js';
+import { gzipFileSync, gunzipFile, isGzip, freeName } from './lib/gz.js';
+import zlib from 'node:zlib';
 
 const SQLITE_MAGIC = Buffer.from('SQLite format 3\0', 'latin1');
-const NAME = /^whatsonmynet-[\w.-]+\.sqlite$/;
+const NAME = /^whatsonmynet-[\w.-]+\.sqlite(\.gz)?$/;
+const MAX_UNPACKED = 4 * 1024 ** 3;
 const DOWNLOAD = /^download-\d+-\d+-[0-9a-f]{8}\.sqlite\.tmp$/;
 
 export const pendingPath = (dbFile) => path.join(path.dirname(dbFile), 'restore-pending.sqlite');
@@ -74,11 +78,10 @@ export function applyPendingRestore(dbFile, backupsDir) {
   fs.mkdirSync(backupsDir, { recursive: true, mode: 0o700 });
   const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
   if (fs.existsSync(dbFile)) {
-    const keep = path.join(backupsDir, `whatsonmynet-before-restore-${stamp}.sqlite`);
+    const keep = freeName(path.join(backupsDir, `whatsonmynet-before-restore-${stamp}.sqlite.gz`));
     // The latest changes may still be in the -wal file only: write them into the database first, then copy
     try { const old = new Database(dbFile); try { old.pragma('wal_checkpoint(TRUNCATE)'); } finally { old.close(); } } catch (e) { log.warn(`Restore: checkpoint of the previous database failed: ${e.message}`); }
-    fs.copyFileSync(dbFile, keep);
-    fs.chmodSync(keep, 0o600);
+    gzipFileSync(dbFile, keep);
     log.info(`Restore: the previous database was kept as ${keep}`);
   }
   // Sessions in the backup were open when it was made: signed out or revoked since, they must not come back to life
@@ -149,12 +152,23 @@ export function createBackups({ db, settings, dbFile, backupsDir, restart = () =
       const pending = pendingPath(dbFile);
       const tmp = `${pending}.upload`;
       try {
+        fs.rmSync(tmp, { force: true });
         if (buffer) {
-          if (buffer.length < 1024) throw new HttpError(400, 'err.backupFile');
-          fs.writeFileSync(tmp, buffer, { mode: 0o600 });
+          // a compressed backup (.sqlite.gz) is unpacked first - with a limit, a "zip bomb" stops early
+          let data = buffer;
+          if (isGzip(buffer)) {
+            try { data = zlib.gunzipSync(buffer, { maxOutputLength: MAX_UNPACKED }); } catch { throw new HttpError(400, 'err.backupFile'); }
+          }
+          if (data.length < 1024) throw new HttpError(400, 'err.backupFile');
+          fs.writeFileSync(tmp, data, { mode: 0o600 });
         } else {
-          fs.copyFileSync(this.file(name), tmp);
-          fs.chmodSync(tmp, 0o600);
+          const src = this.file(name);
+          if (src.endsWith('.gz')) {
+            try { await gunzipFile(src, tmp, MAX_UNPACKED); } catch { throw new HttpError(400, 'err.backupFile'); }
+          } else {
+            fs.copyFileSync(src, tmp);
+            fs.chmodSync(tmp, 0o600);
+          }
         }
         const info = inspect(tmp);
         fs.renameSync(tmp, pending);
