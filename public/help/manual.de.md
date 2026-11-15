@@ -148,6 +148,8 @@ Viele Geräte melden ein Problem von sich aus, sobald es passiert: Ein Switch me
 1. *Überwachung → Meldungen* → **Empfang einschalten**: SNMP-Traps und/oder Syslog anhaken. Traps werden nur mit einer bekannten Community angenommen (leer = die Communities des Scans).
 2. In den Geräten WhatsOnMyNet als Ziel eintragen - Trap-Empfänger bzw. Syslog-Server.
 
+![Meldungen der Geräte](img/events-de.png)
+
 **Ports:** WhatsOnMyNet läuft ohne Root-Rechte und horcht deshalb auf **UDP 1162** (Traps) und **UDP 1514** (Syslog), nicht auf 162/514. Entweder in den Geräten diese Ports eintragen, oder auf dem Docker-Host einmal umleiten:
 
 ```
@@ -195,6 +197,8 @@ Auch `Exec $Message = to_json(); to_syslog_ietf();` (alle Felder als JSON) wird 
 ### Ereignisregeln: ausgewählte Meldungen per Mail oder ans Ticketsystem
 
 Unter *Meldungen → Ereignisregeln* legst du fest, welche Meldungen wohin gehen - **getrennt von den Monitoren**: Eine Regel schickt nur an die Empfänger, die bei ihr angehakt sind, nie an die Standard-Empfänger. So landet „Virus gefunden“ im Postfach des Ticketsystems und nicht auf dem Handy.
+
+![Ereignisregeln](img/eventrules-de.png)
 
 - **Fertige Regeln:** Virenfund (Defender 1116/1117), Software-Einschränkung (865-868), AppLocker (8004/8007), Benutzerkonto gesperrt (4740), Mitglied zu einer Sicherheitsgruppe hinzugefügt (4728/4732/4756), Sicherheitsprotokoll gelöscht (1102), neuer Dienst (7045), Fehler eines Geräts (Syslog). Danach lässt sich alles ändern.
 - **Bedingungen:** Ereignisnummern (auch Bereiche), Quelle, Protokoll, Absender (Name, Gerät oder IP, auch Teile), Wörter im Text, Wörter, die nicht vorkommen dürfen, Art und Schwere. Alle angegebenen Bedingungen müssen passen. Fehlen Quelle und Protokoll in der Meldung (NXLog ohne `Exec`), entscheidet die Nummer.
@@ -419,6 +423,8 @@ Sensoren (*Sensor anlegen*): Gesamtzustand, Server eingeschaltet, jeder Lüfter,
 ## Cloud: AWS, Azure, Google Cloud
 
 Was in der Cloud läuft, überwacht WhatsOnMyNet über die Schnittstelle des Anbieters - mit einem Konto, das **nur lesen** darf, alle 5 Minuten. Nichts wird dort installiert oder verändert. *Überwachung → Cloud* → **Cloud-Konto anbinden**; der Dialog zeigt die Schritte für den jeweiligen Anbieter.
+
+![Cloud](img/cloud-de.png)
 
 **Was gelesen wird:**
 
