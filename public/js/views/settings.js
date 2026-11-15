@@ -477,7 +477,8 @@ function proxmoxDetail(x) {
       !pve ? null : h('h3', { class: 'sub-title' }, t('px.backups')),
       !pve ? null : (d.backups || []).length ? h('ul', { class: 'port-macs' }, d.backups.slice(0, 8).map((b) => h('li', {},
         h('span', { class: `badge ${b.ok ? 'badge-ok' : b.end ? 'badge-bad' : ''}` }, b.ok ? 'OK' : b.status), h('span', { class: 'mono small' }, b.vmid ? `VM ${b.vmid}` : t('px.allGuests')),
-        h('span', { class: 'muted small' }, `${b.node} · ${fmtDate(new Date(b.start * 1000).toISOString(), getLang())}`)))) : h('p', { class: 'muted small' }, t('px.noBackups')));
+        h('span', { class: 'muted small' }, `${b.node} · ${fmtDate(new Date(b.start * 1000).toISOString(), getLang())}`),
+        b.reason ? h('pre', { class: 'task-reason' }, b.reason) : null))) : h('p', { class: 'muted small' }, t('px.noBackups')));
   }
   return h('div', {}, head, rights,
     h('h3', { class: 'sub-title' }, t('px.datastores')),
@@ -488,8 +489,27 @@ function proxmoxDetail(x) {
       return h('li', {}, h('span', { class: `badge ${old ? 'badge-bad' : 'badge-ok'}` }, ago(g.last)), h('span', { class: 'mono small' }, `${g.type}/${g.id}`),
         h('span', { class: 'muted small' }, [g.comment, g.store, t('px.count', { n: g.count })].filter(Boolean).join(' · ')));
     })),
-    (d.failed || []).length ? [h('h3', { class: 'sub-title' }, t('px.failed')), h('ul', { class: 'port-macs' }, d.failed.slice(0, 10).map((f) => h('li', {},
-      h('span', { class: 'badge badge-bad' }, f.type), h('span', { class: 'small' }, f.status), h('span', { class: 'muted small' }, fmtDate(new Date(f.start * 1000).toISOString(), getLang())))))] : null);
+    (d.failed || []).length ? [h('h3', { class: 'sub-title' }, t((d.failed || []).every((f) => f.repo === 'foreign') ? 'px.notes' : 'px.failed')),
+      h('ul', { class: 'task-list' }, d.failed.slice(0, 10).map((f) => taskItem(f)))] : null);
+}
+
+/** A failed task of PBS/PVE: what it is in plain words, how bad, when, and the reason from its log */
+function taskItem(f) {
+  // only third-party package sources (Webmin …) failed: no failure, just a note
+  if (f.repo === 'foreign') {
+    return h('li', { class: 'muted small' }, t('px.foreignRepo', { hosts: (f.hosts || []).join(', ') || '–', when: fmtDate(new Date(f.start * 1000).toISOString(), getLang()) }));
+  }
+  const upkeep = f.critical === false;
+  const name = t(`px.task.${f.type}`) === `px.task.${f.type}` ? f.type : t(`px.task.${f.type}`);
+  const status = /^unknown$/i.test(f.status) ? t('px.taskUnknown') : f.status;
+  return h('li', {},
+    h('div', { class: 'task-line' },
+      h('span', { class: `badge ${upkeep ? 'badge-warn' : 'badge-bad'}`, title: f.type }, name),
+      f.id ? h('span', { class: 'mono small' }, f.id) : null,
+      h('span', { class: 'small' }, status),
+      h('span', { class: 'muted small' }, fmtDate(new Date(f.start * 1000).toISOString(), getLang()))),
+    upkeep ? h('div', { class: 'muted small' }, t('px.taskUpkeep')) : null,
+    f.reason ? h('pre', { class: 'task-reason' }, f.reason) : h('div', { class: 'muted small' }, t('px.taskNoLog')));
 }
 
 /** Devices of a network controller: state, model, firmware (update), clients - and whether it is in the inventory */
@@ -811,10 +831,14 @@ function hostSummary(x) {
     if (full.length) (full.some((y) => y.pct >= 95) ? bad : warn)(tn('vo.storeFull', { n: full.length }));
     const old = (d.groups || []).filter((g) => !g.last || Date.now() / 1000 - g.last > 26 * 3600).length;
     if (old) warn(tn('vo.groupsOld', { n: old }));
-    if ((d.failed || []).length) bad(tn('vo.tasksFailed', { n: d.failed.length }));
+    const real = (d.failed || []).filter((f) => f.repo !== 'foreign');
+    const crit = real.filter((f) => f.critical !== false).length;
+    const upkeep = real.length - crit;
+    if (crit) bad(tn('vo.tasksFailed', { n: crit }));
+    if (upkeep) warn(tn('vo.upkeepFailed', { n: upkeep }));
     const maxPct = Math.max(0, ...(d.datastores || []).map((y) => y.pct || 0));
     figures.push(t('vo.fig.stores', { n: (d.datastores || []).length, pct: maxPct }), t('vo.fig.groups', { n: (d.groups || []).length }));
-    n.stores = (d.datastores || []).length; n.storesFull = full.length; n.backupHosts = 1; n.backupIssues = old + (d.failed || []).length;
+    n.stores = (d.datastores || []).length; n.storesFull = full.length; n.backupHosts = 1; n.backupIssues = old + crit;
     deep.push(...(d.datastores || []).map((y) => y.name), ...(d.groups || []).map((g) => `${g.type}/${g.id} ${g.comment || ''}`));
   } else if (d.kind) {
     const nodes = d.nodes || []; const guests = d.guests || []; const stores = (d.storages || []).filter((y) => y.total);

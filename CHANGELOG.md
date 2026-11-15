@@ -10,6 +10,9 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 - Sensoren mit Grenze geben erst mit Abstand Entwarnung (2 °C bzw. 2 Prozentpunkte) - ein Fühler, der um seine Grenze pendelt, alarmiert nicht mehr alle 5 Minuten
 - Proxmox: Fehlt ein Wert nur einmal, heißt es „gerade kein Wert (vom Host nicht geliefert)“ statt „dem Konto fehlen wohl Leserechte“ - das nur noch, wenn wirklich Rechte fehlen
 - Diagnosepaket: auch der SMTP-Benutzername wird zum Platzhalter
+- Jeder Monitor und Sensor zeigt „So wird geprüft“: was genau gefragt wird, woher die Werte kommen und wie alt sie sind, wann alarmiert wird (mit Abstand für die Entwarnung) und die letzte Antwort im Wortlaut
+- Proxmox VE und Backup Server: Fehlgeschlagene Aufgaben zeigen die Fehlerzeilen aus dem Aufgabenprotokoll und einen verständlichen Namen statt „aptupdate“ oder „verificationjob“. Wartungsaufgaben sind gelb statt rot
+- Paketlisten: Scheitert nur eine fremde Paketquelle (z. B. Webmin), ist das ein Hinweis und kein Fehler - Alarm gibt es nur, wenn eine offizielle Quelle von Proxmox oder Debian nicht klappt
 
 ## 0.26.0 - 2026-11-15
 

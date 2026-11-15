@@ -13,6 +13,7 @@ import { bestWebUrl } from '../scan/engine.js';
 import { forgetMonitors } from '../lib/idlists.js';
 import { onIpMovedPaused } from '../devicechange.js';
 import { findSame } from './dedupe.js';
+import { explain } from './explain.js';
 
 const HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 const MAX_PARALLEL = 25;
@@ -581,6 +582,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       dependents: db.prepare('SELECT id, name, status, enabled FROM monitors WHERE parent_id=? ORDER BY name').all(id).map(brief),
       candidates: childCandidates(id).length,
       maintenance: !!maintenance.activeFor(id, now()),
+      // how it is checked: method, source of the values and their age, when it alarms (see explain.js)
+      how: explain(db, settings || { get: () => null }, db.prepare('SELECT * FROM monitors WHERE id=?').get(id)),
     };
   }
 

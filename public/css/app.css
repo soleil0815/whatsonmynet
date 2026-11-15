@@ -175,6 +175,11 @@ input.mono { font-family: var(--mono); }
 .help-link svg { width: 14px; height: 14px; }
 .tip-script .actions { align-items: center; flex-wrap: wrap; }
 .dup-list { margin: 0; padding-left: 18px; }
+.how-kv dd { overflow-wrap: anywhere; }
+.task-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.task-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.task-reason { margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9em; overflow: auto; }
+.bad-text { color: var(--bad); }
 .dup-list li { margin: 4px 0; }
 .panel > h2:not(.section-title), .panel-head { padding: 16px 20px 0; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -183,6 +188,7 @@ input.mono { font-family: var(--mono); }
 .badge-new { background: var(--new-fill); color: #3A2400; }
 .badge-bad { background: var(--bad-soft); color: var(--bad); }
 .badge-ok { background: var(--ok-soft); color: var(--ok); }
+.badge-warn { background: var(--new-soft); color: var(--new); }
 .badge-ti { background: var(--ti-soft); color: var(--ti); }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; background: var(--line-2); }
 .dot.online { background: var(--ok); }
