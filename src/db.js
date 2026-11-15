@@ -688,6 +688,9 @@ export const MIGRATIONS = [
    );`,
   // 32: event rules with counting, a regular expression and open events (their settings - the state is in the messages file)
   `ALTER TABLE event_rules ADD COLUMN options TEXT NOT NULL DEFAULT '{}';`,
+  // 33: the look follows the system again by default (light or dark as the computer is set) - accounts on light, which
+  // migration 26 made of "like the system", go back to it; dark stays dark
+  `UPDATE users SET theme='system' WHERE theme='light';`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached
