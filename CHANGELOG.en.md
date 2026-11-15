@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Messages in a file of their own (data/events.sqlite): the database and its daily backups stay small; existing messages move once with the update. The limit is now space instead of 200 000 pieces: 30 days in at most 2 GB, with a short disk at least 10 % stay free. The page shows the space used, messages a day, how many days the space lasts - and who sends the most when it does not
+
+## 0.27.0 - 2026-11-15
+
 - NAS (found in the first real diagnostic package): when a busy NAS answered only halfway, disks, volumes and storage pools counted as "not found" for one poll - at night that gave dozens of false alarms and all-clears. Now WhatsOnMyNet reads the tables one after the other, recognises incomplete answers and keeps missing entries for up to two polls
 - Sensors with a limit only give the all-clear with a margin (2 °C or 2 percentage points) - a sensor swinging around its limit no longer alarms every 5 minutes
 - Proxmox: a value missing for once now says "no value at the moment (not delivered by the host)" instead of "the account probably lacks read rights" - that only when rights are really missing

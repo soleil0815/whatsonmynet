@@ -13,6 +13,7 @@ import { openRuleForm } from './eventrules.js';
 export const SEV = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'];
 const sevTone = (s) => (s <= 3 ? 'bad' : s === 4 ? 'warn' : s === 5 ? '' : 'muted');
 export const sevLabel = (s) => t(`ev.sev.${SEV[s]}`);
+const gb = (b) => (b < 1024 ** 3 ? `${Math.max(0.1, b / 1024 ** 2).toLocaleString(getLang(), { maximumFractionDigits: b < 10 * 1024 ** 2 ? 1 : 0 })} MB` : `${(b / 1024 ** 3).toLocaleString(getLang(), { maximumFractionDigits: 1 })} GB`);
 
 export async function renderEvents(main) {
   if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
@@ -24,6 +25,7 @@ export async function renderEvents(main) {
   const sevSel = h('select', { 'aria-label': t('ev.severity') }, [[7, t('ev.f.all')], [4, t('ev.f.warning')], [3, t('ev.f.err')], [2, t('ev.f.crit')]].map(([v, l]) => h('option', { value: String(v) }, l)));
   const chips = h('div', { class: 'inv-chips', role: 'group' });
   const statusBox = h('div');
+  const spaceBox = h('div');
   const listBox = h('div');
   const more = h('div', { class: 'actions', style: { justifyContent: 'center' } });
 
@@ -51,7 +53,16 @@ export async function renderEvents(main) {
         cfg.syslogTcp || s.syslogTcp?.error ? recv(s.syslogTcp.on, 'Syslog TCP', `${cfg.syslogTcpPort}`, s.syslogTcp.error) : null,
         cfg.syslogTls || s.syslogTls?.error ? recv(s.syslogTls.on, 'Syslog TLS', `${cfg.syslogTlsPort}`, s.syslogTls.error) : null,
         h('span', { class: 'muted small' }, t('ev.total', { n: s.total })),
+        s.storage ? h('span', { class: 'muted small' }, t(s.storage.short ? (s.storage.daysFit < 1 ? 'ev.space0' : 'ev.space') : 'ev.spaceOk', { used: gb(s.storage.used), limit: gb(s.storage.cap),
+          day: s.storage.perDay.toLocaleString(getLang()), days: s.storage.daysFit, keep: s.storage.keepDays })) : null,
         errs.map((e) => h('span', { class: 'small bad-text' }, e))));
+    // the space does not reach for the days set: say so, and who fills it
+    const st = s.storage;
+    mount(spaceBox, st && (st.short || st.diskShort) ? h('div', { class: 'note' }, h('div', { style: { minWidth: 0 } },
+      h('strong', {}, st.short ? t(st.daysFit < 1 ? 'ev.shortTitle0' : 'ev.shortTitle', { days: st.daysFit, keep: st.keepDays }) : t('ev.diskTitle')),
+      h('p', { style: { margin: '4px 0 0' } }, [st.diskShort ? t('ev.diskText', { limit: gb(st.limit), cap: gb(st.cap) }) : '',
+        st.topSenders.length || st.topEvents.length ? t('ev.shortWho', { list: [...st.topSenders.map((x) => `${x.name} (${x.share} %)`), ...st.topEvents.map((x) => `${t('ev.eventId', { id: x.name })} (${x.share} %)`)].join(', ') }) : '',
+        st.short ? t('ev.shortHelp') : ''].filter(Boolean).join(' ')))) : null);
     const chip = (key, label) => h('button', { type: 'button', class: `fchip${kind === key ? ' on' : ''}`, 'aria-pressed': String(kind === key), onclick: () => { kind = key; load(); } }, label);
     mount(chips, chip('', t('all')), chip('trap', 'Traps'), chip('syslog', 'Syslog'));
     mount(listBox, rows.length ? h('div', { class: 'panel' }, h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-table' },
@@ -102,6 +113,7 @@ export async function renderEvents(main) {
       field(t('ev.s.syslogTls', { port: cfg.syslogTlsPort }), h('input', { type: 'checkbox', name: 'syslogTls', checked: cfg.syslogTls }), t('ev.s.syslogTlsHint')),
       field(t('ev.s.onlyKnown'), h('input', { type: 'checkbox', name: 'onlyKnown', checked: cfg.onlyKnown }), t('ev.s.onlyKnownHint')),
       field(t('ev.s.keep'), input('keepDays', cfg.keepDays, { type: 'number', min: 1, max: 365 }), t('ev.s.keepHint')),
+      field(t('ev.s.maxGb'), input('maxGb', cfg.maxGb, { type: 'number', min: 0.1, max: 1000, step: 0.1 }), t('ev.s.maxGbHint')),
       h('div', { class: 'note', style: { margin: 0 } }, h('div', { style: { minWidth: 0 } },
         h('strong', {}, t('ev.s.portsTitle')), h('p', { style: { margin: '4px 0 6px' } }, t('ev.s.ports', { trap: cfg.trapPort, syslog: cfg.syslogPort })),
         h('pre', { class: 'mono small', style: { margin: 0, whiteSpace: 'pre-wrap' } },
@@ -110,6 +122,7 @@ export async function renderEvents(main) {
       const d = formData(form);
       if (!d.communities.trim()) delete d.communities;
       d.keepDays = Number(d.keepDays);
+      d.maxGb = Number(d.maxGb);
       try { await put('/events/settings', d); m.close(); toast(t('saved')); load(); } catch (ex) { fail(ex); }
     }, actions: [btn(t('cancel'), { onclick: () => m.close() }), h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   }
@@ -121,7 +134,7 @@ export async function renderEvents(main) {
     btn(t('ev.rules'), { class: 'btn', onclick: () => navigate('/events/rules') }, 'mail'),
     admin ? btn(t('ev.settings'), { class: 'btn', onclick: () => info && settingsDialog(info.settings) }, 'settings') : null,
     btn(t('ev.reload'), { class: 'btn', onclick: () => load() }, 'refresh'));
-  mount(body, head, statusBox,
+  mount(body, head, statusBox, spaceBox,
     h('div', { class: 'vo-toolbar ev-toolbar' }, h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q), sevSel, chips),
     listBox, more);
   await load();

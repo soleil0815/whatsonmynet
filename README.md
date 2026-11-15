@@ -287,7 +287,7 @@ Was neu ist, steht in [CHANGELOG.md](CHANGELOG.md) (dieselben Texte wie im Progr
 - Sicherheitsupdates erscheinen am Patchday (zweiter Dienstag im Monat) als `<version>-s<n>`: dasselbe Programm mit neuem Basis-Image sowie aktualisierten Alpine- und npm-Paketen, gebaut, getestet und mit Trivy geprüft. Hat sich nichts geändert, wird nichts veröffentlicht.
 - Jeden Tag prüft Trivy das veröffentlichte Image. Gibt es behebbare Lücken, öffnet sich ein Issue, und das Sicherheitsupdate am Patchday behebt sie.
 - In der Woche vor dem Patchday greift ein ZAP-Scan das Programm in einem Wegwerf-Container ohne Anmeldung an. Das Ergebnis wertet der monatliche Code-Audit aus.
-- WhatsOnMyNet legt jeden Tag eine Sicherung der Datenbank in `data/backups/` an (Anzahl unter *Einstellungen → Allgemein*). Sichere den ganzen Ordner `data/`, inklusive `secret.key` und `tls/`.
+- WhatsOnMyNet legt jeden Tag eine Sicherung der Datenbank in `data/backups/` an (Anzahl unter *Einstellungen → Allgemein*). Sichere den ganzen Ordner `data/`, inklusive `secret.key` und `tls/`. Die Meldungen der Geräte (Syslog, Traps) liegen in `data/events.sqlite` - nicht in der Datenbank und nicht in den täglichen Sicherungen; höchstens 2 GB (einstellbar).
 
 Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle Sicherung herunter, legst eine an oder spielst eine ein - hochgeladen oder aus der Liste auf dem Server. Die Datei wird vorher geprüft (WhatsOnMyNet-Datenbank, nicht neuer als diese Version, gleicher Schlüssel), der aktuelle Stand wird als `whatsonmynet-before-restore-…` gesichert, dann startet das Programm neu. **Bewahre `data/secret.key` (bzw. deinen `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
 
