@@ -57,7 +57,7 @@ differently – and whether the code below is affected. Old and new versions mus
 
 | What | Code | Watch |
 |---|---|---|
-| Windows script (Windows PowerShell 5.1): CIM/WMI classes, Get-PhysicalDisk / Get-StorageReliabilityCounter, Microsoft.Update.Session, Get-MpComputerStatus, Get-NetFirewallProfile, Get-WinEvent, certificate store, schtasks; own checks (Checkmk local check format, ACL check) | `src/hostscripts/womn-host.ps1`, `setup.ps1.part` | Windows deprecated/removed features (WMIC, VBScript, PowerShell 2.0), new Windows / Server releases, TLS defaults |
+| Windows script (Windows PowerShell 5.1): CIM/WMI classes, WMI classes MSFT_NetAdapter and MSFT_NetFirewallProfile (root/StandardCimv2), MSFT_PhysicalDisk + MSFT_StorageReliabilityCounter (root/Microsoft/Windows/Storage), MSFT_MpComputerStatus (root/Microsoft/Windows/Defender) - deliberately not the modules (each run would log ~70 events 4104) -, Microsoft.Update.Session, Get-WinEvent, certificate store, schtasks; own checks (Checkmk local check format, ACL check) | `src/hostscripts/womn-host.ps1`, `setup.ps1.part` | Windows deprecated/removed features (WMIC, VBScript, PowerShell 2.0), new Windows / Server releases, TLS defaults |
 | Linux script (POSIX sh): lsblk, `smartctl -j`, journalctl, apt/dnf, /sys/class/hwmon and thermal, NUT/apcupsd, ufw/firewalld, reboot-required; own checks | `src/hostscripts/womn-host.sh` | smartmontools JSON changes, distribution releases (Debian, Ubuntu LTS, RHEL family) |
 | Checkmk local check format | `src/hostfacts.js` (`cleanChecks`) | Checkmk docs (format extensions) |
 

@@ -3,12 +3,20 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
-    'Aussehen: Standard ist wieder „wie das System“ - hell oder dunkel, wie der Rechner oder das Handy eingestellt ist; Konten auf „hell“ wurden umgestellt, eine eigene Wahl bleibt unter Mein Konto möglich',
+    'Windows-Skript der Rechner: liest Netzwerkkarten, Festplatten, Defender und Firewall direkt aus WMI statt über die PowerShell-Module - mit eingeschaltetem Skriptblockprotokoll entstehen pro Lauf nicht mehr rund 70 „verdächtige“ Ereignisse 4104, sondern nur wenige „ausführliche“. Gleiche Werte; wirkt nach Neues Skript unter Einstellungen → Rechner-Skripte und erneutem Ausführen bzw. Verteilen',
+  ], en: [
+    'Windows script of the machines: reads network cards, disks, Defender and firewall straight from WMI instead of through the PowerShell modules - with script block logging on, a run no longer leaves some 70 "suspicious" events 4104 but only a few "verbose" ones. Same values; takes effect after New script under Settings → Machine scripts and running or distributing it again',
+  ] },
+  { version: '0.32.0', date: '2026-11-15', de: [
     'Sicherungen der Datenbank liegen komprimiert auf dem Server (.sqlite.gz, meist nur ein Bruchteil der Größe); Standard jetzt 10 statt 7 (wer 7 eingestellt hatte, hat jetzt 10). Vorhandene Sicherungen werden einmal komprimiert, Kopien vor Updates und vor dem Einspielen sammeln sich nicht mehr an (je die 10 neuesten). Einspielen geht mit .sqlite und .sqlite.gz',
     'Windows-Ereignisse: neue Installationen nehmen das übliche Rauschen gar nicht erst an (An-/Abmeldungen, Prozessstart, Objektzugriffe, Firewall-Verbindungen, Dienststatus 7036, DCOM 10016, WMI 5858 …); bestehende behalten ihre Liste und können sie unter Empfang einstellen mit „Übliches Rauschen einsetzen“ ergänzen. Fehlanmeldungen, Kontosperren und die fertigen Regeln bleiben unberührt',
   ], en: [
-    'Windows events: new installations do not take the usual noise at all (logons/logoffs, process start, object access, firewall connections, service state 7036, DCOM 10016, WMI 5858 …); existing ones keep their list and can add to it under Receiving settings with "Add the usual noise". Failed logons, account lockouts and the ready-made rules are not touched',
     'Database backups are kept compressed on the server (.sqlite.gz, mostly a fraction of the size); default now 10 instead of 7 (who had 7 set now has 10). Existing backups are compressed once, copies before updates and before a restore no longer pile up (the 10 newest each). Restoring takes .sqlite and .sqlite.gz',
+    'Windows events: new installations do not take the usual noise at all (logons/logoffs, process start, object access, firewall connections, service state 7036, DCOM 10016, WMI 5858 …); existing ones keep their list and can add to it under Receiving settings with "Add the usual noise". Failed logons, account lockouts and the ready-made rules are not touched',
+  ] },
+  { version: '0.31.0', date: '2026-11-15', de: [
+    'Aussehen: Standard ist wieder „wie das System“ - hell oder dunkel, wie der Rechner oder das Handy eingestellt ist; Konten auf „hell“ wurden umgestellt, eine eigene Wahl bleibt unter Mein Konto möglich',
+  ], en: [
     'Look: the default is "like the system" again - light or dark as the computer or phone is set; accounts on "light" were switched over, an own choice stays possible under My account',
   ] },
   { version: '0.30.0', date: '2026-11-15', de: [

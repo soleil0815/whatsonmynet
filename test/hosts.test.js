@@ -195,6 +195,10 @@ test('Windows script: reports hardware, disks, updates, protection, events and c
   assert.deepEqual([r.hw.vendor, r.hw.model, r.hw.serial, r.hw.bios, r.hw.biosDate, r.hw.sockets, r.hw.cores, r.hw.threads, r.hw.virtual, r.hw.ramTotal],
     ['Dell Inc.', 'PowerEdge R650', '7XK2Q93', '1.13.2', '2024-03-05', 2, 20, 40, false, 34359738368]);
   assert.deepEqual(r.hw.nics.map((n) => [n.name, n.mac, n.speed, n.up]), [['Ethernet 1', '00:15:5d:01:02:03', 1000, true], ['Ethernet 2', '00:15:5d:01:02:04', null, false]]);
+  assert.deepEqual(r.pdisks.map((d) => d.bus), ['SATA', 'SAS'], 'numbers of the WMI class turned into the words of the module');
+  // no module cmdlets (Get-PhysicalDisk & co.): each run would leave ~70 "suspicious" events 4104 on the machine
+  const code = fs.readFileSync('src/hostscripts/womn-host.ps1', 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.doesNotMatch(code, /\b(Get-NetAdapter|Get-PhysicalDisk|Get-StorageReliabilityCounter|Get-MpComputerStatus|Get-NetFirewallProfile)\b/);
   assert.deepEqual(r.pdisks.map((d) => [d.model, d.serial, d.media, d.health, d.temp, d.wear, d.hours]),
     [['SAMSUNG MZ7LH480', 'S45PNA0M123456', 'SSD', 'ok', 34, 7, 21000], ['ST4000NM0035', 'ZC1ABCDE', 'HDD', 'warning', null, null, null]]);
   assert.deepEqual(r.updates, { pending: null, security: null, checkedAt: null, lastInstalled: null, reboot: true });
