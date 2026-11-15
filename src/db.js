@@ -671,7 +671,66 @@ export const MIGRATIONS = [
    );
    CREATE INDEX event_rule_hits_open ON event_rule_hits(rule_id, sent_at);
    CREATE INDEX event_rule_hits_event ON event_rule_hits(event_id);`,
+  // 30: the messages move into a file of their own (events.sqlite, attached as "ev" - see attachEvents): they would
+  // swell the database and every daily backup. Moved once - a restored older backup only drops its copy.
+  `INSERT INTO ev.events_in(at, kind, source_ip, device_id, severity, facility, host, app, oid, text, event_id, channel, account)
+     SELECT at, kind, source_ip, device_id, severity, facility, host, app, oid, text, event_id, channel, account FROM main.events_in
+     WHERE NOT EXISTS (SELECT 1 FROM ev.events_in) ORDER BY id;
+   DROP TABLE main.event_rule_hits;
+   DROP TABLE main.events_in;`,
 ];
+
+// The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached
+// to the same connection as schema "ev" - queries name the tables without schema and find them there. Not in the daily
+// backups and not sent to the standby (each installation receives for itself). Space is given back as messages go
+// (incremental auto-vacuum), so the file stays near its limit instead of only growing.
+const EVENTS_SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS ev.events_in (
+     id INTEGER PRIMARY KEY,
+     at TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     source_ip TEXT NOT NULL,
+     device_id INTEGER,
+     severity INTEGER NOT NULL,
+     facility INTEGER,
+     host TEXT NOT NULL DEFAULT '',
+     app TEXT NOT NULL DEFAULT '',
+     oid TEXT NOT NULL DEFAULT '',
+     text TEXT NOT NULL,
+     event_id INTEGER,
+     channel TEXT NOT NULL DEFAULT '',
+     account TEXT NOT NULL DEFAULT ''
+   );
+   CREATE INDEX IF NOT EXISTS ev.events_in_at ON events_in(at);
+   CREATE INDEX IF NOT EXISTS ev.events_in_device ON events_in(device_id, at);
+   CREATE TABLE IF NOT EXISTS ev.event_rule_hits (
+     id INTEGER PRIMARY KEY,
+     rule_id INTEGER NOT NULL,
+     event_id INTEGER NOT NULL REFERENCES events_in(id) ON DELETE CASCADE,
+     at TEXT NOT NULL,
+     sent_at TEXT,
+     failed INTEGER NOT NULL DEFAULT 0,
+     tries INTEGER NOT NULL DEFAULT 0,
+     next_try TEXT
+   );
+   CREATE INDEX IF NOT EXISTS ev.event_rule_hits_open ON event_rule_hits(rule_id, sent_at);
+   CREATE INDEX IF NOT EXISTS ev.event_rule_hits_event ON event_rule_hits(event_id);`,
+];
+export const eventsFile = (dbFile) => (dbFile === ':memory:' ? ':memory:' : path.join(path.dirname(dbFile), 'events.sqlite'));
+
+/** Attaches the messages file as "ev" and brings it to the current shape */
+export function attachEvents(db, dbFile) {
+  const file = eventsFile(dbFile);
+  const fresh = file === ':memory:' || !fs.existsSync(file);
+  db.prepare('ATTACH DATABASE ? AS ev').run(file);
+  if (fresh) db.pragma('ev.auto_vacuum = INCREMENTAL');
+  if (file !== ':memory:') db.pragma('ev.journal_mode = WAL');
+  const version = db.pragma('ev.user_version', { simple: true });
+  if (version > EVENTS_SCHEMA.length) throw new DatabaseTooNewError(`The messages file ${file} belongs to a newer version of WhatsOnMyNet.`);
+  for (let v = version; v < EVENTS_SCHEMA.length; v++) db.transaction(() => { db.exec(EVENTS_SCHEMA[v]); db.pragma(`ev.user_version = ${v + 1}`); })();
+  if (file !== ':memory:') for (const f of [file, `${file}-wal`, `${file}-shm`]) { try { fs.chmodSync(f, 0o600); } catch { /* not there */ } }
+  return file;
+}
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 
@@ -692,7 +751,13 @@ export function openDatabase(file = paths.db) {
     fs.chmodSync(target, 0o600);
     log.info(`Backup before the schema update: ${target}`);
   }
+  attachEvents(db, file);
   migrate(db, { quiet: file === ':memory:' });
+  // much space left free by an update (the messages moved out): given back to the disk once
+  if (file !== ':memory:') {
+    const free = db.pragma('main.freelist_count', { simple: true }) * db.pragma('main.page_size', { simple: true });
+    if (free > 50 * 1024 * 1024) { log.info(`Database: giving back ${Math.round(free / 1048576)} MB of free space`); db.exec('VACUUM main'); }
+  }
   if (file !== ':memory:') {
     for (const f of [file, `${file}-wal`, `${file}-shm`]) { try { fs.chmodSync(f, 0o600); } catch { /* not there */ } }
   }
@@ -700,6 +765,8 @@ export function openDatabase(file = paths.db) {
 }
 
 export function migrate(db, { quiet = false } = {}) {
+  // a connection without the messages file (trial migration of a backup, tests): an empty one in memory
+  if (!db.pragma('database_list').some((d) => d.name === 'ev')) attachEvents(db, ':memory:');
   const version = db.pragma('user_version', { simple: true });
   if (version > MIGRATIONS.length) {
     throw new DatabaseTooNewError(`The database belongs to a newer version of WhatsOnMyNet (schema ${version}, this version knows ${MIGRATIONS.length}). Please install the newer version again or restore a backup.`);

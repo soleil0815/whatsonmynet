@@ -287,7 +287,7 @@ What is new is in [CHANGELOG.en.md](CHANGELOG.en.md) (the same texts as in the p
 - Security updates are published on patch day (second Tuesday of the month) as `<version>-s<n>`: the same program with a new base image and updated Alpine and npm packages, built, tested and checked with Trivy. If nothing changed, nothing is published.
 - Trivy checks the published image every day. Fixable vulnerabilities open an issue; the security update on patch day fixes them.
 - In the week before patch day a ZAP scan attacks the program in a throwaway container without login. The monthly code audit evaluates the result.
-- WhatsOnMyNet writes a daily database backup to `data/backups/` (number under *Settings → General*). Back up the whole `data/` folder, including `secret.key` and `tls/`.
+- WhatsOnMyNet writes a daily database backup to `data/backups/` (number under *Settings → General*). Back up the whole `data/` folder, including `secret.key` and `tls/`. The messages of the devices (syslog, traps) are in `data/events.sqlite` - not in the database and not in the daily backups; at most 2 GB (adjustable).
 
 Under *Settings → Backup* (from 0.4) you download a current backup at any time, create one or restore one - uploaded or from the list on the server. The file is checked first (WhatsOnMyNet database, not newer than this version, same key), the current state is kept as `whatsonmynet-before-restore-…`, then the program restarts. **Keep `data/secret.key` (or your `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 

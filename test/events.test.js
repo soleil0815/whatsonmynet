@@ -135,7 +135,10 @@ test('only from inventory devices when asked; each installation keeps its own me
   assert.equal((await call('PUT', '/api/events/settings', { traps: false, syslog: false, onlyKnown: true })).status, 200);
   assert.equal(ctx.events.receive('syslog', '10.77.0.1', { severity: 3, text: 'unknown sender' }), null);
   assert.ok(ctx.events.receive('syslog', '127.0.0.1', { severity: 3, text: 'known sender' }));
-  assert.ok(LOCAL_TABLES.has('events_in'));
+  // in a file of their own: not in the database the standby takes, nor in its backups
+  assert.equal(db.prepare("SELECT 1 FROM main.sqlite_master WHERE name='events_in'").get(), undefined);
+  assert.ok(db.prepare("SELECT 1 FROM ev.sqlite_master WHERE name='events_in'").get());
+  assert.ok(LOCAL_TABLES);
   db.prepare("UPDATE events_in SET at='2000-01-01T00:00:00.000Z' WHERE text='known sender'").run();
   ctx.events.prune();
   assert.equal(db.prepare("SELECT COUNT(*) n FROM events_in WHERE text='known sender'").get().n, 0);
