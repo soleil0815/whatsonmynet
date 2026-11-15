@@ -471,6 +471,26 @@ Status `0` = OK, `1` = warning, `2` = critical, `3` = unknown. The name has no s
 
 On the device page the checks are under *Own checks*; as the sensor *Own check …* everything but OK alarms (warning and unknown too). New machines get the sensors right away. For this, roll out the machine script of this version once again.
 
+## Prometheus and Grafana
+
+If you already run Prometheus and Grafana, you can bring the state of all monitors and sensors there: *Settings → Prometheus & Grafana*.
+
+1. **Create key.** It is shown only once; only its fingerprint is stored. Without a key `/metrics` does not exist at all. A key may only read the values, nothing else.
+2. Take over the shown **prometheus.yml**, download the **certificate of the server** and give it as `ca_file` - so the certificate check stays on (no `insecure_skip_verify`).
+3. In Grafana under *Dashboards → New → Import* upload the **Grafana dashboard** and choose the Prometheus data source: monitors down, availability, response times, sensor values, certificates.
+
+| Value | Meaning |
+|---|---|
+| `womn_monitor_up` | 1 fine, 0 down (paused and new ones are left out) |
+| `womn_monitor_state` | state as a label: up, down, pending, paused |
+| `womn_monitor_down_seconds` | seconds since the outage began |
+| `womn_monitor_response_seconds` | response time (web, port, ping, databases …) |
+| `womn_sensor_value` | value of a sensor, with unit and limit as labels |
+| `womn_cert_expiry_timestamp_seconds` | certificate expiry; days: `(womn_cert_expiry_timestamp_seconds - time()) / 86400` |
+| `womn_devices`, `womn_events_stored`, `womn_info` | devices, stored messages, version and role |
+
+Every value carries `id`, `name`, `type`, `target` and - where there is one - `device`. With failover Prometheus can ask both; `womn_info` tells which one is master.
+
 ## Reports
 
 ![Report](img/report-en.png)
