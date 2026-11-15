@@ -204,6 +204,16 @@ function dirSize(dir) {
   try { return fs.readdirSync(dir).reduce((n, f) => n + (sizeOf(`${dir}/${f}`) || 0), 0); } catch { return null; }
 }
 
+/** The backups at a glance: how many, compressed or not, the newest (names only carry dates) */
+function backupFiles(dir) {
+  try {
+    const names = fs.readdirSync(dir).filter((f) => /^whatsonmynet-.*\.sqlite(\.gz)?$/.test(f)).sort();
+    const daily = names.filter((f) => /^whatsonmynet-\d{4}-/.test(f));
+    return { count: names.length, compressed: names.filter((f) => f.endsWith('.gz')).length, uncompressed: names.filter((f) => !f.endsWith('.gz')).length,
+      daily: daily.length, newestDaily: daily.at(-1) ?? null };
+  } catch { return null; }
+}
+
 export function createDiagnostics({ db, settings, failover = null, dbFile = paths.db, backupsDir = paths.backups }) {
   const insert = db.prepare('INSERT INTO server_log(at, level, message) VALUES(?,?,?)');
   // made after the diagnostics (app.js): the receivers of the messages, the event rules, the keys for /metrics
@@ -250,7 +260,7 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       uptime_s: Math.round(process.uptime()), system_uptime_s: Math.round(os.uptime()), timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
       config: { httpsPort: config.httpsPort, httpPort: config.httpPort, baseUrl: an.anon(config.baseUrl), hsts: config.hsts, trustProxy: an.anon(config.trustProxy),
         logLevel: config.logLevel, sessionHours: config.sessionHours, composeVersion: config.composeVersion },
-      database: { schema: db.pragma('user_version', { simple: true }), size: sizeOf(dbFile), wal: sizeOf(`${dbFile}-wal`), backups: dirSize(backupsDir), tables,
+      database: { schema: db.pragma('user_version', { simple: true }), size: sizeOf(dbFile), wal: sizeOf(`${dbFile}-wal`), backups: dirSize(backupsDir), backupFiles: backupFiles(backupsDir), backupKeep: settings.get('backup.keep'), tables,
         events: { size: sizeOf(eventsFile(dbFile)), wal: sizeOf(`${eventsFile(dbFile)}-wal`), rows: db.prepare('SELECT COUNT(*) n FROM events_in').get().n } },
       failover: fo,
     };

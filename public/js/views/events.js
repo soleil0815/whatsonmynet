@@ -212,6 +212,7 @@ export async function renderEvents(main) {
   function settingsDialog(cfg) {
     const traps = h('input', { type: 'checkbox', name: 'traps', checked: cfg.traps });
     const syslog = h('input', { type: 'checkbox', name: 'syslog', checked: cfg.syslog });
+    const winDeny = h('textarea', { name: 'winDeny', rows: 2, class: 'mono', placeholder: '4624, 4634, 5858', autocomplete: 'off', spellcheck: 'false', style: { width: '100%' } }, cfg.winDeny || '');
     const form = h('form', { class: 'form' },
       field(t('ev.s.traps', { port: cfg.trapPort }), traps, t('ev.s.trapsHint')),
       field(t('ev.s.communities'), h('textarea', { name: 'communities', rows: 2, class: 'mono', autocomplete: 'off', spellcheck: 'false',
@@ -222,7 +223,12 @@ export async function renderEvents(main) {
       field(t('ev.s.onlyKnown'), h('input', { type: 'checkbox', name: 'onlyKnown', checked: cfg.onlyKnown }), t('ev.s.onlyKnownHint')),
       field(t('ev.s.minSeverity'), select('minSeverity', keepOptions(), String(cfg.minSeverity ?? 7)), t('ev.s.minSeverityHint')),
       field(t('ev.s.winAllow'), input('winAllow', cfg.winAllow || '', { class: 'mono', placeholder: t('ev.s.winAllowPh'), autocomplete: 'off' }), t('ev.s.winAllowHint')),
-      field(t('ev.s.winDeny'), input('winDeny', cfg.winDeny || '', { class: 'mono', placeholder: '8004, 4624, 4634', autocomplete: 'off' }), t('ev.s.winDenyHint')),
+      field(t('ev.s.winDeny'), h('div', { class: 'row', style: { gap: '8px', alignItems: 'center', flexWrap: 'wrap' } }, winDeny,
+        cfg.winNoise ? btn(t('ev.s.winNoise'), { class: 'btn btn-sm', type: 'button', title: cfg.winNoise, onclick: () => {
+          // the usual noise added to what is there - nothing removed; tidied up by the server when saved
+          const have = winDeny.value.split(/[\s,;]+/).filter(Boolean);
+          winDeny.value = [...new Set([...have, ...cfg.winNoise.split(/[\s,]+/).filter(Boolean)])].join(', ');
+        } }) : null), t('ev.s.winDenyHint')),
       field(t('ev.s.keep'), input('keepDays', cfg.keepDays, { type: 'number', min: 1, max: 365 }), t('ev.s.keepHint')),
       field(t('ev.s.maxGb'), input('maxGb', cfg.maxGb, { type: 'number', min: 0.1, max: 1000, step: 0.1 }), t('ev.s.maxGbHint')),
       h('div', { class: 'note', style: { margin: 0 } }, h('div', { style: { minWidth: 0 } },

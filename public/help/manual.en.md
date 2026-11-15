@@ -205,7 +205,7 @@ Without `Exec` in the output NXLog sends time, computer, level, event id and tex
 
 **What is kept:** under *Receiving settings* one limit applies to all senders, e.g. "warning and worse"; in the view *By sender* every sender gets its own limit with **Filter** - everything (an important server), error and worse (a chatty switch) or nothing (muted). A muted sender stays in the list with the number of dropped messages, so it can be found again. What is not kept fires no rule and no monitor either.
 
-**Only some event ids:** under *Receiving settings* you set which Windows events are stored at all - *only take these ids* (e.g. `1116, 1117, 4740, 865-868`; empty = all) and *never take these ids* (e.g. `8004, 4624, 4634` for group policy and logons/logoffs). That keeps the list and the space small; messages of switches, NAS and the like are not touched. An event rule for an id the receiving does not take cannot be saved, and the rule list warns when a rule can therefore never fire.
+**Only some event ids:** under *Receiving settings* you set which Windows events are stored at all - *only take these ids* (e.g. `1116, 1117, 4740, 865-868`; empty = all) and *never take these ids*. A new installation starts there with the usual noise: logons/logoffs and special privileges (4624, 4634, 4647, 4672), process start and end (4688, 4689), object access (4656, 4658, 4663, 4690), token and group lookups (4703, 4798, 4799), firewall connections (5156, 5158), credentials read (5379), WMI (5858), uptime (6013), service state (7036), DCOM (10016), software protection (16384, 16394), user profile service (1531, 1532). An existing installation keeps its list; the button *Add the usual noise* adds to it without removing anything. Failed logons (4625), account lockouts (4740) and the ids of the ready-made rules are not in it, nor is 8004 (see below). That keeps the list and the space small; messages of switches, NAS and the like are not touched. An event rule for an id the receiving does not take cannot be saved, and the rule list warns when a rule can therefore never fire.
 
 **Good to know:** the same id exists for different sources - 8004 is "program blocked" for AppLocker and "processing completed" for group policy. If NXLog sends without `Exec` (only the id, no source), a rule cannot tell them apart. With the `Exec` lines above the source comes along and the rule hits exactly.
 
@@ -643,8 +643,8 @@ When pairing, the standby takes **all data of the master** (devices, monitors, u
 
 ## Backup and updates
 
-- Once a day WhatsOnMyNet backs up the database to `data/backups/` (the first time one hour after the start); additionally before every database update.
-- *Settings → Backup*: download a backup, back up now, restore a backup (the current state is backed up first, then the program restarts).
+- Once a day WhatsOnMyNet backs up the database compressed to `data/backups/` (`whatsonmynet-….sqlite.gz`, the first time one hour after the start); additionally before every database update. By default the 10 newest are kept (*Settings → General*), of the copies before updates and before a restore the 10 newest each. Older uncompressed backups are compressed once.
+- *Settings → Backup*: download a backup, back up now, restore a backup - `.sqlite` or `.sqlite.gz` (the current state is backed up first, then the program restarts). To open one by hand: `gunzip -k whatsonmynet-….sqlite.gz`.
 - **Keep `data/secret.key` (or `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 - Updates: in Dockhand/Watchtower or `docker compose pull && docker compose up -d`. Once a month a security update with new packages is released.
 
