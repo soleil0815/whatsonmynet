@@ -169,3 +169,21 @@ export function cleanTemps(raw) {
     return { key, name: `${chipName(chip)}${nvme} ${label}`.trim(), c, warn: max ?? (crit !== null ? Math.max(40, crit - 10) : 80), crit };
   }).filter(Boolean);
 }
+
+/**
+ * Own checks (Checkmk "local checks" format): what the scripts in the checks folder of the machine printed -
+ * [{ name, status: 0 OK | 1 WARN | 2 CRIT | 3 UNKNOWN, text, value, file }]. Names are unique; at most 50.
+ */
+export function cleanChecks(raw) {
+  const seen = new Set();
+  return list(raw, 50).map((c) => {
+    const x = obj(c);
+    if (!x) return null;
+    const name = clip(x.name, 64).replace(/[^\w.:@-]/g, '_');
+    const status = Number(x.status);
+    if (!name || seen.has(name.toLowerCase()) || !Number.isInteger(status) || status < 0 || status > 3) return null;
+    seen.add(name.toLowerCase());
+    const v = num(x.value);
+    return { name, status, text: clip(x.text, 300), value: v !== null && Math.abs(v) < 1e15 ? v : null, file: clip(x.file, 80) };
+  }).filter(Boolean);
+}

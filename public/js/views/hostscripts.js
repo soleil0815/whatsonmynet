@@ -7,6 +7,7 @@ import { icon } from '../icons.js';
 import { fail } from '../app.js';
 import { field, input, select, btn } from './common.js';
 import { upsBlock } from './snmpdev.js';
+import { checkText } from '../checktext.js';
 
 // Text with `code` and **bold** → nodes (no HTML from translations)
 const rich = (text) => String(text).split('`').flatMap((part, i) => (i % 2 ? [h('code', {}, part)]
@@ -104,6 +105,7 @@ export function systemPanel(x) {
     careBlock(x),
     tempsBlock(x.temps),
     pdisksBlock(x.pdisks),
+    checksBlock(x.checks),
     eventsBlock(x.events),
     certsBlock(x.certs),
     hwBlock(x.hw));
@@ -131,6 +133,20 @@ function careBlock(x) {
     a ? [t('host.av'), [badge(avTone[a.state], t(`host.av.${a.state}`)), ` ${a.name}`, a.sigAge !== null && a.sigAge !== undefined ? h('span', { class: 'muted small' }, ` · ${t('host.sigAge', { n: a.sigAge })}`) : null]] : null,
     f ? [t('host.fw'), [badge(fwTone[f.state], t(`host.fw.${f.state}`)), f.name && f.name !== 'Windows' ? ` ${f.name}` : '', offProfiles.length && f.state !== 'off' ? h('span', { class: 'muted small' }, ` · ${t('host.fwOff', { list: offProfiles.join(', ') })}`) : null]] : null,
   ])];
+}
+
+/** Own checks of the machine (checks folder): the ones that are not OK first */
+function checksBlock(checks) {
+  if (!checks?.length) return null;
+  const ST = ['ok', 'warn', 'crit', 'unknown'];
+  const tone = ['ok', 'new', 'bad', 'bad'];
+  const list = [...checks].sort((a, b) => ((b.status % 3 > 0) - (a.status % 3 > 0)) || b.status - a.status || a.name.localeCompare(b.name, undefined, { numeric: true }));
+  return [sub(t('host.checks', { n: checks.length })), h('ul', { class: 'ev-list' }, list.map((c) => h('li', {},
+    badge(tone[c.status], t(`val.state.${ST[c.status]}`)),
+    h('b', { class: 'small' }, c.name),
+    h('span', { class: 'small' }, checkText(c.text, getLang()) || ''),
+    c.value !== null && c.value !== undefined ? h('span', { class: 'muted small mono' }, String(c.value)) : null,
+    c.file ? h('span', { class: 'muted small mono' }, c.file) : null)))];
 }
 
 function eventsBlock(e) {

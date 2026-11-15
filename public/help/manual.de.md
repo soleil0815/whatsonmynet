@@ -452,6 +452,25 @@ Das Skript installiert nichts, lädt nichts nach, öffnet keinen Port und brauch
 
 Meldet sich ein Rechner 15 Minuten nicht, gilt er als offline - der Sensor „Rechner meldet sich“ schlägt dann Alarm.
 
+### Eigene Prüfungen
+
+Was WhatsOnMyNet nicht von sich aus kennt - ein Lizenzserver, eine Warteschlange, ein Sicherungsprotokoll, eine Fachanwendung -, prüft ein **eigenes kleines Skript** auf dem Rechner. Das Rechner-Skript führt bei jeder Meldung alle Skripte im Ordner *checks* aus und schickt ihr Ergebnis mit. Jedes gibt eine oder mehrere Zeilen im bekannten Format von Checkmk („Local Checks“) aus:
+
+```
+<Status> <Name> <Wert oder -> <Text>
+0 Backup_NAS count=12 letzte Sicherung vor 2 Stunden
+2 Lizenzserver - lic01 nicht erreichbar
+```
+
+Status `0` = OK, `1` = Warnung, `2` = kritisch, `3` = unbekannt. Der Name hat keine Leerzeichen; der Wert ist `-` oder z. B. `count=12` (er erscheint im Verlauf).
+
+- **Linux:** `/etc/whatsonmynet/checks/` (Skript läuft als root) bzw. `~/.config/whatsonmynet/checks/` (anderer Benutzer). Jede ausführbare Datei wird gestartet.
+- **Windows:** `C:\ProgramData\WhatsOnMyNet\checks\` - `.ps1`, `.cmd` und `.bat`.
+
+**Sicherheit:** Die Prüfskripte laufen mit den Rechten des Rechner-Skripts (unter Windows als SYSTEM). Deshalb startet es nur Dateien, die **niemand sonst ändern kann**: Ordner und Dateien gehören root bzw. dem Benutzer (Windows: SYSTEM, Administratoren oder TrustedInstaller), sind für Gruppe und andere nicht beschreibbar und keine Verknüpfung. Unsichere Dateien laufen nicht und erscheinen als *unbekannt* mit dem Grund. Jede Prüfung hat höchstens 30 Sekunden, es laufen höchstens 50.
+
+Auf der Geräteseite stehen die Prüfungen unter *Eigene Prüfungen*; als Sensor *Eigene Prüfung …* alarmiert alles außer OK (auch Warnung und unbekannt). Neue Rechner bekommen die Sensoren gleich mit. Dafür das Rechner-Skript ab dieser Version einmal neu ausrollen.
+
 ## Berichte
 
 ![Bericht](img/report-de.png)

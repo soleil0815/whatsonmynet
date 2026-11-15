@@ -113,13 +113,58 @@ $events = Try-Get {
 $certs = @(Try-Get { Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.NotAfter -gt (Get-Date).AddDays(-30) } | Select-Object -First 50 | ForEach-Object {
   @{ subject = [string]$_.Subject; issuer = [string]$_.Issuer; name = [string]$_.FriendlyName; notAfter = $_.NotAfter.ToUniversalTime().ToString('o'); thumb = [string]$_.Thumbprint } } })
 
+# Own checks: every .ps1, .cmd or .bat in the checks folder prints lines in the Checkmk "local check" format
+#   <0|1|2|3> <name> <value or -> <text>      (0 OK, 1 WARN, 2 CRIT, 3 UNKNOWN; value e.g. "count=12" or "-")
+# They run as SYSTEM - so only from the folder of this script (rights only for SYSTEM and administrators, set by the
+# setup), never a link, only files owned by SYSTEM, administrators or TrustedInstaller that nobody else may change;
+# at most 50, each at most 30 seconds.
+$checks = @()
+$ChkDir = Join-Path $Dir 'checks'
+function Test-Safe([string]$Path) {
+  $item = Get-Item -LiteralPath $Path -Force
+  if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+  $acl = Get-Acl -LiteralPath $Path
+  $trusted = @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
+  if ($trusted -notcontains $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value) { return $false }
+  foreach ($r in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
+    if ($r.AccessControlType -ne 'Allow' -or $trusted -contains $r.IdentityReference.Value) { continue }
+    # write, append, attributes, delete, change rights, take ownership
+    if (([int]$r.FileSystemRights -band 0xD0116) -ne 0) { return $false }
+  }
+  return $true
+}
+function Check-Entry($Name, $Text, $File) { @{ name = $Name; status = 3; text = $Text; value = $null; file = $File } }
+if (Test-Path -LiteralPath $ChkDir) {
+  if (-not (Test-Safe $ChkDir)) { $checks = @(Check-Entry '_checks' "folder $ChkDir may be changed by others - checks not run" '') }
+  else {
+    foreach ($f in @(Get-ChildItem -LiteralPath $ChkDir -File | Where-Object { @('.ps1', '.cmd', '.bat') -contains $_.Extension.ToLower() } | Sort-Object Name | Select-Object -First 50)) {
+      if (-not (Test-Safe $f.FullName)) { $checks += Check-Entry $f.Name 'owner or rights not safe - not run (owner must be Administrators)' $f.Name; continue }
+      $p = New-Object System.Diagnostics.Process
+      if ($f.Extension -ieq '.ps1') { $p.StartInfo.FileName = 'powershell.exe'; $p.StartInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$($f.FullName)`"" }
+      else { $p.StartInfo.FileName = 'cmd.exe'; $p.StartInfo.Arguments = "/c `"`"$($f.FullName)`"`"" }
+      $p.StartInfo.UseShellExecute = $false; $p.StartInfo.RedirectStandardOutput = $true; $p.StartInfo.RedirectStandardInput = $true; $p.StartInfo.CreateNoWindow = $true
+      try { [void]$p.Start(); $p.StandardInput.Close(); $read = $p.StandardOutput.ReadToEndAsync() } catch { $checks += Check-Entry $f.Name "could not start: $($_.Exception.Message)" $f.Name; continue }
+      if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch { $null = $_ }; $checks += Check-Entry $f.Name 'timeout (30 s)' $f.Name; continue }
+      $out = [string]$read.Result; if ($out.Length -gt 20000) { $out = $out.Substring(0, 20000) }
+      $found = 0
+      foreach ($line in ($out -split "`r?`n")) {
+        if ($line -notmatch '^([0-3])\s+(\S+)\s+(\S+)\s*(.*)$') { continue }
+        $st = [int]$Matches[1]; $nm = $Matches[2]; $perf = $Matches[3]; $txt = $Matches[4]; $val = $null
+        if ($perf -ne '-' -and $perf -match '^[^=|]+=(-?\d+(?:\.\d+)?)') { $val = [double]::Parse($Matches[1], [Globalization.CultureInfo]::InvariantCulture) }
+        $checks += @{ name = $nm; status = $st; text = $txt; value = $val; file = $f.Name }; $found++
+      }
+      if (-not $found) { $checks += Check-Entry $f.Name "no line in the check format (exit code $($p.ExitCode))" $f.Name }
+    }
+  }
+}
+
 $net = @(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE')
 $body = @{
   hostname = $env:COMPUTERNAME; os = "$($os.Caption) $($os.Version)".Trim(); cpu = [int]$cpu
   memTotal = [int64]$os.TotalVisibleMemorySize * 1024; memUsed = ([int64]$os.TotalVisibleMemorySize - [int64]$os.FreePhysicalMemory) * 1024
   uptime = [int]((Get-Date) - $os.LastBootUpTime).TotalSeconds; disks = $disks; services = $services
   macs = @($net | ForEach-Object { $_.MACAddress } | Where-Object { $_ }); ips = @($net | ForEach-Object { $_.IPAddress } | Where-Object { $_ -match '^\d+\.' }); ups = $ups
-  hw = $hw; pdisks = $pdisks; updates = $updates; av = $av; firewall = $fw; events = $events; certs = $certs
+  hw = $hw; pdisks = $pdisks; updates = $updates; av = $av; firewall = $fw; events = $events; certs = $certs; checks = $checks
 } | ConvertTo-Json -Depth 6 -Compress
 Invoke-RestMethod -Method Post -Uri $Url -Headers @{ Authorization = "Bearer $Token"; 'X-WOMN-Request' = '1' } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30 | Out-Null
 
