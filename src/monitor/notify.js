@@ -53,6 +53,12 @@ const TEXT = {
     target: 'Ziel',
     time: 'Zeit',
     inbox: 'Übernehmen oder ignorieren: Scan → letzter Leicht-Scan',
+    rule: '📋 {rule}: {who} - {what}',
+    ruleMany: '📋 {rule}: {n} Meldungen seit {since}',
+    ruleEvent: 'Ereignis {id}',
+    ruleFrom: 'Absender', ruleSeverity: 'Schweregrad', ruleLog: 'Protokoll', ruleSource: 'Quelle', ruleAccount: 'Konto',
+    ruleMore: '… und {n} weitere (Überwachung → Meldungen)',
+    sev: ['Notfall', 'Alarm', 'kritisch', 'Fehler', 'Warnung', 'Hinweis', 'Info', 'Debug'],
   },
   en: {
     down: '🔴 {name} is down - {message}',
@@ -88,6 +94,12 @@ const TEXT = {
     target: 'Target',
     time: 'Time',
     inbox: 'Adopt or ignore: Scan → latest light scan',
+    rule: '📋 {rule}: {who} - {what}',
+    ruleMany: '📋 {rule}: {n} messages since {since}',
+    ruleEvent: 'Event {id}',
+    ruleFrom: 'Sender', ruleSeverity: 'Severity', ruleLog: 'Log', ruleSource: 'Source', ruleAccount: 'Account',
+    ruleMore: '… and {n} more (Monitoring → Messages)',
+    sev: ['emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug'],
   },
 };
 
@@ -126,11 +138,26 @@ export function eventText(ev, lang = 'de') {
       return fill(p.solved ? T.nasOk : T.nasBad, { name: ev.device?.name || '', what });
     }
     case 'failover': return fill(ev.what === 'back' ? T.foBack : T.foTakeover, { master: ev.master || '', min: ev.min ?? '' });
+    case 'logRule': {
+      const rule = ev.rule?.name || '';
+      const list = ev.events || [];
+      if ((ev.count || list.length) > 1 || !list[0]) {
+        return fill(T.ruleMany, { rule, n: ev.count || list.length, since: new Date(ev.since || ev.at || Date.now()).toLocaleTimeString(L === 'en' ? 'en-GB' : 'de-DE', { timeZone: process.env.TZ || undefined, hour: '2-digit', minute: '2-digit' }) });
+      }
+      return fill(T.rule, { rule, who: ruleWho(list[0]), what: ruleWhat(list[0], T, 300) });
+    }
     default: return T.test;
   }
 }
 
 const deviceLabel = (d) => [d.ip, d.vendor || d.hostname].filter(Boolean).join(' ');
+// A message of an event rule: who sent it, what it says (the event id and source first, for Windows)
+const ruleWho = (e) => e.device_name || e.host || e.source_ip || '';
+const ruleWhat = (e, T, n) => {
+  const head = [e.event_id !== null && e.event_id !== undefined ? fill(T.ruleEvent, { id: e.event_id }) : '', e.app].filter(Boolean).join(' · ');
+  const text = String(e.text || '');
+  return `${head ? `${head}: ` : ''}${text.length > n ? `${text.slice(0, n - 1)}…` : text}`;
+};
 
 function details(ev, lang) {
   const T = TEXT[lang === 'en' ? 'en' : 'de'];
@@ -138,6 +165,20 @@ function details(ev, lang) {
     return [...(ev.devices || []).slice(0, 30).map((d) => `• ${d.ip}  ${d.mac || ''}  ${d.vendor || ''}  ${d.hostname || ''}`.replace(/\s+$/, '')), '', T.inbox].join('\n');
   }
   if ((ev.kind === 'supply' || ev.kind === 'nas') && ev.device) return `${T.target}: ${ev.device.name} (${ev.device.ip || ''})`;
+  if (ev.kind === 'logRule') {
+    const list = ev.events || [];
+    const when = (e, opts) => new Date(e.at).toLocaleString(lang === 'en' ? 'en-GB' : 'de-DE', { timeZone: process.env.TZ || undefined, ...opts });
+    if ((ev.count || list.length) <= 1 && list[0]) {
+      const e = list[0];
+      return [`${T.ruleFrom}: ${[ruleWho(e), e.source_ip !== ruleWho(e) ? e.source_ip : ''].filter(Boolean).join(' · ')}`, `${T.time}: ${when(e)}`,
+        `${T.ruleSeverity}: ${T.sev[e.severity] || e.severity}`, e.event_id !== null && e.event_id !== undefined ? fill(T.ruleEvent, { id: e.event_id }) : '',
+        e.channel ? `${T.ruleLog}: ${e.channel}` : '', e.app ? `${T.ruleSource}: ${e.app}` : '', e.account ? `${T.ruleAccount}: ${e.account}` : '']
+        .filter(Boolean).concat(e.text ? ['', e.text] : []).join('\n');
+    }
+    const lines = list.map((e) => `• ${when(e, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}  ${ruleWho(e)}  ${ruleWhat(e, T, 200)}`);
+    const more = (ev.count || list.length) - list.length;
+    return [...lines, more > 0 ? fill(T.ruleMore, { n: more }) : ''].filter(Boolean).join('\n');
+  }
   if (!ev.monitor) return '';
   const time = new Date(ev.at || Date.now()).toLocaleString(lang === 'en' ? 'en-GB' : 'de-DE', { timeZone: process.env.TZ || undefined });
   return `${T.target}: ${ev.monitor.target}\n${T.time}: ${time}`;
@@ -289,13 +330,16 @@ export function createChannels(db, mailer, settings = null) {
         throw new Error(`Telegram: ${String(why).replace(c.token, '***')}`);
       }
     } else {
-      const vars = { event: ev.kind, status: ev.kind === 'up' ? 'up' : ev.kind === 'down' || ev.kind === 'escalate' ? 'down' : ev.kind, name: ev.monitor?.name || ev.device?.name || '', target: ev.monitor?.target || ev.device?.ip || '',
-        message: ev.message || '', text, time: new Date(ev.at || Date.now()).toISOString(), url: ev.monitor?.target || '', sender };
+      const first = ev.kind === 'logRule' ? (ev.events || [])[0] : null;
+      const vars = { event: ev.kind, status: ev.kind === 'up' ? 'up' : ev.kind === 'down' || ev.kind === 'escalate' ? 'down' : ev.kind, name: ev.monitor?.name || ev.device?.name || ev.rule?.name || '', target: ev.monitor?.target || ev.device?.ip || (first ? ruleWho(first) : ''),
+        message: ev.message || (first ? first.text : '') || '', text, time: new Date(ev.at || Date.now()).toISOString(), url: ev.monitor?.target || '', sender };
       // a template mostly feeds a chat: {{text}} carries the sender's line too ({{sender}} alone for own layouts)
       const body = c.template ? renderTemplate(c.template, { ...vars, text: `${head}${text}` })
         : { event: ev.kind, text, ...(sender ? { sender } : {}), monitor: ev.monitor ? { id: ev.monitor.id, name: ev.monitor.name, target: ev.monitor.target } : null,
           message: ev.message || '', time: vars.time, certValidTo: ev.certValidTo || null,
           ...(ev.devices ? { devices: ev.devices.slice(0, 100) } : {}),
+          ...(ev.kind === 'logRule' ? { rule: ev.rule, count: ev.count || (ev.events || []).length, events: (ev.events || []).map((e) => ({ at: e.at, kind: e.kind, sourceIp: e.source_ip,
+            host: e.host, device: e.device_name || null, severity: e.severity, eventId: e.event_id ?? null, log: e.channel || '', source: e.app || '', account: e.account || '', text: e.text })) } : {}),
           ...(ev.device ? { device: ev.device, supply: ev.supply || null, problem: ev.problem || null } : {}) };
       const headers = c.headerName && c.headerValue ? { [c.headerName]: c.headerValue } : {};
       try { await postJson(c.url, body, { headers }); } catch (e) { throw new Error(`Webhook: ${e.message}`); }
