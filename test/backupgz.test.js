@@ -86,3 +86,24 @@ test('migration 34: the old default 7 becomes 10, an own choice stays', () => {
     assert.equal(createSettings(db).get('backup.keep'), expected);
   }
 });
+
+test('Windows noise: a new installation leaves it out, one already in use (migration 35) keeps taking everything', async () => {
+  const { WIN_NOISE } = await import('../src/settings.js');
+  const fresh = memoryDb();
+  assert.equal(createSettings(fresh).get('events.winDeny'), WIN_NOISE);
+  for (const id of ['4624', '4634', '5858', '7036', '10016']) assert.ok(WIN_NOISE.split(', ').includes(id), id);
+  // the ready-made rules must keep working: none of their ids in the noise
+  for (const id of ['4625', '4740', '1116', '1117', '8004', '8007', '1102', '7045', '4728', '4732', '4756', '865']) assert.equal(WIN_NOISE.split(', ').includes(id), false, id);
+  const used = memoryDb();
+  used.prepare("INSERT INTO users(username,password_hash,role,created_at) VALUES('admin','x','admin','x')").run();
+  used.prepare("DELETE FROM settings WHERE key='events.winDeny'").run();
+  used.pragma('user_version = 34');
+  migrate(used, { quiet: true });
+  assert.equal(createSettings(used).get('events.winDeny'), '');
+  const own = memoryDb();
+  own.prepare("INSERT INTO users(username,password_hash,role,created_at) VALUES('admin','x','admin','x')").run();
+  own.prepare("INSERT OR REPLACE INTO settings(key, value) VALUES('events.winDeny', '\"8004\"')").run();
+  own.pragma('user_version = 34');
+  migrate(own, { quiet: true });
+  assert.equal(createSettings(own).get('events.winDeny'), '8004');
+});

@@ -1,6 +1,12 @@
 // Settings that are changed in the web interface (key/value, JSON). Secrets are stored encrypted.
 import { encrypt, decrypt } from './lib/crypto.js';
 
+// Windows events that come by the thousand and say nothing worth keeping: not taken on a new installation (Messages →
+// Receiving settings → never take). Logon/logoff and special logon, process start/end, object access, token and group
+// enumeration, firewall (WFP) connections, credential manager reads, service state, DCOM 10016, software protection,
+// user profile service, uptime, WMI 5858. Not in it: 8004 - also AppLocker "blocked" (ready-made rule); 4625, 4740 & co.
+export const WIN_NOISE = '1531, 1532, 4624, 4634, 4647, 4656, 4658, 4663, 4672, 4688, 4689, 4690, 4703, 4798, 4799, 5156, 5158, 5379, 5858, 6013, 7036, 10016, 16384, 16394';
+
 export const DEFAULTS = {
   'general.title': 'WhatsOnMyNet',
   // Scan
@@ -73,7 +79,7 @@ export const DEFAULTS = {
   'events.keepDays': 30,
   'events.minSeverity': 7,        // messages kept from this severity on (7 = all, 6 = no debug, 4 = warning and worse)
   'events.winAllow': '',          // Windows event ids taken ("1116, 4740, 865-868"); empty = all
-  'events.winDeny': '',           // Windows event ids never taken ("8004, 4624")
+  'events.winDeny': WIN_NOISE,    // Windows event ids never taken; existing installations keep theirs (migration 35)
   'events.maxGb': 2,              // the messages file (data/events.sqlite) at most - less when the disk gets short
   // Prometheus keys: [{ id, name, hash, prefix, created_at, created_by }] - only the SHA-256 of a key is kept
   'api.tokens': [],
