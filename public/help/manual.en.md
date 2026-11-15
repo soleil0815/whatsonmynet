@@ -135,6 +135,30 @@ When a switch fails, every device behind it is unreachable too. So that twenty m
 
 **Automatically by switch port:** When a switch is queried by SNMP, WhatsOnMyNet knows which switch a device is plugged in at. When you **Monitor** a device, the monitor of its switch is already chosen as dependency. The page of the switch monitor also tells how many monitored devices are plugged in at it and depend on nothing yet. **Put them behind this monitor** sets them all at once.
 
+## Messages of the devices: SNMP traps and syslog
+
+Many devices report a problem by themselves the moment it happens: a switch reports a port down, a UPS the change to battery, a NAS a disk warning, a firewall a line failure. WhatsOnMyNet receives these messages - **SNMP traps** (v1, v2c, informs too) and **syslog** (RFC 3164 and 5424) - and matches them to the device in the inventory by its address.
+
+1. *Monitoring → Messages* → **Switch on receiving**: tick SNMP traps and/or syslog. Traps are only taken with a known community (empty = the communities of the scan).
+2. In the devices enter WhatsOnMyNet as the target - trap receiver or syslog server.
+
+**Ports:** WhatsOnMyNet runs without root rights and therefore listens on **UDP 1162** (traps) and **UDP 1514** (syslog), not on 162/514. Either enter these ports in the devices, or redirect once on the Docker host:
+
+```
+iptables -t nat -A PREROUTING -p udp --dport 162 -j REDIRECT --to-ports 1162
+iptables -t nat -A PREROUTING -p udp --dport 514 -j REDIRECT --to-ports 1514
+```
+
+Other ports: `WOMN_TRAP_PORT` and `WOMN_SYSLOG_PORT` in `.env`.
+
+**Watching:** at every message **Watch** turns it into a monitor of the kind *Message (trap/syslog)*: from the same device (or any sender), trap or syslog, from which severity on, optionally with a text the message must contain. When a matching message comes in, the monitor alarms **at once** and stays down as long as set (default 15 minutes); if it comes again, the time starts over.
+
+**Good to know:**
+- At most 20 messages per second per sender and at most 200 000 in all (flood protection); kept 30 days (adjustable).
+- *Only from devices in the inventory* drops messages of other senders. Syslog over UDP can be forged - for alarms better use traps with a community of your own.
+- With failover every installation receives for itself: enter master **and** standby as targets in the devices.
+- SNMPv3 traps are not taken (yet).
+
 ## Printers, switches and NAS
 
 Devices of type *Printer*, *Switch* and *NAS* are queried via SNMP (read-only). Set the community under *Settings → Scan*; SNMP v1/v2c has to be on at the device.

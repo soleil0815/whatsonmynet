@@ -8,6 +8,7 @@ import { ping, pingAvailable } from '../scan/probes.js';
 import { dockerCheck, mysqlCheck, postgresCheck, redisCheck, DEFAULT_PORTS } from './services.js';
 import { sensorCheck, snmpCheck, proxmoxCheck } from './sensors.js';
 import { smbCheck } from './smb.js';
+import { eventCheck } from '../events.js';
 
 const UA = `WhatsOnMyNet/${config.version} (monitoring)`;
 const MAX_BODY = 1024 * 1024;
@@ -127,6 +128,7 @@ export function runCheck(m, ctx = {}) {
   if (m.type === 'tcp') return tcpCheck(m.target, m.port, m.timeout_s);
   if (m.type === 'proxmox') return Promise.resolve(ctx.db ? proxmoxCheck(ctx.db, m) : { ok: false, ms: null, message: 'no database' });
   if (m.type === 'sensor') return Promise.resolve(ctx.db ? sensorCheck(ctx.db, m) : { ok: false, ms: null, message: 'no database' });
+  if (m.type === 'event') return Promise.resolve(ctx.db ? eventCheck(ctx.db, m) : { ok: false, ms: null, message: 'no database' });
   if (m.type === 'snmp') {
     let o = {};
     try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }

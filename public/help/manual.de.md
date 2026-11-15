@@ -135,6 +135,30 @@ Fällt ein Switch aus, sind auch alle Geräte dahinter nicht mehr erreichbar. Da
 
 **Automatisch über den Switch-Port:** Wird ein Switch per SNMP abgefragt, weiß WhatsOnMyNet, an welchem Switch ein Gerät steckt. Beim **Überwachen** eines Geräts ist der Monitor seines Switches dann schon als Abhängigkeit vorausgewählt. Auf der Seite des Switch-Monitors steht zudem, wie viele überwachte Geräte an ihm stecken und noch von nichts abhängen. **Hinter diesen Monitor hängen** ordnet sie alle auf einmal zu.
 
+## Meldungen der Geräte: SNMP-Traps und Syslog
+
+Viele Geräte melden ein Problem von sich aus, sobald es passiert: Ein Switch meldet einen getrennten Port, eine USV den Wechsel auf Akku, ein NAS eine Plattenwarnung, eine Firewall einen Ausfall der Leitung. WhatsOnMyNet empfängt diese Meldungen - **SNMP-Traps** (v1, v2c, auch Informs) und **Syslog** (RFC 3164 und 5424) - und ordnet sie über die Adresse dem Gerät im Inventar zu.
+
+1. *Überwachung → Meldungen* → **Empfang einschalten**: SNMP-Traps und/oder Syslog anhaken. Traps werden nur mit einer bekannten Community angenommen (leer = die Communities des Scans).
+2. In den Geräten WhatsOnMyNet als Ziel eintragen - Trap-Empfänger bzw. Syslog-Server.
+
+**Ports:** WhatsOnMyNet läuft ohne Root-Rechte und horcht deshalb auf **UDP 1162** (Traps) und **UDP 1514** (Syslog), nicht auf 162/514. Entweder in den Geräten diese Ports eintragen, oder auf dem Docker-Host einmal umleiten:
+
+```
+iptables -t nat -A PREROUTING -p udp --dport 162 -j REDIRECT --to-ports 1162
+iptables -t nat -A PREROUTING -p udp --dport 514 -j REDIRECT --to-ports 1514
+```
+
+Andere Ports: `WOMN_TRAP_PORT` und `WOMN_SYSLOG_PORT` in der `.env`.
+
+**Überwachen:** Bei jeder Meldung macht **Überwachen** daraus einen Monitor der Art *Meldung (Trap/Syslog)*: vom selben Gerät (oder jedem Absender), Trap oder Syslog, ab welcher Schwere, optional mit einem Text, den die Meldung enthalten muss. Kommt eine passende Meldung, alarmiert der Monitor **sofort** und bleibt so lange gestört, wie eingestellt (Standard 15 Minuten); kommt sie wieder, beginnt die Zeit neu.
+
+**Gut zu wissen:**
+- Je Absender höchstens 20 Meldungen pro Sekunde und höchstens 200 000 insgesamt (Schutz vor Flut); aufbewahrt 30 Tage (einstellbar).
+- *Nur von Geräten im Inventar* verwirft Meldungen fremder Absender. Syslog über UDP lässt sich fälschen - für Alarme lieber Traps mit eigener Community nutzen.
+- Bei der Ausfallsicherung empfängt jede Installation für sich: In den Geräten Master **und** Standby als Ziel eintragen.
+- SNMPv3-Traps werden (noch) nicht angenommen.
+
 ## Drucker, Switches und NAS
 
 Geräte vom Typ *Drucker*, *Switch* und *NAS* werden per SNMP gefragt (nur lesend). Die Community stellst du unter *Einstellungen → Scan* ein; am Gerät muss SNMP v1/v2c an sein.

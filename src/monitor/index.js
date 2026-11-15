@@ -40,7 +40,7 @@ export function certStep(days, thresholds) {
   return fit.length ? Math.min(...fit) : null;
 }
 
-export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb'];
+export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb', 'event'];
 export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'nodeTemp', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed', 'netOnline', 'netClients', 'netCpu', 'netMem', 'clientsTotal', 'netUpdates',
   'rfHealth', 'rfPower', 'rfFan', 'rfTemp', 'rfPsu', 'rfDrive', 'rfDriveLife', 'rfVolume', 'rfWatts',
   'cloudCheck', 'cloudCpu', 'dbState', 'dbCpu', 'dbStorage', 'lbUnhealthy', 'cloudAlarms', 'cloudResources', 'costMonth'];
@@ -251,6 +251,25 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       if (old && old.type === 'sensor') v.device_id = null;
       v.target = (base.label || metric).slice(0, 200);
       v.port = null;
+    } else if (type === 'event') {
+      // Messages a device sends (trap/syslog): from one device of the inventory or from any sender
+      const prev = old && old.type === 'event' ? parse(old.options, {}) : {};
+      const o = input.options && typeof input.options === 'object' ? input.options : {};
+      const source = ['any', 'trap', 'syslog'].includes(o.source ?? prev.source) ? (o.source ?? prev.source) : 'any';
+      const sev = Number(o.maxSeverity ?? prev.maxSeverity ?? 4);
+      if (!Number.isInteger(sev) || sev < 0 || sev > 7) throw new HttpError(400, 'err.eventSeverity');
+      const hold = Number(o.holdMin ?? prev.holdMin ?? 15);
+      if (!Number.isInteger(hold) || hold < 1 || hold > 1440) throw new HttpError(400, 'err.eventHold', undefined, 'holdMin');
+      const match = line(o.match ?? prev.match ?? '', 200);
+      const dev = input.device_id !== undefined ? (input.device_id ? Number(input.device_id) : null) : old?.device_id ?? null;
+      const device = dev ? db.prepare('SELECT id, name FROM devices WHERE id=?').get(dev) : null;
+      if (dev && !device) throw new HttpError(400, 'err.notFound');
+      v.device_id = device ? device.id : null;
+      v.options = JSON.stringify({ source, maxSeverity: sev, holdMin: hold, match });
+      v.target = (device ? device.name : '*').slice(0, 200);
+      v.port = null;
+      // the first matching message is the alarm - there is nothing to try again
+      if (!old) v.fail_threshold = 1;
     } else if (type === 'snmp') {
       if (!(isIPv4(target) || HOST.test(target))) throw new HttpError(400, 'err.host', undefined, 'target');
       v.target = target.toLowerCase();
@@ -331,7 +350,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
         if (!old || old.type !== 'ping') { if (!(await pingAvailable())) throw new HttpError(400, 'err.pingUnavailable'); }
       }
     }
-    if (!old) {
+    if (!old && type !== 'event') {
       const dev = input.device_id ? Number(input.device_id) : null;
       if (type === 'sensor' && !dev) throw new HttpError(400, 'err.sensorDevice');
       if (dev && !db.prepare('SELECT 1 FROM devices WHERE id=?').get(dev)) throw new HttpError(400, 'err.notFound');
@@ -824,6 +843,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       timer.unref();
     },
     stop() { if (timer) clearInterval(timer); timer = null; },
+    /** Checks these monitors at the next tick (a message just came in) - only while the monitoring runs */
+    soon(ids) { if (timer) for (const id of ids) nextRun.set(id, 0); },
     cleanup() {
       db.prepare('DELETE FROM checks WHERE at < ?').run(iso(new Date(Date.now() - KEEP_CHECKS_DAYS * 86400000)));
       db.prepare('DELETE FROM monitor_hourly WHERE hour < ?').run(hourOf(new Date(Date.now() - KEEP_HOURLY_DAYS * 86400000)));

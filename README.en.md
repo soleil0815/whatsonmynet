@@ -18,6 +18,7 @@ Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans y
 | 📈 **Monitoring** | New devices are watched right away (monitor and first sensors by themselves); web, TCP, ping, network drives, Docker, MariaDB/PostgreSQL/Redis, certificates - with escalation, dependencies, maintenance windows and a year of history |
 | 🌡️ **Sensors like PRTG** | Toner, disks, ports, UPS, every temperature, CPU, RAM, VMs and backups - with limit, alarm and a chart that shows outages with start, end and length |
 | 🖥️ **Virtualization and hardware** | Proxmox VE/Backup Server (clusters too), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity via Redfish |
+| 🔔 **Messages** | Receive SNMP traps and syslog, match them to the device, alarm at once |
 | ☁️ **Cloud** | AWS, Azure, Google Cloud: VMs with the checks of the provider, databases, load balancers, alarms, costs - read only |
 | 💻 **Machines without agent** | Windows and Linux report through a small script: CPU, RAM, drives, services, updates, antivirus, temperatures |
 | 🔔 **Notifications** | E-mail, Telegram, Teams, Slack, Discord, Matrix, Signal, ntfy, Gotify, Pushover, Home Assistant, webhook and 100 more through Apprise |

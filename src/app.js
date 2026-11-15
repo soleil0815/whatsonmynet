@@ -37,6 +37,7 @@ import { nameSensorsOnce } from './monitor/sensornames.js';
 import { createFailover } from './failover.js';
 import { createAutoWatch } from './monitor/autowatch.js';
 import { createDiagnostics } from './diagnostics.js';
+import { createEvents, eventMatches } from './events.js';
 import { mergeDuplicatesOnce } from './monitor/dedupe.js';
 import { createDiagnosticsApi } from './routes/diagnostics.js';
 import { createFailoverApi } from './routes/failover.js';
@@ -123,7 +124,13 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
     audit: (action, detail) => { try { db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), 'system', action, String(detail ?? '').slice(0, 500)); } catch { /* never stops */ } } });
   // Diagnostic package: the program's own log (server.js attaches it), versions, placeholders
   const diagnostics = createDiagnostics({ db, settings, failover, dbFile: path.join(dataDir, 'whatsonmynet.sqlite'), backupsDir: path.join(dataDir, 'backups') });
-  const ctx = { db, settings, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
+  // A message came in: the event monitors it matches are checked right away (not only at their next turn)
+  const events = createEvents({ db, settings, onEvent: (row) => {
+    const ids = db.prepare("SELECT id, device_id, options FROM monitors WHERE type='event' AND enabled=1").all()
+      .filter((m) => { let o = {}; try { o = JSON.parse(m.options); } catch { /* none */ } return eventMatches(row, o, m.device_id); }).map((m) => m.id);
+    if (ids.length) monitoring.soon(ids);
+  } });
+  const ctx = { db, settings, events, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 
