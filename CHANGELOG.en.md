@@ -4,6 +4,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 <!-- generated from public/js/changelog.js by tools/changelog.mjs - do not edit here -->
 
+## Next version (not released yet)
+
+- Look: the default is "like the system" again - light or dark as the computer or phone is set; accounts on "light" were switched over, an own choice stays possible under My account
+
 ## 0.30.0 - 2026-11-15
 
 - Event console: rules count ("from 5 matches in 10 minutes", per sender if wanted), check regular expressions (checked for dangerous shapes and speed before saving, a rule too slow while running switches itself off) and keep open events: the first match notifies, further ones only count up; acknowledge, close by the counter-message (e.g. "Port 7 link up" only closes port 7), by hand or after a time; view Messages → Open. New ready-made rules: SSH and Windows failed logons, switch port down, UPS on battery
