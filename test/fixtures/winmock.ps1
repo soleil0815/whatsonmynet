@@ -39,7 +39,7 @@ foreach ($n in 'Get-NetAdapter', 'Get-PhysicalDisk', 'Get-StorageReliabilityCoun
 function Get-WinEvent { param([hashtable]$FilterHashtable, [int]$MaxEvents)
   & $o @{ Level = 1; TimeCreated = (Get-Date).AddHours(-2); ProviderName = 'Microsoft-Windows-Kernel-Power'; Id = 41; Message = "The system has rebooted without cleanly shutting down first.`r`nMore text" }
   & $o @{ Level = 2; TimeCreated = (Get-Date).AddHours(-5); ProviderName = 'disk'; Id = 7; Message = 'The device, \Device\Harddisk1\DR1, has a bad block.' } }
-function Get-ChildItem { param([Parameter(Position = 0)][string]$Path)
+function Get-ChildItem { param([Parameter(Position = 0)][string]$Path, [string]$LiteralPath, [switch]$Force, [switch]$File)
   if ($Path -like 'Cert:*') {
     & $o @{ Subject = 'CN=rdg.firma.de'; Issuer = "CN=R11, O=Let's Encrypt"; FriendlyName = ''; NotAfter = (Get-Date).AddDays(12); Thumbprint = 'A1B2C3' }
     & $o @{ Subject = 'CN=old'; Issuer = 'CN=old'; FriendlyName = ''; NotAfter = (Get-Date).AddDays(-90); Thumbprint = 'DEAD' }
@@ -60,6 +60,12 @@ function New-Object { param([string]$ComObject, [Parameter(Position = 0)][string
   $sess }
 # The setup calls icacls and schtasks: noted in $env:WOMN_CALLS (when set), nothing changed
 function Note-Call([string]$Line) { if ($env:WOMN_CALLS) { Add-Content -LiteralPath $env:WOMN_CALLS -Value $Line }; $global:LASTEXITCODE = 0 }
+# Rights of the folder as the setup finds them: SYSTEM, Administrators and one account given access by hand
+function Get-Acl { param([string]$LiteralPath)
+  $acl = [pscustomobject]@{}
+  $acl | Add-Member ScriptMethod GetAccessRules { param($a, $b, $c)
+    foreach ($sid in 'S-1-5-18', 'S-1-5-32-544', 'S-1-5-21-1000-2000-3000-1104') { [pscustomobject]@{ IdentityReference = [pscustomobject]@{ Value = $sid } } } }
+  $acl }
 function icacls.exe { Note-Call ('icacls ' + ($args -join ' ')) }
 function schtasks.exe { Note-Call ('schtasks ' + ($args -join ' ')) }
 function Invoke-RestMethod { param($Method, $Uri, $Headers, $ContentType, $Body, $TimeoutSec)
