@@ -16,6 +16,8 @@ const fmtBytes = (n) => {
 export const stText = (v) => (t(`nas.st.${v}`) !== `nas.st.${v}` ? t(`nas.st.${v}`) : v);
 const portLabel = (name) => (/^\d/.test(name) ? `${t('sw.port')} ${name}` : name);
 const fmtSpeed = (mbit) => (!mbit ? '' : mbit >= 1000 ? `${mbit / 1000} G` : `${mbit} M`);
+const fmtRate = (bps) => { const n = Number(bps) || 0; const [d, u] = n >= 1e9 ? [1e9, 'G'] : n >= 1e6 ? [1e6, 'M'] : n >= 1e3 ? [1e3, 'k'] : [1, '']; return `${(Math.round((n / d) * 10) / 10).toLocaleString(getLang() === 'en' ? 'en-GB' : 'de-DE')} ${u}bit/s`; };
+const fmtPct = (v) => (v === null || v === undefined ? '–' : `${Number(v).toLocaleString(getLang() === 'en' ? 'en-GB' : 'de-DE')} %`);
 
 function head(title, device, onData) {
   return h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '10px' } },
@@ -37,12 +39,15 @@ export function switchPanel(device) {
   const box = h('section', { class: 'panel panel-pad switch-panel' });
   const detail = h('div', { class: 'port-detail' });
 
+  let rateSeconds = 0;
   function showPort(p) {
     mount(detail, h('div', { class: 'port-card' },
       h('div', { class: 'port-card-head' }, h('strong', {}, p.name), p.alias ? h('span', { class: 'muted' }, ` · ${p.alias}`) : null,
         h('span', { class: `badge ${p.status === 'up' ? 'badge-ok' : ''}`, style: { marginLeft: 'auto' } }, `${t(`port.${p.status}`) || p.status}${p.status === 'up' && p.speed ? ` · ${fmtSpeed(p.speed)}bit/s` : ''}`)),
       p.admin === 'down' ? h('p', { class: 'muted small' }, t('port.adminDown')) : null,
       p.inErrors ? h('p', { class: 'small', style: { color: 'var(--bad)' } }, t('port.errors', { n: p.inErrors.toLocaleString() })) : null,
+      p.status === 'up' && p.inBps !== undefined ? h('p', { class: `small${p.loadPct >= 80 ? ' bad-text' : ''}` }, t('port.load', { inRate: fmtRate(p.inBps), outRate: fmtRate(p.outBps), inPct: fmtPct(p.inPct), outPct: fmtPct(p.outPct), min: Math.round((rateSeconds || 0) / 60) }))
+        : p.status === 'up' && p.inOctets !== null && p.inOctets !== undefined ? h('p', { class: 'small muted' }, t('port.loadNone')) : null,
       p.macs.length ? h('ul', { class: 'port-macs' }, p.macs.slice(0, 40).map((m) => h('li', {},
         m.device ? h('a', { href: `/devices/${m.device.id}`, 'data-link': true }, h('span', { html: icon(m.device.type) }), m.device.name) : h('span', { class: 'muted' }, t('port.unknownDevice')),
         h('span', { class: 'mono small muted' }, m.mac), m.vlan ? h('span', { class: 'badge' }, `VLAN ${m.vlan}`) : null)),
@@ -53,10 +58,11 @@ export function switchPanel(device) {
   function draw(s) {
     if (!s) { mount(box, head(t('sw.panel'), device, draw), h('p', { class: 'muted', style: { margin: 0 } }, t('prn.none'))); return; }
     const ports = s.ports || [];
+    rateSeconds = s.rateSeconds || 0;
     const up = ports.filter((p) => p.status === 'up').length;
     const grid = h('div', { class: 'ports-grid', role: 'list' }, ports.filter((p) => !p.lag).map((p) => h('button', {
-      type: 'button', role: 'listitem', class: `port-sq ${p.status === 'up' ? 'up' : p.admin === 'down' ? 'off' : 'down'}${p.macs.length ? ' has' : ''}`,
-      title: `${p.name}${p.alias ? ` - ${p.alias}` : ''}: ${p.status}${p.macs.length ? ` · ${p.macs.length} MAC` : ''}`,
+      type: 'button', role: 'listitem', class: `port-sq ${p.status === 'up' ? 'up' : p.admin === 'down' ? 'off' : 'down'}${p.macs.length ? ' has' : ''}${p.loadPct >= 80 ? ' busy' : ''}`,
+      title: `${p.name}${p.alias ? ` - ${p.alias}` : ''}: ${p.status}${p.macs.length ? ` · ${p.macs.length} MAC` : ''}${p.loadPct !== undefined && p.loadPct !== null ? ` · ${fmtPct(p.loadPct)}` : ''}`,
       'aria-label': `${p.name}: ${p.status}`,
       onclick: (e) => { box.querySelectorAll('.port-sq.sel').forEach((x) => x.classList.remove('sel')); e.currentTarget.classList.add('sel'); showPort(p); },
     }, h('span', { class: 'num' }, p.name.replace(/^.*?(\d+(?:\/\d+)*)$/, '$1').slice(-5)), p.macs.length ? h('i', {}, p.macs.length) : null)));
