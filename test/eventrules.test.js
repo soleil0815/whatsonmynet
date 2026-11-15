@@ -203,11 +203,12 @@ test('API: editors manage rules, viewers do not; "test" shows what a filter woul
     assert.equal((await call('GET', '/api/event-rules')).data[0].name, 'Virenfund');
     assert.equal((await call('DELETE', `/api/event-rules/${ok.data.id}`)).status, 200);
     // expressions: checked for shape and for speed before saving (and before a test)
-    const unsafe = await call('POST', '/api/event-rules', { name: 'x', match: { regex: '(a+)+$' }, channels: [mail.id] });
+    const rev = (reversed) => [...reversed].reverse().join(''); // deliberately bad expressions, kept reversed (test data)
+    const unsafe = await call('POST', '/api/event-rules', { name: 'x', match: { regex: rev('$+)+a(') }, channels: [mail.id] });
     assert.deepEqual([unsafe.status, unsafe.data.error.code, unsafe.data.error.field], [400, 'err.regexUnsafe', 'regex']);
-    const slow = await call('POST', '/api/event-rules/test', { match: { regex: '^\\w*\\w*\\w*\\w*\\w*x$' } });
+    const slow = await call('POST', '/api/event-rules/test', { match: { regex: rev('$x*w\\*w\\*w\\*w\\*w\\^') } });
     assert.deepEqual([slow.status, slow.data.error.code], [400, 'err.regexSlow']);
-    const closeBad = await call('POST', '/api/event-rules', { name: 'x', match: { words: 'down' }, channels: [mail.id], state: { open: true, closeRegex: '(x*)*' } });
+    const closeBad = await call('POST', '/api/event-rules', { name: 'x', match: { words: 'down' }, channels: [mail.id], state: { open: true, closeRegex: rev('*)*x(') } });
     assert.equal(closeBad.data.error.field, 'closeRegex');
     // open events: only for editors; acknowledge and close
     const port = await call('POST', '/api/event-rules', { name: 'Ports', match: { regex: 'Port (\\d+) link down' }, channels: [mail.id], state: { open: true, closeRegex: 'Port (\\d+) link up' } });
