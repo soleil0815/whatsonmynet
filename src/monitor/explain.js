@@ -29,6 +29,9 @@ export function explain(db, settings, m) {
     Object.assign(out, { status: m.http_status || '', keyword: m.http_keyword || '', verify: !!m.tls_verify });
   } else if (m.type === 'smb') {
     Object.assign(out, { share: o.share || '', path: o.path || '', minFreePct: Number(o.minFreePct) || null, minFreeGb: Number(o.minFreeGb) || null });
+  } else if (['dns', 'mail', 'ldap', 'ntp', 'mssql'].includes(m.type)) {
+    Object.assign(out, { port: m.port, rtype: o.rtype || '', server: o.server || '', expect: o.expect || '', proto: o.proto || '', tlsMode: o.tls || '', verify: !!m.tls_verify,
+      maxOffsetMs: o.maxOffsetMs || null, instance: o.instance || '' });
   } else if (m.type === 'event') {
     const d = m.device_id ? db.prepare('SELECT name, ip FROM devices WHERE id=?').get(m.device_id) : null;
     Object.assign(out, { eventSource: o.source || 'any', device: d ? `${d.name}${d.ip ? ` (${d.ip})` : ''}` : '', maxSeverity: o.maxSeverity ?? 4, holdMin: o.holdMin || 15, match: o.match || '' });

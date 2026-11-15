@@ -9,6 +9,7 @@ import { dockerCheck, mysqlCheck, postgresCheck, redisCheck, DEFAULT_PORTS } fro
 import { sensorCheck, snmpCheck, proxmoxCheck } from './sensors.js';
 import { smbCheck } from './smb.js';
 import { eventCheck } from '../events.js';
+import { dnsCheck, mailCheck, ldapCheck, ntpCheck, mssqlCheck } from './protocols.js';
 
 const UA = `WhatsOnMyNet/${config.version} (monitoring)`;
 const MAX_BODY = 1024 * 1024;
@@ -133,6 +134,16 @@ export function runCheck(m, ctx = {}) {
     let o = {};
     try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
     return snmpCheck(m.target, m.port, ctx.communities?.() || ['public'], o, m.timeout_s).catch((e) => ({ ok: false, ms: null, message: e.message }));
+  }
+  if (['dns', 'mail', 'ldap', 'ntp', 'mssql'].includes(m.type)) {
+    let o = {};
+    try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
+    const verify = !!m.tls_verify;
+    if (m.type === 'dns') return dnsCheck(m.target, { server: o.server || '', port: m.port || 53, type: o.rtype || 'A', expect: o.expect || '' }, Math.min(m.timeout_s, 30));
+    if (m.type === 'mail') return mailCheck(m.target, m.port, { proto: o.proto, tls: o.tls, verify }, m.timeout_s);
+    if (m.type === 'ldap') return ldapCheck(m.target, m.port, { tls: o.tls, verify }, m.timeout_s);
+    if (m.type === 'ntp') return ntpCheck(m.target, m.port || 123, { maxOffsetMs: o.maxOffsetMs || 1000 }, Math.min(m.timeout_s, 15));
+    return mssqlCheck(m.target, m.port || 0, { instance: o.instance || '' }, m.timeout_s);
   }
   if (m.type === 'smb') {
     let o = {};
