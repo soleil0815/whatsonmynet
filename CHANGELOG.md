@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Windows-Skripte der Rechner: Das erneute Einrichten nahm der vorhandenen Kopie unter C:\ProgramData\WhatsOnMyNet alle Rechte - danach kam selbst SYSTEM nicht mehr daran („Zugriff verweigert“). Die Rechte werden jetzt nur am Ordner gesetzt, vorhandene Dateien erben sie wieder (auch so beschädigte), und außer SYSTEM und Administratoren hat niemand Zugriff auf den Ordner
+
+## 0.33.1 - 2026-11-15
+
 - Windows-Skripte der Rechner: Das erneute Einrichten (neues Skript, Update) scheiterte mit „Zugriff verweigert“, wenn die alte Kopie schreibgeschützt war - etwa weil die Einrichtungsdatei aus einem Paketordner oder einer Freigabe kam. Jetzt wird der Schreibschutz aufgehoben, ein laufender Bericht beendet und mehrmals versucht; die neue Kopie bleibt nie schreibgeschützt
 
 ## 0.33.0 - 2026-11-15

@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Windows-Skripte der Rechner: Das erneute Einrichten nahm der vorhandenen Kopie unter C:\\ProgramData\\WhatsOnMyNet alle Rechte - danach kam selbst SYSTEM nicht mehr daran („Zugriff verweigert“). Die Rechte werden jetzt nur am Ordner gesetzt, vorhandene Dateien erben sie wieder (auch so beschädigte), und außer SYSTEM und Administratoren hat niemand Zugriff auf den Ordner',
+  ], en: [
+    'Windows scripts of the machines: setting up again took all rights from the existing copy in C:\\ProgramData\\WhatsOnMyNet - afterwards not even SYSTEM could get at it ("access denied"). The rights are now set on the folder only, existing files inherit them again (also ones damaged that way), and nobody but SYSTEM and administrators has access to the folder',
+  ] },
+  { version: '0.33.1', date: '2026-11-15', de: [
     'Windows-Skripte der Rechner: Das erneute Einrichten (neues Skript, Update) scheiterte mit „Zugriff verweigert“, wenn die alte Kopie schreibgeschützt war - etwa weil die Einrichtungsdatei aus einem Paketordner oder einer Freigabe kam. Jetzt wird der Schreibschutz aufgehoben, ein laufender Bericht beendet und mehrmals versucht; die neue Kopie bleibt nie schreibgeschützt',
   ], en: [
     'Windows scripts of the machines: setting up again (new script, update) failed with "access denied" when the old copy was read-only - for example because the setup file came from a package folder or a share. Now the read-only flag is cleared, a running report ended and it is tried several times; the new copy is never left read-only',
