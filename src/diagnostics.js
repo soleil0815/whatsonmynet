@@ -113,6 +113,8 @@ export function createAnonymizer(db, enabled = true) {
     for (const u of db.prepare('SELECT username, display_name FROM users').all()) { add('user', u.username); add('user', u.display_name); }
     for (const l of db.prepare('SELECT name FROM locations').all()) add('location', l.name);
     for (const c of db.prepare('SELECT name FROM channels').all()) add('channel', c.name);
+    // computers that send messages without being in the inventory (Windows through NXLog: "PC-0011", "DC01")
+    try { for (const r of db.prepare("SELECT DISTINCT host FROM events_in WHERE host <> '' LIMIT 5000").all()) { add('host', r.host); add('host', String(r.host).split('.')[0]); } } catch { /* no messages file */ }
   }
   const names = [...vocab.keys()].sort((a, b) => b.length - a.length).map(esc);
   const parts = [
@@ -204,6 +206,8 @@ function dirSize(dir) {
 
 export function createDiagnostics({ db, settings, failover = null, dbFile = paths.db, backupsDir = paths.backups }) {
   const insert = db.prepare('INSERT INTO server_log(at, level, message) VALUES(?,?,?)');
+  // made after the diagnostics (app.js): the receivers of the messages, the event rules, the keys for /metrics
+  const src = { events: null, eventRules: null, apiTokens: null };
   let building = false;
   let inserted = 0;
 
@@ -301,6 +305,49 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
     });
   }
 
+  /**
+   * Messages of the devices: receivers (port, error, connections), the space of the messages file, what came in the
+   * period (by kind, severity, format - Windows through NXLog with or without log and source), the event rules with
+   * what they sent and what did not get through, and how many keys /metrics has. Never message texts or rule words in
+   * the clear: senders, names and words go through the anonymiser.
+   */
+  /** The filter of a rule: ids, kinds and severity as they are; senders as placeholders, words only counted (anonymised) */
+  const ruleMatchOut = (m, an) => ({ kind: m.kind, maxSeverity: m.maxSeverity, deviceId: m.deviceId, eventIds: m.eventIds, source: m.source, channel: m.channel,
+    from: (m.from || []).map((f) => (an.enabled ? (IPV4.test(f) ? an.anon(f) : an.alias('host', f)) : f)),
+    words: an.enabled ? `${(m.words || []).length} Wörter` : m.words, notWords: an.enabled ? `${(m.notWords || []).length} Wörter` : m.notWords });
+
+  function messagesOut(since, an) {
+    const out = {};
+    if (src.events) {
+      const s = src.events.status();
+      const st = s.storage || {};
+      out.receivers = Object.fromEntries(['traps', 'syslog', 'syslogTcp', 'syslogTls'].map((k) => [k, s[k] ? { on: !!s[k].on, port: s[k].port, error: an.anon(s[k].error || ''), connections: s[k].connections ?? null } : null]));
+      out.skipped_too_long = s.skipped || 0;
+      out.storage = { used: st.used, limit: st.limit, cap: st.cap, disk_short: !!st.diskShort, total: st.total, per_day: st.perDay, oldest: st.oldest, keep_days: st.keepDays,
+        days_fit: st.daysFit, short: !!st.short, top_senders: (st.topSenders || []).map((x) => ({ name: an.anon(x.name), share: x.share })), top_events: st.topEvents || [] };
+    }
+    const q = (sql, ...a) => db.prepare(sql).all(since, ...a);
+    out.period = {
+      by_kind: Object.fromEntries(q('SELECT kind k, COUNT(*) n FROM events_in WHERE at >= ? GROUP BY kind').map((r) => [r.k, r.n])),
+      by_severity: Object.fromEntries(q('SELECT severity k, COUNT(*) n FROM events_in WHERE at >= ? GROUP BY severity').map((r) => [r.k, r.n])),
+      // the shape NXLog sends: with log and source ([id] [log] or JSON), only the id (its own line format), or no Windows event
+      by_format: Object.fromEntries(q(`SELECT CASE WHEN event_id IS NULL THEN 'syslog' WHEN channel <> '' OR app <> '' THEN 'windows_full' ELSE 'windows_id_only' END k, COUNT(*) n
+        FROM events_in WHERE at >= ? GROUP BY k`).map((r) => [r.k, r.n])),
+      matched_to_device: q('SELECT SUM(device_id IS NOT NULL) yes, SUM(device_id IS NULL) no FROM events_in WHERE at >= ?')[0],
+      senders: q('SELECT COUNT(DISTINCT source_ip) n FROM events_in WHERE at >= ?')[0].n,
+      top_sources: q("SELECT app, COUNT(*) n FROM events_in WHERE at >= ? AND app <> '' GROUP BY app ORDER BY n DESC LIMIT 15"),
+      top_event_ids: q('SELECT event_id, COUNT(*) n FROM events_in WHERE at >= ? AND event_id IS NOT NULL GROUP BY event_id ORDER BY n DESC LIMIT 15'),
+    };
+    out.event_monitors = db.prepare("SELECT COUNT(*) n, SUM(enabled) enabled FROM monitors WHERE type='event'").get();
+    if (src.eventRules) {
+      out.rules = src.eventRules.list().map((r) => ({ id: r.id, name: an.anon(r.name), enabled: r.enabled, mode: r.mode, digest_min: r.digest_min, max_per_hour: r.max_per_hour,
+        channels: r.channels, match: ruleMatchOut(r.match, an), hits24h: r.hits24h, open: r.open, failed24h: r.failed24h, last_hit: r.lastHit }));
+    }
+    out.rule_hits_period = q('SELECT COUNT(*) n, SUM(sent_at IS NOT NULL AND failed = 0) sent, SUM(failed) failed, SUM(sent_at IS NULL) open, MAX(tries) max_tries FROM event_rule_hits WHERE at >= ?')[0];
+    if (src.apiTokens) out.metrics_keys = src.apiTokens.list().map((k) => ({ created_at: k.created_at, last_used: k.last_used }));
+    return out;
+  }
+
   function stats(since, logs, monitors) {
     const count = (list, f) => list.reduce((o, x) => { const k = f(x); o[k] = (o[k] || 0) + 1; return o; }, {});
     const top = Object.entries(count(logs.filter((l) => l.level !== 'info' && l.level !== 'debug'), (l) => normMsg(l.message)))
@@ -332,7 +379,9 @@ Dateien
   monitore.json          Alle Monitore und Sensoren: Einstellungen, Zustand, Prüfungen und Ausfälle im Zeitraum
   ereignisse.csv         Ausfälle, Erholungen, Alarme im Zeitraum
   geraete.json           Geräte: Art, Quelle (SNMP, Skript, Drucker), letzte Abfrage mit Fehler, Aufbau der Daten, die Werte für Sensoren
-  hypervisoren.json      Hypervisoren und Controller: letzte Abfrage, Fehler, fehlende Rechte, Werte für Sensoren
+  hypervisoren.json      Hypervisoren, Controller, Cloud, Veeam, Microsoft 365: letzte Abfrage, Fehler, fehlende Rechte, Werte für Sensoren
+  meldungen.json         Syslog/Traps: Empfänger (Ports, Fehler, Verbindungen), Platz der Meldungsdatei, Meldungen im Zeitraum
+                         (Art, Schwere, Format von NXLog), Ereignisregeln mit Versand und Fehlversuchen, Schlüssel für /metrics
   scans.csv              Scans im Zeitraum
   benachrichtigungen.json Kanäle (Art, an/aus, Sprache - ohne Zugangsdaten)
   aktionen.csv           Was Benutzer im Zeitraum getan haben (Anlegen, Ändern, Löschen …)
@@ -398,6 +447,7 @@ and communities are never included. Nothing is sent anywhere by itself.
       add('ereignisse.csv', () => csv(events, ['at', 'version', 'monitor_id', 'type', 'kind', 'message', 'notified']));
       add('geraete.json', () => json(devicesOut(an)));
       add('hypervisoren.json', () => json(hostsOut(an)));
+      add('meldungen.json', () => json(messagesOut(since, an)));
       add('scans.csv', () => csv(scans, ['id', 'version', 'kind', 'status', 'started_at', 'finished_at', 'user', 'targets', 'stats', 'error']));
       add('benachrichtigungen.json', () => json(channels));
       add('aktionen.csv', () => csv(actions, ['at', 'user', 'action', 'detail']));
@@ -430,5 +480,7 @@ and communities are never included. Nothing is sent anywhere by itself.
       return csv(db.prepare('SELECT kind, alias, real, created_at FROM diag_alias ORDER BY kind, alias').all(), ['kind', 'alias', 'real', 'created_at']);
     },
     aliasCount: () => db.prepare('SELECT COUNT(*) n FROM diag_alias').get().n,
+    /** The parts made after the diagnostics (app.js) */
+    useSources(s) { Object.assign(src, s); },
   };
 }

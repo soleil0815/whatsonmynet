@@ -316,7 +316,7 @@ Was neu ist, steht in [CHANGELOG.md](CHANGELOG.md) (dieselben Texte wie im Progr
 
 Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle Sicherung herunter, legst eine an oder spielst eine ein - hochgeladen oder aus der Liste auf dem Server. Die Datei wird vorher geprüft (WhatsOnMyNet-Datenbank, nicht neuer als diese Version, gleicher Schlüssel), der aktuelle Stand wird als `whatsonmynet-before-restore-…` gesichert, dann startet das Programm neu. **Bewahre `data/secret.key` (bzw. deinen `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
 
-**Diagnosepaket** (ab 0.22): *Einstellungen → Diagnose* erstellt ein ZIP für die Fehlersuche - Protokoll der letzten 1–30 Tage oder seit dem letzten Update, Warnungen und Fehler, Monitore, Sensoren, Geräte mit ihren Werten, Hypervisoren, Scans, Einstellungen. Standardmäßig anonymisiert (Platzhalter wie GERAET-001, die in jedem Paket gleich bleiben und sich nachschlagen lassen), nie mit Kennwörtern oder Schlüsseln, nichts wird automatisch verschickt.
+**Diagnosepaket** (ab 0.22): *Einstellungen → Diagnose* erstellt ein ZIP für die Fehlersuche - Protokoll der letzten 1–30 Tage oder seit dem letzten Update, Warnungen und Fehler, Monitore, Sensoren, Geräte mit ihren Werten, Hypervisoren und Cloud, Meldungen und Ereignisregeln, Scans, Einstellungen. Standardmäßig anonymisiert (Platzhalter wie GERAET-001, die in jedem Paket gleich bleiben und sich nachschlagen lassen), nie mit Kennwörtern oder Schlüsseln, nichts wird automatisch verschickt.
 
 **Handbuch neu bauen** (nach Änderungen an `public/help/manual.*.md` oder den Bildern): `node tools/build-manual.mjs` - braucht Playwright mit Chromium, ImageMagick macht die PDFs kleiner.
 
