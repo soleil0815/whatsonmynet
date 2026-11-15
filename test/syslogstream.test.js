@@ -41,7 +41,11 @@ test('framing: length first, line by line, mixed, split over packets; nonsense e
   assert.equal(feedNx(Buffer.from(' <13>tw')), true);
   assert.equal(feedNx(Buffer.from('elve!!\n404 not a length\n')), true);
   assert.deepEqual(nx, ['2026-11-15 10:00:00 PC-01 INFO 1116 Malware found\r', '2026-11-15 10:00:01 PC-01 WARNING 865 Access to C:\\x.exe restricted', '<13>twelve!!', '404 not a length']);
-  assert.equal(syslogFramer(() => {})(Buffer.from(`<13>${'x'.repeat(9000)}`)), false, 'a line without end above the limit');
+  // a message that is too long is skipped - that one only, the connection and the next messages stay
+  const long = []; let skips = 0; const feedLong = syslogFramer((b) => long.push(b.toString()), () => { skips++; });
+  assert.equal(feedLong(Buffer.from(`<13>${'x'.repeat(9000)}`)), true, 'a line without end above the limit');
+  assert.equal(feedLong(Buffer.from(`${'y'.repeat(100)}\n<13>next\n9000 <13>${'z'.repeat(8996)}<13>after\n`)), true);
+  assert.deepEqual([long, skips], [['<13>next', '<13>after'], 2]);
 });
 
 test('TCP: several messages on one connection, both framings', async () => {
