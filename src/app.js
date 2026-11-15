@@ -38,6 +38,7 @@ import { createFailover } from './failover.js';
 import { createAutoWatch } from './monitor/autowatch.js';
 import { createDiagnostics } from './diagnostics.js';
 import { createEvents, eventMatches } from './events.js';
+import { createApiTokens, renderMetrics } from './metrics.js';
 import { mergeDuplicatesOnce } from './monitor/dedupe.js';
 import { createDiagnosticsApi } from './routes/diagnostics.js';
 import { createFailoverApi } from './routes/failover.js';
@@ -130,7 +131,8 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
       .filter((m) => { let o = {}; try { o = JSON.parse(m.options); } catch { /* none */ } return eventMatches(row, o, m.device_id); }).map((m) => m.id);
     if (ids.length) monitoring.soon(ids);
   } });
-  const ctx = { db, settings, events, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
+  const apiTokens = createApiTokens({ settings });
+  const ctx = { db, settings, events, apiTokens, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 
@@ -174,6 +176,22 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   app.get('/healthz', (_req, res) => {
     try { db.prepare('SELECT 1').get(); res.json({ ok: true, version: config.version }); }
     catch { res.status(503).json({ ok: false }); }
+  });
+
+  // Prometheus: only with a key made under Settings → Interface (Bearer); without one the endpoint does not exist.
+  // No cookies, no session - and its own limit per address (a scrape every few seconds is plenty).
+  const metricsLimit = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, validate: { xForwardedForHeader: false },
+    handler: (_req, res) => res.status(429).type('text/plain').send('too many requests\n') });
+  app.get('/metrics', metricsLimit, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!apiTokens.any()) return res.status(404).type('text/plain').send('not found\n');
+    if (!apiTokens.check(req.get('authorization'))) {
+      res.setHeader('WWW-Authenticate', 'Bearer realm="WhatsOnMyNet metrics"');
+      return res.status(401).type('text/plain').send('key missing or wrong\n');
+    }
+    let role = 'master';
+    try { const s = failover.status(); role = s.role === 'standby' ? `standby-${s.standby?.state || ''}` : s.role; } catch { /* alone */ }
+    res.type('text/plain; version=0.0.4; charset=utf-8').send(renderMetrics(db, { version: config.version, role }));
   });
 
   app.use(parseCookies);

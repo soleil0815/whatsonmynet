@@ -13,6 +13,7 @@ import { SECTIONS, settingsNav } from './settingsnav.js';
 import { failoverSettings, lockForEditing } from './failover.js';
 import { diagnosticsSettings } from './diagnostics.js';
 import { checkText } from '../checktext.js';
+import { apiSettings } from './apisettings.js';
 
 export async function renderSettings(main, section = 'general') {
   if (!state.user.isAdmin) { navigate('/', { replace: true }); return; }
@@ -27,7 +28,7 @@ export async function renderSettings(main, section = 'general') {
       settingsNav(section, (s) => navigate(`/settings/${s}`)),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev', 'notify'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), ad, agents, backup, failover: failoverSettings, diag: diagnosticsSettings, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), api: apiSettings, ad, agents, backup, failover: failoverSettings, diag: diagnosticsSettings, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
   // a standby only shows its settings - except its own failover controls and what only reads (about, log, diagnostics)
   if (!['failover', 'about', 'audit', 'diag'].includes(section)) lockForEditing(body);
