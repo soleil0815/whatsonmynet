@@ -338,6 +338,32 @@ Whatever is not fine is listed at the top. WhatsOnMyNet matches the server to **
 
 Sensors (*Add sensor*): overall health, server switched on, every fan, temperature, power supply, drive (also life left), volume, and power consumption. It is asked every 5 minutes like Proxmox, read only.
 
+## Cloud: AWS, Azure, Google Cloud
+
+WhatsOnMyNet watches what runs in the cloud through the API of the provider - with an account that may **only read**, every 5 minutes. Nothing is installed or changed there. *Monitoring → Cloud* → **Connect cloud account**; the dialog shows the steps for each provider.
+
+**What is read:**
+
+| | AWS | Azure | Google Cloud |
+|---|---|---|---|
+| VMs: running, CPU | EC2 | Virtual machines | Compute Engine |
+| Provider check | status checks (system and instance), scheduled maintenance | Resource Health | repair after a host failure |
+| Databases: available, CPU, storage | RDS (Aurora without storage - it grows by itself) | Azure SQL, PostgreSQL and MySQL flexible server | Cloud SQL |
+| Load balancers | target groups: healthy and unhealthy targets | through Resource Health | – |
+| Alarms | CloudWatch alarms in state ALARM | fired Azure Monitor alerts | – |
+| Costs (if wanted) | Cost Explorer (0.01 USD per request, twice a day) | Cost Management (free) | – (only through a BigQuery export) |
+
+**Rights:**
+- **AWS:** an IAM user with an inline policy that allows only the read actions needed (the dialog shows it for copying), and an access key.
+- **Azure:** an app registration with a client secret and the role **Reader** on the subscription. The secret expires - WhatsOnMyNet says so plainly when it has.
+- **Google Cloud:** a service account with the roles *Compute Viewer*, *Monitoring Viewer* and *Cloud SQL Viewer* and a JSON key.
+
+If the account lacks a right, WhatsOnMyNet reads the rest and names exactly which right is missing. Services not switched on in the account (e.g. Cloud SQL) only show as a note.
+
+**Security:** the secret is stored encrypted and never goes to the browser. WhatsOnMyNet sends it only to the fixed addresses of the provider (e.g. `*.amazonaws.com`, `management.azure.com`, `*.googleapis.com`) and checks the certificate - links to other addresses are refused too. Without a cloud account entered, none of this goes to the internet.
+
+**Sensors:** "VM … running", "Provider check: …", "CPU …", "Database … available", CPU and storage of the database, "Load balancer …: unhealthy targets", "Alarms of the provider", "Unhealthy resources" and "Costs this month" (limit at first: last month + 20 %). A VM or database that does not run has no values - that is no alarm; whether it should run, its own sensor says. With *Watch new devices by themselves* a new account gets sensors for the alarms, the checks of the VMs, the databases and the load balancers right away.
+
 ## Windows and Linux machines by script (without agent)
 
 **What is the script for?** Many values of a machine are known only to its operating system: temperatures of CPU and NVMe, the health of the disks (SMART), services, pending updates. Big servers deliver part of it through their management chip (iDRAC, iLO, XClarity - see *Server hardware*). A mini PC, a self-built server or a Proxmox node in a homelab has nothing like that - here the script fetches this information. For Proxmox: the API delivers nodes, VMs, storage and backups; temperatures, disks, services and updates of the nodes only come with the script.

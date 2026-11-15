@@ -102,6 +102,11 @@ export function createAnonymizer(db, enabled = true) {
       const data = parse(h.data);
       for (const n of data.nodes || []) add('node', n.name || n.node);
       for (const g of data.guests || []) add('guest', g.name);
+      // cloud accounts: the account itself and what is in it
+      if (data.cloud) {
+        add('hv', data.account);
+        for (const x of [...(data.databases || []), ...(data.balancers || []), ...(data.resources || []), ...(data.alarms || [])]) add('guest', x.name);
+      }
     }
     for (const r of db.prepare('SELECT hostname FROM host_unmatched').all()) { add('host', r.hostname); add('host', String(r.hostname).split('.')[0]); }
     for (const u of db.prepare('SELECT username, display_name FROM users').all()) { add('user', u.username); add('user', u.display_name); }
@@ -288,7 +293,9 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       let vals = [];
       try { vals = values(proxmoxMetrics(nodeTempsInto(db, data)), an); } catch (e) { vals = [{ error: an.anon(e.message) }]; }
       return { id: h.id, name: an.alias('hv', h.name), kind: h.kind, url: an.anon(h.url), verify: !!h.verify, own_ca: !!h.ca, last_at: h.last_at, last_ok: !!h.last_ok,
-        last_error: an.anon(h.last_error), auto_watch: parse(h.auto_watch, null), data: shape(data), missing_rights: an.deep(data.missing || []), values: vals };
+        last_error: an.anon(h.last_error), auto_watch: parse(h.auto_watch, null), data: shape(data),
+        // cloud: regions and whether costs are read - never tenant, subscription, project or key
+        cloud: data.cloud ? { regions: parse(h.options)?.regions || [], costs: !!parse(h.options)?.costs } : undefined, missing_rights: an.deep(data.missing || []), values: vals };
     });
   }
 

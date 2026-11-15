@@ -276,7 +276,11 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
   const x = proxmoxMetrics(nodeTempsInto(db, parse(h.data, {}))).find((y) => y.metric === o.metric && String(y.key) === String(o.key || ''));
   // The temperature of a node comes from the Linux script on it - without a current report there is none
   if (!x && o.metric === 'nodeTemp') return { ok: false, ms: null, message: `${label}: no current temperature - the Linux script on the node has not reported for 15 minutes` };
-  if (!x) return { ok: false, ms: null, message: `${label}: not found` };
+  if (!x) {
+    // Cloud: gone from the account (deleted), or the read-only account may not see it any more
+    const d = parse(h.data, {});
+    return { ok: false, ms: null, message: `${label}: not found${d.cloud && (d.missing || []).length ? ` - the account lacks rights: ${d.missing.slice(0, 3).join(', ')}` : ''}` };
+  }
   if (o.metric === 'netOnline') {
     const data = { state: x.value, uptime: x.uptime || 0, cpu: x.cpu ?? null, mem: x.mem ?? null };
     return x.value === 'online' ? { ok: true, ms: null, message: `${label}: online`, data } : { ok: false, ms: null, message: `${label}: offline`, data: { state: 'offline' } };
@@ -294,6 +298,13 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
   if (o.metric === 'guestRunning') {
     const data = { state: x.value, node: x.node || '', cpu: x.cpu ?? null, mem: x.mem ?? null };
     return x.value === 'running' ? { ok: true, ms: null, message: `${label}: running`, data } : { ok: false, ms: null, message: `${label}: ${x.value}`, data: { state: x.value, node: x.node || '' } };
+  }
+  // Cloud: a VM or database that does not run has no values - not an alarm (whether it should run, its own sensor says)
+  if (x.idle) return { ok: true, ms: null, message: `${label}: no value while it does not run`, data: { state: 'stopped' } };
+  // Cloud: the provider's own checks (status checks, Resource Health) and the state of a database
+  if (o.metric === 'cloudCheck' || o.metric === 'dbState') {
+    if (x.good === null) return { ok: true, ms: null, message: `${label}: ${x.value} - no check while it does not run`, data: { state: 'stopped' } };
+    return { ok: !!x.good, ms: null, message: `${label}: ${x.text || x.value}`, data: { state: x.good ? 'ok' : 'critical' } };
   }
   if (x.value === null || x.value === undefined) {
     // missing rights only when the host said so; else the node just did not deliver the value this time

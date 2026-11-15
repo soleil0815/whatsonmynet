@@ -20,8 +20,9 @@ export function monitorDot(status) {
 }
 
 // Monitors that measure a value (not a response time): device sensors, SNMP values and Proxmox values
-const PX_STATE = ['nodeOnline', 'guestRunning', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume'];
-const PX_UNIT = { rfTemp: ' °C', rfDriveLife: ' %', rfWatts: ' W', nodeCpu: ' %', nodeMem: ' %', nodeTemp: ' °C', storage: ' %', datastore: ' %', backupAge: ' h', groupAge: ' h' };
+const PX_STATE = ['nodeOnline', 'guestRunning', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume', 'cloudCheck', 'dbState'];
+const PX_UNIT = { rfTemp: ' °C', rfDriveLife: ' %', rfWatts: ' W', nodeCpu: ' %', nodeMem: ' %', nodeTemp: ' °C', storage: ' %', datastore: ' %', backupAge: ' h', groupAge: ' h',
+  cloudCpu: ' %', dbCpu: ' %', dbStorage: ' %' };
 export const isValueType = (m) => m.type === 'sensor' || m.type === 'snmp' || (m.type === 'proxmox' && !PX_STATE.includes(m.options?.metric));
 const unitOf = (m) => (m.type === 'proxmox' ? PX_UNIT[m.options?.metric] || '' : m.options?.unit ? ` ${m.options.unit}` : '');
 /** Last measured value with its unit, '–' while there is none */
@@ -124,8 +125,10 @@ const METRIC_GROUP = {
   guestRunning: 'guests', backupAge: 'backup', backupFailed: 'backup', groupAge: 'backup', tasksFailed: 'backup',
   rfHealth: 'hardware', rfPower: 'hardware', rfFan: 'hardware', rfPsu: 'hardware', rfDrive: 'hardware', rfVolume: 'hardware', rfDriveLife: 'hardware', rfWatts: 'hardware',
   netOnline: 'network', netClients: 'network', netCpu: 'network', netMem: 'network', clientsTotal: 'network', netUpdates: 'network',
+  cloudCheck: 'guests', cloudCpu: 'guests', dbState: 'databases', dbCpu: 'databases', dbStorage: 'databases', lbUnhealthy: 'network',
+  cloudAlarms: 'cloud', cloudResources: 'cloud', costMonth: 'cloud',
 };
-const GROUP_ORDER = ['machine', 'temps', 'drives', 'disks', 'services', 'care', 'guests', 'backup', 'hardware', 'network', 'ups', 'printer', 'ports', 'other'];
+const GROUP_ORDER = ['cloud', 'machine', 'temps', 'drives', 'disks', 'services', 'care', 'guests', 'databases', 'backup', 'hardware', 'network', 'ups', 'printer', 'ports', 'other'];
 const groupRank = (x) => { const i = GROUP_ORDER.indexOf(METRIC_GROUP[x.metric] || 'other'); return i < 0 ? GROUP_ORDER.length : i; };
 // within a group: by kind of value, the hottest of all first, temperatures and the like by name
 const byKind = (a, b) => groupRank(a) - groupRank(b) || (a.metric === 'hostTempMax' ? -1 : b.metric === 'hostTempMax' ? 1 : 0)

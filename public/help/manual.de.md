@@ -338,6 +338,32 @@ Was nicht in Ordnung ist, steht oben. WhatsOnMyNet ordnet den Server über die M
 
 Sensoren (*Sensor anlegen*): Gesamtzustand, Server eingeschaltet, jeder Lüfter, jede Temperatur, jedes Netzteil, jedes Laufwerk (auch Restlebensdauer), jedes Volume, Stromverbrauch. Abgefragt wird wie bei Proxmox alle 5 Minuten, nur lesend.
 
+## Cloud: AWS, Azure, Google Cloud
+
+Was in der Cloud läuft, überwacht WhatsOnMyNet über die Schnittstelle des Anbieters - mit einem Konto, das **nur lesen** darf, alle 5 Minuten. Nichts wird dort installiert oder verändert. *Überwachung → Cloud* → **Cloud-Konto anbinden**; der Dialog zeigt die Schritte für den jeweiligen Anbieter.
+
+**Was gelesen wird:**
+
+| | AWS | Azure | Google Cloud |
+|---|---|---|---|
+| VMs: läuft, CPU | EC2 | Virtuelle Computer | Compute Engine |
+| Prüfung des Anbieters | Status-Checks (System und Instanz), geplante Wartungen | Resource Health | Reparatur nach Hostausfall |
+| Datenbanken: erreichbar, CPU, Speicher | RDS (Aurora ohne Speicher - wächst selbst) | Azure SQL, PostgreSQL und MySQL Flexible Server | Cloud SQL |
+| Load Balancer | Zielgruppen: gesunde und gestörte Ziele | über Resource Health | – |
+| Alarme | CloudWatch-Alarme im Zustand ALARM | ausgelöste Azure-Monitor-Warnungen | – |
+| Kosten (auf Wunsch) | Cost Explorer (0,01 USD je Abfrage, 2× täglich) | Cost Management (kostenlos) | – (nur über BigQuery-Export) |
+
+**Rechte:**
+- **AWS:** ein IAM-Benutzer mit einer Inline-Richtlinie, die nur die nötigen Lese-Aktionen erlaubt (der Dialog zeigt sie zum Kopieren), und ein Zugriffsschlüssel.
+- **Azure:** eine App-Registrierung mit geheimem Clientschlüssel und der Rolle **Leser** auf dem Abonnement. Der Schlüssel läuft ab - WhatsOnMyNet meldet es deutlich, wenn er abgelaufen ist.
+- **Google Cloud:** ein Dienstkonto mit den Rollen *Compute Viewer*, *Monitoring Viewer* und *Cloud SQL Viewer* und ein JSON-Schlüssel.
+
+Fehlt dem Konto ein Recht, liest WhatsOnMyNet den Rest und sagt genau, welches Recht fehlt. Dienste, die im Konto nicht eingeschaltet sind (z. B. Cloud SQL), erscheinen nur als Hinweis.
+
+**Sicherheit:** Das Geheimnis wird verschlüsselt gespeichert und geht nie an den Browser. WhatsOnMyNet schickt es nur an die festen Adressen des Anbieters (z. B. `*.amazonaws.com`, `management.azure.com`, `*.googleapis.com`) und prüft dabei das Zertifikat - auch Weiterleitungen auf andere Adressen werden abgelehnt. Ohne eingetragenes Cloud-Konto geht nichts davon ins Internet.
+
+**Sensoren:** „VM … läuft“, „Prüfung des Anbieters: …“, „CPU …“, „Datenbank … erreichbar“, CPU und Speicher der Datenbank, „Load Balancer …: Ziele gestört“, „Alarme des Anbieters“, „Gestörte Ressourcen“ und „Kosten diesen Monat“ (Grenze anfangs: Vormonat + 20 %). Eine VM oder Datenbank, die nicht läuft, hat keine Werte - das ist kein Alarm; ob sie laufen soll, sagt ihr eigener Sensor. Mit *Neue Geräte selbst überwachen* bekommt ein neues Konto gleich Sensoren für die Alarme, die Prüfungen der VMs, die Datenbanken und die Load Balancer.
+
 ## Windows- und Linux-Rechner per Skript (ohne Agent)
 
 **Wofür das Skript?** Viele Werte eines Rechners kennt nur das Betriebssystem selbst: Temperaturen von CPU und NVMe, der Zustand der Festplatten (SMART), Dienste, ausstehende Updates. Große Server liefern einiges davon über ihren Management-Chip (iDRAC, iLO, XClarity - siehe *Server-Hardware*). Ein Mini-PC, ein Selbstbau-Server oder ein Proxmox-Knoten im Homelab hat so etwas nicht - hier holt das Skript diese Infos. Für Proxmox gilt: Die Schnittstelle liefert Knoten, VMs, Speicher und Sicherungen; Temperaturen, Festplatten, Dienste und Updates der Knoten kommen nur mit dem Skript dazu.

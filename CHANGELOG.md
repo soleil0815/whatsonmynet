@@ -13,6 +13,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 - Jeder Monitor und Sensor zeigt „So wird geprüft“: was genau gefragt wird, woher die Werte kommen und wie alt sie sind, wann alarmiert wird (mit Abstand für die Entwarnung) und die letzte Antwort im Wortlaut
 - Proxmox VE und Backup Server: Fehlgeschlagene Aufgaben zeigen die Fehlerzeilen aus dem Aufgabenprotokoll und einen verständlichen Namen statt „aptupdate“ oder „verificationjob“. Wartungsaufgaben sind gelb statt rot
 - Paketlisten: Scheitert nur eine fremde Paketquelle (z. B. Webmin), ist das ein Hinweis und kein Fehler - Alarm gibt es nur, wenn eine offizielle Quelle von Proxmox oder Debian nicht klappt
+- Neu: Cloud - AWS, Microsoft Azure und Google Cloud über ein Konto, das nur lesen darf: VMs mit den Prüfungen des Anbieters (Status-Checks, Resource Health) und geplanten Wartungen, Datenbanken (RDS, Azure SQL/PostgreSQL/MySQL, Cloud SQL), Load Balancer, die Alarme des Anbieters und auf Wunsch die Kosten des Monats - mit Sensoren. Fehlende Rechte werden genau benannt
 
 ## 0.26.0 - 2026-11-15
 
