@@ -74,24 +74,27 @@ export function getValues(s, oids, timeout = 4000) {
 
 /**
  * Walks a subtree → Map(oid suffix after `base` → value). Stops after `max` rows (protects against broken agents).
+ * map.complete: false when the walk ended on an error or the timeout - the table may lack rows then (a busy NAS
+ * answers late), which the poller must not take for "the disk is gone".
  */
 export function walk(s, base, { max = 2000, timeout = 8000 } = {}) {
   return new Promise((resolve) => {
     const out = new Map();
+    out.complete = false;
     let done = false;
-    const end = () => { if (!done) { done = true; resolve(out); } };
+    const end = (complete = false) => { if (!done) { done = true; out.complete = complete; resolve(out); } };
     const prefix = `${base}.`;
     const feed = (vbs) => {
       for (const vb of vbs) {
         if (snmp.isVarbindError(vb) || !vb.oid.startsWith(prefix)) continue;
         out.set(vb.oid.slice(prefix.length), vbValue(vb));
-        if (out.size >= max) { end(); return true; }
+        if (out.size >= max) { end(true); return true; }
       }
       return false;
     };
     try {
-      s.session.subtree(base, 20, feed, () => end());
-    } catch { end(); }
-    setTimeout(end, timeout).unref();
+      s.session.subtree(base, 20, feed, (err) => end(!err));
+    } catch { end(false); }
+    setTimeout(() => end(false), timeout).unref();
   });
 }

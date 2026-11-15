@@ -11,6 +11,33 @@ import { normalizeMac } from './lib/net.js';
 export const SNMP_KINDS = { switch: 'switch', nas: 'nas', ups: 'ups' };
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
 
+// Rows of a table (volumes, disks, RAIDs) that are missing in one poll although they were there before: a busy device
+// answered late or half (walk not complete), or sent an empty table for once. They are kept from the previous poll for
+// up to KEEP_POLLS polls (marked "kept"), so a sensor does not alarm "not found" at night; gone longer = really gone.
+export const KEEP_POLLS = 2;
+const TABLES = { volumes: 'name', disks: 'name', raids: 'name' };
+export function carryOver(prev, next) {
+  if (!prev || !next) return next;
+  const out = { ...next };
+  const kept = { ...(prev.kept || {}) };
+  const incomplete = new Set(next.incomplete || []);
+  for (const [table, id] of Object.entries(TABLES)) {
+    const before = Array.isArray(prev[table]) ? prev[table] : [];
+    const now = Array.isArray(next[table]) ? next[table] : [];
+    if (!before.length) { delete kept[table]; continue; }
+    // only when the table is in doubt: not read whole, or empty all of a sudden
+    const doubt = incomplete.has(table) || (!now.length && before.length);
+    const missing = before.filter((x) => !now.some((y) => y[id] === x[id]));
+    if (!doubt || !missing.length) { delete kept[table]; continue; }
+    const n = (kept[table] || 0) + 1;
+    if (n > KEEP_POLLS) { delete kept[table]; continue; }
+    out[table] = [...now, ...missing.map((x) => ({ ...x, kept: true }))];
+    kept[table] = n;
+  }
+  if (Object.keys(kept).length) out.kept = kept; else delete out.kept;
+  return out;
+}
+
 export function createSnmpDevices({ db, settings, channels }) {
   const communities = () => {
     const list = String(settings.get('scan.snmpCommunities') || '').split(/[\n,]/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
@@ -109,6 +136,7 @@ export function createSnmpDevices({ db, settings, channels }) {
         storeMacs(d.id, data, at);
         delete data.macs;
       }
+      if (data && prev && prev.kind === kind) data = carryOver(parse(prev.data), data);
       if (data && kind === 'nas') alerts = await notifyNas(d, alerts, data, at);
       // Serial number, model, firmware from the device itself into the inventory (only empty fields)
       if (data) fillDevice(db, d.id, snmpFacts(kind, data));
