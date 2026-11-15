@@ -46,6 +46,19 @@ try {
 } catch { $ups = $null }
 # Every part on its own: what this Windows cannot tell (older version, role missing) is simply left out
 function Try-Get([scriptblock]$Block) { try { & $Block } catch { $null } }
+# Network cards, disks, Defender and firewall straight from their WMI classes - not through Get-NetAdapter,
+# Get-PhysicalDisk, Get-MpComputerStatus or Get-NetFirewallProfile: those modules are generated anew in every run, and
+# PowerShell script block logging writes each of them as a "suspicious" event 4104 (some 70 per run)
+$StorageNs = 'root/Microsoft/Windows/Storage'
+function Get-Cim([string]$Ns, [string]$Class, [string]$Filter) {
+  if ($Filter) { Get-CimInstance -Namespace $Ns -ClassName $Class -Filter $Filter } else { Get-CimInstance -Namespace $Ns -ClassName $Class } }
+# The words the Storage module shows for its numbers (what WhatsOnMyNet has always been sent)
+$BusNames = @{ 0 = 'Unknown'; 1 = 'SCSI'; 2 = 'ATAPI'; 3 = 'ATA'; 4 = '1394'; 5 = 'SSA'; 6 = 'Fibre Channel'; 7 = 'USB'; 8 = 'RAID'; 9 = 'iSCSI'; 10 = 'SAS'
+  11 = 'SATA'; 12 = 'SD'; 13 = 'MMC'; 14 = 'Virtual'; 15 = 'File Backed Virtual'; 16 = 'Storage Spaces'; 17 = 'NVMe'; 18 = 'SCM'; 19 = 'UFS' }
+$MediaNames = @{ 0 = 'Unspecified'; 3 = 'HDD'; 4 = 'SSD'; 5 = 'SCM' }
+$HealthNames = @{ 0 = 'Healthy'; 1 = 'Warning'; 2 = 'Unhealthy'; 5 = 'Unknown' }
+function Get-EnumName($Map, $Value) { if ($null -eq $Value) { return '' }; $n = $Map[[int]$Value]; if ($n) { $n } else { [string]$Value } }
+function Format-Mac([string]$Raw) { $h = ($Raw -replace '[^0-9A-Fa-f]', '').ToUpper(); if ($h.Length -ne 12) { return '' }; ($h -split '(..)' | Where-Object { $_ }) -join '-' }
 
 # Hardware: model, serial number, BIOS, processors, memory modules, network cards
 $hw = Try-Get {
@@ -59,15 +72,17 @@ $hw = Try-Get {
     virtual = [bool]($cs.Model -match 'Virtual|VMware|KVM|QEMU|HVM|Xen|VirtualBox' -or $cs.Manufacturer -match 'QEMU|Xen|innotek|Parallels')
     ram = @(Get-CimInstance Win32_PhysicalMemory | ForEach-Object { @{ slot = [string]$_.DeviceLocator; size = [int64]$_.Capacity; speed = [int]$_.Speed
       vendor = ([string]$_.Manufacturer).Trim(); part = ([string]$_.PartNumber).Trim() } })
-    nics = @(Try-Get { Get-NetAdapter -Physical | ForEach-Object { @{ name = [string]$_.Name; desc = [string]$_.InterfaceDescription
-      mac = [string]$_.MacAddress; speed = [int64]$_.Speed; up = ($_.Status -eq 'Up') } } }) }
+    # physical cards (as Get-NetAdapter -Physical: with a connector); the address in use, else the burnt-in one
+    nics = @(Try-Get { Get-Cim 'root/StandardCimv2' 'MSFT_NetAdapter' 'ConnectorPresent=TRUE' | ForEach-Object {
+      $mac = Format-Mac ([string](@($_.NetworkAddresses) | Where-Object { $_ } | Select-Object -First 1)); if (-not $mac) { $mac = Format-Mac ([string]$_.PermanentAddress) }
+      @{ name = [string]$_.Name; desc = [string]$_.InterfaceDescription; mac = $mac; speed = [int64]$_.Speed; up = ([int]$_.InterfaceOperationalStatus -eq 1) } } }) }
 }
 
 # Physical disks with health and - where the disk tells - temperature, wear, hours and uncorrected errors
-$pdisks = @(Try-Get { Get-PhysicalDisk | ForEach-Object {
-  $r = $null; try { $r = $_ | Get-StorageReliabilityCounter } catch { $r = $null }
-  @{ name = [string]$_.FriendlyName; serial = ([string]$_.SerialNumber).Trim(); media = [string]$_.MediaType; bus = [string]$_.BusType
-    size = [int64]$_.Size; health = [string]$_.HealthStatus
+$pdisks = @(Try-Get { Get-Cim $StorageNs 'MSFT_PhysicalDisk' | ForEach-Object {
+  $r = $null; try { $r = @(Get-CimAssociatedInstance -InputObject $_ -ResultClassName 'MSFT_StorageReliabilityCounter')[0] } catch { $r = $null }
+  @{ name = [string]$_.FriendlyName; serial = ([string]$_.SerialNumber).Trim(); media = (Get-EnumName $MediaNames $_.MediaType); bus = (Get-EnumName $BusNames $_.BusType)
+    size = [int64]$_.Size; health = (Get-EnumName $HealthNames $_.HealthStatus)
     temp = $(if ($r) { $r.Temperature }); wear = $(if ($r) { $r.Wear }); hours = $(if ($r) { $r.PowerOnHours })
     readErrors = $(if ($r) { $r.ReadErrorsUncorrected }); writeErrors = $(if ($r) { $r.WriteErrorsUncorrected }) } } })
 
@@ -82,7 +97,7 @@ $updates = @{ pending = $(if ($upd) { $upd.pending }); security = $(if ($upd) { 
 
 # Virus protection: Defender, on client Windows also another product registered in the Security Center
 $av = Try-Get {
-  $m = Try-Get { Get-MpComputerStatus }
+  $m = Try-Get { Get-Cim 'root/Microsoft/Windows/Defender' 'MSFT_MpComputerStatus' | Select-Object -First 1 }
   $sc = @(Try-Get { Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName AntiVirusProduct })
   $other = $sc | Where-Object { $_.displayName -notmatch 'Defender' -and ([int]$_.productState -band 0x1000) } | Select-Object -First 1
   if ($m -and $m.AntivirusEnabled -and $m.RealTimeProtectionEnabled) {
@@ -96,8 +111,9 @@ $av = Try-Get {
   }
 }
 $fw = Try-Get {
-  $p = @(Get-NetFirewallProfile)
-  $on = { param($n) "$(($p | Where-Object { $_.Name -eq $n }).Enabled)" -eq 'True' }
+  # Enabled: 1 = on, 0 = off, 2 = not configured (counts as off, as before)
+  $p = @(Get-Cim 'root/StandardCimv2' 'MSFT_NetFirewallProfile')
+  $on = { param($n) [int](@($p | Where-Object { $_.Name -eq $n })[0].Enabled) -eq 1 }
   @{ domain = (& $on 'Domain'); private = (& $on 'Private'); public = (& $on 'Public') }
 }
 
