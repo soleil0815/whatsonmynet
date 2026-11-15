@@ -204,7 +204,9 @@ export function createApi(ctx) {
     res.json({ recoveryCodes: users.newRecoveryCodes(req.user.id) });
   });
   r.patch('/me', (req, res) => {
-    const u = users.update(req.user.id, req.body, { self: true });
+    // On a standby only the look of one's own account (name, mail … come from the master and would be overwritten)
+    const body = ctx.failover?.readOnly() ? Object.fromEntries(Object.entries(req.body || {}).filter(([k]) => k === 'theme' || k === 'language')) : req.body;
+    const u = users.update(req.user.id, body, { self: true });
     res.json(userOut(u));
   });
   r.post('/me/password', (req, res) => {

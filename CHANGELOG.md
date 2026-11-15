@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Ausfallsicherung: Auf dem Standby lässt sich nichts mehr verstellen - keine Kanäle, E-Mail, Webhooks, Einstellungen, Benutzer, Hypervisoren oder Berichte, auch nicht, während er für den Master überwacht. Die Seiten zeigen nur an und sagen warum. Erlaubt bleiben die Steuerung der Ausfallsicherung (Entkoppeln, zum Master machen, Wartezeit) und Hell/Dunkel und Sprache des eigenen Kontos
+
+## 0.25.0 - 2026-11-14
+
 - Benachrichtigungen: Anzeigename (Absender) pro Kanal - steht über jeder Meldung, damit man sieht, woher sie kommt; bei E-Mail als Absendername und im Betreff, bei ntfy, Gotify, Pushover & Co. als Titel, bei Discord und Mattermost als Name des Bots, im Webhook als „sender“
 - Ausfälle in der Verlaufsgrafik: Bei Gründen ohne Doppelpunkt fehlte der erste Buchstabe („onnection refused“) - jetzt steht der Grund vollständig da
 - Handbuch, Hilfe und Projektseite: alle Bilder im neuen, hellen Aussehen

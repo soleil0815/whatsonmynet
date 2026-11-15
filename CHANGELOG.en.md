@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Failover: nothing can be changed on the standby any more - no channels, e-mail, webhooks, settings, users, hypervisors or reports, also not while it monitors in place of the master. The pages only show and say why. Still possible: the failover controls (unpair, make master, waiting time) and light/dark and language of one's own account
+
+## 0.25.0 - 2026-11-14
+
 - Notifications: display name (sender) per channel - shown above every message so one sees where it comes from; for e-mail as the sender name and in the subject, for ntfy, Gotify, Pushover & co. as the title, for Discord and Mattermost as the bot name, in the webhook as "sender"
 - Outages in the history chart: reasons without a colon lost their first letter ("onnection refused") - now the reason is shown in full
 - Manual, help and project page: all pictures in the new, light look

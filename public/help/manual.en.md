@@ -440,6 +440,8 @@ When pairing, the standby takes **all data of the master** (devices, monitors, u
 - The **standby** asks the master every minute and takes its data every 5 minutes. It checks nothing, scans nothing and sends no alarms. A note shows at the top; nothing can be changed there (please on the master).
 - The connection uses HTTPS; the standby checks the fingerprint of the master's certificate from the code. If the key of the certificate stays the same on renewal (always with the self-signed one), nothing needs to be done. With a new certificate with a new key, create a new code on the master and pair again.
 
+**Nothing can be changed on the standby** - neither channels, e-mail addresses and webhooks nor settings, users, monitors or devices, also not while it monitors in place of the master: its data come from the master and would be overwritten at the next copy. The pages only show. Allowed are only the controls under *Failover* (unpair, make master, waiting time) and light/dark and language of one's own account.
+
 **When the master fails:** if it does not answer for longer than the set time, the **standby takes over**. It then checks and alarms itself and reports to all default channels: "Failover: the master … has not answered for 10 min - this server (standby) has taken over monitoring." For longer maintenance on the master, raise the time on the standby beforehand.
 
 **When the master comes back:** as soon as it answers, the standby is quiet again ("… is back") and takes its data. **Nothing goes back to the master.** What the standby reported meanwhile is listed on the standby under *Takeovers*.

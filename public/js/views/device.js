@@ -7,6 +7,7 @@ import { state, navigate, fail } from '../app.js';
 import { monitorDot, statusPill, openMonitorForm } from './monitoring.js';
 import { printerPanel } from './printer.js';
 import { systemPanel, openHostScript, helpLink } from './hostscripts.js';
+import { isReadOnly } from './failover.js';
 import { hardwarePanel } from './hardware.js';
 import { switchPanel, nasPanel, upsPanel, pluggedLine } from './snmpdev.js';
 import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
@@ -28,7 +29,7 @@ export function looksLikeHost(d) {
  * (no script report, no server hardware such as iDRAC/iLO) and nobody said "do not show again" for it.
  */
 export function scriptHint(d, ti, open, reload) {
-  if (ti || d.host || d.hardware || d.script_tip_hidden || !looksLikeHost(d)) return null;
+  if (ti || d.host || d.hardware || d.script_tip_hidden || !looksLikeHost(d) || isReadOnly()) return null;
   const waiting = !!d.hostScript;
   const hide = state.user.canEdit ? h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: async (e) => {
     const b = e.currentTarget;

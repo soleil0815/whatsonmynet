@@ -4,6 +4,7 @@ import { patch, post, get } from '../api.js';
 import { t } from '../i18n.js';
 import { state, setUser, render, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn } from './common.js';
+import { lockForEditing, isReadOnly } from './failover.js';
 
 export async function renderAccount(main) {
   const u = state.user;
@@ -48,6 +49,10 @@ export async function renderAccount(main) {
         h('section', { class: 'panel panel-pad' }, h('h2', { class: 'section-title' }, t('acc.password')),
           u.source === 'ldap' ? h('p', { class: 'muted', style: { margin: 0 } }, t('acc.adPassword')) : pw),
         tf?.available ? twoFactorPanel(tf, () => renderAccount(main)) : null))));
+  // on a standby: only the look of one's own account (the rest comes from the master)
+  lockForEditing(main.querySelector('.page'), ['language', 'theme']);
+  if (isReadOnly()) profile.querySelector('button[type=submit]')?.removeAttribute('hidden');
+  if (isReadOnly()) profile.querySelector('button[type=submit]')?.removeAttribute('disabled');
 }
 
 /** Recovery codes: shown once, to copy or save as a text file */
