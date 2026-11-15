@@ -76,6 +76,7 @@ export async function renderEvents(main) {
         cfg.syslogTcp || s.syslogTcp?.error ? recv(s.syslogTcp.on, 'Syslog TCP', `${cfg.syslogTcpPort}`, s.syslogTcp.error) : null,
         cfg.syslogTls || s.syslogTls?.error ? recv(s.syslogTls.on, 'Syslog TLS', `${cfg.syslogTlsPort}`, s.syslogTls.error) : null,
         h('span', { class: 'muted small' }, t('ev.total', { n: s.total })),
+        s.filtered ? h('span', { class: 'muted small', title: t('ev.filteredHint') }, t('ev.filtered', { n: s.filtered.toLocaleString(getLang()) })) : null,
         s.storage ? h('span', { class: 'muted small' }, t(s.storage.short ? (s.storage.daysFit < 1 ? 'ev.space0' : 'ev.space') : 'ev.spaceOk', { used: gb(s.storage.used), limit: gb(s.storage.cap),
           day: s.storage.perDay.toLocaleString(getLang()), days: s.storage.daysFit, keep: s.storage.keepDays })) : null,
         errs.map((e) => h('span', { class: 'small bad-text' }, e))));
@@ -162,6 +163,8 @@ export async function renderEvents(main) {
       field(t('ev.s.syslogTcp', { port: cfg.syslogTcpPort }), h('input', { type: 'checkbox', name: 'syslogTcp', checked: cfg.syslogTcp }), t('ev.s.syslogTcpHint')),
       field(t('ev.s.syslogTls', { port: cfg.syslogTlsPort }), h('input', { type: 'checkbox', name: 'syslogTls', checked: cfg.syslogTls }), t('ev.s.syslogTlsHint')),
       field(t('ev.s.onlyKnown'), h('input', { type: 'checkbox', name: 'onlyKnown', checked: cfg.onlyKnown }), t('ev.s.onlyKnownHint')),
+      field(t('ev.s.winAllow'), input('winAllow', cfg.winAllow || '', { class: 'mono', placeholder: t('ev.s.winAllowPh'), autocomplete: 'off' }), t('ev.s.winAllowHint')),
+      field(t('ev.s.winDeny'), input('winDeny', cfg.winDeny || '', { class: 'mono', placeholder: '8004, 4624, 4634', autocomplete: 'off' }), t('ev.s.winDenyHint')),
       field(t('ev.s.keep'), input('keepDays', cfg.keepDays, { type: 'number', min: 1, max: 365 }), t('ev.s.keepHint')),
       field(t('ev.s.maxGb'), input('maxGb', cfg.maxGb, { type: 'number', min: 0.1, max: 1000, step: 0.1 }), t('ev.s.maxGbHint')),
       h('div', { class: 'note', style: { margin: 0 } }, h('div', { style: { minWidth: 0 } },
