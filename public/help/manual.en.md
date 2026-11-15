@@ -394,6 +394,25 @@ If the account lacks a right, WhatsOnMyNet reads the rest and names exactly whic
 
 **Sensors:** "VM … running", "Provider check: …", "CPU …", "Database … available", CPU and storage of the database, "Load balancer …: unhealthy targets", "Alarms of the provider", "Unhealthy resources" and "Costs this month" (limit at first: last month + 20 %). A VM or database that does not run has no values - that is no alarm; whether it should run, its own sensor says. With *Watch new devices by themselves* a new account gets sensors for the alarms, the checks of the VMs, the databases and the load balancers right away.
 
+## Veeam Backup & Replication
+
+From version 12 on WhatsOnMyNet reads through the REST API (port 9419) the **jobs** with last result, last and next run, and the **repositories** with their space - under *Monitoring → Virtualization* → **Add host** → *Veeam Backup & Replication*.
+
+1. In Veeam under *Users and roles* create an account of its own with the role **Veeam Backup Viewer** - it may only read.
+2. Enter the address with port (e.g. `https://vbr01.company.local:9419`), **Fetch certificate** and confirm the fingerprint, user and password.
+
+Sensors: *Veeam job …* (alarm on **error or warning** in the last run; disabled jobs stay quiet), *Last run …* (alarm when a scheduled job has not run for more than 26 hours), *Repository …* (from 85 % full) and *Veeam jobs with error or warning* (all together).
+
+## Microsoft 365
+
+Under *Monitoring → Cloud* → **Connect cloud account** → *Microsoft 365* WhatsOnMyNet reads through Microsoft Graph the **health of the services** (Exchange Online, Teams, SharePoint …), the **open incidents and advisories** and the **subscriptions** with assigned and free licences.
+
+1. In the Entra admin center create an **app registration**; note application ID and directory ID.
+2. Under *API permissions* add the **application permissions** `ServiceHealth.Read.All` and `Organization.Read.All` and **grant admin consent** - both may only read.
+3. Create a client secret and enter its **value**. It expires; WhatsOnMyNet says so plainly when it has.
+
+Sensors: *Microsoft 365: service* (alarm on degradation or interruption), *open incidents* (incidents only, no advisories), *Subscription …* (alarm when it runs out or is suspended) and *Free licences …*. Newly connected accounts get sensors for incidents and subscriptions right away.
+
 ## Windows and Linux machines by script (without agent)
 
 **What is the script for?** Many values of a machine are known only to its operating system: temperatures of CPU and NVMe, the health of the disks (SMART), services, pending updates. Big servers deliver part of it through their management chip (iDRAC, iLO, XClarity - see *Server hardware*). A mini PC, a self-built server or a Proxmox node in a homelab has nothing like that - here the script fetches this information. For Proxmox: the API delivers nodes, VMs, storage and backups; temperatures, disks, services and updates of the nodes only come with the script.

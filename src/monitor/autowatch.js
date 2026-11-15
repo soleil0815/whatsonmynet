@@ -35,6 +35,8 @@ export function hostPicks(kind) {
   if (kind === 'redfish') return [['rfHealth', 1], ['rfTemp', 1]];
   if (['unifi', 'omada', 'mikrotik'].includes(kind)) return [['netOnline', 6]];
   // Cloud: what the provider itself reports as broken - its alarms, its checks of the VMs, the databases, the load balancers
+  if (kind === 'veeam') return [['jobsFailed', 1], ['repoUsed', 3]];
+  if (kind === 'm365') return [['m365Issues', 1], ['m365Sku', 6]];
   if (['aws', 'azure', 'gcp'].includes(kind)) return [['cloudAlarms', 1], ['cloudResources', 1], ['cloudCheck', 6], ['dbState', 4], ['lbUnhealthy', 4]];
   if (NODE_KINDS.includes(kind)) return [['nodeOnline', 4], ['storage', 3], ['backupFailed', 1]];
   return [['nodeOnline', 4]];
