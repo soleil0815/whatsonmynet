@@ -295,6 +295,18 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   let idFilter = null; let filtered = 0;
   const ranges = (k) => parseEventIds(String(settings.get(k) || '')) || [];
   const inRanges = (list, id) => list.some(([a, b]) => id >= a && id <= b);
+  // Severity: per sender (Messages → by sender → Filter), else for all (Receiving settings). -1 = muted.
+  let sevFilter = null; let sevAt = 0;
+  const droppedBy = new Map(); // address → messages not kept since the start (the page shows it at the sender)
+  function sevWanted(ip, severity) {
+    if (!sevFilter || Date.now() - sevAt > 60000) {
+      sevFilter = new Map(db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((r) => [r.source_ip, r.min_severity]));
+      sevAt = Date.now();
+    }
+    const own = sevFilter.get(ip);
+    const min = own ?? Math.max(0, Math.min(7, Number(settings.get('events.minSeverity') ?? 7)));
+    return severity <= min;
+  }
   function idWanted(id) {
     if (!Number.isInteger(id)) return true;
     if (!idFilter) idFilter = { allow: ranges('events.winAllow'), deny: ranges('events.winDeny') };
@@ -336,6 +348,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const device = deviceOf(addr);
     if (settings.get('events.onlyKnown') && !device) return null;
     if (!idWanted(ev.eventId)) { filtered++; return null; }
+    const sev = Math.max(0, Math.min(7, Number(ev.severity) || 0));
+    if (!sevWanted(addr, sev)) { filtered++; droppedBy.set(addr, (droppedBy.get(addr) || 0) + 1); return null; }
     const row = { at: at.toISOString(), kind, source_ip: addr, device_id: device, severity: Math.max(0, Math.min(7, Number(ev.severity) || 0)), facility: ev.facility ?? null,
       host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, 1000) || '(empty)',
       event_id: Number.isInteger(ev.eventId) ? ev.eventId : null, channel: clip(ev.channel, 120), account: clip(ev.account, 120) };
@@ -447,7 +461,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   }
   /** (Re)opens the receivers as the settings say */
   function apply() {
-    idFilter = null;
+    idFilter = null; sevFilter = null;
     stopAll();
     if (settings.get('events.traps')) startTraps();
     if (settings.get('events.syslog')) startSyslog();
@@ -484,8 +498,15 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
           e.severity last_severity, e.app last_app, e.event_id last_event_id, e.text last_text
         FROM event_senders s LEFT JOIN devices d ON d.id = s.device_id LEFT JOIN events_in e ON e.id = s.last_id ORDER BY s.last_at DESC`).all()
         .map((r) => { const x = day.get(r.source_ip) || {}; return { ...r, day: x.n || 0, warn: x.warn || 0, err: x.err || 0 }; });
+      // a muted sender has nothing stored - it stays in the list all the same, or it could never be unmuted
+      const have = new Set(sendersCache.map((r) => r.source_ip));
+      for (const f of db.prepare('SELECT f.source_ip, d.id device_id, d.name device_name FROM event_source_filters f LEFT JOIN devices d ON d.ip = f.source_ip').all()) {
+        if (!have.has(f.source_ip)) sendersCache.push({ source_ip: f.source_ip, device_id: f.device_id, host: '', first_at: null, last_at: null, device_name: f.device_name, day: 0, warn: 0, err: 0 });
+      }
       sendersAt = Date.now();
     }
+    const filters = new Map(db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((r) => [r.source_ip, r.min_severity]));
+    sendersCache = sendersCache.map((r) => ({ ...r, filter: filters.has(r.source_ip) ? filters.get(r.source_ip) : null, dropped: droppedBy.get(r.source_ip) || 0 }));
     const n = String(q || '').trim().toLowerCase().slice(0, 100);
     return n ? sendersCache.filter((r) => [r.source_ip, r.host, r.device_name].some((v) => String(v || '').toLowerCase().includes(n))) : sendersCache;
   }
@@ -564,6 +585,15 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
 
   return {
     receive, list, senders, prune, apply, communities,
+    /** What is kept of one sender: min severity 0-7, -1 muted, null = as for all */
+    setSenderFilter(ip, min, by = '') {
+      const a = String(ip || '').trim().slice(0, 64);
+      if (!a) return;
+      if (min === null || min === undefined || min === '') db.prepare('DELETE FROM event_source_filters WHERE source_ip=?').run(a);
+      else db.prepare('INSERT INTO event_source_filters(source_ip, min_severity, updated_at, updated_by) VALUES(?,?,?,?) ON CONFLICT(source_ip) DO UPDATE SET min_severity=excluded.min_severity, updated_at=excluded.updated_at, updated_by=excluded.updated_by')
+        .run(a, Math.max(-1, Math.min(7, Number(min))), new Date().toISOString(), String(by).slice(0, 120));
+      sevFilter = null; sendersCache = null;
+    },
     reloadTls,
     status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, filtered, total: storage().total,
       last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null, storage: storage() }),

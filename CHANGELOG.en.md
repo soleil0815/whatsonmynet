@@ -6,6 +6,7 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Messages: what is kept - for all from a severity on (Receiving settings) and per sender its own filter (everything, warning and worse, error and worse … or muted); muted senders stay in the list with the number of dropped messages
 - Filter Windows events by id (Receiving settings): only take some ids and/or never some (e.g. 8004 group policy, 4624/4634 logon and logoff); rules for ids not taken are refused, the rule list warns
 - Umlauts: UTF-8 and the Windows code page mixed in one line are both read right ("NT-AUTORITÄT … für" instead of "… fÃ¼r")
 
