@@ -6,8 +6,15 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
-- Windows events: new installations do not take the usual noise at all (logons/logoffs, process start, object access, firewall connections, service state 7036, DCOM 10016, WMI 5858 …); existing ones keep their list and can add to it under Receiving settings with "Add the usual noise". Failed logons, account lockouts and the ready-made rules are not touched
+- Windows script of the machines: reads network cards, disks, Defender and firewall straight from WMI instead of through the PowerShell modules - with script block logging on, a run no longer leaves some 70 "suspicious" events 4104 but only a few "verbose" ones. Same values; takes effect after New script under Settings → Machine scripts and running or distributing it again
+
+## 0.32.0 - 2026-11-15
+
 - Database backups are kept compressed on the server (.sqlite.gz, mostly a fraction of the size); default now 10 instead of 7 (who had 7 set now has 10). Existing backups are compressed once, copies before updates and before a restore no longer pile up (the 10 newest each). Restoring takes .sqlite and .sqlite.gz
+- Windows events: new installations do not take the usual noise at all (logons/logoffs, process start, object access, firewall connections, service state 7036, DCOM 10016, WMI 5858 …); existing ones keep their list and can add to it under Receiving settings with "Add the usual noise". Failed logons, account lockouts and the ready-made rules are not touched
+
+## 0.31.0 - 2026-11-15
+
 - Look: the default is "like the system" again - light or dark as the computer or phone is set; accounts on "light" were switched over, an own choice stays possible under My account
 
 ## 0.30.0 - 2026-11-15
