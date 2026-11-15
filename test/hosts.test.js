@@ -214,6 +214,32 @@ test('Windows script: reports hardware, disks, updates, protection, events and c
   assert.ok(uninstallScript('windows').text.includes("@('womn-host.ps1', 'womn-updates.json')"), 'uninstall removes the update status too');
 });
 
+test('Windows setup replaces an older read-only copy and leaves the new one writable (update was "access denied")', { skip: !pwsh && 'pwsh missing' }, () => {
+  const dir = fs.mkdtempSync(path.join(tmp, 'winsetup-'));
+  const s = hostScript('windows', { url: 'https://womn:8443/api/hosts/push', token: 'tok-new' });
+  const home = path.join(dir, 'WhatsOnMyNet');
+  fs.mkdirSync(home);
+  const dest = path.join(home, s.file);
+  fs.writeFileSync(dest, '# old script\n');
+  fs.chmodSync(dest, 0o444);
+  // the downloaded setup file is read-only too (package folder, share): the attribute must not travel along
+  const dl = path.join(dir, 'download');
+  fs.mkdirSync(dl);
+  const src = path.join(dl, s.file);
+  fs.writeFileSync(src, s.text);
+  fs.chmodSync(src, 0o444);
+  const calls = path.join(dir, 'calls.txt');
+  const out = execFileSync(pwsh, ['-NoProfile', '-NonInteractive', '-File', path.resolve('test/fixtures/winmock.ps1'), '-Script', src],
+    { env: { ...process.env, ProgramData: dir, WOMN_BODY: path.join(dir, 'body.json'), WOMN_CALLS: calls, COMPUTERNAME: 'SRV-DC01' }, timeout: 60000 }).toString();
+  assert.match(out, /WhatsOnMyNet: set up/);
+  assert.equal(fs.readFileSync(dest, 'utf8'), s.text, 'the old copy is replaced');
+  assert.ok(fs.statSync(dest).mode & 0o200, 'the copy is not left read-only - the next update can replace it');
+  const log = fs.readFileSync(calls, 'utf8').split('\n').filter(Boolean);
+  const end = log.findIndex((l) => l.startsWith('schtasks /End'));
+  const create = log.findIndex((l) => l.startsWith('schtasks /Create'));
+  assert.ok(end >= 0 && end < create, 'a running report is ended before the copy, the task created after it');
+});
+
 test('Windows scripts: set up / remove the scheduled task, also the one of version 0.6.0 (Hyper-V)', () => {
   const h = hostScript('hyperv', { url: 'https://w/api/proxmox/1/push', token: 't' });
   assert.ok(h.text.includes("$Task = 'WhatsOnMyNet-HyperV'") && h.text.includes("foreach ($old in @('WhatsOnMyNet'))"));

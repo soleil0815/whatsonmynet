@@ -58,6 +58,10 @@ function New-Object { param([string]$ComObject, [Parameter(Position = 0)][string
   $sess | Add-Member NoteProperty Searcher $searcher
   $sess | Add-Member ScriptMethod CreateUpdateSearcher { $this.Searcher }
   $sess }
+# The setup calls icacls and schtasks: noted in $env:WOMN_CALLS (when set), nothing changed
+function Note-Call([string]$Line) { if ($env:WOMN_CALLS) { Add-Content -LiteralPath $env:WOMN_CALLS -Value $Line }; $global:LASTEXITCODE = 0 }
+function icacls.exe { Note-Call ('icacls ' + ($args -join ' ')) }
+function schtasks.exe { Note-Call ('schtasks ' + ($args -join ' ')) }
 function Invoke-RestMethod { param($Method, $Uri, $Headers, $ContentType, $Body, $TimeoutSec)
   [IO.File]::WriteAllBytes($env:WOMN_BODY, [byte[]]$Body) }
 
