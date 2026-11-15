@@ -38,7 +38,7 @@ const SYNC_MS = 5 * 60 * 1000;
 export const DELAY_MIN = { min: 3, max: 240, default: 10 };
 const MAX_SNAPSHOT = 4 * 1024 * 1024 * 1024;
 // Tables that stay with each installation: who is signed in here, its own log, its versions and diagnostic placeholders
-export const LOCAL_TABLES = new Set(['sessions', 'server_log', 'version_history', 'diag_alias', 'events_in']);
+export const LOCAL_TABLES = new Set(['sessions', 'server_log', 'version_history', 'diag_alias', 'events_in', 'event_rule_hits']);
 // While standby, the interface may only read - apart from signing in/out and the failover itself
 // What a standby lets through: signing in and out, its own failover controls (unpair, promote, takeover time, check -
 // and the answer to a promoted partner), and the look of one's own account (theme, language - the route allows no more)

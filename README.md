@@ -19,7 +19,7 @@ Netzwerk-Inventar, Monitoring und Sensoren in einem Container: WhatsOnMyNet scan
 | 🌡️ **Sensoren wie bei PRTG** | Toner, Festplatten, Ports, USV, jede Temperatur, CPU, RAM, VMs und Sicherungen - mit Grenzwert, Alarm und Diagramm, das Ausfälle mit Beginn, Ende und Dauer zeigt |
 | 🖥️ **Virtualisierung und Hardware** | Proxmox VE/Backup Server (auch Cluster), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity per Redfish |
 | 🧪 **Weitere Prüfungen** | Mailserver (SMTP/IMAP/POP3 mit TLS und Zertifikat), DNS, LDAP/Active Directory, Zeitserver (NTP), Microsoft SQL Server |
-| 🔔 **Meldungen** | SNMP-Traps und Syslog (UDP, TCP, TLS) empfangen, dem Gerät zuordnen, sofort alarmieren |
+| 🔔 **Meldungen** | SNMP-Traps, Syslog (UDP, TCP, TLS) und Windows-Ereignisse (NXLog) empfangen, dem Gerät zuordnen, sofort alarmieren; Ereignisregeln schicken ausgewählte Meldungen per Mail oder ans Ticketsystem |
 | 📈 **Prometheus & Grafana** | /metrics mit Schlüssel, fertiges Grafana-Dashboard |
 | 🧩 **Eigene Prüfungen** | Eigene Skripte im Checkmk-Format (Local Checks) auf Windows- und Linux-Rechnern - nur Dateien, die niemand sonst ändern kann |
 | 💾 **Veeam** | Jobs mit letztem Ergebnis, Repositories - Veeam Backup & Replication 12+ (REST, nur lesend) |

@@ -23,12 +23,64 @@ const PER_SECOND = 300;
 const clip = (s, n) => String(s ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // ---------------------------------------------------------------------------------------------- syslog
-/** One syslog datagram → { severity, facility, host, app, text } */
+// Windows events (NXLog, im_msvistalog): the event id, log (channel), source and account are kept in fields of their
+// own, so a rule can ask for "Defender, event 1116" instead of searching text. Two shapes are understood:
+//   JSON   - "Exec $Message = to_json(); to_syslog_ietf();" (or to_json() alone): all fields of the event
+//   a line - NXLog without Exec: "2026-11-15 10:00:00 PC-01 WARNING 1116 Microsoft Defender Antivirus has detected …"
+//   readable - the config of the manual: to_syslog_bsd() with the message "[1116] [Microsoft-Windows-Windows Defender/
+//            Operational] Microsoft Defender Antivirus has detected …" (the source is the syslog tag)
+const WIN_SEVERITY = { CRITICAL: 2, ERROR: 3, WARNING: 4, AUDIT_FAILURE: 4, INFO: 6, AUDIT_SUCCESS: 6, DEBUG: 7 };
+const NX_LINE = /^(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d)\s+(\S+)\s+(INFO|WARNING|ERROR|CRITICAL|DEBUG|AUDIT_SUCCESS|AUDIT_FAILURE)\s+(\d{1,6})\s+([\s\S]*)$/;
+
+/** Windows fields of a message text, or null → { eventId, channel, account, app, host, severity, text } */
+export function windowsFields(raw) {
+  const s = String(raw ?? '').replace(/^\uFEFF/, '').trim();
+  if (s.startsWith('{')) {
+    let j;
+    try { j = JSON.parse(s); } catch { return null; }
+    if (!j || typeof j !== 'object' || Array.isArray(j)) return null;
+    const id = Number(j.EventID ?? j.EventId ?? j.event_id);
+    if (!Number.isInteger(id) || id < 0 || id > 999999) return null;
+    // a failed audit (wrong password, access denied) is a warning even where the log calls it "INFO"
+    const type = String(j.EventType || '').toUpperCase();
+    const sev = type === 'AUDIT_FAILURE' ? 4 : WIN_SEVERITY[String(j.Severity || '').toUpperCase()] ?? WIN_SEVERITY[type];
+    const user = j.TargetUserName && /^(4740|4767|4625|4720|4722|4725|4726|4728|4732|4756)$/.test(String(id)) ? j.TargetUserName : j.AccountName;
+    const dom = j.TargetUserName && user === j.TargetUserName ? j.TargetDomainName : j.Domain;
+    return { eventId: id, channel: clip(j.Channel, 120), account: clip(user ? `${dom ? `${dom}\\` : ''}${user}` : '', 120),
+      app: clip(j.SourceName || j.ProviderName, 60), host: clip(j.Hostname || j.Computer, 120), severity: sev ?? null,
+      text: String(j.Message ?? '') || `event ${id}` };
+  }
+  const b = /^\[(\d{1,6})\] \[([^\]\r\n]{0,200})\] ?([\s\S]*)$/.exec(s);
+  if (b) return { eventId: Number(b[1]), channel: clip(b[2], 120), account: '', app: '', host: '', severity: null, text: b[3] || `event ${b[1]}` };
+  const m = NX_LINE.exec(s);
+  if (m) return { eventId: Number(m[4]), channel: '', account: '', app: '', host: clip(m[2], 120), severity: WIN_SEVERITY[m[3]], text: m[5] };
+  return null;
+}
+
+/** The message part of a syslog message → the fields; a Windows event fills its own fields */
+function finish(out, rest) {
+  // a source with a space ("Microsoft-Windows-Windows Defender") is no syslog tag to the parser above - in front of
+  // "[id] [log]" it still is the source
+  const tag = !out.app && /^([^:[\]\r\n]{1,80}): (?=\[\d{1,6}\] \[)/.exec(rest);
+  if (tag) { out.app = clip(tag[1], 60); rest = rest.slice(tag[0].length); }
+  const w = windowsFields(rest);
+  if (w) {
+    out.eventId = w.eventId; out.channel = w.channel; out.account = w.account;
+    if (w.app) out.app = w.app;
+    if (w.host) out.host = w.host;
+    if (w.severity !== null && w.severity !== undefined) out.severity = w.severity;
+    rest = w.text;
+  }
+  out.text = clip(rest, 1000);
+  return out;
+}
+
+/** One syslog datagram → { severity, facility, host, app, text, eventId?, channel?, account? } */
 export function parseSyslog(raw) {
   let s = Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw);
   s = s.replace(/^\uFEFF/, '').slice(0, 8192);
   const m = /^<(\d{1,3})>([\s\S]*)$/.exec(s.trimStart());
-  if (!m || Number(m[1]) > 191) return { severity: 5, facility: 1, host: '', app: '', text: clip(s, 1000) };
+  if (!m || Number(m[1]) > 191) return finish({ severity: 5, facility: 1, host: '', app: '', text: '' }, s);
   const pri = Number(m[1]);
   const out = { severity: pri % 8, facility: pri >> 3, host: '', app: '', text: '' };
   let rest = m[2];
@@ -40,8 +92,7 @@ export function parseSyslog(raw) {
     rest = rest.slice(r5[0].length);
     if (rest.startsWith('-')) rest = rest.slice(1);
     else while (rest.startsWith('[')) { const end = /^\[(?:[^\]\\]|\\.)*\]/.exec(rest); if (!end) break; rest = rest.slice(end[0].length); }
-    out.text = clip(rest, 1000);
-    return out;
+    return finish(out, rest.replace(/^ ?\uFEFF?/, ''));
   }
   // RFC 3164: <PRI>Mmm dd hh:mm:ss HOST TAG[pid]: MSG (many devices leave out the time or the host)
   const ts = /^([A-Z][a-z]{2} [ \d]\d \d\d:\d\d:\d\d|\d{4}-\d\d-\d\dT\S+) /.exec(rest);
@@ -57,21 +108,36 @@ export function parseSyslog(raw) {
   }
   const tag = /^([^\s:[\]]{1,48})(\[\d+\])?: ?/.exec(rest);
   if (tag) { out.app = clip(tag[1], 60); rest = rest.slice(tag[0].length); }
-  out.text = clip(rest, 1000);
-  return out;
+  return finish(out, rest);
 }
 
 // ---------------------------------------------------------------------------------------------- syslog over a stream
 // TCP (RFC 6587) and TLS (RFC 5425) carry several messages on one connection. Two kinds of framing:
 //   octet counting  "123 <34>1 2026-…"   (length first - RFC 5425 requires it)
 //   line by line    "<34>Oct 11 …\n"     (most devices over plain TCP)
-// The first byte of each message decides. Too long, nonsense lengths or a full buffer end the connection.
+// The first byte of each message decides. A message longer than MAX_FRAME is skipped (that one only - the connection
+// stays: NXLog sends a long Windows event now and then); nonsense lengths or a line without end beyond 1 MB end it.
 export const MAX_FRAME = 8192;
-export function syslogFramer(onMessage) {
+const MAX_SKIP_LINE = 1024 * 1024;
+export function syslogFramer(onMessage, onSkipped = () => {}) {
   let buf = Buffer.alloc(0);
+  let skipBytes = 0;     // octet counting: what is left of a message that is too long
+  let skipLine = -1;     // line by line: bytes skipped of a line that is too long (-1: not skipping)
   return (chunk) => {
     buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
     for (;;) {
+      if (skipBytes) {
+        const n = Math.min(skipBytes, buf.length);
+        skipBytes -= n; buf = buf.subarray(n);
+        if (skipBytes) return true;
+        onSkipped();
+      }
+      if (skipLine >= 0) {
+        const nl = buf.indexOf(0x0a);
+        if (nl < 0) { skipLine += buf.length; buf = Buffer.alloc(0); return skipLine <= MAX_SKIP_LINE; }
+        buf = buf.subarray(nl + 1); skipLine = -1;
+        onSkipped();
+      }
       // skip line ends between messages
       let i = 0;
       while (i < buf.length && (buf[i] === 0x0a || buf[i] === 0x0d || buf[i] === 0x00)) i++;
@@ -84,9 +150,10 @@ export function syslogFramer(onMessage) {
         const m = /^(\d{1,12}) (<|$)/.exec(head);
         if (m && !m[2] && buf.length < 16) return true; // "16 " - the rest is still on the way
         if (m && m[2]) {
+          if (m[1].length > 6) return false;
           const len = Number(m[1]);
-          if (m[1].length > 6 || len > MAX_FRAME) return false;
           const sp = m[1].length;
+          if (len > MAX_FRAME) { skipBytes = len; buf = buf.subarray(sp + 1); continue; }
           if (buf.length < sp + 1 + len) return true;
           onMessage(buf.subarray(sp + 1, sp + 1 + len));
           buf = buf.subarray(sp + 1 + len);
@@ -95,8 +162,11 @@ export function syslogFramer(onMessage) {
         if (/^\d{1,12}$/.test(head) && buf.length < 16) return true; // only digits so far - wait for more
       }
       const nl = buf.indexOf(0x0a);
-      if (nl < 0) return buf.length <= MAX_FRAME;
-      if (nl > MAX_FRAME) return false;
+      if (nl < 0) {
+        if (buf.length <= MAX_FRAME) return true;
+        skipLine = buf.length; buf = Buffer.alloc(0); return true;
+      }
+      if (nl > MAX_FRAME) { buf = buf.subarray(nl + 1); onSkipped(); continue; }
       onMessage(buf.subarray(0, nl));
       buf = buf.subarray(nl + 1);
     }
@@ -170,7 +240,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     syslogTcp: { on: false, port: config.syslogTcpPort, error: '', connections: 0 }, syslogTls: { on: false, port: config.syslogTlsPort, error: '', connections: 0 } };
   let trapRx = null; let sysSock = null; let tcpServer = null; let tlsServer = null;
   const conns = new Set();
-  const insert = db.prepare('INSERT INTO events_in(at, kind, source_ip, device_id, severity, facility, host, app, oid, text) VALUES(?,?,?,?,?,?,?,?,?,?)');
+  let skipped = 0;
+  const insert = db.prepare('INSERT INTO events_in(at, kind, source_ip, device_id, severity, facility, host, app, oid, text, event_id, channel, account) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
   let index = null; let indexAt = 0;
   // ip → inventory device (refreshed every minute; a new device is matched soon after the scan took it)
   const deviceOf = (ip) => {
@@ -200,8 +271,9 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const device = deviceOf(addr);
     if (settings.get('events.onlyKnown') && !device) return null;
     const row = { at: at.toISOString(), kind, source_ip: addr, device_id: device, severity: Math.max(0, Math.min(7, Number(ev.severity) || 0)), facility: ev.facility ?? null,
-      host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, 1000) || '(empty)' };
-    row.id = insert.run(row.at, row.kind, row.source_ip, row.device_id, row.severity, row.facility, row.host, row.app, row.oid, row.text).lastInsertRowid;
+      host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, 1000) || '(empty)',
+      event_id: Number.isInteger(ev.eventId) ? ev.eventId : null, channel: clip(ev.channel, 120), account: clip(ev.account, 120) };
+    row.id = insert.run(row.at, row.kind, row.source_ip, row.device_id, row.severity, row.facility, row.host, row.app, row.oid, row.text, row.event_id, row.channel, row.account).lastInsertRowid;
     try { onEvent(row); } catch (e) { log.warn(`Messages: ${e.message}`); }
     return row;
   }
@@ -268,7 +340,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       const c = { ip, sock, kind };
       conns.add(c); st.connections++;
       sock.setTimeout(IDLE_MS, () => sock.destroy());
-      const feed = syslogFramer((frame) => receive('syslog', ip, parseSyslog(frame)));
+      const feed = syslogFramer((frame) => receive('syslog', ip, parseSyslog(frame)), () => { skipped++; log.debug(`Syslog: a message from ${ip} longer than ${MAX_FRAME} bytes was skipped`); });
       sock.on('data', (d) => { if (!feed(d)) sock.destroy(); });
       sock.on('error', () => {});
       sock.on('close', () => { conns.delete(c); st.connections--; });
@@ -318,7 +390,12 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     if (kind === 'trap' || kind === 'syslog') { where.push('kind = ?'); args.push(kind); }
     if (device) { where.push('e.device_id = ?'); args.push(Number(device)); }
     if (before) { where.push('e.id < ?'); args.push(Number(before)); }
-    if (q) { where.push("(text LIKE ? ESCAPE '\\' OR app LIKE ? ESCAPE '\\' OR source_ip LIKE ? ESCAPE '\\' OR d.name LIKE ? ESCAPE '\\' OR e.host LIKE ? ESCAPE '\\')"); const like = `%${String(q).slice(0, 100).replace(/[\\%_]/g, (c) => `\\${c}`)}%`; args.push(like, like, like, like, like); }
+    if (q) {
+      // a number also finds the Windows event with that id
+      const n = /^\d{1,6}$/.test(String(q).trim()) ? Number(String(q).trim()) : -1;
+      where.push("(text LIKE ? ESCAPE '\\' OR app LIKE ? ESCAPE '\\' OR source_ip LIKE ? ESCAPE '\\' OR d.name LIKE ? ESCAPE '\\' OR e.host LIKE ? ESCAPE '\\' OR e.channel LIKE ? ESCAPE '\\' OR e.account LIKE ? ESCAPE '\\' OR e.event_id = ?)");
+      const like = `%${String(q).slice(0, 100).replace(/[\\%_]/g, (c) => `\\${c}`)}%`; args.push(like, like, like, like, like, like, like, n);
+    }
     return db.prepare(`SELECT e.*, d.name device_name FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where.join(' AND ')} ORDER BY e.id DESC LIMIT ?`)
       .all(...args, Math.max(1, Math.min(1000, Number(limit) || 200)));
   }
@@ -333,7 +410,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   return {
     receive, list, prune, apply, communities,
     reloadTls,
-    status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, total: db.prepare('SELECT COUNT(*) n FROM events_in').get().n,
+    status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, total: db.prepare('SELECT COUNT(*) n FROM events_in').get().n,
       last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null }),
     start: apply,
     stop: stopAll,

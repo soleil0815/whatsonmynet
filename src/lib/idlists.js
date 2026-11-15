@@ -51,6 +51,10 @@ export function forgetMonitors(db, ids) {
 /** Devices deleted: out of reports, and their monitors out of everything above */
 export function forgetDevices(db, ids, monitorIds = []) {
   for (const id of ids) dropId(db, 'reports', 'device_ids', id, offReport(db));
+  // an event rule for only this device is switched off (the id could be given to another device later)
+  for (const id of ids) {
+    db.prepare("UPDATE event_rules SET enabled=0, match=json_set(match, '$.deviceId', NULL) WHERE json_extract(match, '$.deviceId') = ?").run(Number(id));
+  }
   forgetMonitors(db, monitorIds);
 }
 
@@ -63,5 +67,7 @@ export function forgetLocation(db, id) {
 export function forgetChannel(db, settings, id) {
   dropId(db, 'monitors', 'channels', id);
   dropId(db, 'monitors', 'escalate_channels', id);
+  // an event rule never falls back to the default channels: without a channel left it is switched off
+  dropId(db, 'event_rules', 'channels', id, (row) => db.prepare('UPDATE event_rules SET enabled=0 WHERE id=?').run(row.id));
   if (settings) for (const k of ['lightscan.channels', 'printer.channels', 'nas.channels', 'escalate.channels']) dropIdFromSetting(settings, k, id);
 }

@@ -1,0 +1,157 @@
+// Event rules: chosen messages (Windows events through NXLog, syslog, traps) to chosen recipients - a mailbox, a ticket
+// system, a webhook - apart from the monitors. Ready-made rules for the usual Windows events; "Test" shows which of the
+// stored messages a rule would have matched before it is saved.
+import { h, mount, modal, toast, fmtDate, confirmDialog } from '../dom.js';
+import { get, post, put, del } from '../api.js';
+import { t, getLang } from '../i18n.js';
+import { state, fail, navigate } from '../app.js';
+import { pageHead, field, input, select, btn, formData } from './common.js';
+import { lockForEditing, isReadOnly } from './failover.js';
+import { sevLabel } from './events.js';
+
+// Ready-made rules. Source and log decide together with the id - an id alone is used by many sources.
+export const RULE_PRESETS = [
+  ['virus', { eventIds: '1116, 1117', source: 'Defender' }],
+  ['srp', { eventIds: '865-868', source: 'SoftwareRestriction' }],
+  ['applocker', { eventIds: '8004, 8007', source: 'AppLocker' }],
+  ['lockout', { eventIds: '4740', source: 'Security-Auditing' }],
+  ['group', { eventIds: '4728, 4732, 4756', source: 'Security-Auditing' }],
+  ['logCleared', { eventIds: '1102', source: 'Eventlog' }],
+  ['service', { eventIds: '7045', source: 'Service Control Manager' }],
+  ['deviceErrors', { kind: 'syslog', maxSeverity: 3 }],
+];
+
+const list = (a) => (Array.isArray(a) ? a.join(', ') : a || '');
+
+/** A rule in one line: what it picks */
+function summary(m) {
+  const parts = [];
+  if (m.eventIds) parts.push(t('er.sum.ids', { ids: m.eventIds }));
+  if (m.source) parts.push(t('er.sum.source', { v: m.source }));
+  if (m.channel) parts.push(t('er.sum.log', { v: m.channel }));
+  if (m.from?.length) parts.push(t('er.sum.from', { v: list(m.from) }));
+  if (m.words?.length) parts.push(t('er.sum.words', { v: list(m.words) }));
+  if (m.notWords?.length) parts.push(t('er.sum.not', { v: list(m.notWords) }));
+  if (m.kind) parts.push(m.kind === 'trap' ? 'Traps' : 'Syslog');
+  if ((m.maxSeverity ?? 7) < 7) parts.push(t('er.sum.sev', { v: sevLabel(m.maxSeverity) }));
+  return parts.join(' · ');
+}
+
+export async function renderEventRules(main) {
+  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
+  const body = h('div', { class: 'stack' });
+  mount(main, h('div', { class: 'page' }, body));
+  const box = h('div');
+  let chans = [];
+  async function load() {
+    let rules = [];
+    try { [rules, chans] = await Promise.all([get('/event-rules'), get('/channels').catch(() => [])]); } catch (e) { fail(e); return; }
+    if (!body.isConnected) return;
+    const chanName = (id) => chans.find((c) => c.id === id)?.name || '?';
+    mount(box, rules.length ? h('div', { class: 'panel' }, h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('er.name')), h('th', {}, t('er.to')), h('th', {}, t('er.sending')), h('th', {}, t('er.hits')), h('th', {}))),
+      h('tbody', {}, rules.map((r) => h('tr', { class: r.enabled ? '' : 'muted' },
+        h('td', {}, h('span', { class: 'name' }, r.name), r.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('er.off')),
+          h('div', { class: 'sub' }, summary(r.match))),
+        h('td', { class: 'small' }, r.channels.map(chanName).join(', ')),
+        h('td', { class: 'small' }, r.mode === 'digest' ? t('er.digestEvery', { n: r.digest_min }) : t('er.eachMax', { n: r.max_per_hour })),
+        h('td', { class: 'small' }, t('er.hits24', { n: r.hits24h }),
+          r.lastHit ? h('div', { class: 'sub' }, t('er.last', { at: fmtDate(r.lastHit, getLang()) })) : null,
+          r.open ? h('div', { class: 'sub' }, t('er.open', { n: r.open })) : null,
+          r.failed24h ? h('div', { class: 'sub bad-text' }, t('er.failed', { n: r.failed24h })) : null),
+        h('td', { class: 'min nowrap' }, isReadOnly() ? null : [
+          btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => openRuleForm(r, load) }, 'edit'),
+          btn(t('delete'), { class: 'btn btn-sm btn-ghost', onclick: async () => {
+            if (!await confirmDialog(t('delete'), t('er.deleteConfirm', { name: r.name }), t('delete'), t('cancel'), { danger: true })) return;
+            try { await del(`/event-rules/${r.id}`); toast(t('deleted')); load(); } catch (e) { fail(e); }
+          } }, 'trash')])))))))
+      : h('div', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: '0 0 10px' } }, t('er.none')),
+        isReadOnly() ? null : btn(t('er.new'), { class: 'btn btn-primary btn-sm', onclick: () => openRuleForm(null, load) }, 'plus')));
+    lockForEditing(body);
+  }
+  mount(body, pageHead(t('er.title'), t('er.lead'),
+    btn(t('er.back'), { class: 'btn', onclick: () => navigate('/events') }, 'bell'),
+    isReadOnly() ? null : btn(t('er.new'), { class: 'btn btn-primary', onclick: () => openRuleForm(null, load) }, 'plus')), box);
+  await load();
+}
+
+/** The form of a rule (new, edit, or from a message: preset = { name, match }) */
+export async function openRuleForm(rule, done, preset = null) {
+  let chans = [];
+  try { chans = await get('/channels'); } catch { /* list stays empty */ }
+  const v = rule || { name: preset?.name || '', enabled: true, match: { maxSeverity: 7, ...(preset?.match || {}) }, channels: [], mode: 'each', digest_min: 15, max_per_hour: 20 };
+  const m0 = v.match || {};
+  const f = {
+    eventIds: input('eventIds', m0.eventIds || '', { placeholder: '1116, 1117, 865-868', autocomplete: 'off', class: 'mono' }),
+    source: input('source', m0.source || '', { placeholder: 'Defender', autocomplete: 'off' }),
+    channel: input('channel', m0.channel || '', { placeholder: 'Security', autocomplete: 'off' }),
+    from: input('from', list(m0.from), { placeholder: t('er.f.fromPh'), autocomplete: 'off' }),
+    words: input('words', list(m0.words), { autocomplete: 'off' }),
+    notWords: input('notWords', list(m0.notWords), { autocomplete: 'off' }),
+    kind: select('kind', [['', t('er.f.kindAll')], ['syslog', 'Syslog'], ['trap', 'SNMP-Traps']], m0.kind || ''),
+    maxSeverity: select('maxSeverity', [['7', t('ev.f.all')], ['4', t('ev.f.warning')], ['3', t('ev.f.err')], ['2', t('ev.f.crit')]], String(m0.maxSeverity ?? 7)),
+  };
+  const name = input('name', v.name, { required: true, maxlength: 120 });
+  const presetSel = rule ? null : select('preset', [['', t('er.f.presetNone')], ...RULE_PRESETS.map(([k]) => [k, t(`er.p.${k}`)])], '');
+  presetSel?.addEventListener('change', () => {
+    const p = RULE_PRESETS.find(([k]) => k === presetSel.value);
+    if (!p) return;
+    const m = { eventIds: '', source: '', channel: '', from: '', words: '', notWords: '', kind: '', maxSeverity: '7', ...p[1] };
+    for (const [k, el] of Object.entries(f)) el.value = String(m[k] ?? '');
+    if (!name.value.trim() || RULE_PRESETS.some(([k]) => name.value === t(`er.p.${k}`))) name.value = t(`er.p.${p[0]}`);
+  });
+  const selected = new Set(v.channels || []);
+  const chanBox = chans.length ? h('div', { class: 'full field' }, t('er.f.to'),
+    h('div', { class: 'chips' }, chans.map((c) => h('label', { class: 'check', style: { marginRight: '14px' } },
+      h('input', { type: 'checkbox', name: `ch_${c.id}`, checked: selected.has(c.id) }), `${c.name}${c.enabled ? '' : ` (${t('er.off')})`}`))),
+    h('span', { class: 'hint' }, t('er.f.toHint')))
+    : h('p', { class: 'full muted small' }, state.user.isAdmin ? t('mon.f.noChannelsAdmin') : t('mon.f.noChannels'));
+  const mode = select('mode', [['each', t('er.f.each')], ['digest', t('er.f.digest')]], v.mode);
+  const maxBox = field(t('er.f.perHour'), input('max_per_hour', v.max_per_hour, { type: 'number', min: 1, max: 500 }), t('er.f.perHourHint'));
+  const digestBox = field(t('er.f.digestMin'), input('digest_min', v.digest_min, { type: 'number', min: 1, max: 1440 }), t('er.f.digestHint'));
+  const sync = () => { maxBox.hidden = mode.value !== 'each'; };
+  mode.addEventListener('change', sync); sync();
+  const testOut = h('div', { class: 'full', 'aria-live': 'polite' });
+  const readMatch = () => {
+    const d = formData(form);
+    return { eventIds: d.eventIds, source: d.source, channel: d.channel, from: d.from, words: d.words, notWords: d.notWords, kind: d.kind, maxSeverity: Number(d.maxSeverity) };
+  };
+  async function runTest() {
+    try {
+      const r = await post('/event-rules/test', { match: readMatch() });
+      mount(testOut, h('div', { class: 'note', style: { margin: 0 } }, h('div', { style: { minWidth: 0 } },
+        h('strong', {}, r.count ? t('er.test.found', { n: r.count }) : t('er.test.none')), h('span', { class: 'muted small' }, ` ${t('er.test.of', { n: r.checked })}`),
+        r.list.length ? h('ul', { class: 'small', style: { margin: '6px 0 0', paddingLeft: '18px' } }, r.list.slice(0, 5).map((e) => h('li', {},
+          `${fmtDate(e.at, getLang())} · ${e.device_name || e.host || e.source_ip} · ${e.event_id !== null ? `${e.event_id} · ` : ''}${String(e.text).slice(0, 140)}`))) : null)));
+    } catch (e) { fail(e); }
+  }
+  const form = h('form', { class: 'form-grid' },
+    presetSel ? h('div', { class: 'full' }, field(t('er.f.preset'), presetSel, t('er.f.presetHint'))) : null,
+    h('div', { class: 'full' }, field(t('er.name'), name)),
+    h('h3', { class: 'full section-title', style: { margin: '6px 0 0' } }, t('er.f.which')),
+    field(t('er.f.eventIds'), f.eventIds, t('er.f.eventIdsHint')),
+    field(t('er.f.source'), f.source, t('er.f.sourceHint')),
+    field(t('er.f.channel'), f.channel, t('er.f.channelHint')),
+    field(t('er.f.from'), f.from, t('er.f.fromHint')),
+    field(t('er.f.words'), f.words, t('er.f.wordsHint')),
+    field(t('er.f.notWords'), f.notWords, t('er.f.notWordsHint')),
+    field(t('er.f.kind'), f.kind),
+    field(t('ev.severity'), f.maxSeverity),
+    h('div', { class: 'full actions', style: { justifyContent: 'flex-start' } }, btn(t('er.test'), { class: 'btn btn-sm', onclick: runTest }, 'search')),
+    testOut,
+    h('h3', { class: 'full section-title', style: { margin: '6px 0 0' } }, t('er.f.where')),
+    chanBox,
+    field(t('er.f.mode'), mode),
+    maxBox,
+    digestBox,
+    h('div', { class: 'full' }, field(t('er.f.enabled'), h('input', { type: 'checkbox', name: 'enabled', checked: v.enabled }))));
+  const m = modal(rule ? t('er.edit') : t('er.new'), form, { wide: true, onSubmit: async () => {
+    const d = formData(form);
+    const payload = { name: d.name, enabled: d.enabled, match: readMatch(), channels: chans.filter((c) => d[`ch_${c.id}`]).map((c) => c.id),
+      mode: d.mode, digest_min: Number(d.digest_min), max_per_hour: Number(d.max_per_hour) };
+    try {
+      if (rule) await put(`/event-rules/${rule.id}`, payload); else await post('/event-rules', payload);
+      m.close(); toast(t('saved')); done?.();
+    } catch (ex) { fail(ex); }
+  }, actions: [btn(t('cancel'), { onclick: () => m.close() }), h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
+}

@@ -38,6 +38,7 @@ import { createFailover } from './failover.js';
 import { createAutoWatch } from './monitor/autowatch.js';
 import { createDiagnostics } from './diagnostics.js';
 import { createEvents, eventMatches } from './events.js';
+import { createEventRules } from './eventrules.js';
 import { createApiTokens, renderMetrics } from './metrics.js';
 import { mergeDuplicatesOnce } from './monitor/dedupe.js';
 import { createDiagnosticsApi } from './routes/diagnostics.js';
@@ -116,9 +117,11 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   const sensorChoices = createSensorChoices({ db, settings });
   // New devices and hosts get a first monitor and a few sensors by themselves
   const autoWatch = createAutoWatch({ db, settings, monitoring });
+  // Event rules: chosen messages to chosen channels (mail, ticket system, webhook) - apart from the monitors
+  const eventRules = createEventRules({ db, channels });
   // Failover: what only runs on the installation that is active (alone, master, or a standby that has taken over)
   const failover = createFailover({ db, settings, dataDir,
-    engines: [monitoring, nightly, printers, snmpDevices, reports, proxmox, autoWatch],
+    engines: [monitoring, nightly, printers, snmpDevices, reports, proxmox, autoWatch, eventRules],
     notify: (ev) => channels.notifyIds([], { ...ev, at: new Date().toISOString() }),
     certPem: () => tls?.current()?.cert || '',
     snapshot: () => backups.snapshot(), discard: (f) => backups.discard(f),
@@ -130,9 +133,10 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
     const ids = db.prepare("SELECT id, device_id, options FROM monitors WHERE type='event' AND enabled=1").all()
       .filter((m) => { let o = {}; try { o = JSON.parse(m.options); } catch { /* none */ } return eventMatches(row, o, m.device_id); }).map((m) => m.id);
     if (ids.length) monitoring.soon(ids);
+    eventRules.onEvent(row);
   } });
   const apiTokens = createApiTokens({ settings });
-  const ctx = { db, settings, events, apiTokens, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
+  const ctx = { db, settings, events, eventRules, apiTokens, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 

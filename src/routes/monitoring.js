@@ -178,6 +178,27 @@ export function createMonitoringApi(ctx) {
     setTimeout(() => res.json({ status: ctx.events.status(), settings: eventSettings() }), 300);
   });
 
+  // Event rules: chosen messages to chosen channels (mail, ticket system, webhook) - for editors, like monitors
+  r.get('/event-rules', editor, unscoped, (req, res) => res.json(ctx.eventRules.list()));
+  r.post('/event-rules/test', editor, unscoped, (req, res) => res.json(ctx.eventRules.test(req.body?.match || {})));
+  r.post('/event-rules', editor, unscoped, (req, res) => {
+    const x = ctx.eventRules.create(req.body || {});
+    audit(req, 'eventrule.create', x.name);
+    res.status(201).json(x);
+  });
+  r.put('/event-rules/:id', editor, unscoped, (req, res) => {
+    const x = ctx.eventRules.update(idParam(req), req.body || {});
+    audit(req, 'eventrule.update', `${x.name}${x.enabled ? '' : ' (off)'}`);
+    res.json(x);
+  });
+  r.delete('/event-rules/:id', editor, unscoped, (req, res) => {
+    const id = idParam(req);
+    const name = ctx.eventRules.get(id)?.name || id;
+    ctx.eventRules.remove(id);
+    audit(req, 'eventrule.delete', name);
+    res.json({ ok: true });
+  });
+
   // Proxmox hosts: names and values for editors (monitor form), everything else for admins
   r.get('/proxmox', editor, (req, res) => {
     const list = ctx.proxmox.list();
