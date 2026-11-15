@@ -95,6 +95,8 @@ Tokens, keys and webhook addresses are stored encrypted and never shown again. O
 
 **What an alarm says:** web page, port and ping report "is down". A measured value reports "limit exceeded - 83.9 °C (≥ 80)" and later "back in the normal range", a state (service, VM, disk, container …) "fault" and "fine again", a sensor without current values "no current values".
 
+**How it is checked:** every detail view of a monitor or sensor shows what exactly is asked (address, status code, keyword, OID, share, value of a device or hypervisor), where the values come from and how old they are (e.g. "new every 5 min · as of 2 min ago"), when it alarms - with the limit, the margin for the all-clear and the number of failed checks - and the last answer word for word. So every message can be traced back to its source.
+
 ### Changing several monitors or sensors at once
 
 In the *Monitors* and *Sensors* lists every row has a box; the box in the table header takes all rows shown right now (search and filter apply). A bar above shows the number and the buttons **Pause**, **Resume**, **Delete** (asks first) and **Edit together**. The dialog holds the fields of *Advanced*: check every, alarm after … failed checks, time limit, repeat the alarm, escalation and - after ticking *Change channels* - the escalation and notification channels; for sensors also condition and limit. Every field starts as *unchanged*: only what you fill in changes, everything else stays as it was for each monitor. If a value is invalid (e.g. less than 20 seconds), nothing changes. Condition and limit only go to sensors with a numeric value; state sensors (online, healthy …) are skipped, the message says how many. Editors limited to locations can only select monitors of their locations.
@@ -257,6 +259,10 @@ On the Backup Server it works the same under *Configuration → Access Control*:
 ### Adding sensors
 
 In the detail view **Add sensor** - e.g. "VM 101 running", "storage local-lvm below 85 %" or "last backup older than 26 hours". Every sensor is a monitor with history and notification.
+
+### Failed tasks
+
+Failed tasks (backup, verify, prune, package lists …) are shown with a plain name and below it the error lines from the Proxmox task log - so one sees *why* something went wrong. Backups, verifications and syncs count as a fault (red), upkeep tasks like pruning or package lists as a note (yellow). When updating the package lists fails only because of a third-party repository (e.g. Webmin), it is just a note and not counted as an error; when an official Proxmox or Debian repository fails, it still alarms.
 
 ### If something does not work
 

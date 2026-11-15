@@ -404,6 +404,7 @@ async function renderDetail(main, id) {
         h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '10px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, isValueType(m) ? t('sens.chart') : t('mon.chart')), span),
         historyChart(m, hours, { valueMode: isValueType(m) }),
         m.history ? h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, t(isValueType(m) ? 'mon.histLegendValue' : 'mon.histLegend', { bucket: m.bucketHours >= 24 ? t('mon.histDay') : t('mon.hist6h') })) : null),
+      howPanel(m),
       depPanel(m, edit, reload),
       quietPanel(m, windows, edit, reload),
       h('section', { class: 'panel panel-pad' },
@@ -416,6 +417,62 @@ async function renderDetail(main, id) {
   }
   await load();
   return () => { alive = false; clearTimeout(timer); };
+}
+
+const OP_SIGN = { lt: '<', le: '≤', gt: '>', ge: '≥', eq: '=', ne: '≠', contains: '∋', notcontains: '∌' };
+
+/**
+ * "How it is checked": what is asked, where the values come from and how fresh they are, when it alarms and what the
+ * last answer was - word for word. So every message can be traced back to its source.
+ */
+export function howPanel(m) {
+  const w = m.how;
+  if (!w) return null;
+  const rows = [];
+  const row = (k, ...v) => rows.push(h('dt', {}, t(k)), h('dd', {}, ...v));
+  const target = targetText(m);
+  // what is asked
+  const what = {
+    ping: () => t('how.ping', { target }),
+    tcp: () => t('how.tcp', { target }),
+    http: () => [t('how.http', { target }), w.status ? t('how.httpStatus', { s: w.status }) : t('how.httpAny'), w.keyword ? t('how.httpKeyword', { k: w.keyword }) : '',
+      t(w.verify ? 'how.tlsOn' : 'how.tlsOff')].filter(Boolean).join(' · '),
+    snmp: () => t('how.snmp', { oid: w.oid, target }),
+    smb: () => t('how.smb', { target }),
+    docker: () => t('how.docker', { host: w.dockerHost || '–', target }),
+    sensor: () => t('how.sensor', { label: w.label, src: t(`how.src.${w.source?.kind || 'none'}`) }),
+    proxmox: () => t('how.proxmox', { label: w.label, host: w.source?.name || '–', kind: t(`virt.k.${w.source?.kind}`) === `virt.k.${w.source?.kind}` ? (w.source?.kind || '') : t(`virt.k.${w.source?.kind}`) }),
+  }[m.type];
+  row('how.what', what ? what() : t('how.db', { target }));
+  if (w.source) {
+    const age = w.source.at ? fmtAgo(w.source.at, t) : t('how.never');
+    row('how.source', w.source.everyMin ? t('how.every', { n: w.source.everyMin }) : t('how.noSource'), ' · ', t('how.dataAt', { when: age }),
+      w.source.at ? h('span', { class: 'muted small' }, ` · ${t('how.stale', { n: w.source.staleMin })}`) : null,
+      w.source.error ? h('div', { class: 'small bad-text' }, checkText(w.source.error, getLang())) : null,
+      w.source.kept?.length ? h('div', { class: 'small muted' }, t('how.kept', { list: w.source.kept.join(', ') })) : null);
+  }
+  // when it alarms
+  let when;
+  if (m.type === 'sensor' || m.type === 'proxmox') {
+    if (w.state) when = t('how.alarmState');
+    else {
+      const unit = m.data?.unit || '';
+      const margin = w.hysteresisFor?.[unit];
+      when = [t('how.alarmLimit', { op: OP_SIGN[w.op] || w.op, limit: `${w.threshold}${unit ? ` ${unit}` : ''}` }),
+        margin ? t('how.hysteresis', { limit: `${Number(w.threshold) + (w.op === 'ge' || w.op === 'gt' ? -margin : margin)}${unit ? ` ${unit}` : ''}` }) : ''].filter(Boolean).join(' · ');
+    }
+    when += ` · ${t('how.noData')}`;
+  } else if (m.type === 'smb') {
+    when = [t('how.alarmReach'), w.minFreePct ? t('how.smbPct', { n: w.minFreePct }) : '', w.minFreeGb ? t('how.smbGb', { n: w.minFreeGb }) : ''].filter(Boolean).join(' · ');
+  } else if (m.type === 'snmp' && w.op) {
+    when = t('how.alarmLimit', { op: OP_SIGN[w.op] || w.op, limit: `${w.threshold}${w.unit ? ` ${w.unit}` : ''}` });
+  } else when = t('how.alarmReach');
+  row('how.when', when, h('div', { class: 'small muted' }, t('how.after', { n: w.fail_threshold, every: w.interval_s, timeout: w.timeout_s })));
+  row('how.last', w.last_check ? h('span', {}, h('span', { class: 'mono small' }, checkText(w.last_message, getLang()) || '–'),
+    h('span', { class: 'muted small' }, ` · ${fmtDate(w.last_check, getLang())}`)) : t('how.never'));
+  return h('section', { class: 'panel panel-pad' },
+    h('h2', { class: 'section-title' }, t('how.title')),
+    h('dl', { class: 'kv how-kv' }, rows));
 }
 
 function eventLine(e) {

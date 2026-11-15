@@ -32,7 +32,7 @@ export function compare(op, actual, expected) {
 const OP_TEXT = { lt: '<', le: '≤', gt: '>', ge: '≥', eq: '=', ne: '≠', contains: '∋', notcontains: '∌' };
 
 /** Latest stored state of a device: { kind, at, ok, data } or null */
-function stateOf(db, deviceId) {
+export function stateOf(db, deviceId) {
   const d = db.prepare('SELECT type FROM devices WHERE id=?').get(deviceId);
   if (!d) return null;
   if (d.type === 'printer') {
@@ -133,7 +133,7 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
 
 // Hysteresis: a value that set off the alarm must leave the alarm zone by a small margin before the sensor is fine
 // again - an NVMe going 85.9 / 86.9 / 85.9 °C around a limit of 86 does not alarm (and clear) every 5 minutes.
-const HYSTERESIS = { '°C': 2, '%': 2 };
+export const HYSTERESIS = { '°C': 2, '%': 2 };
 export function alarmOf(op, value, threshold, unit, wasDown) {
   if (compare(op, value, threshold)) return true;
   const margin = HYSTERESIS[unit];

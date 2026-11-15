@@ -35,7 +35,10 @@ function fakeProxmox(dir, name) {
     res.setHeader('Content-Type', 'application/json');
     if (!/^PVEAPIToken=monitor@pve!womn=secret-1$|^PBSAPIToken=monitor@pbs!womn:secret-1$/.test(req.headers.authorization || '')) { res.statusCode = 401; return res.end('{}'); }
     if (/\/nodes\/pve1\/tasks/.test(p)) return res.end(JSON.stringify({ data: [{ id: '101', starttime: now - 7200, endtime: now - 7000, status: 'OK' }, { id: '200', starttime: now - 3600, endtime: now - 3500, status: 'job errors' }] }));
-    if (/\/nodes\/localhost\/tasks/.test(p)) return res.end(JSON.stringify({ data: [{ worker_type: 'verify', worker_id: 'backup', starttime: now - 600, status: 'verification failed' }, { worker_type: 'gc', starttime: now - 60, status: 'OK' }] }));
+    if (/\/nodes\/localhost\/tasks\/UPID%3Aapt\/log/.test(p)) return res.end(JSON.stringify({ data: [{ n: 1, t: 'starting apt-get update' }, { n: 2, t: 'Err:5 https://download.webmin.com/download/newkey/repository stable InRelease' }, { n: 3, t: 'W: Failed to fetch https://download.webmin.com/... 403 Forbidden' }, { n: 4, t: 'TASK ERROR: command failed' }] }));
+    if (/\/nodes\/localhost\/tasks\/UPID%3Averify\/log/.test(p)) return res.end(JSON.stringify({ data: [{ n: 1, t: 'verify group vm/101' }, { n: 2, t: 'can\'t verify chunk, load failed - store backup, chunk abc' }, { n: 3, t: 'TASK ERROR: verification failed - please check the log for details' }] }));
+    if (/\/nodes\/localhost\/tasks/.test(p)) return res.end(JSON.stringify({ data: [{ worker_type: 'verify', worker_id: 'backup', starttime: now - 600, status: 'verification failed', upid: 'UPID:verify' },
+      { worker_type: 'aptupdate', starttime: now - 900, status: 'unknown', upid: 'UPID:apt' }, { worker_type: 'gc', starttime: now - 60, status: 'OK' }] }));
     if (routes[p]) return res.end(JSON.stringify({ data: routes[p] }));
     res.statusCode = 404; res.end('{}');
   });
@@ -107,7 +110,15 @@ test('Proxmox VE and Backup Server: read, metrics, sensors, pinned certificate',
     assert.equal(b.last_ok, true, b.last_error);
     assert.equal(b.data.datastores[0].pct, 60);
     assert.deepEqual(b.data.groups.map((g) => `${g.type}/${g.id}`), ['ct/200', 'vm/101']);
-    assert.equal(b.data.failed.length, 1);
+    assert.equal(b.data.failed.length, 2);
+    const verify = b.data.failed.find((f) => f.type === 'verify');
+    assert.equal(verify.critical, true);
+    assert.match(verify.reason, /can't verify chunk, load failed/);
+    // apt update that failed only on a third-party source (Webmin): a note, not a failure, no alarm
+    const apt = b.data.failed.find((f) => f.type === 'aptupdate');
+    assert.deepEqual([apt.repo, apt.critical, apt.hosts], ['foreign', false, ['download.webmin.com']]);
+    assert.equal(proxmoxMetrics(b.data).find((x) => x.metric === 'tasksFailed').value, 1);
+    assert.equal('upid' in apt, false);
     const m2 = proxmoxMetrics(b.data);
     assert.equal(m2.find((x) => x.metric === 'groupAge' && x.key === 'backup/ct/200').value, 120);
     const age = proxmoxCheck(db, { options: JSON.stringify({ host: pbs.id, metric: 'groupAge', key: 'backup/ct/200', op: 'gt', threshold: '26', label: 'CT 200' }) });
