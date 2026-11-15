@@ -77,15 +77,22 @@ export function syslogFramer(onMessage) {
       while (i < buf.length && (buf[i] === 0x0a || buf[i] === 0x0d || buf[i] === 0x00)) i++;
       if (i) buf = buf.subarray(i);
       if (!buf.length) return true;
+      // Octet counting only for "LENGTH <PRI>…" (RFC 5425/6587); a line that merely starts with a digit - NXLog's own
+      // format "2026-11-15 10:00:00 PC-01 INFO 4624 …", a device without <PRI> - is a line, not a length.
       if (buf[0] >= 0x31 && buf[0] <= 0x39) {
-        const sp = buf.indexOf(0x20);
-        if (sp < 0) { if (buf.length > 6) return false; return true; }
-        const len = Number(buf.subarray(0, sp).toString('latin1'));
-        if (!/^[1-9]\d{0,5}$/.test(buf.subarray(0, sp).toString('latin1')) || len > MAX_FRAME) return false;
-        if (buf.length < sp + 1 + len) return true;
-        onMessage(buf.subarray(sp + 1, sp + 1 + len));
-        buf = buf.subarray(sp + 1 + len);
-        continue;
+        const head = buf.subarray(0, 16).toString('latin1');
+        const m = /^(\d{1,12}) (<|$)/.exec(head);
+        if (m && !m[2] && buf.length < 16) return true; // "16 " - the rest is still on the way
+        if (m && m[2]) {
+          const len = Number(m[1]);
+          if (m[1].length > 6 || len > MAX_FRAME) return false;
+          const sp = m[1].length;
+          if (buf.length < sp + 1 + len) return true;
+          onMessage(buf.subarray(sp + 1, sp + 1 + len));
+          buf = buf.subarray(sp + 1 + len);
+          continue;
+        }
+        if (/^\d{1,12}$/.test(head) && buf.length < 16) return true; // only digits so far - wait for more
       }
       const nl = buf.indexOf(0x0a);
       if (nl < 0) return buf.length <= MAX_FRAME;

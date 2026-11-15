@@ -35,6 +35,12 @@ test('framing: length first, line by line, mixed, split over packets; nonsense e
   assert.equal(feed(Buffer.from('ur!!\n')), true);
   assert.deepEqual(got, ['<13>one message\n', '<13>line two', '<13>three\r', '<13>four!!']);
   assert.equal(syslogFramer(() => {})(Buffer.from('99999999 <13>x')), false, 'a length above the limit');
+  // NXLog without Exec (im_msvistalog -> om_tcp) and devices without <PRI>: lines that start with a digit
+  const nx = []; const feedNx = syslogFramer((b) => nx.push(b.toString()));
+  assert.equal(feedNx(Buffer.from('2026-11-15 10:00:00 PC-01 INFO 1116 Malware found\r\n2026-11-15 10:00:01 PC-01 WARNING 865 Access to C:\\x.exe restricted\n12')), true);
+  assert.equal(feedNx(Buffer.from(' <13>tw')), true);
+  assert.equal(feedNx(Buffer.from('elve!!\n404 not a length\n')), true);
+  assert.deepEqual(nx, ['2026-11-15 10:00:00 PC-01 INFO 1116 Malware found\r', '2026-11-15 10:00:01 PC-01 WARNING 865 Access to C:\\x.exe restricted', '<13>twelve!!', '404 not a length']);
   assert.equal(syslogFramer(() => {})(Buffer.from(`<13>${'x'.repeat(9000)}`)), false, 'a line without end above the limit');
 });
 
