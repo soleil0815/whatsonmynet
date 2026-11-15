@@ -394,6 +394,25 @@ Fehlt dem Konto ein Recht, liest WhatsOnMyNet den Rest und sagt genau, welches R
 
 **Sensoren:** „VM … läuft“, „Prüfung des Anbieters: …“, „CPU …“, „Datenbank … erreichbar“, CPU und Speicher der Datenbank, „Load Balancer …: Ziele gestört“, „Alarme des Anbieters“, „Gestörte Ressourcen“ und „Kosten diesen Monat“ (Grenze anfangs: Vormonat + 20 %). Eine VM oder Datenbank, die nicht läuft, hat keine Werte - das ist kein Alarm; ob sie laufen soll, sagt ihr eigener Sensor. Mit *Neue Geräte selbst überwachen* bekommt ein neues Konto gleich Sensoren für die Alarme, die Prüfungen der VMs, die Datenbanken und die Load Balancer.
 
+## Veeam Backup & Replication
+
+Ab Version 12 liest WhatsOnMyNet über die REST-API (Port 9419) die **Jobs** mit letztem Ergebnis, letztem und nächstem Lauf sowie die **Repositories** mit ihrem Platz - unter *Überwachung → Virtualisierung* → **Host hinzufügen** → *Veeam Backup & Replication*.
+
+1. In Veeam unter *Benutzer und Rollen* ein eigenes Konto mit der Rolle **Veeam Backup Viewer** anlegen - es darf nur lesen.
+2. Adresse mit Port eintragen (z. B. `https://vbr01.firma.local:9419`), **Zertifikat abrufen** und den Fingerabdruck bestätigen, Benutzer und Passwort.
+
+Sensoren: *Veeam-Job …* (Alarm bei **Fehler oder Warnung** im letzten Lauf; abgeschaltete Jobs schweigen), *Letzter Lauf …* (Alarm, wenn ein geplanter Job über 26 Stunden nicht gelaufen ist), *Repository …* (ab 85 % voll) und *Veeam-Jobs mit Fehler oder Warnung* (alle zusammen).
+
+## Microsoft 365
+
+Unter *Überwachung → Cloud* → **Cloud-Konto anbinden** → *Microsoft 365* liest WhatsOnMyNet über Microsoft Graph den **Zustand der Dienste** (Exchange Online, Teams, SharePoint …), die **offenen Störungen und Hinweise** und die **Abonnements** mit vergebenen und freien Lizenzen.
+
+1. Im Entra-Admin-Center eine **App-Registrierung** anlegen; Anwendungs-ID und Verzeichnis-ID abschreiben.
+2. Unter *API-Berechtigungen* die **Anwendungsberechtigungen** `ServiceHealth.Read.All` und `Organization.Read.All` hinzufügen und **Administratorzustimmung erteilen** - beide dürfen nur lesen.
+3. Einen geheimen Clientschlüssel anlegen und seinen **Wert** eintragen. Er läuft ab; WhatsOnMyNet meldet deutlich, wenn er abgelaufen ist.
+
+Sensoren: *Microsoft 365: Dienst* (Alarm bei Einschränkung oder Unterbrechung), *offene Störungen* (nur Störungen, keine Hinweise), *Abonnement …* (Alarm, wenn es ausläuft oder gesperrt ist) und *Freie Lizenzen …*. Neu angebundene Konten bekommen gleich Sensoren für Störungen und Abonnements.
+
 ## Windows- und Linux-Rechner per Skript (ohne Agent)
 
 **Wofür das Skript?** Viele Werte eines Rechners kennt nur das Betriebssystem selbst: Temperaturen von CPU und NVMe, der Zustand der Festplatten (SMART), Dienste, ausstehende Updates. Große Server liefern einiges davon über ihren Management-Chip (iDRAC, iLO, XClarity - siehe *Server-Hardware*). Ein Mini-PC, ein Selbstbau-Server oder ein Proxmox-Knoten im Homelab hat so etwas nicht - hier holt das Skript diese Infos. Für Proxmox gilt: Die Schnittstelle liefert Knoten, VMs, Speicher und Sicherungen; Temperaturen, Festplatten, Dienste und Updates der Knoten kommen nur mit dem Skript dazu.

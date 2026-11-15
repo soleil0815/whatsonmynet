@@ -20,9 +20,9 @@ export function monitorDot(status) {
 }
 
 // Monitors that measure a value (not a response time): device sensors, SNMP values and Proxmox values
-const PX_STATE = ['nodeOnline', 'guestRunning', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume', 'cloudCheck', 'dbState'];
+const PX_STATE = ['nodeOnline', 'guestRunning', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume', 'cloudCheck', 'dbState', 'jobResult', 'm365Service', 'm365Sku'];
 const PX_UNIT = { rfTemp: ' °C', rfDriveLife: ' %', rfWatts: ' W', nodeCpu: ' %', nodeMem: ' %', nodeTemp: ' °C', storage: ' %', datastore: ' %', backupAge: ' h', groupAge: ' h',
-  cloudCpu: ' %', dbCpu: ' %', dbStorage: ' %' };
+  cloudCpu: ' %', dbCpu: ' %', dbStorage: ' %', repoUsed: ' %', jobAge: ' h' };
 // (a message monitor has no response time either: its chart shows when it alarmed)
 export const isValueType = (m) => m.type === 'sensor' || m.type === 'snmp' || m.type === 'event' || (m.type === 'proxmox' && !PX_STATE.includes(m.options?.metric));
 const unitOf = (m) => (m.type === 'proxmox' ? PX_UNIT[m.options?.metric] || '' : m.options?.unit ? ` ${m.options.unit}` : '');
@@ -129,6 +129,7 @@ const METRIC_GROUP = {
   netOnline: 'network', netClients: 'network', netCpu: 'network', netMem: 'network', clientsTotal: 'network', netUpdates: 'network',
   cloudCheck: 'guests', cloudCpu: 'guests', dbState: 'databases', dbCpu: 'databases', dbStorage: 'databases', lbUnhealthy: 'network',
   cloudAlarms: 'cloud', cloudResources: 'cloud', costMonth: 'cloud',
+  jobResult: 'backup', jobAge: 'backup', jobsFailed: 'backup', repoUsed: 'drives', m365Service: 'cloud', m365Issues: 'cloud', m365Sku: 'cloud', m365Free: 'cloud',
 };
 const GROUP_ORDER = ['cloud', 'machine', 'temps', 'drives', 'disks', 'services', 'care', 'guests', 'databases', 'backup', 'hardware', 'network', 'ups', 'printer', 'ports', 'other'];
 const groupRank = (x) => { const i = GROUP_ORDER.indexOf(METRIC_GROUP[x.metric] || 'other'); return i < 0 ? GROUP_ORDER.length : i; };

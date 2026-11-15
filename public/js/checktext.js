@@ -86,6 +86,15 @@ const PATTERNS = [
   // switch ports
   [/^no traffic \(port (\w+)\)$/, (_, st) => `kein Verkehr (Port ${WORDS[st] || st})`],
   [/^measuring - value after the next query$/, 'wird gemessen - Wert nach der nächsten Abfrage'],
+  // Veeam, Microsoft 365
+  [/^last run (success|warning|failed)$/, (_, r) => `letzter Lauf ${{ success: 'erfolgreich', warning: 'mit Warnung', failed: 'fehlgeschlagen' }[r]}`],
+  [/^not run yet$/, 'noch nicht gelaufen'],
+  [/^disabled$/, 'abgeschaltet'],
+  [/^(serviceOperational|serviceDegradation|serviceInterruption|extendedRecovery|restoringService|investigating|verifyingService|serviceRestored|falsePositive|postIncidentReviewPublished|resolved|mitigated|confirmed|reported)$/,
+    (_, s) => ({ serviceOperational: 'in Betrieb', serviceDegradation: 'eingeschränkt', serviceInterruption: 'unterbrochen', extendedRecovery: 'längere Wiederherstellung', restoringService: 'wird wiederhergestellt',
+      investigating: 'wird untersucht', verifyingService: 'wird geprüft', serviceRestored: 'wiederhergestellt', falsePositive: 'Fehlalarm', postIncidentReviewPublished: 'Nachbericht veröffentlicht',
+      resolved: 'behoben', mitigated: 'abgemildert', confirmed: 'bestätigt', reported: 'gemeldet' }[s])],
+  [/^(Enabled|Warning|Suspended|LockedOut)$/, (_, s) => ({ Enabled: 'aktiv', Warning: 'läuft aus (Kulanzzeit)', Suspended: 'gesperrt', LockedOut: 'gesperrt (abgelaufen)' }[s])],
   // cloud accounts
   [/^no value while it does not run$/, 'kein Wert, solange sie nicht läuft'],
   [/^(\S+) - no check while it does not run$/, (_, st) => `${WORDS[st] || st} - keine Prüfung, solange sie nicht läuft`],

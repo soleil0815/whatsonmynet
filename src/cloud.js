@@ -19,7 +19,7 @@ import https from 'node:https';
 import { HttpError, line, str } from './lib/http.js';
 import { encrypt } from './lib/crypto.js';
 
-export const CLOUD_KINDS = ['aws', 'azure', 'gcp'];
+export const CLOUD_KINDS = ['aws', 'azure', 'gcp', 'm365'];
 
 const clip = (s, n = 120) => String(s ?? '').replace(/[\x00-\x1f]/g, ' ').trim().slice(0, n);
 const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -34,6 +34,7 @@ const ALLOWED = {
   aws: /^[a-z0-9-]+(\.[a-z0-9-]+)?\.amazonaws\.com$/,
   azure: /^(login\.microsoftonline\.com|management\.azure\.com)$/,
   gcp: /^(oauth2|compute|monitoring|sqladmin)\.googleapis\.com$/,
+  m365: /^(login\.microsoftonline\.com|graph\.microsoft\.com)$/,
 };
 
 function httpsTransport({ method, url, headers, body }) {
@@ -350,10 +351,10 @@ export async function readAws(host, prev = {}) {
 
 // ---------------------------------------------------------------------------------------------- Azure
 const ARM = 'https://management.azure.com';
-async function azureToken(host) {
+async function azureToken(host, { kind = 'azure', scope = `${ARM}/.default` } = {}) {
   const o = host.options || {};
-  const body = new URLSearchParams({ client_id: host.token_id, client_secret: host.secretPlain, scope: `${ARM}/.default`, grant_type: 'client_credentials' }).toString();
-  const res = await request('azure', { method: 'POST', url: `https://login.microsoftonline.com/${encodeURIComponent(o.tenant)}/oauth2/v2.0/token`,
+  const body = new URLSearchParams({ client_id: host.token_id, client_secret: host.secretPlain, scope, grant_type: 'client_credentials' }).toString();
+  const res = await request(kind, { method: 'POST', url: `https://login.microsoftonline.com/${encodeURIComponent(o.tenant)}/oauth2/v2.0/token`,
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   const j = parse(res.text, {});
   if (res.status === 200 && j.access_token) return j.access_token;
@@ -626,11 +627,85 @@ function finish(out) {
   return out;
 }
 
-export const CLOUD_READERS = { aws: readAws, azure: readAzure, gcp: readGcp };
+// ---------------------------------------------------------------------------------------------- Microsoft 365
+// Microsoft Graph with an app registration (application permissions ServiceHealth.Read.All, Organization.Read.All):
+// the health of the services (Exchange, Teams, SharePoint …), open incidents, the subscriptions and their licences.
+const GRAPH = 'https://graph.microsoft.com/v1.0';
+const SERVICE_BAD = new Set(['serviceDegradation', 'serviceInterruption', 'extendedRecovery', 'restoringService', 'investigating', 'confirmed', 'reported', 'verifyingService']);
+// The usual subscriptions in words (the rest keeps its part number)
+const SKU_NAMES = { ENTERPRISEPACK: 'Office 365 E3', STANDARDPACK: 'Office 365 E1', ENTERPRISEPREMIUM: 'Office 365 E5', SPE_E3: 'Microsoft 365 E3', SPE_E5: 'Microsoft 365 E5',
+  SPB: 'Microsoft 365 Business Premium', O365_BUSINESS_PREMIUM: 'Microsoft 365 Business Standard', O365_BUSINESS_ESSENTIALS: 'Microsoft 365 Business Basic',
+  O365_BUSINESS: 'Microsoft 365 Apps for business', OFFICESUBSCRIPTION: 'Microsoft 365 Apps for enterprise', EXCHANGESTANDARD: 'Exchange Online (Plan 1)',
+  EXCHANGEENTERPRISE: 'Exchange Online (Plan 2)', STANDARDWOFFPACK_FACULTY: 'Office 365 A1 (faculty)', STANDARDWOFFPACK_STUDENT: 'Office 365 A1 (students)',
+  M365EDU_A3_FACULTY: 'Microsoft 365 A3 (faculty)', M365EDU_A3_STUDENT: 'Microsoft 365 A3 (students)', M365EDU_A5_FACULTY: 'Microsoft 365 A5 (faculty)',
+  ENTERPRISEPACK_FACULTY: 'Office 365 A3 (faculty)', POWER_BI_STANDARD: 'Power BI (free)', POWER_BI_PRO: 'Power BI Pro', FLOW_FREE: 'Power Automate (free)',
+  TEAMS_EXPLORATORY: 'Teams Exploratory', PROJECTPROFESSIONAL: 'Project Plan 3', VISIOCLIENT: 'Visio Plan 2', EMS: 'Enterprise Mobility + Security E3' };
+
+function graphError(res, need) {
+  const e = parse(res.text, {}).error || {};
+  if (res.status === 401) return new Error(`sign-in refused (${e.code || 401})`);
+  if (res.status === 403) return new Denied(need);
+  return new Error(`${need}: ${e.code || `HTTP ${res.status}`}${e.message ? ` - ${clip(e.message, 200)}` : ''}`);
+}
+async function graph(token, path, need) {
+  const items = [];
+  let next = `${GRAPH}${path}`;
+  for (let i = 0; i < 20 && next; i++) {
+    const res = await request('m365', { method: 'GET', url: next, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    if (res.status !== 200) throw graphError(res, need);
+    const j = parse(res.text, null);
+    if (!j) throw new Error(`${need}: answer is not JSON`);
+    if (!Array.isArray(j.value)) return j;
+    items.push(...j.value);
+    next = j['@odata.nextLink'] || '';
+  }
+  return items;
+}
+
+export async function readM365(host) {
+  const o = host.options || {};
+  const out = { ...empty('m365', o), services: [], issues: [], licenses: [] };
+  const token = await azureToken(host, { kind: 'm365', scope: 'https://graph.microsoft.com/.default' });
+  out.account = clip(o.tenant, 80);
+  await part(out, async () => {
+    const org = await graph(token, '/organization?$select=displayName', 'Organization.Read.All');
+    out.account = clip(org[0]?.displayName || o.tenant, 80);
+  });
+  await part(out, async () => {
+    out.services = (await graph(token, '/admin/serviceAnnouncement/healthOverviews', 'ServiceHealth.Read.All'))
+      .map((s) => ({ id: clip(s.id, 60), name: clip(s.service, 80), status: clip(s.status, 40), good: !SERVICE_BAD.has(s.status) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  });
+  await part(out, async () => {
+    out.issues = (await graph(token, "/admin/serviceAnnouncement/issues?$filter=isResolved eq false&$top=100", 'ServiceHealth.Read.All'))
+      .map((i) => ({ id: clip(i.id, 30), title: clip(i.title, 200), service: clip(i.service, 80), status: clip(i.status, 40), kind: clip(i.classification, 20), start: i.startDateTime || null }))
+      .sort((a, b) => String(b.start).localeCompare(String(a.start))).slice(0, 100);
+  });
+  await part(out, async () => {
+    out.licenses = (await graph(token, '/subscribedSkus', 'Organization.Read.All')).map((s) => {
+      const total = Number(s.prepaidUnits?.enabled) || 0; const used = Number(s.consumedUnits) || 0;
+      return { id: clip(s.skuId, 40), sku: clip(s.skuPartNumber, 60), name: SKU_NAMES[s.skuPartNumber] || clip(s.skuPartNumber, 60), status: clip(s.capabilityStatus, 20),
+        total, used, free: total - used, warning: Number(s.prepaidUnits?.warning) || 0, suspended: Number(s.prepaidUnits?.suspended) || 0 };
+    }).filter((s) => s.total > 0 || s.status !== 'Enabled').sort((a, b) => a.name.localeCompare(b.name));
+  });
+  return finish(out);
+}
+
+export const CLOUD_READERS = { aws: readAws, azure: readAzure, gcp: readGcp, m365: readM365 };
 
 // ---------------------------------------------------------------------------------------------- what a sensor can watch
 export function cloudMetrics(data) {
   const out = [];
+  if (data.kind === 'm365') {
+    for (const s of data.services || []) out.push({ metric: 'm365Service', key: s.id, name: s.name, value: s.status, kind: 'state', good: s.good, text: s.status });
+    out.push({ metric: 'm365Issues', key: '', name: '', value: (data.issues || []).filter((i) => i.kind === 'incident').length, unit: '', kind: 'number', op: 'gt', threshold: 0 });
+    for (const l of data.licenses || []) {
+      // Warning = runs out soon (grace period), Suspended/LockedOut = no longer usable
+      out.push({ metric: 'm365Sku', key: l.id, name: l.name, value: l.status, kind: 'state', good: l.status === 'Enabled', text: l.status });
+      out.push({ metric: 'm365Free', key: l.id, name: l.name, value: l.free, unit: '', kind: 'number', op: 'lt', threshold: 1 });
+    }
+    return out;
+  }
   for (const g of data.guests || []) {
     const name = g.name;
     out.push({ metric: 'guestRunning', key: String(g.vmid), name, value: g.status, kind: 'state', node: g.node, cpu: g.cpu, mem: null });
@@ -683,14 +758,16 @@ export function cleanCloud(kind, input, old = null) {
     opt.regions = regions;
     if (typed && !/^[A-Za-z0-9/+]{40}$/.test(typed)) throw bad('err.cloudAwsSecret', 'secret');
     rebind = old && old.token_id !== tokenId;
-  } else if (kind === 'azure') {
+  } else if (kind === 'azure' || kind === 'm365') {
     tokenId = line(input.token_id, 40).toLowerCase();
     if (!GUID.test(tokenId)) throw bad('err.cloudAzureClient', 'token_id');
     const tenant = line(input.tenant, 120).toLowerCase();
     if (!GUID.test(tenant) && !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(tenant)) throw bad('err.cloudAzureTenant', 'tenant');
-    const subscription = line(input.subscription, 40).toLowerCase();
-    if (!GUID.test(subscription)) throw bad('err.cloudAzureSub', 'subscription');
-    Object.assign(opt, { tenant, subscription });
+    if (kind === 'azure') {
+      const subscription = line(input.subscription, 40).toLowerCase();
+      if (!GUID.test(subscription)) throw bad('err.cloudAzureSub', 'subscription');
+      Object.assign(opt, { tenant, subscription });
+    } else Object.assign(opt, { tenant, costs: false });
     if (typed && (typed.length > 200 || !/^[\x21-\x7e]+$/.test(typed))) throw bad('err.cloudAzureSecret', 'secret');
     // the secret stays with the app and tenant it was entered for
     rebind = old && (old.token_id !== tokenId || prevOpt.tenant !== tenant);
