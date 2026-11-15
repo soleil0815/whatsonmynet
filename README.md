@@ -20,6 +20,7 @@ Netzwerk-Inventar, Monitoring und Sensoren in einem Container: WhatsOnMyNet scan
 | 🖥️ **Virtualisierung und Hardware** | Proxmox VE/Backup Server (auch Cluster), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity per Redfish |
 | 🧪 **Weitere Prüfungen** | Mailserver (SMTP/IMAP/POP3 mit TLS und Zertifikat), DNS, LDAP/Active Directory, Zeitserver (NTP), Microsoft SQL Server |
 | 🔔 **Meldungen** | SNMP-Traps und Syslog empfangen, dem Gerät zuordnen, sofort alarmieren |
+| 🧩 **Eigene Prüfungen** | Eigene Skripte im Checkmk-Format (Local Checks) auf Windows- und Linux-Rechnern - nur Dateien, die niemand sonst ändern kann |
 | 💾 **Veeam** | Jobs mit letztem Ergebnis, Repositories - Veeam Backup & Replication 12+ (REST, nur lesend) |
 | ☁️ **Cloud** | AWS, Azure, Google Cloud, Microsoft 365 (Dienststatus, Störungen, Lizenzen): VMs mit den Prüfungen des Anbieters, Datenbanken, Load Balancer, Alarme, Kosten - nur lesend |
 | 💻 **Rechner ohne Agent** | Windows und Linux melden sich per kleinem Skript: CPU, RAM, Laufwerke, Dienste, Updates, Virenschutz, Temperaturen |

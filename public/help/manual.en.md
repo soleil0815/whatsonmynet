@@ -452,6 +452,25 @@ The script installs nothing, loads nothing, opens no port and needs no account -
 
 If a machine does not report for 15 minutes it counts as offline - the sensor "Machine reports" then raises the alarm.
 
+### Own checks
+
+What WhatsOnMyNet does not know by itself - a licence server, a queue, a backup log, a line-of-business application - an **own small script** on the machine checks. On every report the machine script runs all scripts in the *checks* folder and sends their result along. Each prints one or more lines in the well-known format of Checkmk ("local checks"):
+
+```
+<status> <name> <value or -> <text>
+0 Backup_NAS count=12 last backup 2 hours ago
+2 Licence_server - lic01 not reachable
+```
+
+Status `0` = OK, `1` = warning, `2` = critical, `3` = unknown. The name has no spaces; the value is `-` or e.g. `count=12` (it shows in the history).
+
+- **Linux:** `/etc/whatsonmynet/checks/` (script runs as root) or `~/.config/whatsonmynet/checks/` (other user). Every executable file is started.
+- **Windows:** `C:\ProgramData\WhatsOnMyNet\checks\` - `.ps1`, `.cmd` and `.bat`.
+
+**Security:** the check scripts run with the rights of the machine script (on Windows as SYSTEM). So it only starts files **nobody else can change**: folder and files belong to root or the user (Windows: SYSTEM, Administrators or TrustedInstaller), are not writable for group and others and are no link. Unsafe files do not run and show as *unknown* with the reason. Every check has at most 30 seconds, at most 50 run.
+
+On the device page the checks are under *Own checks*; as the sensor *Own check …* everything but OK alarms (warning and unknown too). New machines get the sensors right away. For this, roll out the machine script of this version once again.
+
 ## Reports
 
 ![Report](img/report-en.png)

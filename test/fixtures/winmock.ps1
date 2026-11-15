@@ -39,7 +39,8 @@ function Get-ChildItem { param([Parameter(Position = 0)][string]$Path)
     & $o @{ Subject = 'CN=rdg.firma.de'; Issuer = "CN=R11, O=Let's Encrypt"; FriendlyName = ''; NotAfter = (Get-Date).AddDays(12); Thumbprint = 'A1B2C3' }
     & $o @{ Subject = 'CN=old'; Issuer = 'CN=old'; FriendlyName = ''; NotAfter = (Get-Date).AddDays(-90); Thumbprint = 'DEAD' }
   } else { Microsoft.PowerShell.Management\Get-ChildItem @PSBoundParameters } }
-function Test-Path { param([Parameter(Position = 0)][string]$Path)
+function Test-Path { param([Parameter(Position = 0)][string]$Path, [string]$LiteralPath)
+  if ($LiteralPath) { return Microsoft.PowerShell.Management\Test-Path -LiteralPath $LiteralPath }
   if ($Path -like 'HKLM:*') { return ($Path -like '*RebootRequired') } Microsoft.PowerShell.Management\Test-Path @PSBoundParameters }
 function New-Object { param([string]$ComObject, [Parameter(Position = 0)][string]$TypeName)
   if (-not $ComObject) { return Microsoft.PowerShell.Utility\New-Object $TypeName }

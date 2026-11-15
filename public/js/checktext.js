@@ -83,6 +83,14 @@ const PATTERNS = [
   [/^offset ([+-]?\d+) ms · stratum (\d+)$/, 'Abweichung $1 ms · Stratum $2'],
   [/^server refuses \(kiss code (.*)\)$/, 'Server lehnt ab (Kiss-Code $1)'],
   [/^instance (\S+) not found or without TCP$/, 'Instanz $1 nicht gefunden oder ohne TCP'],
+  // own checks (local checks of the machine scripts)
+  [/^(OK|WARN|CRIT|UNKNOWN)(?: - ([\s\S]*))?$/, (_, st, rest) => `${{ OK: 'OK', WARN: 'WARNUNG', CRIT: 'KRITISCH', UNKNOWN: 'UNBEKANNT' }[st]}${rest ? ` - ${part(rest) ?? rest}` : ''}`],
+  [/^not found - the check script no longer reports it$/, 'nicht gefunden - das Prüfskript meldet sie nicht mehr'],
+  [/^no line in the check format \(exit code (-?\d+)\)$/, 'keine Zeile im Prüfformat (Exit-Code $1)'],
+  [/^folder (.*) may be changed by others - checks not run$/, 'Ordner $1 ist für andere änderbar - Prüfungen nicht ausgeführt'],
+  [/^the command timeout is missing - checks not run$/, 'der Befehl timeout fehlt - Prüfungen nicht ausgeführt'],
+  [/^owner or rights not safe - not run \(owner must be Administrators\)$/, 'Besitzer oder Rechte nicht sicher - nicht ausgeführt (Besitzer muss „Administratoren“ sein)'],
+  [/^could not start: (.*)$/, 'konnte nicht starten: $1'],
   // switch ports
   [/^no traffic \(port (\w+)\)$/, (_, st) => `kein Verkehr (Port ${WORDS[st] || st})`],
   [/^measuring - value after the next query$/, 'wird gemessen - Wert nach der nächsten Abfrage'],

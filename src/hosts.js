@@ -10,7 +10,7 @@ import { normalizeMac } from './lib/net.js';
 import { hostScript } from './hostscripts.js';
 import { fillDevice } from './devicefill.js';
 import { cleanUps } from './scan/ups.js';
-import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts, cleanTemps } from './hostfacts.js';
+import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts, cleanTemps, cleanChecks } from './hostfacts.js';
 
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
 const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -52,6 +52,8 @@ export function cleanReport(body) {
     events: cleanEvents(b.events), certs: cleanCerts(b.certs),
     // Temperatures (Linux script from version 0.11 on: hwmon)
     temps: cleanTemps(b.temps),
+    // own checks from the checks folder of the machine (scripts from version 0.27 on)
+    checks: cleanChecks(b.checks),
   };
 }
 
