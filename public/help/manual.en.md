@@ -183,7 +183,7 @@ When editing, an existing sensor can be switched to any other value of this list
 
 The kind **SNMP value (OID)** reads any SNMP value (e.g. runtime left of a UPS) and compares with less, greater, equal or "contains text".
 
-In the monitor list the column **Now** shows the value right away: number and unit, a small bar for percentages, "used of total" for storage and RAM, and the alarm limit ("alarm from 90 %"). Close to the limit the value turns yellow, at the alarm red. Nodes and VMs show their state with CPU and RAM, network drives the free space.
+In the monitor list the column **Now** shows the value right away: number and unit, a small bar for percentages, "used of total" for storage and RAM, and the alarm limit ("alarm from 90 %"). Close to the limit the value turns yellow, at the alarm red. **All-clear with a margin:** a sensor in alarm because of a limit only reports "fine" again once the value has clearly left the limit - by 2 °C for temperatures, by 2 points for percentages (alarm from 86 °C → all-clear below 84 °C). So a sensor swinging around its limit does not send alarm and all-clear every 5 minutes. When a NAS delivers a table only halfway (busy, late answer), the missing disks and volumes stay with their last values for up to two polls - a "not found" alarm only comes once they are really gone. Nodes and VMs show their state with CPU and RAM, network drives the free space.
 
 ## Network drives (SMB)
 

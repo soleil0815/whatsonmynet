@@ -6,6 +6,13 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- NAS (gefunden im ersten echten Diagnosepaket): Antwortet ein beschäftigtes NAS nur halb, galten Platten, Volumes und Speicherpools für eine Abfrage als „nicht gefunden“ - nachts kamen so Dutzende Fehlalarme und Entwarnungen. Jetzt fragt WhatsOnMyNet die Tabellen nacheinander ab, erkennt unvollständige Antworten und behält fehlende Einträge bis zu zwei Abfragen lang
+- Sensoren mit Grenze geben erst mit Abstand Entwarnung (2 °C bzw. 2 Prozentpunkte) - ein Fühler, der um seine Grenze pendelt, alarmiert nicht mehr alle 5 Minuten
+- Proxmox: Fehlt ein Wert nur einmal, heißt es „gerade kein Wert (vom Host nicht geliefert)“ statt „dem Konto fehlen wohl Leserechte“ - das nur noch, wenn wirklich Rechte fehlen
+- Diagnosepaket: auch der SMTP-Benutzername wird zum Platzhalter
+
+## 0.26.0 - 2026-11-15
+
 - Ausfallsicherung: Auf dem Standby lässt sich nichts mehr verstellen - keine Kanäle, E-Mail, Webhooks, Einstellungen, Benutzer, Hypervisoren oder Berichte, auch nicht, während er für den Master überwacht. Die Seiten zeigen nur an und sagen warum. Erlaubt bleiben die Steuerung der Ausfallsicherung (Entkoppeln, zum Master machen, Wartezeit) und Hell/Dunkel und Sprache des eigenen Kontos
 
 ## 0.25.0 - 2026-11-14

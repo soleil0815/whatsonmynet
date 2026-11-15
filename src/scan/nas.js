@@ -95,21 +95,24 @@ export async function readNas(ip, communities, { port = 161 } = {}) {
   const s = await openSnmp(ip, communities, { port });
   if (!s) throw new Error('snmp');
   try {
-    const [storage, syn, synDisks, synRaids, qnap, qnapDisks, ups] = await Promise.all([
-      walk(s, HR_STORAGE, { max: 600 }),
-      getValues(s, Object.values(SYN)),
-      walk(s, SYN_DISK, { max: 400 }),
-      walk(s, SYN_RAID, { max: 200 }),
-      getValues(s, Object.values(QNAP)),
-      walk(s, QNAP_DISK, { max: 400 }),
-      // UPS on the NAS (Synology UPS server) or a UPS-MIB the NAS passes on
-      readUpsValues(s).catch(() => null),
-    ]);
+    // One after the other, not all at once: a NAS busy with its nightly tasks answers several parallel walks late and
+    // then hands out half tables (disks "gone" for one poll - false alarms)
+    const storage = await walk(s, HR_STORAGE, { max: 600 });
+    const syn = await getValues(s, Object.values(SYN));
+    const synDisks = await walk(s, SYN_DISK, { max: 400 });
+    const synRaids = await walk(s, SYN_RAID, { max: 200 });
+    const qnap = await getValues(s, Object.values(QNAP));
+    const qnapDisks = await walk(s, QNAP_DISK, { max: 400 });
+    // UPS on the NAS (Synology UPS server) or a UPS-MIB the NAS passes on
+    const ups = await readUpsValues(s).catch(() => null);
     const volumes = parseStorage(storage);
     const isSyn = SYN.model in syn || synDisks.size > 0;
     const isQnap = !isSyn && (QNAP.model in qnap || qnapDisks.size > 0);
     if (!volumes.length && !isSyn && !isQnap) throw new Error('noNasMib');
     const out = { vendor: isSyn ? 'synology' : isQnap ? 'qnap' : 'generic', volumes, disks: [], raids: [], snmp: s.version, ups: ups || null };
+    // tables that did not come in whole (error, timeout): the poller keeps their last rows for a while
+    out.incomplete = [!storage.complete && 'volumes', isSyn && !synDisks.complete && 'disks', isSyn && !synRaids.complete && 'raids',
+      isQnap && !qnapDisks.complete && 'disks'].filter(Boolean);
     if (isSyn) {
       out.model = text(syn[SYN.model], 60);
       out.serial = text(syn[SYN.serial], 60);

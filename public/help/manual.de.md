@@ -183,7 +183,7 @@ Ein bestehender Sensor lässt sich beim Bearbeiten auf jeden anderen Wert dieser
 
 Der Typ **SNMP-Wert (OID)** fragt jeden beliebigen SNMP-Wert ab (z. B. Restlaufzeit einer USV) und vergleicht mit kleiner, größer, gleich oder „enthält Text“.
 
-In der Monitorliste zeigt die Spalte **Aktuell** den Wert gleich mit: Zahl und Einheit, einen kleinen Balken bei Prozentwerten, bei Speicher und RAM „belegt von gesamt“ und die Alarmgrenze („Alarm ab 90 %“). Nahe an der Grenze wird der Wert gelb, beim Alarm rot. Knoten und VMs zeigen ihren Zustand mit CPU und RAM, Netzlaufwerke den freien Platz.
+In der Monitorliste zeigt die Spalte **Aktuell** den Wert gleich mit: Zahl und Einheit, einen kleinen Balken bei Prozentwerten, bei Speicher und RAM „belegt von gesamt“ und die Alarmgrenze („Alarm ab 90 %“). Nahe an der Grenze wird der Wert gelb, beim Alarm rot. **Entwarnung mit Abstand:** Ein Sensor, der wegen einer Grenze Alarm gibt, meldet sich erst wieder „in Ordnung“, wenn der Wert die Grenze deutlich verlassen hat - bei Temperaturen um 2 °C, bei Prozentwerten um 2 Punkte (Alarm ab 86 °C → Entwarnung unter 84 °C). So schickt ein Fühler, der um seine Grenze pendelt, nicht alle 5 Minuten Alarm und Entwarnung. Liefert ein NAS eine Tabelle nur halb (beschäftigt, zu späte Antwort), bleiben die fehlenden Platten und Volumes für bis zu zwei Abfragen mit ihren letzten Werten stehen - ein „nicht gefunden“-Alarm kommt erst, wenn sie wirklich weg sind. Knoten und VMs zeigen ihren Zustand mit CPU und RAM, Netzlaufwerke den freien Platz.
 
 ## Netzlaufwerke (SMB)
 

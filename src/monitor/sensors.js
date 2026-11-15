@@ -131,6 +131,19 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
   return out;
 }
 
+// Hysteresis: a value that set off the alarm must leave the alarm zone by a small margin before the sensor is fine
+// again - an NVMe going 85.9 / 86.9 / 85.9 °C around a limit of 86 does not alarm (and clear) every 5 minutes.
+const HYSTERESIS = { '°C': 2, '%': 2 };
+export function alarmOf(op, value, threshold, unit, wasDown) {
+  if (compare(op, value, threshold)) return true;
+  const margin = HYSTERESIS[unit];
+  const t = Number(threshold);
+  if (!wasDown || !margin || !Number.isFinite(t)) return false;
+  if (op === 'ge' || op === 'gt') return compare(op, value, t - margin);
+  if (op === 'le' || op === 'lt') return compare(op, value, t + margin);
+  return false;
+}
+
 /** A physical disk is the same disk by its serial number (names can change) */
 const pdKey = (pd) => pd.serial || pd.name;
 
@@ -222,8 +235,8 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
     default: return { ok: false, ms: null, message: 'unknown sensor' };
   }
   if (val.v === null || val.v === undefined) return { ok: false, ms: null, message: `${label}: no value` };
-  // The sensor is "down" when the alarm condition is met
-  const alarm = compare(o.op, val.v, o.threshold);
+  // The sensor is "down" when the alarm condition is met (and stays down until the value is clearly back)
+  const alarm = alarmOf(o.op, val.v, o.threshold, val.unit, m.status === 'down');
   return { ok: !alarm, ms: Number.isFinite(Number(val.v)) ? Math.round(Number(val.v)) : null, message: `${label}: ${val.text}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}`,
     data: valueData(val.v, val.unit, o, val.extra) };
 }
@@ -283,9 +296,12 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
     return x.value === 'running' ? { ok: true, ms: null, message: `${label}: running`, data } : { ok: false, ms: null, message: `${label}: ${x.value}`, data: { state: x.value, node: x.node || '' } };
   }
   if (x.value === null || x.value === undefined) {
-    return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found' : 'no value - the account probably lacks read rights (Monitoring → Virtualization)'}` };
+    // missing rights only when the host said so; else the node just did not deliver the value this time
+    const rights = (parse(h.data, {}).missing || []).length > 0;
+    return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found'
+      : rights ? 'no value - the account probably lacks read rights (Monitoring → Virtualization)' : 'no value at the moment (not delivered by the host)'}` };
   }
-  const alarm = compare(o.op, x.value, o.threshold);
+  const alarm = alarmOf(o.op, x.value, o.threshold, x.unit, m.status === 'down');
   const extra = x.total ? { used: x.used, total: x.total } : x.sensor ? { name: x.sensor } : {};
   return { ok: !alarm, ms: Math.round(Number(x.value)), message: `${label}: ${x.value}${x.unit ? ` ${x.unit}` : ''}${x.sensor ? ` (${x.sensor})` : ''}${alarm ? ` (${OP_TEXT[o.op]} ${o.threshold})` : ''}`,
     data: valueData(x.value, x.unit, o, extra) };
