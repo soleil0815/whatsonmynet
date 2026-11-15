@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Windows scripts of the machines: setting up again (new script, update) failed with "access denied" when the old copy was read-only - for example because the setup file came from a package folder or a share. Now the read-only flag is cleared, a running report ended and it is tried several times; the new copy is never left read-only
+
+## 0.33.0 - 2026-11-15
+
 - Windows script of the machines: reads network cards, disks, Defender and firewall straight from WMI instead of through the PowerShell modules - with script block logging on, a run no longer leaves some 70 "suspicious" events 4104 but only a few "verbose" ones. Same values; takes effect after New script under Settings → Machine scripts and running or distributing it again
 
 ## 0.32.0 - 2026-11-15
