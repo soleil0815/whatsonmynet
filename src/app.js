@@ -126,7 +126,7 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   // Diagnostic package: the program's own log (server.js attaches it), versions, placeholders
   const diagnostics = createDiagnostics({ db, settings, failover, dbFile: path.join(dataDir, 'whatsonmynet.sqlite'), backupsDir: path.join(dataDir, 'backups') });
   // A message came in: the event monitors it matches are checked right away (not only at their next turn)
-  const events = createEvents({ db, settings, onEvent: (row) => {
+  const events = createEvents({ db, settings, tls, onEvent: (row) => {
     const ids = db.prepare("SELECT id, device_id, options FROM monitors WHERE type='event' AND enabled=1").all()
       .filter((m) => { let o = {}; try { o = JSON.parse(m.options); } catch { /* none */ } return eventMatches(row, o, m.device_id); }).map((m) => m.id);
     if (ids.length) monitoring.soon(ids);
