@@ -16,9 +16,10 @@ import { fillDevice } from './devicefill.js';
 import { serverBase, nodeTempsInto, nodeScriptsInto } from './hosts.js';
 import { readRedfish, redfishMetrics, labelSerial } from './redfish.js';
 import { READERS, API_KINDS, PUSH_KINDS, newPushToken, pushTokenOk, cleanPush, mergePush, markStale, pushScript } from './virt.js';
+import { CLOUD_KINDS, CLOUD_READERS, cloudMetrics, cleanCloud } from './cloud.js';
 
 /** Every kind of host on the page: Proxmox, hypervisors asked through their API, hypervisors that send on their own */
-export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS, ...NET_KINDS, 'redfish'];
+export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS, ...NET_KINDS, 'redfish', ...CLOUD_KINDS];
 // Asked with user and password (everything but Proxmox and the hosts that send on their own)
 const ACCOUNT_KINDS = [...API_KINDS, ...NET_KINDS, 'redfish'];
 
@@ -288,6 +289,7 @@ export function proxmoxMetrics(data) {
   if (!data) return out;
   // Server hardware through its management chip (iDRAC, iLO, XClarity …)
   if (data.kind === 'redfish') return redfishMetrics(data);
+  if (data.cloud) return cloudMetrics(data);
   if (data.netdevices) {
     // Network controller: per device online, clients, load; all clients together
     for (const x of data.netdevices) {
@@ -337,10 +339,10 @@ export function createProxmox({ db }) {
   let timer = null;
   let polling = false;
   const rowOf = (id) => db.prepare('SELECT * FROM proxmox_hosts WHERE id=?').get(id);
-  const withSecret = (h) => { let s = ''; try { s = h.secret ? decrypt(h.secret) : ''; } catch { s = ''; } return { ...h, secretPlain: s }; };
+  const withSecret = (h) => { let s = ''; try { s = h.secret ? decrypt(h.secret) : ''; } catch { s = ''; } return { ...h, secretPlain: s, options: parse(h.options, {}) }; };
   const caInfo = (pem) => { try { return pem ? describe(new crypto.X509Certificate(pem)) : null; } catch { return null; } };
   const shape = (h) => (h ? { id: h.id, name: h.name, kind: h.kind, url: h.url, token_id: h.token_id, has_secret: !!h.secret, verify: !!h.verify, ca: h.ca, ca_info: caInfo(h.ca),
-    created_at: h.created_at, last_at: h.last_at, last_ok: !!h.last_ok, last_error: h.last_error, script_tip_hidden: !!h.script_tip_hidden,
+    created_at: h.created_at, last_at: h.last_at, last_ok: !!h.last_ok, last_error: h.last_error, script_tip_hidden: !!h.script_tip_hidden, options: parse(h.options, {}),
     data: nodeScriptsInto(db, nodeTempsInto(db, parse(h.data, {}))) } : null);
 
   const hostPort = (u) => { try { const x = new URL(u); return `${x.hostname.toLowerCase()}:${x.port || (x.protocol === 'http:' ? 80 : 443)}`; } catch { return String(u); } };
@@ -348,8 +350,10 @@ export function createProxmox({ db }) {
     const name = line(input.name, 80);
     if (!name) throw new HttpError(400, 'err.nameRequired');
     const kind = old ? old.kind : HOST_KINDS.includes(input.kind) ? input.kind : 'pve';
+    // AWS, Azure, Google Cloud: no address (the provider's own), an account that may only read
+    if (CLOUD_KINDS.includes(kind)) return { name, kind, url: '', verify: 1, ca: '', ...cleanCloud(kind, input, old) };
     // Hyper-V, KVM: the host sends - no address, no account; the token is made on creating
-    if (PUSH_KINDS.includes(kind)) return { name, kind, url: '', token_id: '', secret: old?.secret || '', verify: 1, ca: '' };
+    if (PUSH_KINDS.includes(kind)) return { name, kind, url: '', token_id: '', secret: old?.secret || '', verify: 1, ca: '', options: '{}' };
     const url = line(input.url, 300).replace(/\/+$/, '');
     if (!URL_RE.test(url)) throw new HttpError(400, 'err.proxmoxUrl');
     const tokenId = line(input.token_id, 200);
@@ -367,7 +371,7 @@ export function createProxmox({ db }) {
     // The stored token or password only goes to the address it was entered for (see keepSecret in monitor/index.js)
     else if (secret && old && hostPort(old.url) !== hostPort(url)) throw new HttpError(400, 'err.passwordAgain');
     if (!secret) throw new HttpError(400, ACCOUNT_KINDS.includes(kind) ? 'err.virtUser' : 'err.proxmoxToken');
-    return { name, kind, url, token_id: tokenId, secret, verify: input.verify === false ? 0 : 1, ca };
+    return { name, kind, url, token_id: tokenId, secret, verify: input.verify === false ? 0 : 1, ca, options: '{}' };
   }
 
   /**
@@ -405,7 +409,7 @@ export function createProxmox({ db }) {
     if (PUSH_KINDS.includes(h.kind)) return checkPush(h);
     try {
       const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : h.kind === 'redfish' ? await readRedfish(withSecret(h)) : NET_READERS[h.kind] ? await NET_READERS[h.kind](withSecret(h))
-        : READERS[h.kind] ? await READERS[h.kind](withSecret(h)) : await readPveCluster(h);
+        : READERS[h.kind] ? await READERS[h.kind](withSecret(h)) : CLOUD_READERS[h.kind] ? await CLOUD_READERS[h.kind](withSecret(h), parse(h.data, {})) : await readPveCluster(h);
       if (data.netdevices) syncNetDevices(data);
       if (data.kind === 'redfish') syncRedfish(data);
       db.prepare("UPDATE proxmox_hosts SET last_at=?, last_ok=1, last_error='', data=? WHERE id=?").run(at, JSON.stringify(data), id);
@@ -521,8 +525,8 @@ export function createProxmox({ db }) {
     get: (id) => shape(rowOf(id)),
     create(input) {
       const v = clean(input);
-      const id = db.prepare('INSERT INTO proxmox_hosts(name,kind,url,token_id,secret,verify,ca,created_at) VALUES(?,?,?,?,?,?,?,?)')
-        .run(v.name, v.kind, v.url, v.token_id, v.secret, v.verify, v.ca, new Date().toISOString()).lastInsertRowid;
+      const id = db.prepare('INSERT INTO proxmox_hosts(name,kind,url,token_id,secret,verify,ca,options,created_at) VALUES(?,?,?,?,?,?,?,?,?)')
+        .run(v.name, v.kind, v.url, v.token_id, v.secret, v.verify, v.ca, v.options, new Date().toISOString()).lastInsertRowid;
       return shape(rowOf(id));
     },
     update(id, input) {
@@ -530,7 +534,7 @@ export function createProxmox({ db }) {
       if (!old) throw new HttpError(404, 'err.notFound');
       const v = clean(input, old);
       if (PUSH_KINDS.includes(v.kind)) { db.prepare('UPDATE proxmox_hosts SET name=? WHERE id=?').run(v.name, id); return shape(rowOf(id)); }
-      db.prepare('UPDATE proxmox_hosts SET name=?, kind=?, url=?, token_id=?, secret=?, verify=?, ca=?, last_at=NULL WHERE id=?').run(v.name, v.kind, v.url, v.token_id, v.secret, v.verify, v.ca, id);
+      db.prepare('UPDATE proxmox_hosts SET name=?, kind=?, url=?, token_id=?, secret=?, verify=?, ca=?, options=?, last_at=NULL WHERE id=?').run(v.name, v.kind, v.url, v.token_id, v.secret, v.verify, v.ca, v.options, id);
       return shape(rowOf(id));
     },
     push,

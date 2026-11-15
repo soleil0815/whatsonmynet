@@ -11,7 +11,7 @@ import { renderScan } from './views/scan.js';
 import { renderLocations } from './views/locations.js';
 import { renderTopology } from './views/topology.js';
 import { renderHelp } from './views/help.js';
-import { renderSettings, renderProxmox, renderControllers, renderHardware, renderReports } from './views/settings.js';
+import { renderSettings, renderProxmox, renderControllers, renderHardware, renderCloud, renderReports } from './views/settings.js';
 import { renderAccount } from './views/account.js';
 import { renderMonitoring } from './views/monitoring.js';
 import { openAbout, COFFEE } from './views/about.js';
@@ -61,6 +61,7 @@ const ROUTES = [
   [/^\/(virtualization|proxmox)$/, renderProxmox, 'proxmox'],
   [/^\/controllers$/, renderControllers, 'controllers'],
   [/^\/hardware$/, renderHardware, 'hardware'],
+  [/^\/cloud$/, renderCloud, 'cloud'],
   [/^\/reports$/, renderReports, 'reports'],
   [/^\/topology$/, renderTopology, 'topology'],
   [/^\/help$/, renderHelp, 'help'],
@@ -88,6 +89,7 @@ function sidebar(active) {
       (u.canEditServer ?? u.canEdit) ? link('/virtualization', 'proxmox', 'hypervisor') : null,
       (u.canEditServer ?? u.canEdit) ? link('/controllers', 'controllers', 'accesspoint') : null,
       (u.canEditServer ?? u.canEdit) ? link('/hardware', 'hardware', 'server') : null,
+      (u.canEditServer ?? u.canEdit) ? link('/cloud', 'cloud', 'cloud') : null,
       u.isAdmin ? link('/reports', 'reports', 'mail') : null,
     ),
     h('div', { class: 'side-foot' },
