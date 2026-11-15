@@ -51,6 +51,7 @@ async function main() {
   ctx.applyTls = () => {
     const c = tls.current();
     httpsServer.setSecureContext({ ...TLS_OPTIONS, cert: c.cert, key: c.key });
+    ctx.events.reloadTls();
     log.info('New certificate is active');
   };
   await listen(httpsServer, config.httpsPort, 'HTTPS');

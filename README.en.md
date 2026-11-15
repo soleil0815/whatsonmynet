@@ -19,7 +19,7 @@ Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans y
 | 🌡️ **Sensors like PRTG** | Toner, disks, ports, UPS, every temperature, CPU, RAM, VMs and backups - with limit, alarm and a chart that shows outages with start, end and length |
 | 🖥️ **Virtualization and hardware** | Proxmox VE/Backup Server (clusters too), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity via Redfish |
 | 🧪 **More checks** | Mail servers (SMTP/IMAP/POP3 with TLS and certificate), DNS, LDAP/Active Directory, time servers (NTP), Microsoft SQL Server |
-| 🔔 **Messages** | Receive SNMP traps and syslog, match them to the device, alarm at once |
+| 🔔 **Messages** | Receive SNMP traps and syslog (UDP, TCP, TLS), match them to the device, alarm at once |
 | 📈 **Prometheus & Grafana** | /metrics with a key, ready-made Grafana dashboard |
 | 🧩 **Own checks** | Own scripts in the Checkmk format (local checks) on Windows and Linux machines - only files nobody else can change |
 | 💾 **Veeam** | Jobs with last result, repositories - Veeam Backup & Replication 12+ (REST, read only) |
