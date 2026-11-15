@@ -217,7 +217,10 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
     const out = {};
     for (const k of [...keys].sort()) {
       if (NEVER_SETTING.test(k) || settings.isSecret(k)) { if (settings.isSecret(k) || /\.ca$/.test(k)) out[k] = settings.get(k) ? '(gesetzt)' : '(leer)'; continue; }
-      out[k] = an.deep(settings.get(k));
+      // account names (SMTP user, sender) are names too, even when they do not look like one ("m024c94f")
+      const v = settings.get(k);
+      if (/\.(user|username|from|to)$/i.test(k) && typeof v === 'string' && v && an.enabled) { out[k] = /@/.test(v) ? an.anon(v) : an.alias('user', v); continue; }
+      out[k] = an.deep(v);
     }
     return out;
   }
@@ -372,6 +375,8 @@ and communities are never included. Nothing is sent anywhere by itself.
         try { files.push({ name, data: fn() }); } catch (e) { files.push({ name, data: json({ error: an.anon(e.message).slice(0, 500) }) }); }
       };
       add('LIESMICH.txt', () => readme(label, since, an.enabled));
+      // placeholders made so far are kept now - so the table counts in umgebung.json are right too
+      an.flush();
       add('versionen.json', () => json({ current: config.version, since: hist.at(-1)?.started_at || null, in_period: inPeriod, history: hist,
         note: 'Zeilen vor der ersten bekannten Version: „vor X“ (die Versionsgeschichte wird seit dem Diagnosepaket geführt).' }));
       add('aenderungen.md', () => changesSince(oldest));

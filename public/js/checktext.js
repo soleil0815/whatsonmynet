@@ -22,6 +22,7 @@ const WORDS = {
   'no backup found': 'keine Sicherung gefunden', 'unknown sensor': 'unbekannter Sensor', 'healthy': 'in Ordnung', 'no health data': 'keine Zustandsdaten',
   'state unknown': 'Zustand unbekannt', 'on mains': 'am Netz', 'on battery': 'auf Akku', 'battery low': 'Akku schwach',
   'no value - the account probably lacks read rights (Monitoring → Virtualization)': 'kein Wert - dem Konto fehlen wohl Leserechte (Überwachung → Virtualisierung)',
+  'no value at the moment (not delivered by the host)': 'gerade kein Wert (vom Host nicht geliefert)',
   'no current temperature - the Linux script on the node has not reported for 15 minutes': 'keine aktuelle Temperatur - das Linux-Skript auf dem Knoten hat sich seit 15 Minuten nicht gemeldet',
   'access denied by the socket proxy (CONTAINERS=1?)': 'vom Socket-Proxy abgelehnt (CONTAINERS=1?)',
   'name not found or not reachable': 'Name nicht gefunden oder nicht erreichbar', 'network unreachable': 'Netz nicht erreichbar',
