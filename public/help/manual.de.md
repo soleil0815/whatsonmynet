@@ -158,7 +158,51 @@ iptables -t nat -A PREROUTING -p tcp --dport 514 -j REDIRECT --to-ports 1514
 
 Andere Ports: `WOMN_TRAP_PORT`, `WOMN_SYSLOG_PORT` (UDP), `WOMN_SYSLOG_TCP_PORT` und `WOMN_SYSLOG_TLS_PORT` in der `.env`.
 
-**Syslog über TCP und TLS:** Über UDP können Meldungen verloren gehen oder gefälscht werden. Wer es zuverlässiger will, schaltet zusätzlich **TCP** (Port 1514, RFC 6587 - beide Arten der Trennung: Länge vorweg oder Zeile für Zeile) und/oder **TLS** (Port 6514, RFC 5425) ein. TLS nutzt das Zertifikat dieses Servers; es steht unter *Einstellungen → Prometheus & Grafana* zum Herunterladen, damit der Absender es prüfen kann (z. B. rsyslog: `StreamDriverAuthMode="x509/name"`). Je Absender höchstens 10 Verbindungen, insgesamt 200; eine Stunde ohne Meldung beendet die Verbindung, zu lange oder unsinnige Meldungen ebenso.
+**Syslog über TCP und TLS:** Über UDP können Meldungen verloren gehen oder gefälscht werden. Wer es zuverlässiger will, schaltet zusätzlich **TCP** (Port 1514, RFC 6587 - beide Arten der Trennung: Länge vorweg oder Zeile für Zeile) und/oder **TLS** (Port 6514, RFC 5425) ein. TLS nutzt das Zertifikat dieses Servers; es steht unter *Einstellungen → Prometheus & Grafana* zum Herunterladen, damit der Absender es prüfen kann (z. B. rsyslog: `StreamDriverAuthMode="x509/name"`). Je Absender höchstens 10 Verbindungen, insgesamt 200; eine Stunde ohne Meldung beendet die Verbindung; eine einzelne zu lange Meldung (über 8 KB) wird übersprungen, unsinnige Längenangaben beenden die Verbindung.
+
+### Windows-Ereignisse (NXLog)
+
+Mit [NXLog](https://nxlog.co) schicken Windows-Server und -Clients ihre Ereignisanzeige per Syslog. WhatsOnMyNet erkennt darin **Ereignisnummer**, **Protokoll**, **Quelle** und **Konto** und zeigt sie unter dem Meldungstext - so wie in der Ereignisanzeige. Es reicht eine gewöhnliche NXLog-Konfiguration; nur der Ausgang zeigt auf WhatsOnMyNet und TCP-Port 1514 (*Syslog über TCP* einschalten):
+
+```
+<Input in>
+    Module im_msvistalog
+</Input>
+
+<Output out>
+    Module om_tcp
+    Host   womn.firma.local
+    Port   1514
+</Output>
+
+<Route r1>
+    Path in => out
+</Route>
+```
+
+Ohne `Exec` im Ausgang schickt NXLog Zeit, Rechner, Stufe, Ereignisnummer und Text - die Quelle und das Protokoll fehlen dann; Regeln erkennen Windows-Ereignisse dann an der Nummer. Wer sie mitschicken will, ergänzt im Ausgang (die Meldung bleibt lesbar):
+
+```
+    Exec   $Message = replace($Message, "\r\n", " ");
+    Exec   $Message = replace($Message, "\n", " ");
+    Exec   if not defined $Channel $Channel = "";
+    Exec   $Message = "[" + string($EventID) + "] [" + $Channel + "] " + $Message;
+    Exec   to_syslog_bsd();
+```
+
+Auch `Exec $Message = to_json(); to_syslog_ietf();` (alle Felder als JSON) wird verstanden. Die Suche findet eine Ereignisnummer, wenn man nur die Zahl eingibt.
+
+### Ereignisregeln: ausgewählte Meldungen per Mail oder ans Ticketsystem
+
+Unter *Meldungen → Ereignisregeln* legst du fest, welche Meldungen wohin gehen - **getrennt von den Monitoren**: Eine Regel schickt nur an die Empfänger, die bei ihr angehakt sind, nie an die Standard-Empfänger. So landet „Virus gefunden“ im Postfach des Ticketsystems und nicht auf dem Handy.
+
+- **Fertige Regeln:** Virenfund (Defender 1116/1117), Software-Einschränkung (865-868), AppLocker (8004/8007), Benutzerkonto gesperrt (4740), Mitglied zu einer Sicherheitsgruppe hinzugefügt (4728/4732/4756), Sicherheitsprotokoll gelöscht (1102), neuer Dienst (7045), Fehler eines Geräts (Syslog). Danach lässt sich alles ändern.
+- **Bedingungen:** Ereignisnummern (auch Bereiche), Quelle, Protokoll, Absender (Name, Gerät oder IP, auch Teile), Wörter im Text, Wörter, die nicht vorkommen dürfen, Art und Schwere. Alle angegebenen Bedingungen müssen passen. Fehlen Quelle und Protokoll in der Meldung (NXLog ohne `Exec`), entscheidet die Nummer.
+- **Testen** zeigt, welche der Meldungen der letzten 7 Tage die Regel getroffen hätte - bevor sie gespeichert ist. Bei jeder Meldung macht **Regel** daraus eine neue Regel.
+- **Versand:** *einzeln* - jede Meldung eine Nachricht (beim Ticketsystem: ein Ticket je Ereignis), höchstens so viele je Stunde wie eingestellt (Standard 20); was darüber hinaus kommt, geht nach der Sammelzeit gesammelt hinterher. *Gesammelt* - eine Nachricht mit allen Meldungen, sobald die älteste so alt ist wie die Sammelzeit (Standard 15 Minuten).
+- **Nichts geht verloren:** Jeder Treffer wird zuerst gespeichert und erst nach dem Versand als erledigt markiert. Ist ein Empfänger nicht erreichbar, wird es alle 5 Minuten wieder versucht - eine Stunde lang; die Liste zeigt wartende und nicht zugestellte Meldungen.
+- Die Mail nennt im Betreff Regel, Rechner, Ereignisnummer und Quelle, im Text Absender, Zeit, Schwere, Protokoll, Konto und die ganze Meldung. Ein Webhook bekommt dieselben Angaben als JSON (`rule`, `count`, `events`).
+- Bei der Ausfallsicherung schickt nur die aktive Installation; die Regeln selbst gehen mit auf den Standby.
 
 **Überwachen:** Bei jeder Meldung macht **Überwachen** daraus einen Monitor der Art *Meldung (Trap/Syslog)*: vom selben Gerät (oder jedem Absender), Trap oder Syslog, ab welcher Schwere, optional mit einem Text, den die Meldung enthalten muss. Kommt eine passende Meldung, alarmiert der Monitor **sofort** und bleibt so lange gestört, wie eingestellt (Standard 15 Minuten); kommt sie wieder, beginnt die Zeit neu.
 
