@@ -83,9 +83,19 @@ function finish(out, rest) {
   return out;
 }
 
+// Text of a message: UTF-8 - and when it is none, Windows-1252: NXLog and older devices send umlauts in the code page of
+// Windows ("NT-AUTORITÄT" would show as "NT-AUTORIT\uFFFDT")
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
+let CP1252 = null;
+try { CP1252 = new TextDecoder('windows-1252'); } catch { /* a Node without the code pages: Latin-1 below */ }
+export function decodeText(buf) {
+  if (!Buffer.isBuffer(buf)) return String(buf ?? '');
+  try { return UTF8.decode(buf); } catch { return CP1252 ? CP1252.decode(buf) : buf.toString('latin1'); }
+}
+
 /** One syslog datagram → { severity, facility, host, app, text, eventId?, channel?, account? } */
 export function parseSyslog(raw) {
-  let s = Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw);
+  let s = decodeText(raw);
   s = s.replace(/^\uFEFF/, '').slice(0, 8192);
   const m = /^<(\d{1,3})>([\s\S]*)$/.exec(s.trimStart());
   if (!m || Number(m[1]) > 191) return finish({ severity: 5, facility: 1, host: '', app: '', text: '' }, s);
@@ -250,6 +260,10 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   const conns = new Set();
   let skipped = 0;
   let stats = null; let statsAt = 0; let receivedSince = 0; // the space figures for the page (see storage)
+  // one row per sender: the newest message, the computer name it gave (a name only fills in, never empties it)
+  const senderUp = db.prepare(`INSERT INTO event_senders(source_ip, device_id, host, first_at, last_at, last_id) VALUES(?,?,?,?,?,?)
+    ON CONFLICT(source_ip) DO UPDATE SET device_id=excluded.device_id, host=CASE WHEN excluded.host <> '' THEN excluded.host ELSE event_senders.host END,
+    last_at=excluded.last_at, last_id=excluded.last_id`);
   const insert = db.prepare('INSERT INTO events_in(at, kind, source_ip, device_id, severity, facility, host, app, oid, text, event_id, channel, account) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
   let index = null; let indexAt = 0;
   // ip → inventory device (refreshed every minute; a new device is matched soon after the scan took it)
@@ -283,6 +297,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, 1000) || '(empty)',
       event_id: Number.isInteger(ev.eventId) ? ev.eventId : null, channel: clip(ev.channel, 120), account: clip(ev.account, 120) };
     row.id = insert.run(row.at, row.kind, row.source_ip, row.device_id, row.severity, row.facility, row.host, row.app, row.oid, row.text, row.event_id, row.channel, row.account).lastInsertRowid;
+    senderUp.run(row.source_ip, row.device_id, row.host, row.at, row.at, row.id);
     receivedSince++;
     try { onEvent(row); } catch (e) { log.warn(`Messages: ${e.message}`); }
     return row;
@@ -395,10 +410,11 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     startStreams();
   }
 
-  function list({ q = '', kind = '', maxSeverity = 7, device = null, limit = 200, before = null } = {}) {
+  function list({ q = '', kind = '', maxSeverity = 7, device = null, source = '', limit = 200, before = null } = {}) {
     const where = ['severity <= ?']; const args = [Math.max(0, Math.min(7, Number(maxSeverity)))];
     if (kind === 'trap' || kind === 'syslog') { where.push('kind = ?'); args.push(kind); }
     if (device) { where.push('e.device_id = ?'); args.push(Number(device)); }
+    if (source) { where.push('e.source_ip = ?'); args.push(String(source).slice(0, 64)); }
     if (before) { where.push('e.id < ?'); args.push(Number(before)); }
     if (q) {
       // a number also finds the Windows event with that id
@@ -408,6 +424,26 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     }
     return db.prepare(`SELECT e.*, d.name device_name FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where.join(' AND ')} ORDER BY e.id DESC LIMIT ?`)
       .all(...args, Math.max(1, Math.min(1000, Number(limit) || 200)));
+  }
+
+  /**
+   * The overview by sender: one row per address with its device or computer name, the newest message and what came in
+   * the last 24 hours (how many, how many warnings and errors). The newest first; q filters names and addresses.
+   */
+  let sendersCache = null; let sendersAt = 0;
+  function senders({ q = '', fresh = false } = {}) {
+    // counted again at most every 5 seconds while messages come in (the 24 hours are not free on a busy network)
+    if (fresh || !sendersCache || Date.now() - sendersAt > (receivedSince ? 5000 : STATS_MS)) {
+      const since = new Date(Date.now() - 86400000).toISOString();
+      const day = new Map(db.prepare('SELECT source_ip, COUNT(*) n, SUM(severity <= 4) warn, SUM(severity <= 3) err FROM events_in WHERE at >= ? GROUP BY source_ip').all(since).map((r) => [r.source_ip, r]));
+      sendersCache = db.prepare(`SELECT s.source_ip, s.device_id, s.host, s.first_at, s.last_at, d.name device_name, d.type device_type,
+          e.severity last_severity, e.app last_app, e.event_id last_event_id, e.text last_text
+        FROM event_senders s LEFT JOIN devices d ON d.id = s.device_id LEFT JOIN events_in e ON e.id = s.last_id ORDER BY s.last_at DESC`).all()
+        .map((r) => { const x = day.get(r.source_ip) || {}; return { ...r, day: x.n || 0, warn: x.warn || 0, err: x.err || 0 }; });
+      sendersAt = Date.now();
+    }
+    const n = String(q || '').trim().toLowerCase().slice(0, 100);
+    return n ? sendersCache.filter((r) => [r.source_ip, r.host, r.device_name].some((v) => String(v || '').toLowerCase().includes(n))) : sendersCache;
   }
 
   // ------------------------------------------------------------------------------------------- space and age
@@ -446,6 +482,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       deleted += db.prepare('DELETE FROM events_in WHERE id IN (SELECT id FROM events_in ORDER BY id LIMIT ?)').run(rows).changes;
     }
     if (deleted) {
+      // a sender whose messages are all gone leaves the overview too
+      db.prepare('DELETE FROM event_senders WHERE last_id < COALESCE((SELECT MIN(id) FROM events_in), 9e18)').run();
       try { db.pragma('ev.incremental_vacuum'); } catch { /* an older file without auto-vacuum keeps its pages for reuse */ }
       stats = null;
       log.info(`Messages: ${deleted} old message(s) removed`);
@@ -481,7 +519,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   let pruneTimer = null;
 
   return {
-    receive, list, prune, apply, communities,
+    receive, list, senders, prune, apply, communities,
     reloadTls,
     status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, total: storage().total,
       last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null, storage: storage() }),

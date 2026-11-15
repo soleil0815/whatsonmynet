@@ -21,7 +21,20 @@ export async function renderEvents(main) {
   mount(main, h('div', { class: 'page' }, body));
   const admin = state.user.isAdmin;
   let kind = ''; let maxSeverity = 7; let rows = []; let info = null;
+  // By sender (default: one row per computer or device - all messages at once would flood the page) or all messages;
+  // a sender picked shows only its messages. ?from=<address> opens one sender directly (link from the device page).
+  const remember = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private window */ } };
+  let view = 'senders';
+  try { view = localStorage.getItem('ev.view') === 'all' ? 'all' : 'senders'; } catch { /* default */ }
+  let source = null; // { ip, label }
+  const fromUrl = new URLSearchParams(location.search).get('from');
+  if (fromUrl) source = { ip: fromUrl, label: fromUrl };
+  let senders = [];
   const q = h('input', { type: 'search', placeholder: t('ev.search'), 'aria-label': t('ev.search') });
+  const seg = h('div', { class: 'seg', role: 'group', 'aria-label': t('ev.view') });
+  const sourceChip = h('div');
+  const setView = (v) => { view = v; source = null; remember('ev.view', v); q.value = ''; history.replaceState(null, '', '/events'); load(); };
+  const pick = (s) => { source = { ip: s.source_ip, label: s.device_name || s.host || s.source_ip }; q.value = ''; history.replaceState(null, '', `/events?from=${encodeURIComponent(s.source_ip)}`); load(); };
   const sevSel = h('select', { 'aria-label': t('ev.severity') }, [[7, t('ev.f.all')], [4, t('ev.f.warning')], [3, t('ev.f.err')], [2, t('ev.f.crit')]].map(([v, l]) => h('option', { value: String(v) }, l)));
   const chips = h('div', { class: 'inv-chips', role: 'group' });
   const statusBox = h('div');
@@ -30,7 +43,17 @@ export async function renderEvents(main) {
   const more = h('div', { class: 'actions', style: { justifyContent: 'center' } });
 
   async function load(append = false) {
+    if (view === 'senders' && !source) {
+      try {
+        const r = await get(`/events/senders?${new URLSearchParams({ q: q.value.trim() })}`);
+        info = r; senders = r.senders;
+        if (!body.isConnected) return;
+        draw(false);
+      } catch (e) { fail(e); }
+      return;
+    }
     const p = new URLSearchParams({ q: q.value.trim(), kind, maxSeverity: String(maxSeverity), limit: '200' });
+    if (source) p.set('source', source.ip);
     if (append && rows.length) p.set('before', String(rows[rows.length - 1].id));
     try {
       const r = await get(`/events?${p}`);
@@ -64,12 +87,39 @@ export async function renderEvents(main) {
         st.topSenders.length || st.topEvents.length ? t('ev.shortWho', { list: [...st.topSenders.map((x) => `${x.name} (${x.share} %)`), ...st.topEvents.map((x) => `${t('ev.eventId', { id: x.name })} (${x.share} %)`)].join(', ') }) : '',
         st.short ? t('ev.shortHelp') : ''].filter(Boolean).join(' ')))) : null);
     const chip = (key, label) => h('button', { type: 'button', class: `fchip${kind === key ? ' on' : ''}`, 'aria-pressed': String(kind === key), onclick: () => { kind = key; load(); } }, label);
-    mount(chips, chip('', t('all')), chip('trap', 'Traps'), chip('syslog', 'Syslog'));
+    const bySender = view === 'senders' && !source;
+    mount(seg, ...[['senders', t('ev.bySender')], ['all', t('ev.allMessages')]].map(([v, l]) => h('button', { type: 'button', class: (v === 'senders' ? view === 'senders' || source : view === 'all' && !source) ? 'on' : '',
+      'aria-pressed': String(v === view), onclick: () => setView(v) }, l)));
+    mount(chips, bySender ? null : [chip('', t('all')), chip('trap', 'Traps'), chip('syslog', 'Syslog')]);
+    sevSel.hidden = bySender;
+    q.placeholder = bySender ? t('ev.searchSenders') : t('ev.search');
+    mount(sourceChip, source ? h('div', { class: 'actions', style: { justifyContent: 'flex-start', gap: '8px' } },
+      h('span', {}, t('ev.onlyFrom')), h('strong', {}, source.label), source.label !== source.ip ? h('span', { class: 'muted mono small' }, source.ip) : null,
+      btn(t('ev.allSenders'), { class: 'btn btn-sm', onclick: () => { source = null; view = 'senders'; history.replaceState(null, '', '/events'); load(); } })) : null);
+    if (bySender) {
+      mount(listBox, senders.length ? h('div', { class: 'panel' }, h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-table' },
+        h('thead', {}, h('tr', {}, h('th', {}, t('ev.from')), h('th', {}, t('ev.lastMessage')), h('th', { class: 'nowrap' }, t('ev.last24')), h('th', {}))),
+        h('tbody', {}, senders.map((s) => h('tr', {},
+          h('td', {}, h('button', { type: 'button', class: 'ev-name-btn', onclick: () => pick(s) }, s.device_name || s.host || s.source_ip),
+            h('div', { class: 'sub mono' }, [s.source_ip, s.host && s.host !== s.device_name ? s.host : ''].filter(Boolean).join(' · '))),
+          h('td', { class: 'ev-text' }, h('div', { class: 'small' }, h('span', { class: 'nowrap muted' }, `${fmtDate(s.last_at, getLang())} `),
+            s.last_severity !== null ? h('span', { class: `badge ${sevTone(s.last_severity) === 'muted' ? '' : `badge-${sevTone(s.last_severity)}`}` }, sevLabel(s.last_severity)) : null),
+            h('div', { class: 'small' }, s.last_event_id !== null && s.last_event_id !== undefined ? `${t('ev.eventId', { id: s.last_event_id })}: ` : s.last_app ? `${s.last_app}: ` : '',
+              String(s.last_text || '').length > 160 ? `${String(s.last_text).slice(0, 159)}…` : s.last_text || '')),
+          h('td', { class: 'nowrap small' }, t(s.day === 1 ? 'ev.dayCount1' : 'ev.dayCount', { n: s.day }),
+            s.err ? h('div', {}, h('span', { class: 'badge badge-bad' }, t(s.err === 1 ? 'ev.errCount1' : 'ev.errCount', { n: s.err }))) : null,
+            s.warn - s.err > 0 ? h('div', {}, h('span', { class: 'badge badge-warn' }, t(s.warn - s.err === 1 ? 'ev.warnCount1' : 'ev.warnCount', { n: s.warn - s.err }))) : null),
+          h('td', { class: 'min nowrap' }, btn(t('ev.showMessages'), { class: 'btn btn-sm btn-ghost', onclick: () => pick(s) }, 'inventory'))))))))
+        : h('div', { class: 'panel panel-pad muted' }, off ? t('ev.noneOff') : q.value ? t('ev.noMatch') : t('ev.none')));
+      mount(more, null);
+      lockForEditing(body);
+      return;
+    }
     mount(listBox, rows.length ? h('div', { class: 'panel' }, h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-table' },
-      h('thead', {}, h('tr', {}, h('th', {}, t('ev.when')), h('th', {}, t('ev.from')), h('th', {}, t('ev.severity')), h('th', {}, t('ev.text')), h('th', {}))),
+      h('thead', {}, h('tr', {}, h('th', {}, t('ev.when')), source ? null : h('th', {}, t('ev.from')), h('th', {}, t('ev.severity')), h('th', {}, t('ev.text')), h('th', {}))),
       h('tbody', {}, rows.map((r) => h('tr', {},
         h('td', { class: 'nowrap small' }, fmtDate(r.at, getLang())),
-        h('td', {}, r.device_id ? h('a', { class: 'name', href: `/devices/${r.device_id}`, 'data-link': true }, r.device_name || r.source_ip) : h('span', { class: 'name mono' }, r.source_ip),
+        source ? null : h('td', {}, r.device_id ? h('a', { class: 'name', href: `/devices/${r.device_id}`, 'data-link': true }, r.device_name || r.source_ip) : h('span', { class: 'name mono' }, r.source_ip),
           h('div', { class: 'sub mono' }, [r.device_id ? r.source_ip : '', r.host && r.host !== r.device_name ? r.host : ''].filter(Boolean).join(' · ') || null)),
         h('td', {}, h('span', { class: `badge ${sevTone(r.severity) === 'muted' ? '' : `badge-${sevTone(r.severity)}`}` }, sevLabel(r.severity)),
           h('div', { class: 'sub' }, r.kind === 'trap' ? 'Trap' : 'Syslog')),
@@ -135,9 +185,9 @@ export async function renderEvents(main) {
     admin ? btn(t('ev.settings'), { class: 'btn', onclick: () => info && settingsDialog(info.settings) }, 'settings') : null,
     btn(t('ev.reload'), { class: 'btn', onclick: () => load() }, 'refresh'));
   mount(body, head, statusBox, spaceBox,
-    h('div', { class: 'vo-toolbar ev-toolbar' }, h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q), sevSel, chips),
-    listBox, more);
+    h('div', { class: 'vo-toolbar ev-toolbar' }, seg, h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q), sevSel, chips),
+    sourceChip, listBox, more);
   await load();
   // new messages show up by themselves while the page is open (not while searching through older ones)
-  const auto = setInterval(() => { if (!body.isConnected) { clearInterval(auto); return; } if (rows.length <= 200 && !document.hidden) load(); }, 15000);
+  const auto = setInterval(() => { if (!body.isConnected) { clearInterval(auto); return; } if ((view === 'senders' && !source) || (rows.length <= 200 && !document.hidden)) { if (!document.hidden) load(); } }, 15000);
 }

@@ -6,6 +6,8 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Messages by sender: one row per computer or device with the last message and the messages, warnings and errors of the last 24 hours; a click shows only its messages, "All messages" everything as before. On the device page: More → Messages of the device
+- Umlauts in Windows messages (NXLog in the code page of Windows) are read right: "NT-AUTORITÄT" instead of "NT-AUTORIT�T"
 - Diagnostic package: new file meldungen.json - syslog and trap receivers (ports, errors, connections), space of the messages file, messages in the period by kind, severity and NXLog format, event rules with matches, waiting and failed attempts; senders anonymised, words of the rules only counted
 - Messages: count and space are right as soon as new messages come (showed the old figures for up to a minute, after switching on "0 stored" next to the list)
 - Messages in a file of their own (data/events.sqlite): the database and its daily backups stay small; existing messages move once with the update. The limit is now space instead of 200 000 pieces: 30 days in at most 2 GB, with a short disk at least 10 % stay free. The page shows the space used, messages a day, how many days the space lasts - and who sends the most when it does not

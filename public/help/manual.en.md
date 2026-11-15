@@ -192,7 +192,9 @@ Without `Exec` in the output NXLog sends time, computer, level, event id and tex
     Exec   to_syslog_bsd();
 ```
 
-`Exec $Message = to_json(); to_syslog_ietf();` (all fields as JSON) is understood too. The search finds an event id when only the number is entered.
+`Exec $Message = to_json(); to_syslog_ietf();` (all fields as JSON) is understood too. The search finds an event id when only the number is entered. Umlauts in the code page of Windows (e.g. "NT-AUTORITÄT") are read right.
+
+**By sender:** the page first shows one row per computer or device - with the last message and the messages, warnings and errors of the last 24 hours - instead of all messages one below the other. A click on the sender shows only its messages; *All messages* shows everything as before. On the page of a device *More → Messages of the device* leads straight there.
 
 ### Event rules: chosen messages by mail or to the ticket system
 

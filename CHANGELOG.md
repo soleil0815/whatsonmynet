@@ -6,6 +6,8 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Meldungen nach Absender: je Rechner oder Gerät eine Zeile mit der letzten Meldung und den Meldungen, Warnungen und Fehlern der letzten 24 Stunden; ein Klick zeigt nur seine Meldungen, „Alle Meldungen“ wie bisher alles. Auf der Geräteseite: Mehr → Meldungen des Geräts
+- Umlaute in Windows-Meldungen (NXLog in der Codepage von Windows) werden richtig gelesen: „NT-AUTORITÄT“ statt „NT-AUTORIT�T“
 - Diagnosepaket: neue Datei meldungen.json - Empfänger von Syslog und Traps (Ports, Fehler, Verbindungen), Platz der Meldungsdatei, Meldungen im Zeitraum nach Art, Schwere und NXLog-Format, Ereignisregeln mit Treffern, Wartenden und Fehlversuchen; Absender anonymisiert, Wörter der Regeln nur gezählt
 - Meldungen: Anzahl und Platz stimmen sofort, sobald neue Meldungen kommen (zeigten bis zu einer Minute lang noch den alten Stand, nach dem Einschalten „0 gespeichert“ neben der Liste)
 - Meldungen in einer eigenen Datei (data/events.sqlite): die Datenbank und ihre täglichen Sicherungen bleiben klein; vorhandene Meldungen ziehen beim Update einmal um. Grenze jetzt in Speicherplatz statt 200 000 Stück: 30 Tage in höchstens 2 GB, bei knappem Datenträger bleiben mindestens 10 % frei. Die Seite zeigt belegten Platz, Meldungen am Tag, wie viele Tage der Platz reicht - und wer die meisten Meldungen schickt, wenn er nicht reicht
