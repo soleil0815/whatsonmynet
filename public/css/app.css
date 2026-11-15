@@ -817,3 +817,8 @@ pre.code.wrap { white-space: pre-wrap; word-break: break-all; }
 .fo-events summary { cursor: pointer; color: var(--accent); }
 .fo-events ul { margin: 6px 0 0; padding-left: 18px; }
 td.nowrap { white-space: nowrap; }
+
+/* Messages (traps, syslog) */
+.ev-toolbar select { width: auto; flex: 0 0 auto; }
+.ev-table .ev-text { min-width: 260px; overflow-wrap: anywhere; }
+.ev-table .nowrap { white-space: nowrap; }

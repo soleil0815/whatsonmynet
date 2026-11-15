@@ -38,6 +38,11 @@ const WORDS = {
   restarting: 'startet neu', unhealthy: 'ungesund', exited: 'beendet', created: 'angelegt', dead: 'abgestürzt',
 };
 
+const SEV_DE = { emerg: 'Notfall', alert: 'Alarm', crit: 'kritisch', err: 'Fehler', warning: 'Warnung', notice: 'Hinweis', info: 'Info', debug: 'Debug' };
+const TRAP_DE = { 'port down': 'Port getrennt', 'port up': 'Port verbunden', 'device started': 'Gerät gestartet', 'device restarted': 'Gerät neu gestartet',
+  'SNMP request with a wrong community': 'SNMP-Anfrage mit falscher Community', 'UPS on battery': 'USV auf Akku', 'UPS alarm cleared': 'USV-Alarm aufgehoben', 'UPS alarm': 'USV-Alarm',
+  'UPS self-test completed': 'USV-Selbsttest beendet', 'APC UPS on battery': 'APC-USV auf Akku', 'APC UPS back on mains': 'APC-USV wieder am Netz', 'APC UPS battery low': 'APC-USV Akku schwach' };
+
 // Texts with numbers or names in them
 const PATTERNS = [
   [/^timeout \((\d+) s\)$/, 'Zeitüberschreitung ($1 s)'],
@@ -58,6 +63,11 @@ const PATTERNS = [
   [/^up · (.*)$/, 'verbunden · $1'],
   [/^unexpected answer (.*)$/, 'unerwartete Antwort $1'],
   [/^failed: (.*)$/, 'gestört: $1'],
+  // messages devices sent (traps, syslog): the device's own text stays as it is
+  [/^no matching message in the last (\d+) min$/, 'keine passende Meldung in den letzten $1 Min.'],
+  [/^(trap|syslog) (emerg|alert|crit|err|warning|notice|info|debug) from (\S+): ([\s\S]*)$/, (_, k, sev, ip, rest) => `${k === 'trap' ? 'Trap' : 'Syslog'} ${SEV_DE[sev]} von ${ip}: ${
+    rest.replace(/^(\w+: )?(port down|port up|device started|device restarted|SNMP request with a wrong community|UPS on battery|UPS alarm cleared|UPS alarm|UPS self-test completed|APC UPS on battery|APC UPS back on mains|APC UPS battery low)/, (m, app, w) => `${app || ''}${TRAP_DE[w]}`)
+      .replace(/ \(\+(\d+) more\)$/, ' (+$1 weitere)')}`],
   // cloud accounts
   [/^no value while it does not run$/, 'kein Wert, solange sie nicht läuft'],
   [/^(\S+) - no check while it does not run$/, (_, st) => `${WORDS[st] || st} - keine Prüfung, solange sie nicht läuft`],

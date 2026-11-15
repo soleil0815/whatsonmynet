@@ -63,9 +63,15 @@ export const DEFAULTS = {
   'smtp.allowSelfSigned': false,
   // Backups
   'backup.keep': 7,
+  // Messages devices send by themselves (SNMP traps, syslog) - off until switched on
+  'events.traps': false,
+  'events.syslog': false,
+  'events.communities': '',       // encrypted; empty = the SNMP communities of the scan (else "public")
+  'events.onlyKnown': false,      // only from devices in the inventory
+  'events.keepDays': 30,
 };
 
-const SECRET = new Set(['smtp.password', 'scan.snmpCommunities', 'ad.bindPassword']);
+const SECRET = new Set(['smtp.password', 'scan.snmpCommunities', 'ad.bindPassword', 'events.communities']);
 
 export function createSettings(db) {
   const getRow = db.prepare('SELECT value FROM settings WHERE key=?');

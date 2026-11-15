@@ -42,6 +42,9 @@ export const config = {
   // Only redirects to HTTPS (and serves a trusted reverse proxy); 0 = off
   httpPort: port(process.env.WOMN_HTTP_PORT, 8780, { allowOff: true }),
   bind: String(process.env.WOMN_BIND || '').trim() || undefined,
+  // Receiving SNMP traps and syslog (switched on in the interface): not 162/514 - no root rights in the container
+  trapPort: port(process.env.WOMN_TRAP_PORT, 1162),
+  syslogPort: port(process.env.WOMN_SYSLOG_PORT, 1514),
   hsts: ['off', 'no', 'false', '0', 'nein'].includes(hstsRaw) ? 'off' : hstsRaw === 'preload' ? 'preload' : 'on',
   trustProxy: process.env.WOMN_TRUST_PROXY || '',
   dataDir: path.resolve(process.env.WOMN_DATA_DIR || '/data'),

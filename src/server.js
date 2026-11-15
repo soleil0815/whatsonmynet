@@ -63,6 +63,8 @@ async function main() {
     log.info(`HTTP on port ${config.httpPort} (redirects to HTTPS${ctx.trustProxy ? `; serves the reverse proxy ${ctx.trustProxy}` : ''})`);
   }
 
+  // SNMP traps and syslog (if switched on): every installation receives for itself, also a standby
+  ctx.events.start();
   // Monitoring, scans, reports, hypervisors: only on the active installation (failover - see failover.js)
   ctx.failover.boot();
   // Signed-in AD users: still allowed? (disabled in AD or out of the group → signed out, new group → new role)
@@ -74,6 +76,7 @@ async function main() {
     try { ctx.monitoring.cleanup(); } catch (e) { log.warn(`Monitoring cleanup failed: ${e.message}`); }
     try { ctx.nightly.cleanup(); } catch (e) { log.warn(`Sightings cleanup failed: ${e.message}`); }
     try { ctx.diagnostics.prune(); } catch (e) { log.warn(`Log cleanup failed: ${e.message}`); }
+    try { ctx.events.prune(); } catch (e) { log.warn(`Messages cleanup failed: ${e.message}`); }
     try { await backupDatabase(db, ctx.settings.get('backup.keep')); } catch (e) { log.error(`Daily backup failed: ${e.message}`); }
     try { if (await tls.ensure()) ctx.applyTls(); } catch (e) { log.error(`Certificate check failed: ${e.message}`); }
   };
@@ -83,6 +86,7 @@ async function main() {
   const shutdown = (sig) => {
     log.info(`${sig} received, shutting down ...`);
     ctx.failover.stop();
+    ctx.events.stop();
     httpServer?.close();
     httpsServer.close(() => { ctx.diagnostics.stop(); db.close(); process.exit(0); });
     setTimeout(() => process.exit(0), 5000).unref();
