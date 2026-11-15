@@ -9,11 +9,12 @@ import { startApp, tmp } from './helpers.js';
 import { log } from '../src/lib/log.js';
 import { zip, unzip } from '../src/lib/zip.js';
 import { maskSecrets, createAnonymizer } from '../src/diagnostics.js';
+import { parseSyslog } from '../src/events.js';
 import { LOCAL_TABLES } from '../src/failover.js';
 
 const app = await startApp();
 const { call, ctx, db } = app;
-test.after(() => { ctx.diagnostics.stop(); return app.close(); });
+test.after(() => { ctx.diagnostics.stop(); ctx.eventRules.stop(); return app.close(); });
 
 const pkg = async (q = '', who = 'default') => {
   const res = await call('GET', `/api/diagnostics/package${q}`, undefined, { who, raw: true });
@@ -31,6 +32,12 @@ test('setup: an admin, a NAS, a viewer, a secret or two, some log lines', async 
   ctx.settings.set('smtp.password', 'Mail-Geheim-77');
   ctx.settings.set('scan.snmpCommunities', 'SnmpGeheim42');
   ctx.settings.set('smtp.host', 'smtp.example-firma.de');
+  // messages: a Windows computer that is not in the inventory (NXLog), the NAS; an event rule with sender and words
+  ctx.eventRules.start();
+  const mail = ctx.channels.create({ name: 'Helpdesk-Eingang', type: 'email', config: { to: 'ticket@example-firma.de' } });
+  ctx.eventRules.create({ name: 'Virenfund', match: { eventIds: '1116', source: 'Defender', from: 'PC-0815, 192.168.0.77', words: 'm.weber' }, channels: [mail.id] });
+  ctx.events.receive('syslog', '192.168.0.77', parseSyslog('<12>Nov 15 10:00:00 PC-0815 Microsoft-Windows-Windows Defender: [1116] [Microsoft-Windows-Windows Defender/Operational] Virus bei m.weber gefunden'));
+  ctx.events.receive('syslog', '192.168.0.253', parseSyslog('<12>Nov 15 10:00:01 ihomeddserver storage: Volume 1 degraded'));
   // lines from before the log is attached wait for it (start, migrations)
   log.info('Early line before the database log (ihomeddserver)');
   ctx.diagnostics.start();
@@ -47,8 +54,8 @@ test('anonymised by default: no real name, address or secret anywhere in the pac
   assert.equal(p.status, 200);
   assert.match(p.name, /whatsonmynet-diagnose-.*-7T-anonym\.zip/);
   for (const f of ['LIESMICH.txt', 'versionen.json', 'aenderungen.md', 'umgebung.json', 'einstellungen.json', 'statistik.json', 'protokoll.csv', 'fehler.txt',
-    'monitore.json', 'ereignisse.csv', 'geraete.json', 'hypervisoren.json', 'scans.csv', 'benachrichtigungen.json', 'aktionen.csv']) assert.ok(p.files[f], f);
-  for (const real of ['ihomeddserver', '192.168.0.253', '00:11:32', 'fritz.box', 'max.muster', 'example-firma', 'michael', 'lisa', 'SnmpGeheim42', 'Mail-Geheim-77']) {
+    'monitore.json', 'ereignisse.csv', 'geraete.json', 'hypervisoren.json', 'meldungen.json', 'scans.csv', 'benachrichtigungen.json', 'aktionen.csv']) assert.ok(p.files[f], f);
+  for (const real of ['ihomeddserver', '192.168.0.253', '00:11:32', 'fritz.box', 'max.muster', 'example-firma', 'michael', 'lisa', 'SnmpGeheim42', 'Mail-Geheim-77', 'PC-0815', '192.168.0.77', 'm.weber', 'Helpdesk-Eingang']) {
     assert.equal(p.text.toLowerCase().includes(real.toLowerCase()), false, `${real} must not be in the package`);
   }
   assert.match(p.files['fehler.txt'].toString(), /WARN Synology GERAET-001 \(10\.99\.0\.\d+, 02:00:00:00:00:\w\w\): SNMP timeout, community=\*\*\*/);
@@ -58,6 +65,19 @@ test('anonymised by default: no real name, address or secret anywhere in the pac
   assert.equal(set['smtp.host'].startsWith('HOST-'), true);
   const dev = JSON.parse(p.files['geraete.json'])[0];
   assert.equal(dev.name, 'GERAET-001');
+  // messages: receivers, space, what came in by format, the rules - senders as placeholders, words only counted
+  const m = JSON.parse(p.files['meldungen.json']);
+  assert.deepEqual(Object.keys(m.receivers), ['traps', 'syslog', 'syslogTcp', 'syslogTls']);
+  assert.equal(m.storage.total, 2);
+  assert.deepEqual(m.period.by_format, { syslog: 1, windows_full: 1 });
+  assert.deepEqual(m.period.top_event_ids, [{ event_id: 1116, n: 1 }]);
+  assert.deepEqual(m.period.matched_to_device, { yes: 1, no: 1 });
+  assert.equal(m.rules[0].match.eventIds, '1116');
+  assert.match(m.rules[0].match.from[0], /^HOST-\d+$/);
+  assert.match(m.rules[0].match.from[1], /^10\.99\./);
+  assert.equal(m.rules[0].match.words, '1 Wörter');
+  assert.equal(m.rules[0].hits24h, 1, 'the rule matched the Defender message');
+  assert.deepEqual(m.metrics_keys, []);
 });
 
 test('the same placeholders in the next package; administrators can look them up', async () => {
