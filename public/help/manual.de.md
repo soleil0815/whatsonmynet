@@ -471,6 +471,26 @@ Status `0` = OK, `1` = Warnung, `2` = kritisch, `3` = unbekannt. Der Name hat ke
 
 Auf der Geräteseite stehen die Prüfungen unter *Eigene Prüfungen*; als Sensor *Eigene Prüfung …* alarmiert alles außer OK (auch Warnung und unbekannt). Neue Rechner bekommen die Sensoren gleich mit. Dafür das Rechner-Skript ab dieser Version einmal neu ausrollen.
 
+## Prometheus und Grafana
+
+Wer schon Prometheus und Grafana betreibt, kann den Zustand aller Monitore und Sensoren dorthin holen: *Einstellungen → Prometheus & Grafana*.
+
+1. **Schlüssel erzeugen.** Er wird nur einmal angezeigt; gespeichert wird nur sein Fingerabdruck. Ohne Schlüssel gibt es `/metrics` gar nicht. Ein Schlüssel darf nur die Werte lesen, sonst nichts.
+2. Die gezeigte **prometheus.yml** übernehmen und das **Zertifikat des Servers** herunterladen und als `ca_file` angeben - so bleibt die Prüfung des Zertifikats an (kein `insecure_skip_verify`).
+3. In Grafana unter *Dashboards → Neu → Importieren* das **Grafana-Dashboard** hochladen und die Prometheus-Datenquelle wählen: gestörte Monitore, Verfügbarkeit, Antwortzeiten, Sensorwerte, Zertifikate.
+
+| Wert | Bedeutung |
+|---|---|
+| `womn_monitor_up` | 1 in Ordnung, 0 gestört (pausierte und neue fehlen) |
+| `womn_monitor_state` | Zustand als Label: up, down, pending, paused |
+| `womn_monitor_down_seconds` | Sekunden seit der Störung |
+| `womn_monitor_response_seconds` | Antwortzeit (Web, Port, Ping, Datenbanken …) |
+| `womn_sensor_value` | Messwert eines Sensors, mit Einheit und Grenze als Label |
+| `womn_cert_expiry_timestamp_seconds` | Ablauf des Zertifikats; Tage: `(womn_cert_expiry_timestamp_seconds - time()) / 86400` |
+| `womn_devices`, `womn_events_stored`, `womn_info` | Geräte, gespeicherte Meldungen, Version und Rolle |
+
+Jeder Wert trägt `id`, `name`, `type`, `target` und - wenn vorhanden - `device`. Bei der Ausfallsicherung kann Prometheus beide fragen; `womn_info` sagt, wer gerade Master ist.
+
 ## Berichte
 
 ![Bericht](img/report-de.png)
