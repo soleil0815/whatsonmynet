@@ -6,6 +6,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Meldungen: Anzahl und Platz stimmen sofort, sobald neue Meldungen kommen (zeigten bis zu einer Minute lang noch den alten Stand, nach dem Einschalten „0 gespeichert“ neben der Liste)
 - Meldungen in einer eigenen Datei (data/events.sqlite): die Datenbank und ihre täglichen Sicherungen bleiben klein; vorhandene Meldungen ziehen beim Update einmal um. Grenze jetzt in Speicherplatz statt 200 000 Stück: 30 Tage in höchstens 2 GB, bei knappem Datenträger bleiben mindestens 10 % frei. Die Seite zeigt belegten Platz, Meldungen am Tag, wie viele Tage der Platz reicht - und wer die meisten Meldungen schickt, wenn er nicht reicht
 
 ## 0.27.0 - 2026-11-15

@@ -39,6 +39,8 @@ Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans y
 | Toner, drum, counter | Ports and attached devices | Proxmox, Hyper-V and more |
 | ![Failover](public/help/img/failover-en.png) | ![Report](public/help/img/report-en.png) | ![Notifications](public/help/img/settings-en.png) |
 | Failover with standby | Scheduled reports by e-mail | Notifications and escalation |
+| ![Messages](public/help/img/events-en.png) | ![Event rules](public/help/img/eventrules-en.png) | ![Cloud](public/help/img/cloud-en.png) |
+| Syslog, traps and Windows events | Event rules: mail or ticket | AWS, Azure, Google Cloud |
 
 > Built for own use. Whoever uses WhatsOnMyNet does so at their own risk.
 
@@ -240,6 +242,29 @@ Under *Monitoring → Reports* WhatsOnMyNet sends reports by e-mail at set times
 - **Content**: printers (toner per colour, drum, waste toner, page counter, faults), NAS (usage, disks, temperature), switches and network drives (free space); can be limited to locations or **single devices** (e.g. a report just for the printer in the front office), optionally only devices that need action. Printers show the pages printed in total and in the report period. What should be ordered soon is marked red.
 - **Neutral**: the mail has no link and no program name - only your sender name, subject (`{week}`, `{date}`), introduction, the devices and your closing, e.g. "Your IT team".
 - Schedule daily, weekly or monthly; preview, "Test to me" and "Send now" right in the settings.
+
+## Messages, Windows events and event rules (from version 0.27)
+
+- **Receiving** SNMP traps (v1, v2c) and syslog over UDP, TCP (RFC 6587) and TLS (RFC 5425, with the certificate of this server); each message is matched to the device in the inventory by its address. Switch on under *Monitoring → Messages → Receiving settings*.
+- **Windows events** through [NXLog](https://nxlog.co): event id, log, source and account are recognised and shown below the message. An ordinary NXLog configuration is enough, only the output points to WhatsOnMyNet (TCP 1514).
+- **Watch** turns a message into a monitor that alarms at once. **Event rules** send chosen messages - apart from the monitors and never to the default recipients - by mail, webhook or to the ticket system: ready-made rules for virus found (Defender), software restriction, AppLocker, locked account and more, one by one with a limit per hour or collected; nothing is lost when a recipient is briefly unreachable.
+- The messages are in a **file of their own** (`data/events.sqlite`): 30 days in at most 2 GB, with a short disk at least 10 % stay free. The page shows how long the space lasts and who sends the most.
+
+![Event rules](public/help/img/eventrules-en.png)
+
+## Cloud, Microsoft 365 and Veeam (from version 0.27)
+
+- **AWS, Azure, Google Cloud** through an account that may only read: VMs with the checks of the provider, databases, load balancers, alarms and costs; sensors for all of it.
+- **Microsoft 365** through Microsoft Graph: health of the services, open incidents, subscriptions and free licences.
+- **Veeam Backup & Replication** (12 and later, REST): jobs with last result and next run, repositories with space.
+
+## Prometheus, Grafana and own checks (from version 0.27)
+
+- **/metrics** for Prometheus with the state of all monitors and sensors - only with a key, read only; a ready-made **Grafana dashboard** to import under *Settings → Prometheus & Grafana*.
+- **Own checks** (local checks in the Checkmk format): scripts in the `checks` folder on Windows and Linux computers report OK, warning, critical or unknown - only files nobody else may change run, each with a time limit.
+- **More kinds of checks**: mail servers (SMTP, IMAP, POP3 with STARTTLS/TLS and certificate expiry), DNS at a given server, LDAP/Active Directory, time servers (NTP), Microsoft SQL Server; load of every switch port.
+
+Details on all of it are in the manual.
 
 ## HTTPS and certificate
 
