@@ -694,6 +694,9 @@ export const MIGRATIONS = [
   `UPDATE users SET theme='system' WHERE theme='light';`,
   // 34: ten daily backups by default (they are compressed now) - an installation still on the old default 7 gets 10
   `UPDATE settings SET value='10' WHERE key='backup.keep' AND value='7';`,
+  // 35: new installations leave the usual Windows noise out (settings.js WIN_NOISE); one already in use keeps taking
+  // what it took - its empty list is written down instead of following the new default
+  `INSERT OR IGNORE INTO settings(key, value) SELECT 'events.winDeny', '""' WHERE EXISTS (SELECT 1 FROM users);`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

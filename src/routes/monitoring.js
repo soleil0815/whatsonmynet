@@ -7,6 +7,7 @@ import { requireRole } from '../auth/session.js';
 import { inScope } from '../auth/scope.js';
 import { config } from '../config.js';
 import { parseEventIds } from '../eventrules.js';
+import { WIN_NOISE } from '../settings.js';
 
 export function createMonitoringApi(ctx) {
   const { db, monitoring, channels, maintenance, dockerHosts, settings } = ctx;
@@ -152,7 +153,7 @@ export function createMonitoringApi(ctx) {
   // Messages devices sent (SNMP traps, syslog): the list for editors; switching the receivers on for admins
   const eventSettings = () => ({ traps: !!settings.get('events.traps'), syslog: !!settings.get('events.syslog'), syslogTcp: !!settings.get('events.syslogTcp'), syslogTls: !!settings.get('events.syslogTls'),
     syslogTcpPort: config.syslogTcpPort, syslogTlsPort: config.syslogTlsPort, communitiesSet: !!settings.get('events.communities'),
-    onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, maxGb: Number(settings.get('events.maxGb')) || 2, minSeverity: Number(settings.get('events.minSeverity') ?? 7), winAllow: String(settings.get('events.winAllow') || ''), winDeny: String(settings.get('events.winDeny') || ''), trapPort: config.trapPort, syslogPort: config.syslogPort });
+    onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, maxGb: Number(settings.get('events.maxGb')) || 2, minSeverity: Number(settings.get('events.minSeverity') ?? 7), winAllow: String(settings.get('events.winAllow') || ''), winDeny: String(settings.get('events.winDeny') || ''), winNoise: WIN_NOISE, trapPort: config.trapPort, syslogPort: config.syslogPort });
   r.get('/events', editor, unscoped, (req, res) => {
     const q = req.query || {};
     res.json({ status: ctx.events.status(), settings: eventSettings(), openEvents: ctx.eventRules.openCount(),
