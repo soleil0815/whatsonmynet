@@ -17,11 +17,12 @@ import { serverBase, nodeTempsInto, nodeScriptsInto } from './hosts.js';
 import { readRedfish, redfishMetrics, labelSerial } from './redfish.js';
 import { READERS, API_KINDS, PUSH_KINDS, newPushToken, pushTokenOk, cleanPush, mergePush, markStale, pushScript } from './virt.js';
 import { CLOUD_KINDS, CLOUD_READERS, cloudMetrics, cleanCloud } from './cloud.js';
+import { readVeeam, veeamMetrics } from './veeam.js';
 
 /** Every kind of host on the page: Proxmox, hypervisors asked through their API, hypervisors that send on their own */
-export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS, ...NET_KINDS, 'redfish', ...CLOUD_KINDS];
+export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS, ...NET_KINDS, 'redfish', ...CLOUD_KINDS, 'veeam'];
 // Asked with user and password (everything but Proxmox and the hosts that send on their own)
-const ACCOUNT_KINDS = [...API_KINDS, ...NET_KINDS, 'redfish'];
+const ACCOUNT_KINDS = [...API_KINDS, ...NET_KINDS, 'redfish', 'veeam'];
 
 const URL_RE = /^https:\/\/[a-z0-9.\-[\]:]+(:\d{1,5})?$/i;
 const PVE_TOKEN = /^[\w.@-]+![\w.-]+$/;   // user@realm!tokenid
@@ -290,6 +291,7 @@ export function proxmoxMetrics(data) {
   // Server hardware through its management chip (iDRAC, iLO, XClarity …)
   if (data.kind === 'redfish') return redfishMetrics(data);
   if (data.cloud) return cloudMetrics(data);
+  if (data.kind === 'veeam') return veeamMetrics(data);
   if (data.netdevices) {
     // Network controller: per device online, clients, load; all clients together
     for (const x of data.netdevices) {
@@ -408,7 +410,7 @@ export function createProxmox({ db }) {
     // A host that sends on its own is not asked: only check whether its nodes still report
     if (PUSH_KINDS.includes(h.kind)) return checkPush(h);
     try {
-      const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : h.kind === 'redfish' ? await readRedfish(withSecret(h)) : NET_READERS[h.kind] ? await NET_READERS[h.kind](withSecret(h))
+      const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : h.kind === 'redfish' ? await readRedfish(withSecret(h)) : h.kind === 'veeam' ? await readVeeam(withSecret(h)) : NET_READERS[h.kind] ? await NET_READERS[h.kind](withSecret(h))
         : READERS[h.kind] ? await READERS[h.kind](withSecret(h)) : CLOUD_READERS[h.kind] ? await CLOUD_READERS[h.kind](withSecret(h), parse(h.data, {})) : await readPveCluster(h);
       if (data.netdevices) syncNetDevices(data);
       if (data.kind === 'redfish') syncRedfish(data);

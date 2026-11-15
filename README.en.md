@@ -20,7 +20,8 @@ Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans y
 | 🖥️ **Virtualization and hardware** | Proxmox VE/Backup Server (clusters too), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity via Redfish |
 | 🧪 **More checks** | Mail servers (SMTP/IMAP/POP3 with TLS and certificate), DNS, LDAP/Active Directory, time servers (NTP), Microsoft SQL Server |
 | 🔔 **Messages** | Receive SNMP traps and syslog, match them to the device, alarm at once |
-| ☁️ **Cloud** | AWS, Azure, Google Cloud: VMs with the checks of the provider, databases, load balancers, alarms, costs - read only |
+| 💾 **Veeam** | Jobs with last result, repositories - Veeam Backup & Replication 12+ (REST, read only) |
+| ☁️ **Cloud** | AWS, Azure, Google Cloud, Microsoft 365 (service health, incidents, licences): VMs with the checks of the provider, databases, load balancers, alarms, costs - read only |
 | 💻 **Machines without agent** | Windows and Linux report through a small script: CPU, RAM, drives, services, updates, antivirus, temperatures |
 | 🔔 **Notifications** | E-mail, Telegram, Teams, Slack, Discord, Matrix, Signal, ntfy, Gotify, Pushover, Home Assistant, webhook and 100 more through Apprise |
 | 🛟 **Failover** | A second WhatsOnMyNet as standby takes over when the master fails and hands back - paired with a code |

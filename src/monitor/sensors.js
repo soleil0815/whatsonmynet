@@ -320,14 +320,14 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
   // Cloud: a VM or database that does not run has no values - not an alarm (whether it should run, its own sensor says)
   if (x.idle) return { ok: true, ms: null, message: `${label}: no value while it does not run`, data: { state: 'stopped' } };
   // Cloud: the provider's own checks (status checks, Resource Health) and the state of a database
-  if (o.metric === 'cloudCheck' || o.metric === 'dbState') {
+  if (x.kind === 'state' && x.good !== undefined) {
     if (x.good === null) return { ok: true, ms: null, message: `${label}: ${x.value} - no check while it does not run`, data: { state: 'stopped' } };
     return { ok: !!x.good, ms: null, message: `${label}: ${x.text || x.value}`, data: { state: x.good ? 'ok' : 'critical' } };
   }
   if (x.value === null || x.value === undefined) {
     // missing rights only when the host said so; else the node just did not deliver the value this time
     const rights = (parse(h.data, {}).missing || []).length > 0;
-    return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' ? 'no backup found'
+    return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' || o.metric === 'jobAge' ? 'no backup found'
       : rights ? 'no value - the account probably lacks read rights (Monitoring → Virtualization)' : 'no value at the moment (not delivered by the host)'}` };
   }
   const alarm = alarmOf(o.op, x.value, o.threshold, x.unit, m.status === 'down');
