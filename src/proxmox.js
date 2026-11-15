@@ -136,10 +136,14 @@ export async function readPve(host) {
   for (const n of nodes.filter((x) => x.online)) {
     try {
       const tasks = await apiGet(host, `/nodes/${encodeURIComponent(n.name)}/tasks?typefilter=vzdump&limit=200&since=${since}`);
-      for (const t of tasks || []) backups.push({ node: n.name, vmid: t.id || '', start: t.starttime, end: t.endtime || null, ok: t.status === 'OK', status: t.status || 'running' });
+      for (const t of tasks || []) backups.push({ node: n.name, vmid: t.id || '', start: t.starttime, end: t.endtime || null, ok: t.status === 'OK', status: t.status || 'running', upid: t.upid || '' });
     } catch (e) { log.debug(`Proxmox ${host.name}: tasks of ${n.name}: ${e.message}`); }
   }
   backups.sort((a, b) => b.start - a.start);
+  // failed backups of the last day: why (from the task log)
+  const dayAgo = Date.now() / 1000 - 86400;
+  for (const b of backups.filter((x) => !x.ok && x.end && x.start > dayAgo).slice(0, 8)) b.reason = (await taskLog(host, b.node, b.upid)).reason;
+  for (const b of backups) delete b.upid;
   return { kind: 'pve', missing: await missingRights(host, 'pve'), nodes, storages: storages.sort((a, b) => a.name.localeCompare(b.name)), guests: guests.filter((g) => !g.template).sort((a, b) => a.vmid - b.vmid), backups: backups.slice(0, 100) };
 }
 
@@ -202,6 +206,47 @@ export function fallbackHosts(host, cluster) {
 }
 
 /** Reads a Proxmox Backup Server */
+// Tasks whose failure means a backup is at risk; everything else (package lists, certificates, log rotation …) is
+// upkeep of the server: shown as a note, not as a failed backup
+export const CRITICAL_TASKS = new Set(['backup', 'verify', 'verificationjob', 'verify_group', 'verify_snapshot', 'sync', 'syncjob', 'prune', 'prunejob',
+  'garbage_collection', 'tape-backup', 'tape-backup-job', 'vzdump', 'zfscreate']);
+const ERROR_LINE = /(error|failed|failure|unable|cannot|can't|denied|timeout|timed out|refused|unauthorized|not found|^E:|^Err:|^W:|exit code)/i;
+
+/** The lines of a task log that say what went wrong (the last few error lines, else the last lines) - max 600 chars */
+export function taskReason(lines) {
+  const text = (lines || []).map((l) => String(l?.t ?? l ?? '').trim()).filter(Boolean);
+  const errs = text.filter((l) => ERROR_LINE.test(l) && !/^TASK OK/.test(l));
+  const pick = (errs.length ? errs : text).slice(-4);
+  return pick.join('\n').slice(-600);
+}
+
+// Package sources of Proxmox and Debian; anything else (Webmin, Docker, own mirrors …) is a third-party source
+const OFFICIAL_REPO = /(^|[/.@])(proxmox\.com|debian\.org)(?=[/:\s]|$)/i;
+const REPO_URL = /\b(?:https?|ftp):\/\/([^/\s]+)/gi;
+
+/**
+ * An "apt update" that failed: which sources failed? official = a Proxmox/Debian source (alarm - updates of the server
+ * itself are at stake), foreign = only third-party sources such as Webmin (not counted as a failure), null = unknown.
+ */
+export function aptSources(lines) {
+  const text = (lines || []).map((l) => String(l?.t ?? l ?? ''));
+  const bad = text.filter((l) => /^(Err:|E:|W:)/.test(l.trim()) || /\b(error|failed|unauthorized|NO_PUBKEY|not signed)\b/i.test(l));
+  const hosts = new Set();
+  for (const l of bad) for (const m of l.matchAll(REPO_URL)) hosts.add(m[1].toLowerCase());
+  if (!hosts.size) return { repo: null, hosts: [] };
+  const official = [...hosts].some((x) => OFFICIAL_REPO.test(x));
+  return { repo: official ? 'official' : 'foreign', hosts: [...hosts].slice(0, 5) };
+}
+
+/** Log of a task (read only), first 400 lines → { reason, lines }; empty when it cannot be read */
+async function taskLog(host, node, upid) {
+  if (!upid) return { reason: '', lines: [] };
+  try {
+    const lines = await apiGet(host, `/nodes/${encodeURIComponent(node)}/tasks/${encodeURIComponent(upid)}/log?start=0&limit=400`, 8000);
+    return { reason: taskReason(lines), lines: lines || [] };
+  } catch { return { reason: '', lines: [] }; }
+}
+
 export async function readPbs(host) {
   const usage = await apiGet(host, '/status/datastore-usage');
   const datastores = (usage || []).map((d) => ({ name: d.store, used: d.used || 0, total: d.total || 0, pct: pct(d.used, d.total), gc: d['gc-status']?.['upid'] ? true : undefined }));
@@ -217,7 +262,22 @@ export async function readPbs(host) {
   try {
     const since = Math.floor(Date.now() / 1000) - 86400;
     failed = ((await apiGet(host, `/nodes/localhost/tasks?errors=true&limit=100&since=${since}`)) || [])
-      .filter((t) => t.status && t.status !== 'OK').map((t) => ({ type: t.worker_type, id: t.worker_id || '', start: t.starttime, status: String(t.status).slice(0, 200) }));
+      .filter((t) => t.status && t.status !== 'OK').map((t) => ({ type: t.worker_type, id: t.worker_id || '', start: t.starttime, status: String(t.status).slice(0, 200),
+        critical: CRITICAL_TASKS.has(t.worker_type), upid: t.upid || '' }));
+    // what went wrong, from the log of the task (the status alone often says "unknown")
+    for (const f of failed.slice(0, 8)) {
+      const lg = await taskLog(host, 'localhost', f.upid);
+      f.reason = lg.reason;
+      // apt update: only a failing Proxmox/Debian source is a failure; third-party sources (Webmin …) are not
+      if (f.type === 'aptupdate') {
+        const src = aptSources(lg.lines);
+        f.repo = src.repo;
+        f.hosts = src.hosts;
+        f.critical = src.repo === 'official';
+      }
+      delete f.upid;
+    }
+    for (const f of failed.slice(8)) delete f.upid;
   } catch (e) { log.debug(`PBS ${host.name}: tasks: ${e.message}`); }
   return { kind: 'pbs', missing: await missingRights(host, 'pbs'), datastores, groups: groups.sort((a, b) => `${a.store}/${a.type}/${a.id}`.localeCompare(`${b.store}/${b.type}/${b.id}`, undefined, { numeric: true })), failed };
 }
@@ -261,7 +321,8 @@ export function proxmoxMetrics(data) {
       out.push({ metric: 'groupAge', key: `${g.store}/${g.type}/${g.id}`, name: `${g.type}/${g.id}${g.comment ? ` (${g.comment})` : ''} - ${g.store}`,
         value: g.last ? Math.round((Date.now() / 1000 - g.last) / 3600) : null, unit: 'h', kind: 'number', op: 'gt', threshold: 26 });
     }
-    out.push({ metric: 'tasksFailed', key: '', name: '', value: (data.failed || []).length, kind: 'number', op: 'gt', threshold: 0 });
+    // only tasks that put backups at risk; upkeep of the server (apt update …) shows as a note on the page
+    out.push({ metric: 'tasksFailed', key: '', name: '', value: (data.failed || []).filter((f) => f.critical !== false && f.repo !== 'foreign').length, kind: 'number', op: 'gt', threshold: 0 });
   }
   return out;
 }
