@@ -202,6 +202,26 @@ test('API: editors manage rules, viewers do not; "test" shows what a filter woul
     assert.equal((await call('PUT', `/api/event-rules/${ok.data.id}`, { enabled: false })).data.enabled, false);
     assert.equal((await call('GET', '/api/event-rules')).data[0].name, 'Virenfund');
     assert.equal((await call('DELETE', `/api/event-rules/${ok.data.id}`)).status, 200);
-    assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM audit WHERE action LIKE 'eventrule.%'").get().n, 3);
+    // expressions: checked for shape and for speed before saving (and before a test)
+    const unsafe = await call('POST', '/api/event-rules', { name: 'x', match: { regex: '(a+)+$' }, channels: [mail.id] });
+    assert.deepEqual([unsafe.status, unsafe.data.error.code, unsafe.data.error.field], [400, 'err.regexUnsafe', 'regex']);
+    const slow = await call('POST', '/api/event-rules/test', { match: { regex: '^\\w*\\w*\\w*\\w*\\w*x$' } });
+    assert.deepEqual([slow.status, slow.data.error.code], [400, 'err.regexSlow']);
+    const closeBad = await call('POST', '/api/event-rules', { name: 'x', match: { words: 'down' }, channels: [mail.id], state: { open: true, closeRegex: '(x*)*' } });
+    assert.equal(closeBad.data.error.field, 'closeRegex');
+    // open events: only for editors; acknowledge and close
+    const port = await call('POST', '/api/event-rules', { name: 'Ports', match: { regex: 'Port (\\d+) link down' }, channels: [mail.id], state: { open: true, closeRegex: 'Port (\\d+) link up' } });
+    assert.equal(port.status, 201);
+    assert.equal((await call('GET', '/api/events/open', undefined, { who: 'viewer' })).status, 403);
+    ctx.eventRules.start();
+    ctx.events.receive('syslog', '10.0.0.5', parseSyslog('<12>Nov 15 10:00:00 sw01 PORT: Port 7 link down'));
+    const open = await call('GET', '/api/events/open');
+    assert.deepEqual([open.data.open, open.data.list[0].key, open.data.list[0].rule_name], [1, '7', 'Ports']);
+    assert.equal((await call('POST', `/api/events/open/${open.data.list[0].id}/ack`)).status, 200);
+    assert.equal((await call('POST', `/api/events/open/${open.data.list[0].id}/ack`)).status, 404, 'already acknowledged');
+    assert.equal((await call('POST', `/api/events/open/${open.data.list[0].id}/close`)).status, 200);
+    assert.equal((await call('GET', '/api/events/open')).data.open, 0);
+    ctx.eventRules.stop();
+    assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM audit WHERE action LIKE 'eventrule.%'").get().n, 4);
   } finally { ctx.events.stop(); await app.close(); }
 });

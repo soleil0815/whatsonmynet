@@ -314,7 +314,7 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
   /** The filter of a rule: ids, kinds and severity as they are; senders as placeholders, words only counted (anonymised) */
   const ruleMatchOut = (m, an) => ({ kind: m.kind, maxSeverity: m.maxSeverity, deviceId: m.deviceId, eventIds: m.eventIds, source: m.source, channel: m.channel,
     from: (m.from || []).map((f) => (an.enabled ? (IPV4.test(f) ? an.anon(f) : an.alias('host', f)) : f)),
-    words: an.enabled ? `${(m.words || []).length} Wörter` : m.words, notWords: an.enabled ? `${(m.notWords || []).length} Wörter` : m.notWords });
+    words: an.enabled ? `${(m.words || []).length} Wörter` : m.words, notWords: an.enabled ? `${(m.notWords || []).length} Wörter` : m.notWords, regex: an.anon(m.regex || '') });
 
   function messagesOut(since, an) {
     const out = {};
@@ -347,8 +347,12 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
     out.event_monitors = db.prepare("SELECT COUNT(*) n, SUM(enabled) enabled FROM monitors WHERE type='event'").get();
     if (src.eventRules) {
       out.rules = src.eventRules.list().map((r) => ({ id: r.id, name: an.anon(r.name), enabled: r.enabled, mode: r.mode, digest_min: r.digest_min, max_per_hour: r.max_per_hour,
-        channels: r.channels, match: ruleMatchOut(r.match, an), blocked_ids: r.blocked || [], hits24h: r.hits24h, open: r.open, failed24h: r.failed24h, last_hit: r.lastHit }));
+        channels: r.channels, match: ruleMatchOut(r.match, an), blocked_ids: r.blocked || [], count: r.count,
+        state: r.state ? { open: !!r.state.open, closeWords: an.enabled ? `${(r.state.closeWords || []).length} Wörter` : r.state.closeWords, closeIds: r.state.closeIds, closeRegex: an.anon(r.state.closeRegex || ''),
+          expireHours: r.state.expireHours, notifyClose: !!r.state.notifyClose } : null, disabled_reason: r.disabled_reason || '', counting: r.counting, open_events: r.openEvents, hits24h: r.hits24h, open: r.open, failed24h: r.failed24h, last_hit: r.lastHit }));
     }
+    out.open_events = { by_state: Object.fromEntries(db.prepare('SELECT state k, COUNT(*) n FROM event_open GROUP BY state').all().map((r) => [r.k, r.n])),
+      closed_how_period: Object.fromEntries(q("SELECT closed_how k, COUNT(*) n FROM event_open WHERE closed_at >= ? GROUP BY closed_how").map((r) => [r.k, r.n])) };
     out.rule_hits_period = q('SELECT COUNT(*) n, SUM(sent_at IS NOT NULL AND failed = 0) sent, SUM(failed) failed, SUM(sent_at IS NULL) open, MAX(tries) max_tries FROM event_rule_hits WHERE at >= ?')[0];
     if (src.apiTokens) out.metrics_keys = src.apiTokens.list().map((k) => ({ created_at: k.created_at, last_used: k.last_used }));
     return out;

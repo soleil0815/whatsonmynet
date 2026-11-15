@@ -122,7 +122,8 @@ test('by sender: one row per address with its newest message and the last 24 hou
   // a messages file of the first shape with messages: the senders are filled in from them
   let db = openDatabase(file);
   db.pragma('ev.user_version = 1');
-  db.exec('DROP TABLE ev.event_senders; DROP INDEX ev.events_in_source');
+  db.exec(`DROP TABLE ev.event_senders; DROP INDEX ev.events_in_source; DROP TABLE ev.event_open; DROP INDEX ev.event_rule_hits_held;
+    ALTER TABLE ev.event_rule_hits DROP COLUMN held; ALTER TABLE ev.event_rule_hits DROP COLUMN grp`);
   const ins = db.prepare("INSERT INTO events_in(at,kind,source_ip,severity,host,text,event_id) VALUES(?, 'syslog', ?, ?, ?, ?, ?)");
   ins.run(new Date(Date.now() - 3600000).toISOString(), '10.0.10.21', 3, 'PC-0021', 'old error', 7000);
   ins.run(new Date().toISOString(), '10.0.10.21', 6, '', 'newest', 7036);
