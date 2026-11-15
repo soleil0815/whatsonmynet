@@ -143,7 +143,7 @@ Fällt ein Switch aus, sind auch alle Geräte dahinter nicht mehr erreichbar. Da
 
 ## Meldungen der Geräte: SNMP-Traps und Syslog
 
-Viele Geräte melden ein Problem von sich aus, sobald es passiert: Ein Switch meldet einen getrennten Port, eine USV den Wechsel auf Akku, ein NAS eine Plattenwarnung, eine Firewall einen Ausfall der Leitung. WhatsOnMyNet empfängt diese Meldungen - **SNMP-Traps** (v1, v2c, auch Informs) und **Syslog** (RFC 3164 und 5424) - und ordnet sie über die Adresse dem Gerät im Inventar zu.
+Viele Geräte melden ein Problem von sich aus, sobald es passiert: Ein Switch meldet einen getrennten Port, eine USV den Wechsel auf Akku, ein NAS eine Plattenwarnung, eine Firewall einen Ausfall der Leitung. WhatsOnMyNet empfängt diese Meldungen - **SNMP-Traps** (v1, v2c, auch Informs) und **Syslog** (RFC 3164 und 5424, über UDP, TCP oder verschlüsselt über TLS) - und ordnet sie über die Adresse dem Gerät im Inventar zu.
 
 1. *Überwachung → Meldungen* → **Empfang einschalten**: SNMP-Traps und/oder Syslog anhaken. Traps werden nur mit einer bekannten Community angenommen (leer = die Communities des Scans).
 2. In den Geräten WhatsOnMyNet als Ziel eintragen - Trap-Empfänger bzw. Syslog-Server.
@@ -153,9 +153,12 @@ Viele Geräte melden ein Problem von sich aus, sobald es passiert: Ein Switch me
 ```
 iptables -t nat -A PREROUTING -p udp --dport 162 -j REDIRECT --to-ports 1162
 iptables -t nat -A PREROUTING -p udp --dport 514 -j REDIRECT --to-ports 1514
+iptables -t nat -A PREROUTING -p tcp --dport 514 -j REDIRECT --to-ports 1514
 ```
 
-Andere Ports: `WOMN_TRAP_PORT` und `WOMN_SYSLOG_PORT` in der `.env`.
+Andere Ports: `WOMN_TRAP_PORT`, `WOMN_SYSLOG_PORT` (UDP), `WOMN_SYSLOG_TCP_PORT` und `WOMN_SYSLOG_TLS_PORT` in der `.env`.
+
+**Syslog über TCP und TLS:** Über UDP können Meldungen verloren gehen oder gefälscht werden. Wer es zuverlässiger will, schaltet zusätzlich **TCP** (Port 1514, RFC 6587 - beide Arten der Trennung: Länge vorweg oder Zeile für Zeile) und/oder **TLS** (Port 6514, RFC 5425) ein. TLS nutzt das Zertifikat dieses Servers; es steht unter *Einstellungen → Prometheus & Grafana* zum Herunterladen, damit der Absender es prüfen kann (z. B. rsyslog: `StreamDriverAuthMode="x509/name"`). Je Absender höchstens 10 Verbindungen, insgesamt 200; eine Stunde ohne Meldung beendet die Verbindung, zu lange oder unsinnige Meldungen ebenso.
 
 **Überwachen:** Bei jeder Meldung macht **Überwachen** daraus einen Monitor der Art *Meldung (Trap/Syslog)*: vom selben Gerät (oder jedem Absender), Trap oder Syslog, ab welcher Schwere, optional mit einem Text, den die Meldung enthalten muss. Kommt eine passende Meldung, alarmiert der Monitor **sofort** und bleibt so lange gestört, wie eingestellt (Standard 15 Minuten); kommt sie wieder, beginnt die Zeit neu.
 

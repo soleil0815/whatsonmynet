@@ -1,14 +1,17 @@
-// Messages devices send by themselves: SNMP traps (v1, v2c, informs) and syslog (UDP, RFC 3164 and 5424). Switches,
+// Messages devices send by themselves: SNMP traps (v1, v2c, informs) and syslog (UDP, TCP and TLS; RFC 3164 and 5424). Switches,
 // UPSs, firewalls and NAS report a problem the moment it happens - instead of waiting for the next poll.
 //
-// Off until switched on (Monitoring → Messages). The ports come from .env: WOMN_TRAP_PORT (default 1162) and
-// WOMN_SYSLOG_PORT (default 1514) - not 162/514, because WhatsOnMyNet runs without root rights; a port redirect on the
+// Off until switched on (Monitoring → Messages). The ports come from .env: WOMN_TRAP_PORT (default 1162),
+// WOMN_SYSLOG_PORT (UDP, default 1514), WOMN_SYSLOG_TCP_PORT (default 1514) and WOMN_SYSLOG_TLS_PORT (default 6514,
+// with the certificate of this server) - not 162/514, because WhatsOnMyNet runs without root rights; a port redirect on the
 // host or the port set on the device does the rest (see the manual).
 //
 // Each installation keeps what it received itself (failover: send to both). Kept 30 days, at most 200 000 messages.
 // A flood (a device in a loop, or someone sending on purpose) is cut: at most 20 messages per second per sender and
 // 300 in all; text is cut to 1000 characters. UDP has no sender check - traps at least need a known community.
 import dgram from 'node:dgram';
+import net from 'node:net';
+import tls from 'node:tls';
 import snmp from 'net-snmp';
 import { log } from './lib/log.js';
 import { config } from './config.js';
@@ -56,6 +59,41 @@ export function parseSyslog(raw) {
   if (tag) { out.app = clip(tag[1], 60); rest = rest.slice(tag[0].length); }
   out.text = clip(rest, 1000);
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------- syslog over a stream
+// TCP (RFC 6587) and TLS (RFC 5425) carry several messages on one connection. Two kinds of framing:
+//   octet counting  "123 <34>1 2026-…"   (length first - RFC 5425 requires it)
+//   line by line    "<34>Oct 11 …\n"     (most devices over plain TCP)
+// The first byte of each message decides. Too long, nonsense lengths or a full buffer end the connection.
+export const MAX_FRAME = 8192;
+export function syslogFramer(onMessage) {
+  let buf = Buffer.alloc(0);
+  return (chunk) => {
+    buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
+    for (;;) {
+      // skip line ends between messages
+      let i = 0;
+      while (i < buf.length && (buf[i] === 0x0a || buf[i] === 0x0d || buf[i] === 0x00)) i++;
+      if (i) buf = buf.subarray(i);
+      if (!buf.length) return true;
+      if (buf[0] >= 0x31 && buf[0] <= 0x39) {
+        const sp = buf.indexOf(0x20);
+        if (sp < 0) { if (buf.length > 6) return false; return true; }
+        const len = Number(buf.subarray(0, sp).toString('latin1'));
+        if (!/^[1-9]\d{0,5}$/.test(buf.subarray(0, sp).toString('latin1')) || len > MAX_FRAME) return false;
+        if (buf.length < sp + 1 + len) return true;
+        onMessage(buf.subarray(sp + 1, sp + 1 + len));
+        buf = buf.subarray(sp + 1 + len);
+        continue;
+      }
+      const nl = buf.indexOf(0x0a);
+      if (nl < 0) return buf.length <= MAX_FRAME;
+      if (nl > MAX_FRAME) return false;
+      onMessage(buf.subarray(0, nl));
+      buf = buf.subarray(nl + 1);
+    }
+  };
 }
 
 // ---------------------------------------------------------------------------------------------- traps
@@ -116,9 +154,15 @@ export function describeTrap(pdu) {
 }
 
 // ---------------------------------------------------------------------------------------------- the service
-export function createEvents({ db, settings, onEvent = () => {} }) {
-  const status = { traps: { on: false, port: config.trapPort, error: '' }, syslog: { on: false, port: config.syslogPort, error: '' } };
-  let trapRx = null; let sysSock = null;
+const MAX_CONNECTIONS = 200;
+const MAX_PER_SENDER = 10;
+const IDLE_MS = 60 * 60 * 1000;   // a device keeps its connection open; one silent for an hour is closed
+
+export function createEvents({ db, settings, tls: tlsSource = null, onEvent = () => {} }) {
+  const status = { traps: { on: false, port: config.trapPort, error: '' }, syslog: { on: false, port: config.syslogPort, error: '' },
+    syslogTcp: { on: false, port: config.syslogTcpPort, error: '', connections: 0 }, syslogTls: { on: false, port: config.syslogTlsPort, error: '', connections: 0 } };
+  let trapRx = null; let sysSock = null; let tcpServer = null; let tlsServer = null;
+  const conns = new Set();
   const insert = db.prepare('INSERT INTO events_in(at, kind, source_ip, device_id, severity, facility, host, app, oid, text) VALUES(?,?,?,?,?,?,?,?,?,?)');
   let index = null; let indexAt = 0;
   // ip → inventory device (refreshed every minute; a new device is matched soon after the scan took it)
@@ -199,16 +243,67 @@ export function createEvents({ db, settings, onEvent = () => {} }) {
     });
     sysSock.bind(config.syslogPort, config.bind || undefined, () => { status.syslog.on = true; log.info(`Syslog: listening on UDP ${config.syslogPort}`); });
   }
+  /** One TCP or TLS listener for syslog: framing, limits per sender and in all, idle timeout */
+  function streamServer(kind, server) {
+    const st = status[kind];
+    server.maxConnections = MAX_CONNECTIONS;
+    server.on('error', (e) => {
+      st.on = false;
+      st.error = e.code === 'EADDRINUSE' ? `port ${st.port} is in use` : e.code === 'EACCES' ? `port ${st.port} not allowed without root` : e.message;
+      log.warn(`Syslog ${kind === 'syslogTls' ? 'TLS' : 'TCP'}: ${st.error}`);
+    });
+    // TLS: a failed handshake (wrong version, client gave up) is not an error of the server
+    server.on('tlsClientError', (e, s) => { log.debug(`Syslog TLS: handshake ${e.code || e.message}`); s?.destroy(); });
+    const accept = (sock) => {
+      const ip = String(sock.remoteAddress || '').replace(/^::ffff:/, '');
+      const same = [...conns].filter((c) => c.ip === ip).length;
+      if (same >= MAX_PER_SENDER) { sock.destroy(); return; }
+      const c = { ip, sock, kind };
+      conns.add(c); st.connections++;
+      sock.setTimeout(IDLE_MS, () => sock.destroy());
+      const feed = syslogFramer((frame) => receive('syslog', ip, parseSyslog(frame)));
+      sock.on('data', (d) => { if (!feed(d)) sock.destroy(); });
+      sock.on('error', () => {});
+      sock.on('close', () => { conns.delete(c); st.connections--; });
+    };
+    server.on(kind === 'syslogTls' ? 'secureConnection' : 'connection', accept);
+    server.listen(st.port, config.bind || undefined, () => { st.on = true; log.info(`Syslog ${kind === 'syslogTls' ? 'TLS' : 'TCP'}: listening on ${st.port}`); });
+    return server;
+  }
+  function tlsOptions() {
+    const cur = tlsSource?.current?.();
+    if (!cur?.cert || !cur?.key) return null;
+    return { cert: cur.cert, key: cur.key, minVersion: 'TLSv1.2' };
+  }
+  function startStreams() {
+    status.syslogTcp.error = ''; status.syslogTls.error = '';
+    if (settings.get('events.syslogTcp')) tcpServer = streamServer('syslogTcp', net.createServer());
+    if (settings.get('events.syslogTls')) {
+      const o = tlsOptions();
+      if (!o) { status.syslogTls.error = 'no certificate of this server yet'; log.warn('Syslog TLS: no certificate'); }
+      else tlsServer = streamServer('syslogTls', tls.createServer(o));
+    }
+  }
+  /** The certificate of the server changed (renewed, uploaded): new connections get the new one */
+  function reloadTls() {
+    const o = tlsOptions();
+    if (tlsServer && o) { try { tlsServer.setSecureContext(o); } catch (e) { log.warn(`Syslog TLS: ${e.message}`); } }
+  }
+
   function stopAll() {
     if (trapRx) { try { trapRx.close(); } catch { /* closed */ } trapRx = null; }
     if (sysSock) { try { sysSock.close(); } catch { /* closed */ } sysSock = null; }
-    status.traps.on = false; status.syslog.on = false;
+    for (const srv of [tcpServer, tlsServer]) if (srv) { try { srv.close(); } catch { /* closed */ } }
+    for (const c of conns) c.sock.destroy();
+    tcpServer = null; tlsServer = null;
+    status.traps.on = false; status.syslog.on = false; status.syslogTcp.on = false; status.syslogTls.on = false;
   }
   /** (Re)opens the receivers as the settings say */
   function apply() {
     stopAll();
     if (settings.get('events.traps')) startTraps();
     if (settings.get('events.syslog')) startSyslog();
+    startStreams();
   }
 
   function list({ q = '', kind = '', maxSeverity = 7, device = null, limit = 200, before = null } = {}) {
@@ -230,7 +325,8 @@ export function createEvents({ db, settings, onEvent = () => {} }) {
 
   return {
     receive, list, prune, apply, communities,
-    status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, total: db.prepare('SELECT COUNT(*) n FROM events_in').get().n,
+    reloadTls,
+    status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, total: db.prepare('SELECT COUNT(*) n FROM events_in').get().n,
       last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null }),
     start: apply,
     stop: stopAll,

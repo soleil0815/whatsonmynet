@@ -143,7 +143,7 @@ When a switch fails, every device behind it is unreachable too. So that twenty m
 
 ## Messages of the devices: SNMP traps and syslog
 
-Many devices report a problem by themselves the moment it happens: a switch reports a port down, a UPS the change to battery, a NAS a disk warning, a firewall a line failure. WhatsOnMyNet receives these messages - **SNMP traps** (v1, v2c, informs too) and **syslog** (RFC 3164 and 5424) - and matches them to the device in the inventory by its address.
+Many devices report a problem by themselves the moment it happens: a switch reports a port down, a UPS the change to battery, a NAS a disk warning, a firewall a line failure. WhatsOnMyNet receives these messages - **SNMP traps** (v1, v2c, informs too) and **syslog** (RFC 3164 and 5424, over UDP, TCP or encrypted over TLS) - and matches them to the device in the inventory by its address.
 
 1. *Monitoring → Messages* → **Switch on receiving**: tick SNMP traps and/or syslog. Traps are only taken with a known community (empty = the communities of the scan).
 2. In the devices enter WhatsOnMyNet as the target - trap receiver or syslog server.
@@ -153,9 +153,12 @@ Many devices report a problem by themselves the moment it happens: a switch repo
 ```
 iptables -t nat -A PREROUTING -p udp --dport 162 -j REDIRECT --to-ports 1162
 iptables -t nat -A PREROUTING -p udp --dport 514 -j REDIRECT --to-ports 1514
+iptables -t nat -A PREROUTING -p tcp --dport 514 -j REDIRECT --to-ports 1514
 ```
 
-Other ports: `WOMN_TRAP_PORT` and `WOMN_SYSLOG_PORT` in `.env`.
+Other ports: `WOMN_TRAP_PORT`, `WOMN_SYSLOG_PORT` (UDP), `WOMN_SYSLOG_TCP_PORT` and `WOMN_SYSLOG_TLS_PORT` in `.env`.
+
+**Syslog over TCP and TLS:** over UDP messages can get lost or be forged. For more reliability switch on **TCP** too (port 1514, RFC 6587 - both kinds of framing: length first or line by line) and/or **TLS** (port 6514, RFC 5425). TLS uses the certificate of this server; it can be downloaded under *Settings → Prometheus & Grafana* so the sender can check it (e.g. rsyslog: `StreamDriverAuthMode="x509/name"`). At most 10 connections per sender, 200 in all; an hour without a message ends the connection, so do messages that are too long or make no sense.
 
 **Watching:** at every message **Watch** turns it into a monitor of the kind *Message (trap/syslog)*: from the same device (or any sender), trap or syslog, from which severity on, optionally with a text the message must contain. When a matching message comes in, the monitor alarms **at once** and stays down as long as set (default 15 minutes); if it comes again, the time starts over.
 

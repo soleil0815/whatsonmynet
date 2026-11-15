@@ -45,6 +45,8 @@ export const config = {
   // Receiving SNMP traps and syslog (switched on in the interface): not 162/514 - no root rights in the container
   trapPort: port(process.env.WOMN_TRAP_PORT, 1162),
   syslogPort: port(process.env.WOMN_SYSLOG_PORT, 1514),
+  syslogTcpPort: port(process.env.WOMN_SYSLOG_TCP_PORT, 1514),
+  syslogTlsPort: port(process.env.WOMN_SYSLOG_TLS_PORT, 6514),
   hsts: ['off', 'no', 'false', '0', 'nein'].includes(hstsRaw) ? 'off' : hstsRaw === 'preload' ? 'preload' : 'on',
   trustProxy: process.env.WOMN_TRUST_PROXY || '',
   dataDir: path.resolve(process.env.WOMN_DATA_DIR || '/data'),

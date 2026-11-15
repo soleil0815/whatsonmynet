@@ -66,6 +66,8 @@ export const DEFAULTS = {
   // Messages devices send by themselves (SNMP traps, syslog) - off until switched on
   'events.traps': false,
   'events.syslog': false,
+  'events.syslogTcp': false,      // syslog over TCP (RFC 6587)
+  'events.syslogTls': false,      // syslog over TLS (RFC 5425), with the certificate of this server
   'events.communities': '',       // encrypted; empty = the SNMP communities of the scan (else "public")
   'events.onlyKnown': false,      // only from devices in the inventory
   'events.keepDays': 30,
