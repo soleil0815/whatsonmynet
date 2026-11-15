@@ -177,6 +177,47 @@ if [ -z "$tj" ]; then
   done
 fi
 
+# Own checks: every executable file in the checks folder prints lines in the Checkmk "local check" format
+#   <0|1|2|3> <name> <value or -> <text>      (0 OK, 1 WARN, 2 CRIT, 3 UNKNOWN; value e.g. "count=12" or "-")
+# They run with the rights of this script - so only a folder and files of this user (or root) that nobody else
+# may change, never a link; at most 50, each at most 30 seconds. WOMN_CHECKS, WOMN_CHECK_TIMEOUT only for the tests.
+if [ "$(id -u)" = 0 ]; then CHK=/etc/whatsonmynet/checks; else CHK=${XDG_CONFIG_HOME:-$HOME/.config}/whatsonmynet/checks; fi
+CHK=${WOMN_CHECKS:-$CHK}
+cj=""
+cline() { cj="$cj${cj:+,}{\"name\":\"$(esc "$1")\",\"status\":$2,\"text\":\"$(esc "$3")\",\"value\":null,\"file\":\"$(esc "$4")\"}"; }
+if [ -d "$CHK" ]; then
+  me=$(id -u)
+  if [ -L "$CHK" ] || [ -z "$(find "$CHK" -maxdepth 0 \( -user "$me" -o -user 0 \) ! -perm -g+w ! -perm -o+w 2>/dev/null)" ]; then
+    cline _checks 3 "folder $CHK may be changed by others - checks not run" ""
+  elif ! command -v timeout >/dev/null 2>&1; then
+    cline _checks 3 "the command timeout is missing - checks not run" ""
+  else
+    # a private temporary folder (never a fixed name in /tmp - this may run as root)
+    tmpd=$(mktemp -d 2>/dev/null) || tmpd=""
+    if [ -n "$tmpd" ]; then
+      find "$CHK" -maxdepth 1 -type f -perm -u+x \( -user "$me" -o -user 0 \) ! -perm -g+w ! -perm -o+w 2>/dev/null | sort | head -n 50 > "$tmpd/list"
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        base=${f##*/}
+        # stdin from /dev/null: a check must not read the list of the loop; the exit code is that of the check
+        timeout "${WOMN_CHECK_TIMEOUT:-30}" "$f" < /dev/null > "$tmpd/out" 2>/dev/null; rc=$?
+        parsed=$(head -c 20000 "$tmpd/out" | awk -v file="$base" '
+          function esc(v) { gsub(/[\001-\037\177]/, " ", v); gsub(/\\/, "\\\\", v); gsub(/"/, "\\\"", v); return substr(v, 1, 300) }
+          $1 ~ /^[0-3]$/ && NF >= 3 {
+            val = "null"
+            if ($3 != "-") { split($3, m, "|"); split(m[1], kv, "="); split(kv[2], v, ";"); if (v[1] ~ /^-?[0-9]+(\.[0-9]+)?$/) val = v[1] }
+            text = ""; for (i = 4; i <= NF; i++) text = text (i > 4 ? " " : "") $i
+            printf "%s{\"name\":\"%s\",\"status\":%d,\"text\":\"%s\",\"value\":%s,\"file\":\"%s\"}", (n++ ? "," : ""), esc($2), $1, esc(text), val, esc(file)
+          }')
+        if [ "$rc" = 124 ]; then cline "$base" 3 "timeout (${WOMN_CHECK_TIMEOUT:-30} s)" "$base"
+        elif [ -n "$parsed" ]; then cj="$cj${cj:+,}$parsed"
+        else cline "$base" 3 "no line in the check format (exit code $rc)" "$base"; fi
+      done < "$tmpd/list"
+      rm -rf "$tmpd"
+    fi
+  fi
+fi
+
 macs=""
 for a in /sys/class/net/*/address; do
   [ -r "$a" ] || continue
@@ -186,7 +227,7 @@ for a in /sys/class/net/*/address; do
 done
 ips=$( (ip -o -4 addr show scope global 2>/dev/null || true) | awk '{split($4,a,"/"); printf "%s\"%s\"", (n++?",":""), a[1]}')
 
-body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj]}"
+body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj]}"
 if [ -n "$PIN" ]; then TLS="-k --pinnedpubkey $PIN"; else TLS=""; fi
 # shellcheck disable=SC2086
 printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer $TOKEN" -H 'X-WOMN-Request: 1' -H 'Content-Type: application/json' --data-binary @- "$URL" >/dev/null

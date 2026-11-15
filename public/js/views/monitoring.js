@@ -121,7 +121,7 @@ const METRIC_GROUP = {
   hostTempMax: 'temps', hostTemp: 'temps', temp: 'temps', diskTemp: 'temps', rfTemp: 'temps',
   hostPdHealth: 'disks', hostPdTemp: 'disks', hostPdWear: 'disks', disk: 'disks', raid: 'disks', volume: 'disks', health: 'machine',
   hostUpdates: 'care', hostUpdatesSec: 'care', hostReboot: 'care', hostAv: 'care', hostFirewall: 'care', hostEvCritical: 'care', hostEvErrors: 'care', hostCert: 'care',
-  upsPower: 'ups', upsCharge: 'ups', upsRuntime: 'ups', upsLoad: 'ups', supply: 'printer', pages: 'printer', printerErrors: 'printer', port: 'ports', portErrors: 'ports', portLoad: 'ports',
+  upsPower: 'ups', upsCharge: 'ups', upsRuntime: 'ups', upsLoad: 'ups', supply: 'printer', pages: 'printer', printerErrors: 'printer', port: 'ports', portErrors: 'ports', portLoad: 'ports', localCheck: 'checks',
   // hypervisor and controller values
   nodeOnline: 'machine', nodeCpu: 'machine', nodeMem: 'machine', nodeTemp: 'temps', storage: 'drives', datastore: 'drives',
   guestRunning: 'guests', backupAge: 'backup', backupFailed: 'backup', groupAge: 'backup', tasksFailed: 'backup',
@@ -131,7 +131,7 @@ const METRIC_GROUP = {
   cloudAlarms: 'cloud', cloudResources: 'cloud', costMonth: 'cloud',
   jobResult: 'backup', jobAge: 'backup', jobsFailed: 'backup', repoUsed: 'drives', m365Service: 'cloud', m365Issues: 'cloud', m365Sku: 'cloud', m365Free: 'cloud',
 };
-const GROUP_ORDER = ['cloud', 'machine', 'temps', 'drives', 'disks', 'services', 'care', 'guests', 'databases', 'backup', 'hardware', 'network', 'ups', 'printer', 'ports', 'other'];
+const GROUP_ORDER = ['checks', 'cloud', 'machine', 'temps', 'drives', 'disks', 'services', 'care', 'guests', 'databases', 'backup', 'hardware', 'network', 'ups', 'printer', 'ports', 'other'];
 const groupRank = (x) => { const i = GROUP_ORDER.indexOf(METRIC_GROUP[x.metric] || 'other'); return i < 0 ? GROUP_ORDER.length : i; };
 // within a group: by kind of value, the hottest of all first, temperatures and the like by name
 const byKind = (a, b) => groupRank(a) - groupRank(b) || (a.metric === 'hostTempMax' ? -1 : b.metric === 'hostTempMax' ? 1 : 0)

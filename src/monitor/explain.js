@@ -5,7 +5,7 @@ import { stateOf, HYSTERESIS } from './sensors.js';
 
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
 // Sensors that judge a state, not a number against a limit
-const STATE_METRICS = new Set(['disk', 'raid', 'health', 'upsPower', 'service', 'hostOnline', 'nodeOnline', 'netOnline', 'guestRunning', 'port',
+const STATE_METRICS = new Set(['localCheck', 'disk', 'raid', 'health', 'upsPower', 'service', 'hostOnline', 'nodeOnline', 'netOnline', 'guestRunning', 'port',
   'printerErrors', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfMemory', 'rfCpu', 'cloudCheck', 'dbState', 'jobResult', 'm365Service', 'm365Sku']);
 
 export function explain(db, settings, m) {

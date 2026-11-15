@@ -20,6 +20,7 @@ Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans y
 | 🖥️ **Virtualization and hardware** | Proxmox VE/Backup Server (clusters too), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity via Redfish |
 | 🧪 **More checks** | Mail servers (SMTP/IMAP/POP3 with TLS and certificate), DNS, LDAP/Active Directory, time servers (NTP), Microsoft SQL Server |
 | 🔔 **Messages** | Receive SNMP traps and syslog, match them to the device, alarm at once |
+| 🧩 **Own checks** | Own scripts in the Checkmk format (local checks) on Windows and Linux machines - only files nobody else can change |
 | 💾 **Veeam** | Jobs with last result, repositories - Veeam Backup & Replication 12+ (REST, read only) |
 | ☁️ **Cloud** | AWS, Azure, Google Cloud, Microsoft 365 (service health, incidents, licences): VMs with the checks of the provider, databases, load balancers, alarms, costs - read only |
 | 💻 **Machines without agent** | Windows and Linux report through a small script: CPU, RAM, drives, services, updates, antivirus, temperatures |
