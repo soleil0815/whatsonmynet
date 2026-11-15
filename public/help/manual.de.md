@@ -95,6 +95,8 @@ Tokens, Schlüssel und Webhook-Adressen werden verschlüsselt gespeichert und ni
 
 **Was in einem Alarm steht:** Webseite, Port und Ping melden „ist nicht erreichbar“. Ein Messwert meldet „Grenzwert überschritten - 83,9 °C (≥ 80)“ und später „wieder im normalen Bereich“, ein Zustand (Dienst, VM, Festplatte, Container …) „Störung“ und „wieder in Ordnung“, ein Sensor ohne aktuelle Werte „keine aktuellen Werte“. Deutsche Kanäle bekommen auch die Einzelheiten auf Deutsch.
 
+**So wird geprüft:** Jede Detailansicht eines Monitors oder Sensors zeigt, was genau gefragt wird (Adresse, Statuscode, Suchwort, OID, Freigabe, Messwert eines Geräts oder Hypervisors), woher die Werte kommen und wie alt sie sind (z. B. „neu alle 5 min · Stand vor 2 min“), wann alarmiert wird - mit Grenze, Abstand für die Entwarnung und Zahl der Fehlversuche - und die letzte Antwort im Wortlaut. So lässt sich jede Meldung bis zu ihrer Quelle zurückverfolgen.
+
 ### Mehrere Monitore oder Sensoren auf einmal ändern
 
 In den Listen *Monitore* und *Sensoren* hat jede Zeile ein Kästchen, das Kästchen im Tabellenkopf nimmt alle gerade angezeigten (Suche und Filter gelten). Darüber erscheint eine Leiste mit der Anzahl und den Knöpfen **Pausieren**, **Fortsetzen**, **Löschen** (mit Rückfrage) und **Gemeinsam bearbeiten**. Im Dialog stehen die Felder aus *Erweitert*: Prüfen alle, Alarm nach … Fehlversuchen, Zeitlimit, Alarm wiederholen, Eskalation sowie - nach einem Haken bei *Kanäle ändern* - die Eskalations- und Benachrichtigungskanäle; bei Sensoren außerdem Bedingung und Grenzwert. Alle Felder stehen auf *unverändert*: Geändert wird nur, was du ausfüllst, alles andere bleibt bei jedem Monitor, wie es war. Ist ein Wert ungültig (z. B. weniger als 20 Sekunden), wird nichts geändert. Bedingung und Grenzwert gehen nur an Sensoren mit Zahlenwert; Zustands-Sensoren (online, in Ordnung …) werden dabei übersprungen, die Meldung nennt ihre Anzahl. Bearbeiter mit Standort-Beschränkung können nur Monitore ihrer Standorte auswählen.
@@ -257,6 +259,10 @@ Beim Backup Server geht es genauso unter *Konfiguration → Zugriffskontrolle*: 
 ### Sensoren anlegen
 
 In der Detailansicht **Sensor anlegen** - z. B. „VM 101 läuft“, „Speicher local-lvm unter 85 %“ oder „letzte Sicherung älter als 26 Stunden“. Jeder Sensor ist ein Monitor mit Verlauf und Benachrichtigung.
+
+### Fehlgeschlagene Aufgaben
+
+Fehlgeschlagene Aufgaben (Sicherung, Prüfung, Aufräumen, Paketlisten …) stehen mit verständlichem Namen da und darunter mit den Fehlerzeilen aus dem Aufgabenprotokoll von Proxmox - man sieht also, *warum* etwas schiefging. Sicherungen, Prüfungen und Synchronisierungen zählen als Störung (rot), Wartungsaufgaben wie Aufräumen oder Paketlisten als Hinweis (gelb). Scheitert das Aktualisieren der Paketlisten nur an einer fremden Paketquelle (z. B. Webmin), ist das nur ein Hinweis und wird nicht als Fehler gezählt; scheitert eine offizielle Quelle von Proxmox oder Debian, gibt es weiter einen Alarm.
 
 ### Wenn etwas nicht klappt
 

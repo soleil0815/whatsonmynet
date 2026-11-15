@@ -10,6 +10,9 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 - Sensors with a limit only give the all-clear with a margin (2 °C or 2 percentage points) - a sensor swinging around its limit no longer alarms every 5 minutes
 - Proxmox: a value missing for once now says "no value at the moment (not delivered by the host)" instead of "the account probably lacks read rights" - that only when rights are really missing
 - Diagnostic package: the SMTP user name becomes a placeholder too
+- Every monitor and sensor shows "How it is checked": what exactly is asked, where the values come from and how old they are, when it alarms (with the margin for the all-clear) and the last answer word for word
+- Proxmox VE and Backup Server: failed tasks show the error lines from the task log and a plain name instead of "aptupdate" or "verificationjob". Upkeep tasks are yellow instead of red
+- Package lists: when only a third-party repository fails (e.g. Webmin), that is a note, not an error - it alarms only when an official Proxmox or Debian repository fails
 
 ## 0.26.0 - 2026-11-15
 
