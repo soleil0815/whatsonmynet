@@ -116,6 +116,10 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
     for (const p of (s.data.ports || []).filter((x) => !x.lag)) {
       out.push({ metric: 'port', key: String(p.ifIndex), name: `${p.name}${p.alias ? ` (${p.alias})` : ''}`, value: p.status, unit: '', kind: 'state' });
     }
+    // load: only where the switch delivers the byte counters (from the second poll on); uplinks (LAG) too
+    for (const p of (s.data.ports || []).filter((x) => x.loadPct !== null && x.loadPct !== undefined)) {
+      out.push({ metric: 'portLoad', key: String(p.ifIndex), name: `${p.name}${p.alias ? ` (${p.alias})` : ''}`, value: p.loadPct, unit: '%', kind: 'number', op: 'ge', threshold: 80 });
+    }
     for (const p of (s.data.ports || []).filter((x) => x.inErrors > 0)) {
       out.push({ metric: 'portErrors', key: String(p.ifIndex), name: p.name, value: p.inErrors, unit: '', kind: 'number', op: 'gt', threshold: p.inErrors + 1000 });
     }
@@ -191,6 +195,13 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
     case 'servicesFailed': { const f = (s.data.services || []).filter((v) => v.failed); val = num(f.length); if (f.length && compare(o.op, f.length, o.threshold)) return { ok: false, ms: f.length, message: `${label}: ${f.map((v) => v.display || v.name).slice(0, 5).join(', ')}`, data: valueData(f.length, '', o) }; break; }
     case 'service': { const v = (s.data.services || []).find((y) => y.name === o.key); if (!v) return { ok: false, ms: null, message: `${label}: not found` };
       return v.state === 'running' ? { ok: true, ms: null, message: `${label}: running`, data: { state: 'running' } } : { ok: false, ms: null, message: `${label}: ${v.state}`, data: { state: v.state === 'failed' ? 'failed' : 'stopped' } }; }
+    case 'portLoad': { const p = (s.data.ports || []).find((y) => String(y.ifIndex) === String(o.key)); if (!p) return { ok: false, ms: null, message: `${label}: not found` };
+      // a port that is down carries nothing - whether it should be up, its own sensor says
+      if (p.status !== 'up') return { ok: true, ms: 0, message: `${label}: no traffic (port ${p.status})`, data: valueData(0, '%', o) };
+      if (p.loadPct === null || p.loadPct === undefined) return { ok: true, ms: null, message: `${label}: measuring - value after the next query` };
+      val = num(p.loadPct, '%', { inBps: p.inBps, outBps: p.outBps });
+      val.text = `${p.loadPct} % (in ${bitRate(p.inBps)}, out ${bitRate(p.outBps)})`;
+      break; }
     case 'portErrors': { const p = (s.data.ports || []).find((y) => String(y.ifIndex) === String(o.key)); if (!p) return { ok: false, ms: null, message: `${label}: not found` }; val = num(p.inErrors); break; }
     case 'upsPower': { const u = s.data.ups; if (!u) return { ok: false, ms: null, message: `${label}: no UPS` };
       const extra = [u.charge !== null ? `${u.charge} %` : '', u.runtime !== null ? `${Math.round(u.runtime / 60)} min` : ''].filter(Boolean).join(', ');
@@ -242,6 +253,13 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
 }
 
 /** What the overview shows next to a measured value: the value, its unit and the alarm limit (plus used/total etc.) */
+/** 123456789 → "123.5 Mbit/s" */
+export function bitRate(bps) {
+  const n = Number(bps) || 0;
+  const [d, u] = n >= 1e9 ? [1e9, 'G'] : n >= 1e6 ? [1e6, 'M'] : n >= 1e3 ? [1e3, 'k'] : [1, ''];
+  return `${Math.round((n / d) * 10) / 10} ${u}bit/s`;
+}
+
 export function valueData(v, unit, o, extra = {}) {
   const n = Number(v);
   return { v: Number.isFinite(n) ? n : String(v), unit: unit || '', op: o.op || '', threshold: o.threshold ?? '', ...extra };

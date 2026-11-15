@@ -16,6 +16,37 @@ const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return de
 // up to KEEP_POLLS polls (marked "kept"), so a sensor does not alarm "not found" at night; gone longer = really gone.
 export const KEEP_POLLS = 2;
 const TABLES = { volumes: 'name', disks: 'name', raids: 'name' };
+/**
+ * Load of the switch ports between two polls, from the 64-bit byte counters (ifHCIn/OutOctets): bit/s in and out, and
+ * in percent of the port speed. Only when the previous poll is 30 s to 6 h old and the switch was not restarted in
+ * between (counters start at 0 again) - otherwise no value this time rather than a wrong one.
+ * Changes `data.ports` in place.
+ */
+export function portRates(prevData, prevAt, data, at) {
+  if (!prevData?.ports?.length || !data?.ports?.length) return data;
+  const dt = (Date.parse(at) - Date.parse(prevAt)) / 1000;
+  if (!(dt >= 30 && dt <= 6 * 3600)) return data;
+  if (data.uptime && prevData.uptime && data.uptime < prevData.uptime) return data;
+  const before = new Map(prevData.ports.map((p) => [p.ifIndex, p]));
+  const pct = (bps, mbit) => Math.min(100, Math.round((bps / (mbit * 1e6)) * 1000) / 10);
+  for (const p of data.ports) {
+    const q = before.get(p.ifIndex);
+    if (!q || [p.inOctets, p.outOctets, q.inOctets, q.outOctets].some((x) => x === null || x === undefined || !Number.isFinite(x))) continue;
+    const dIn = p.inOctets - q.inOctets; const dOut = p.outOctets - q.outOctets;
+    // a counter that went back: reset of the port or its module - no value this time
+    if (dIn < 0 || dOut < 0) continue;
+    p.inBps = Math.round((dIn * 8) / dt);
+    p.outBps = Math.round((dOut * 8) / dt);
+    if (p.speed > 0) {
+      p.inPct = pct(p.inBps, p.speed);
+      p.outPct = pct(p.outBps, p.speed);
+      p.loadPct = Math.max(p.inPct, p.outPct);
+    }
+  }
+  data.rateSeconds = Math.round(dt);
+  return data;
+}
+
 export function carryOver(prev, next) {
   if (!prev || !next) return next;
   const out = { ...next };
@@ -136,6 +167,7 @@ export function createSnmpDevices({ db, settings, channels }) {
         storeMacs(d.id, data, at);
         delete data.macs;
       }
+      if (data && kind === 'switch' && prev && prev.kind === kind && prev.ok) portRates(parse(prev.data), prev.at, data, at);
       if (data && prev && prev.kind === kind) data = carryOver(parse(prev.data), data);
       if (data && kind === 'nas') alerts = await notifyNas(d, alerts, data, at);
       // Serial number, model, firmware from the device itself into the inventory (only empty fields)
