@@ -58,6 +58,13 @@ const PATTERNS = [
   [/^up · (.*)$/, 'verbunden · $1'],
   [/^unexpected answer (.*)$/, 'unerwartete Antwort $1'],
   [/^failed: (.*)$/, 'gestört: $1'],
+  // cloud accounts
+  [/^no value while it does not run$/, 'kein Wert, solange sie nicht läuft'],
+  [/^(\S+) - no check while it does not run$/, (_, st) => `${WORDS[st] || st} - keine Prüfung, solange sie nicht läuft`],
+  [/^not found - the account lacks rights: (.*)$/, 'nicht gefunden - dem Konto fehlen Rechte: $1'],
+  [/^instance check failed$/, 'Instanz-Prüfung fehlgeschlagen'],
+  [/^system check failed$/, 'System-Prüfung fehlgeschlagen'],
+  [/^system check failed, instance check failed$/, 'System- und Instanz-Prüfung fehlgeschlagen'],
   [/^device has a new IP \((.*)\) - please enter the password again$/, 'Gerät hat neue IP ($1) – Passwort bitte neu eingeben'],
   [/^(\S+): no such value$/, '$1: diesen Wert gibt es nicht'],
   [/^program versions differ \(master (.*), here (.*)\) - update both$/, 'Programmversionen unterschiedlich (Master $1, hier $2) - beide aktualisieren'],

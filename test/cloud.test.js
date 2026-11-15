@@ -365,3 +365,10 @@ test('Google Cloud: signed sign-in, VMs with CPU, a service not switched on is a
 test('cleanCloud: Google key and project', () => {
   assert.throws(() => cleanCloud('gcp', { secret: 'not json', project: 'firma-prod-1' }), (e) => e.code === 'err.cloudGcpKey');
 });
+
+test('German alarms: the cloud messages are translated', async () => {
+  const { checkText } = await import('../public/js/checktext.js');
+  assert.equal(checkText('CPU web01: no value while it does not run'), 'CPU web01: kein Wert, solange sie nicht läuft');
+  assert.equal(checkText('DB: not found - the account lacks rights: rds:DescribeDBInstances'), 'DB: nicht gefunden - dem Konto fehlen Rechte: rds:DescribeDBInstances');
+  assert.equal(checkText('Prüfung web01: instance check failed'), 'Prüfung web01: Instanz-Prüfung fehlgeschlagen');
+});
