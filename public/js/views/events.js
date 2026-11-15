@@ -8,6 +8,7 @@ import { state, fail, navigate } from '../app.js';
 import { pageHead, field, input, btn, formData } from './common.js';
 import { openMonitorForm } from './monitoring.js';
 import { lockForEditing, isReadOnly } from './failover.js';
+import { openRuleForm } from './eventrules.js';
 
 export const SEV = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'];
 const sevTone = (s) => (s <= 3 ? 'bad' : s === 4 ? 'warn' : s === 5 ? '' : 'muted');
@@ -61,9 +62,13 @@ export async function renderEvents(main) {
           h('div', { class: 'sub mono' }, [r.device_id ? r.source_ip : '', r.host && r.host !== r.device_name ? r.host : ''].filter(Boolean).join(' · ') || null)),
         h('td', {}, h('span', { class: `badge ${sevTone(r.severity) === 'muted' ? '' : `badge-${sevTone(r.severity)}`}` }, sevLabel(r.severity)),
           h('div', { class: 'sub' }, r.kind === 'trap' ? 'Trap' : 'Syslog')),
-        h('td', { class: 'ev-text' }, r.app ? h('strong', { class: 'small' }, `${r.app}: `) : null, h('span', { class: 'small' }, r.text),
-          r.oid && r.kind === 'trap' && !r.app ? h('div', { class: 'sub mono' }, r.oid) : null),
-        h('td', { class: 'min' }, isReadOnly() ? null : btn(t('ev.watch'), { class: 'btn btn-sm btn-ghost', title: t('ev.watchHint'), onclick: () => watch(r) }, 'pulse'))))))))
+        h('td', { class: 'ev-text' }, r.app && r.event_id === null ? h('strong', { class: 'small' }, `${r.app}: `) : null, h('span', { class: 'small' }, r.text),
+          r.oid && r.kind === 'trap' && !r.app ? h('div', { class: 'sub mono' }, r.oid) : null,
+          // Windows (NXLog): event id, log, source and account below the text, as in the event viewer
+          r.event_id !== null && r.event_id !== undefined ? h('div', { class: 'sub' }, [t('ev.eventId', { id: r.event_id }), r.channel, r.event_id !== null && r.app ? r.app : '', r.account].filter(Boolean).join(' · ')) : null),
+        h('td', { class: 'min nowrap' }, isReadOnly() ? null : [
+          btn(t('ev.watch'), { class: 'btn btn-sm btn-ghost', title: t('ev.watchHint'), onclick: () => watch(r) }, 'pulse'),
+          btn(t('ev.rule'), { class: 'btn btn-sm btn-ghost', title: t('ev.ruleHint'), onclick: () => ruleFrom(r) }, 'mail')])))))))
       : h('div', { class: 'panel panel-pad muted' }, off ? t('ev.noneOff') : q.value || kind || maxSeverity < 7 ? t('ev.noMatch') : t('ev.none')));
     mount(more, hasMore ? btn(t('ev.more'), { class: 'btn btn-sm', onclick: () => load(true) }) : null);
     lockForEditing(body);
@@ -74,6 +79,16 @@ export async function renderEvents(main) {
     const match = r.kind === 'trap' && r.app ? r.app : words.length >= 4 && String(r.text).includes(words) ? words : '';
     openMonitorForm(null, () => navigate('/monitoring'), { type: 'event', name: `${r.device_name || r.source_ip}: ${r.app || t('ev.message')}`.slice(0, 120),
       device_id: r.device_id || null, options: { source: r.kind, maxSeverity: Math.max(r.severity, 3), match, holdMin: 15 } });
+  }
+  // A message → an event rule that sends the same kind by mail / to the ticket system: event id and source for Windows,
+  // otherwise the sender and the start of the text
+  function ruleFrom(r) {
+    const words = String(r.text).replace(/\d+/g, ' ').split(/\s+/).filter((w) => w.length > 2).slice(0, 3).join(' ');
+    const match = r.event_id !== null && r.event_id !== undefined
+      ? { eventIds: String(r.event_id), source: r.app || '', channel: r.app ? '' : r.channel || '' }
+      : { from: r.device_name || r.host || r.source_ip, words: words.length >= 4 && String(r.text).includes(words) ? words : '', kind: r.kind, maxSeverity: Math.max(r.severity, 3) };
+    const what = r.event_id !== null && r.event_id !== undefined ? `${t('ev.eventId', { id: r.event_id })}${r.app ? ` ${r.app.replace(/^Microsoft-Windows-/, '')}` : ''}` : `${r.device_name || r.source_ip}: ${r.app || t('ev.message')}`;
+    openRuleForm(null, () => navigate('/events/rules'), { name: what.slice(0, 120), match });
   }
   function settingsDialog(cfg) {
     const traps = h('input', { type: 'checkbox', name: 'traps', checked: cfg.traps });
@@ -103,6 +118,7 @@ export async function renderEvents(main) {
   q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => load(), 300); });
   sevSel.addEventListener('change', () => { maxSeverity = Number(sevSel.value); load(); });
   const head = pageHead(t('ev.title'), t('ev.lead'),
+    btn(t('ev.rules'), { class: 'btn', onclick: () => navigate('/events/rules') }, 'mail'),
     admin ? btn(t('ev.settings'), { class: 'btn', onclick: () => info && settingsDialog(info.settings) }, 'settings') : null,
     btn(t('ev.reload'), { class: 'btn', onclick: () => load() }, 'refresh'));
   mount(body, head, statusBox,
