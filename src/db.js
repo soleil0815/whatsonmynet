@@ -715,6 +715,19 @@ const EVENTS_SCHEMA = [
    );
    CREATE INDEX IF NOT EXISTS ev.event_rule_hits_open ON event_rule_hits(rule_id, sent_at);
    CREATE INDEX IF NOT EXISTS ev.event_rule_hits_event ON event_rule_hits(event_id);`,
+  // 2: one row per sender (the overview "by sender" without counting millions of rows), messages of one sender fast
+  `CREATE INDEX IF NOT EXISTS ev.events_in_source ON events_in(source_ip, id);
+   CREATE TABLE IF NOT EXISTS ev.event_senders (
+     source_ip TEXT PRIMARY KEY,
+     device_id INTEGER,
+     host TEXT NOT NULL DEFAULT '',
+     first_at TEXT NOT NULL,
+     last_at TEXT NOT NULL,
+     last_id INTEGER NOT NULL
+   );
+   INSERT OR REPLACE INTO ev.event_senders(source_ip, device_id, host, first_at, last_at, last_id)
+     SELECT e.source_ip, e.device_id, e.host, g.first_at, e.at, e.id
+     FROM (SELECT source_ip, MIN(at) first_at, MAX(id) last_id FROM ev.events_in GROUP BY source_ip) g JOIN ev.events_in e ON e.id = g.last_id;`,
 ];
 export const eventsFile = (dbFile) => (dbFile === ':memory:' ? ':memory:' : path.join(path.dirname(dbFile), 'events.sqlite'));
 

@@ -155,8 +155,10 @@ export function createMonitoringApi(ctx) {
   r.get('/events', editor, unscoped, (req, res) => {
     const q = req.query || {};
     res.json({ status: ctx.events.status(), settings: eventSettings(),
-      list: ctx.events.list({ q: String(q.q ?? ''), kind: String(q.kind ?? ''), maxSeverity: q.maxSeverity ?? 7, device: q.device || null, before: q.before || null, limit: q.limit || 200 }) });
+      list: ctx.events.list({ q: String(q.q ?? ''), kind: String(q.kind ?? ''), maxSeverity: q.maxSeverity ?? 7, device: q.device || null, source: String(q.source ?? ''), before: q.before || null, limit: q.limit || 200 }) });
   });
+  // the overview by sender (the list of all messages floods quickly)
+  r.get('/events/senders', editor, unscoped, (req, res) => res.json({ status: ctx.events.status(), settings: eventSettings(), senders: ctx.events.senders({ q: String(req.query?.q ?? '') }) }));
   r.put('/events/settings', admin, (req, res) => {
     const b = req.body || {};
     const keep = Number(b.keepDays ?? settings.get('events.keepDays'));
