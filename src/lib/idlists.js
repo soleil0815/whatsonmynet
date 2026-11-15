@@ -51,8 +51,10 @@ export function forgetMonitors(db, ids) {
 /** Devices deleted: out of reports, and their monitors out of everything above */
 export function forgetDevices(db, ids, monitorIds = []) {
   for (const id of ids) dropId(db, 'reports', 'device_ids', id, offReport(db));
-  // an event rule for only this device is switched off (the id could be given to another device later)
+  // an event rule for only this device is switched off (the id could be given to another device later); its messages
+  // stay, without the device (they live in their own file - no foreign key does it there)
   for (const id of ids) {
+    db.prepare('UPDATE events_in SET device_id=NULL WHERE device_id=?').run(Number(id));
     db.prepare("UPDATE event_rules SET enabled=0, match=json_set(match, '$.deviceId', NULL) WHERE json_extract(match, '$.deviceId') = ?").run(Number(id));
   }
   forgetMonitors(db, monitorIds);

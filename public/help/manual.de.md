@@ -207,7 +207,8 @@ Unter *Meldungen → Ereignisregeln* legst du fest, welche Meldungen wohin gehen
 **Überwachen:** Bei jeder Meldung macht **Überwachen** daraus einen Monitor der Art *Meldung (Trap/Syslog)*: vom selben Gerät (oder jedem Absender), Trap oder Syslog, ab welcher Schwere, optional mit einem Text, den die Meldung enthalten muss. Kommt eine passende Meldung, alarmiert der Monitor **sofort** und bleibt so lange gestört, wie eingestellt (Standard 15 Minuten); kommt sie wieder, beginnt die Zeit neu.
 
 **Gut zu wissen:**
-- Je Absender höchstens 20 Meldungen pro Sekunde und höchstens 200 000 insgesamt (Schutz vor Flut); aufbewahrt 30 Tage (einstellbar).
+- Die Meldungen liegen in einer **eigenen Datei** (`data/events.sqlite`) - nicht in der Datenbank und nicht in den täglichen Sicherungen. Aufbewahrt werden sie 30 Tage in höchstens 2 GB (beides unter *Empfang einstellen*); was zuerst erreicht ist, zählt, die ältesten gehen zuerst. Wird der Datenträger knapp, bleiben mindestens 10 % (und 1 GB) frei - dann wird früher aufgeräumt. Die Seite zeigt den belegten Platz, die Meldungen pro Tag und wie viele Tage der Platz reicht; reicht er nicht für die eingestellten Tage, steht dort, von wem die meisten Meldungen kommen.
+- Je Absender höchstens 20 Meldungen pro Sekunde, 300 insgesamt (Schutz vor Flut).
 - *Nur von Geräten im Inventar* verwirft Meldungen fremder Absender. Syslog über UDP lässt sich fälschen - für Alarme lieber Traps mit eigener Community nutzen.
 - Bei der Ausfallsicherung empfängt jede Installation für sich: In den Geräten Master **und** Standby als Ziel eintragen.
 - SNMPv3-Traps werden (noch) nicht angenommen.

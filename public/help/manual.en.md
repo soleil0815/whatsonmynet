@@ -207,7 +207,8 @@ Under *Messages → Event rules* you set which messages go where - **apart from 
 **Watching:** at every message **Watch** turns it into a monitor of the kind *Message (trap/syslog)*: from the same device (or any sender), trap or syslog, from which severity on, optionally with a text the message must contain. When a matching message comes in, the monitor alarms **at once** and stays down as long as set (default 15 minutes); if it comes again, the time starts over.
 
 **Good to know:**
-- At most 20 messages per second per sender and at most 200 000 in all (flood protection); kept 30 days (adjustable).
+- The messages are in a **file of their own** (`data/events.sqlite`) - not in the database and not in the daily backups. They are kept 30 days in at most 2 GB (both under *Receiving settings*); whichever comes first counts, the oldest go first. When the disk gets short, at least 10 % (and 1 GB) stay free - the cleanup then starts earlier. The page shows the space used, the messages per day and how many days the space lasts; if it does not last for the days set, it says who sends the most.
+- At most 20 messages per second per sender, 300 in all (flood protection).
 - *Only from devices in the inventory* drops messages of other senders. Syslog over UDP can be forged - for alarms better use traps with a community of your own.
 - With failover every installation receives for itself: enter master **and** standby as targets in the devices.
 - SNMPv3 traps are not taken (yet).
