@@ -3,9 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Meldungen: was gespeichert wird - für alle ab einer Schwere (Empfang einstellen) und je Absender eigener Filter (alles, ab Warnung, ab Fehler … oder stumm); stumme Absender bleiben mit der Zahl der verworfenen Meldungen in der Liste',
     'Windows-Ereignisse nach Nummer filtern (Empfang einstellen): nur bestimmte Nummern annehmen und/oder bestimmte nie (z. B. 8004 Gruppenrichtlinie, 4624/4634 An- und Abmeldung); Regeln für nicht angenommene Nummern werden abgelehnt, die Regelliste warnt',
     'Umlaute: UTF-8 und Codepage von Windows gemischt in einer Zeile werden beide richtig gelesen („NT-AUTORITÄT … für“ statt „… fÃ¼r“)',
   ], en: [
+    'Messages: what is kept - for all from a severity on (Receiving settings) and per sender its own filter (everything, warning and worse, error and worse … or muted); muted senders stay in the list with the number of dropped messages',
     'Filter Windows events by id (Receiving settings): only take some ids and/or never some (e.g. 8004 group policy, 4624/4634 logon and logoff); rules for ids not taken are refused, the rule list warns',
     'Umlauts: UTF-8 and the Windows code page mixed in one line are both read right ("NT-AUTORITÄT … für" instead of "… fÃ¼r")',
   ] },

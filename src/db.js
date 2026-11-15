@@ -678,6 +678,14 @@ export const MIGRATIONS = [
      WHERE NOT EXISTS (SELECT 1 FROM ev.events_in) ORDER BY id;
    DROP TABLE main.event_rule_hits;
    DROP TABLE main.events_in;`,
+  // 31: what is kept of a sender's messages (a switch only from "warning", a chatty device not at all) - settings,
+  // so in the database (and on the standby), not in the messages file
+  `CREATE TABLE event_source_filters (
+     source_ip TEXT PRIMARY KEY,
+     min_severity INTEGER NOT NULL,
+     updated_at TEXT NOT NULL,
+     updated_by TEXT NOT NULL DEFAULT ''
+   );`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

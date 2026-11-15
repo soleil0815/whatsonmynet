@@ -183,3 +183,26 @@ test('Windows events by id: only these / never these; other messages untouched; 
   assert.deepEqual(rules.list().find((r) => r.id === ok.id).blocked, ['1116-1117'], 'the list says when a rule can no longer fire');
   db.close();
 });
+
+test('what is kept: from a severity on for all, per sender stricter or looser, muted senders stay in the list', () => {
+  const db = openDatabase(path.join(dirOf('evf2'), 'whatsonmynet.sqlite'));
+  const settings = createSettings(db);
+  const ev = createEvents({ db, settings });
+  const msg = (ip, severity) => ev.receive('syslog', ip, { severity, text: `s${severity}` });
+  settings.set('events.minSeverity', 4);
+  assert.equal(msg('10.0.1.1', 6), null, 'info is not kept when "warning and worse" is set');
+  assert.ok(msg('10.0.1.1', 4));
+  ev.setSenderFilter('10.0.1.2', 7);               // this server: everything
+  assert.ok(msg('10.0.1.2', 7));
+  ev.setSenderFilter('10.0.1.3', -1);              // a chatty switch: nothing
+  assert.equal(msg('10.0.1.3', 0), null);
+  assert.equal(msg('10.0.1.3', 3), null);
+  const s = ev.senders({ fresh: true });
+  const of = (ip) => s.find((x) => x.source_ip === ip);
+  assert.deepEqual([of('10.0.1.3').filter, of('10.0.1.3').dropped, of('10.0.1.3').last_at], [-1, 2, null], 'muted and nothing stored - still listed');
+  assert.deepEqual([of('10.0.1.2').filter, of('10.0.1.1').filter, of('10.0.1.1').dropped], [7, null, 1]);
+  ev.setSenderFilter('10.0.1.3', null);
+  assert.ok(msg('10.0.1.3', 3), 'back to "as for all"');
+  assert.equal(ev.status().filtered, 3);
+  db.close();
+});
