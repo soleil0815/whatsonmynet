@@ -23,7 +23,8 @@ export function monitorDot(status) {
 const PX_STATE = ['nodeOnline', 'guestRunning', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume', 'cloudCheck', 'dbState'];
 const PX_UNIT = { rfTemp: ' °C', rfDriveLife: ' %', rfWatts: ' W', nodeCpu: ' %', nodeMem: ' %', nodeTemp: ' °C', storage: ' %', datastore: ' %', backupAge: ' h', groupAge: ' h',
   cloudCpu: ' %', dbCpu: ' %', dbStorage: ' %' };
-export const isValueType = (m) => m.type === 'sensor' || m.type === 'snmp' || (m.type === 'proxmox' && !PX_STATE.includes(m.options?.metric));
+// (a message monitor has no response time either: its chart shows when it alarmed)
+export const isValueType = (m) => m.type === 'sensor' || m.type === 'snmp' || m.type === 'event' || (m.type === 'proxmox' && !PX_STATE.includes(m.options?.metric));
 const unitOf = (m) => (m.type === 'proxmox' ? PX_UNIT[m.options?.metric] || '' : m.options?.unit ? ` ${m.options.unit}` : '');
 /** Last measured value with its unit, '–' while there is none */
 const valueText = (m) => (m.last_ms === null || m.last_ms === undefined ? '–' : `${m.last_ms}${unitOf(m)}`);
@@ -89,6 +90,7 @@ export function nowParts(m) {
     return { main, sub: parts.join(' · '), tone, bar: d.unit === '%' && typeof d.v === 'number' ? d.v : null };
   }
   if (m.type === 'sensor' && m.status === 'up' && m.last_message) return { main: checkText(m.last_message, getLang()).replace(/^[^:]*:\s*/, ''), sub: '', tone: 'ok' };
+  if (m.type === 'event') return { main: m.status === 'down' ? t('ev.now.alarm') : t('ev.now.quiet'), sub: m.status === 'down' && m.data?.count ? t(m.data.count === 1 ? 'ev.now.count1' : 'ev.now.count', { n: m.data.count }) : '', tone: m.status === 'down' ? 'bad' : 'ok' };
   if (isValueType(m)) return { main: valueText(m), sub: '', tone: m.status === 'down' ? 'bad' : 'ok' };
   if (m.status === 'up' && m.last_ms !== null && m.last_ms !== undefined) return { main: `${m.last_ms} ms`, sub: '', tone: 'ok', plain: true };
   return { main: '–', sub: '', tone: 'muted', plain: true };
@@ -162,6 +164,7 @@ export function sensorLabel(x) {
 const noUnit = (s) => String(s || '').replace(/\s\((%|h|°C)\)$/, '');
 export function targetText(m) {
   if (m.type === 'proxmox') return noUnit(m.target);
+  if (m.type === 'event') return m.target === '*' ? t('ev.f.anySender') : m.target;
   if (m.type === 'docker') return m.docker_host ? `${m.target} @ ${m.docker_host.name}` : m.target;
   if (m.type === 'sensor') return m.device_name ? `${m.device_name} · ${noUnit(m.target)}` : noUnit(m.target);
   if (m.type === 'snmp') return `${m.target}:${m.port} · ${m.options?.oid || ''}`;
@@ -404,7 +407,7 @@ async function renderDetail(main, id) {
         m.cert_valid_to ? h('div', { class: `figure${m.cert_days_left <= 14 ? ' alert' : ''}` }, h('b', {}, m.cert_days_left < 0 ? t('mon.certExpired') : m.cert_days_left),
           h('span', {}, t('mon.certLeft', { date: fmtDate(m.cert_valid_to, getLang(), false) }))) : null),
       h('section', { class: 'panel panel-pad' },
-        h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '10px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, isValueType(m) ? t('sens.chart') : t('mon.chart')), span),
+        h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '10px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, m.type === 'event' ? t('ev.chart') : isValueType(m) ? t('sens.chart') : t('mon.chart')), span),
         historyChart(m, hours, { valueMode: isValueType(m) }),
         m.history ? h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, t(isValueType(m) ? 'mon.histLegendValue' : 'mon.histLegend', { bucket: m.bucketHours >= 24 ? t('mon.histDay') : t('mon.hist6h') })) : null),
       howPanel(m),
@@ -444,6 +447,9 @@ export function howPanel(m) {
     smb: () => t('how.smb', { target }),
     docker: () => t('how.docker', { host: w.dockerHost || '–', target }),
     sensor: () => t('how.sensor', { label: w.label, src: t(`how.src.${w.source?.kind || 'none'}`) }),
+    event: () => t('how.event', { kind: w.eventSource === 'any' ? t('ev.f.anyKind') : w.eventSource === 'trap' ? 'SNMP-Trap' : 'Syslog', from: w.device || t('ev.f.anySender'),
+      sev: w.maxSeverity >= 7 ? t('ev.f.every') : t('ev.f.upTo', { sev: t(`ev.sev.${['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'][w.maxSeverity]}`) }) })
+      + (w.match ? ` · ${t('how.eventMatch', { text: w.match })}` : ''),
     proxmox: () => t('how.proxmox', { label: w.label, host: w.source?.name || '–', kind: t(`virt.k.${w.source?.kind}`) === `virt.k.${w.source?.kind}` ? (w.source?.kind || '') : t(`virt.k.${w.source?.kind}`) }),
   }[m.type];
   row('how.what', what ? what() : t('how.db', { target }));
@@ -467,6 +473,8 @@ export function howPanel(m) {
     when += ` · ${t('how.noData')}`;
   } else if (m.type === 'smb') {
     when = [t('how.alarmReach'), w.minFreePct ? t('how.smbPct', { n: w.minFreePct }) : '', w.minFreeGb ? t('how.smbGb', { n: w.minFreeGb }) : ''].filter(Boolean).join(' · ');
+  } else if (m.type === 'event') {
+    when = t('how.alarmEvent', { n: w.holdMin });
   } else if (m.type === 'snmp' && w.op) {
     when = t('how.alarmLimit', { op: OP_SIGN[w.op] || w.op, limit: `${w.threshold}${w.unit ? ` ${w.unit}` : ''}` });
   } else when = t('how.alarmReach');
@@ -511,7 +519,7 @@ function depPanel(m, edit, reload) {
 
 /** Form to add or edit a monitor. `preset` fills a new one (e.g. from a device). */
 // Step 1 of "Add monitor": what should be watched? One tile per kind, with a sentence what it checks
-const PICK = [['http', 'open'], ['ping', 'radar'], ['tcp', 'switch'], ['smb', 'nas'], ['sensor', 'gauge'], ['docker', 'server'], ['mysql', 'inventory'], ['snmp', 'router']];
+const PICK = [['http', 'open'], ['ping', 'radar'], ['tcp', 'switch'], ['smb', 'nas'], ['sensor', 'gauge'], ['docker', 'server'], ['mysql', 'inventory'], ['snmp', 'router'], ['event', 'bell']];
 function pickKind(done, preset) {
   const tile = (type, ico, onclick) => h('button', { type: 'button', class: 'pick', onclick },
     h('span', { class: 'pick-ico', html: icon(ico) }), h('span', { class: 'pick-title' }, t(`mon.pick.${type}`)), h('span', { class: 'pick-text' }, t(`mon.pick.${type}.d`)));
@@ -559,7 +567,7 @@ export async function openMonitorForm(m, done, preset = null) {
     tls_verify: false, cert_check: true, cert_days: '30,14,7', channels: [], ...(preset || {}) };
   let dockerHosts = [];
   try { dockerHosts = await get('/docker/hosts'); } catch { /* none or no right */ }
-  const TYPES = ['http', 'tcp', 'ping', 'smb', 'sensor', 'snmp', 'docker', 'mysql', 'postgres', 'redis'];
+  const TYPES = ['http', 'tcp', 'ping', 'smb', 'sensor', 'snmp', 'event', 'docker', 'mysql', 'postgres', 'redis'];
   const DBT = ['mysql', 'postgres', 'redis'];
   const DEF_PORT = { mysql: 3306, postgres: 5432, redis: 6379 };
   // New monitors: admins also find "machine by script" here - it is no monitor type, it opens the script dialog
@@ -615,6 +623,33 @@ export async function openMonitorForm(m, done, preset = null) {
     field(t('smb.minPct'), input('smb_min_pct', o.minFreePct || '', { type: 'number', min: 0, max: 99, step: '0.1', placeholder: '10' }), t('smb.minPctHint')),
     field(t('smb.minGb'), input('smb_min_gb', o.minFreeGb || '', { type: 'number', min: 0, step: '0.1', placeholder: '50' }), t('smb.minGbHint')),
     h('p', { class: 'full muted small', style: { margin: 0 } }, t('smb.hint')));
+  // Messages a device sends (trap/syslog): from which device (or any), which kind, how severe, which text
+  const eo = v.type === 'event' ? v.options || {} : {};
+  const evDev = h('select', { name: 'ev_device' }, h('option', { value: '' }, t('ev.f.anySender')),
+    v.device_id ? h('option', { value: String(v.device_id) }, v.device_name || preset?.name || `#${v.device_id}`) : null);
+  evDev.value = v.device_id ? String(v.device_id) : '';
+  // the inventory only when this kind is chosen (not on every form)
+  let evLoaded = false;
+  async function loadEvDevices() {
+    if (evLoaded) return;
+    evLoaded = true;
+    let list = [];
+    try { list = await get('/devices'); } catch { return; }
+    const keep = evDev.value;
+    mount(evDev, h('option', { value: '' }, t('ev.f.anySender')),
+      list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map((d) => h('option', { value: String(d.id) }, `${d.name}${d.ip ? ` (${d.ip})` : ''}`)));
+    evDev.value = keep;
+  }
+  const evSource = select('ev_source', [['any', t('ev.f.anyKind')], ['trap', 'SNMP-Trap'], ['syslog', 'Syslog']], eo.source || 'any');
+  const evSev = select('ev_sev', [0, 1, 2, 3, 4, 5, 6, 7].map((n) => [String(n), n === 7 ? t('ev.f.every') : t('ev.f.upTo', { sev: t(`ev.sev.${['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'][n]}`) })]),
+    String(Number.isInteger(eo.maxSeverity) ? eo.maxSeverity : 4));
+  const eventBox = h('div', { class: 'form-grid full' },
+    field(t('ev.f.device'), evDev, t('ev.f.deviceHint')),
+    field(t('ev.f.kind'), evSource),
+    field(t('ev.f.severity'), evSev, t('ev.f.severityHint')),
+    field(t('ev.f.match'), input('ev_match', eo.match || '', { maxlength: 200 }), t('ev.f.matchHint')),
+    field(t('ev.f.hold'), input('ev_hold', eo.holdMin || 15, { type: 'number', min: 1, max: 1440 }), t('ev.f.holdHint')),
+    h('p', { class: 'full muted small', style: { margin: 0 } }, t('ev.f.hint'), ' ', h('a', { href: '/events', 'data-link': true }, t('nav.events'))));
   // A pasted \\\\server\\share\\folder fills server, share and folder
   target.addEventListener('change', () => {
     if (typeSel.value !== 'smb') return;
@@ -711,8 +746,10 @@ export async function openMonitorForm(m, done, preset = null) {
     const isDb = DBT.includes(ty);
     sensorBox.hidden = ty !== 'sensor';
     snmpBox.hidden = ty !== 'snmp';
-    targetWrap.hidden = ty === 'sensor';
-    target.required = ty !== 'sensor';
+    eventBox.hidden = ty !== 'event';
+    if (ty === 'event') loadEvDevices();
+    targetWrap.hidden = ty === 'sensor' || ty === 'event';
+    target.required = ty !== 'sensor' && ty !== 'event';
     srcSel.required = ty === 'sensor';
     oid.required = ty === 'snmp';
     condBox.hidden = !(ty === 'snmp' || ty === 'sensor');
@@ -736,7 +773,7 @@ export async function openMonitorForm(m, done, preset = null) {
   // check, 10.0.0.5 for ping/SMB/SNMP/databases, 10.0.0.5 + port 8443 for a TCP port. Back to web gives the old URL again.
   let prevType = typeSel.value;
   let lastUrl = prevType === 'http' ? target.value.trim() : '';
-  const NO_HOST = ['sensor'];
+  const NO_HOST = ['sensor', 'event'];
   typeSel.addEventListener('change', () => {
     if (typeSel.value === 'script') {
       typeSel.value = prevType;
@@ -804,6 +841,7 @@ export async function openMonitorForm(m, done, preset = null) {
     portBox,
     sensorBox,
     snmpBox,
+    eventBox,
     condBox,
     dockerBox,
     dbBox,
@@ -850,6 +888,11 @@ export async function openMonitorForm(m, done, preset = null) {
       }
     }
     if (d.type === 'snmp') body.options = { oid: d.oid.trim(), op: d.op, threshold: d.threshold, label: '' };
+    if (d.type === 'event') {
+      body.target = '';
+      body.device_id = d.ev_device ? Number(d.ev_device) : null;
+      body.options = { source: d.ev_source, maxSeverity: Number(d.ev_sev), match: d.ev_match.trim(), holdMin: Number(d.ev_hold) || 15 };
+    }
     if (d.type === 'smb') {
       const u = parseUnc(d.target);
       if (u) { body.target = u.host; d.smb_share = d.smb_share || u.share; d.smb_path = d.smb_path || u.path; }

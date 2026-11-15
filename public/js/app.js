@@ -12,6 +12,7 @@ import { renderLocations } from './views/locations.js';
 import { renderTopology } from './views/topology.js';
 import { renderHelp } from './views/help.js';
 import { renderSettings, renderProxmox, renderControllers, renderHardware, renderCloud, renderReports } from './views/settings.js';
+import { renderEvents } from './views/events.js';
 import { renderAccount } from './views/account.js';
 import { renderMonitoring } from './views/monitoring.js';
 import { openAbout, COFFEE } from './views/about.js';
@@ -62,6 +63,7 @@ const ROUTES = [
   [/^\/controllers$/, renderControllers, 'controllers'],
   [/^\/hardware$/, renderHardware, 'hardware'],
   [/^\/cloud$/, renderCloud, 'cloud'],
+  [/^\/events$/, renderEvents, 'events'],
   [/^\/reports$/, renderReports, 'reports'],
   [/^\/topology$/, renderTopology, 'topology'],
   [/^\/help$/, renderHelp, 'help'],
@@ -86,6 +88,7 @@ function sidebar(active) {
       h('div', { class: 'nav-group' }, t('nav.groupWatch')),
       link('/monitoring', 'monitoring', 'pulse', state.down ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.down) : null),
       link('/monitoring/sensors', 'sensors', 'gauge', state.sensorsDown ? h('span', { class: 'badge badge-bad', title: t('mon.status.down') }, state.sensorsDown) : null),
+      (u.canEditServer ?? u.canEdit) ? link('/events', 'events', 'bell') : null,
       (u.canEditServer ?? u.canEdit) ? link('/virtualization', 'proxmox', 'hypervisor') : null,
       (u.canEditServer ?? u.canEdit) ? link('/controllers', 'controllers', 'accesspoint') : null,
       (u.canEditServer ?? u.canEdit) ? link('/hardware', 'hardware', 'server') : null,

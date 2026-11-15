@@ -626,6 +626,22 @@ export const MIGRATIONS = [
   `UPDATE users SET theme='light' WHERE theme='system';`,
   // 27: cloud accounts (AWS, Azure, Google Cloud) in the hosts table: regions, tenant, subscription, project, costs
   `ALTER TABLE proxmox_hosts ADD COLUMN options TEXT NOT NULL DEFAULT '{}';`,
+  // 28: messages devices send by themselves (SNMP traps, syslog) - each installation keeps its own (failover.js)
+  `CREATE TABLE events_in (
+     id INTEGER PRIMARY KEY,
+     at TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     source_ip TEXT NOT NULL,
+     device_id INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+     severity INTEGER NOT NULL,
+     facility INTEGER,
+     host TEXT NOT NULL DEFAULT '',
+     app TEXT NOT NULL DEFAULT '',
+     oid TEXT NOT NULL DEFAULT '',
+     text TEXT NOT NULL
+   );
+   CREATE INDEX events_in_at ON events_in(at);
+   CREATE INDEX events_in_device ON events_in(device_id, at);`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -53,6 +53,7 @@ export function fingerprint(m, index) {
     case 'snmp': return `snmp|${hostKey(index, m.target)}|${m.port}|${o.oid}`;
     case 'smb': return `smb|${hostKey(index, m.target)}|${String(o.share || '').toLowerCase()}|${String(o.path || '').toLowerCase()}`;
     case 'docker': return `docker|${m.docker_host_id}|${m.target}`;
+    case 'event': return `event|${m.device_id || '*'}|${o.source || 'any'}|${o.maxSeverity}|${String(o.match || '').toLowerCase()}`;
     default: return `${m.type}|${hostKey(index, m.target)}|${m.port}|${String(o.database || '').toLowerCase()}`;
   }
 }
