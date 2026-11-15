@@ -194,6 +194,8 @@ Without `Exec` in the output NXLog sends time, computer, level, event id and tex
 
 `Exec $Message = to_json(); to_syslog_ietf();` (all fields as JSON) is understood too. The search finds an event id when only the number is entered. Umlauts in the code page of Windows (e.g. "NT-AUTORITÄT") are read right, also mixed with UTF-8 in the same line.
 
+**What is kept:** under *Receiving settings* one limit applies to all senders, e.g. "warning and worse"; in the view *By sender* every sender gets its own limit with **Filter** - everything (an important server), error and worse (a chatty switch) or nothing (muted). A muted sender stays in the list with the number of dropped messages, so it can be found again. What is not kept fires no rule and no monitor either.
+
 **Only some event ids:** under *Receiving settings* you set which Windows events are stored at all - *only take these ids* (e.g. `1116, 1117, 4740, 865-868`; empty = all) and *never take these ids* (e.g. `8004, 4624, 4634` for group policy and logons/logoffs). That keeps the list and the space small; messages of switches, NAS and the like are not touched. An event rule for an id the receiving does not take cannot be saved, and the rule list warns when a rule can therefore never fire.
 
 **Good to know:** the same id exists for different sources - 8004 is "program blocked" for AppLocker and "processing completed" for group policy. If NXLog sends without `Exec` (only the id, no source), a rule cannot tell them apart. With the `Exec` lines above the source comes along and the rule hits exactly.

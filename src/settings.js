@@ -71,6 +71,7 @@ export const DEFAULTS = {
   'events.communities': '',       // encrypted; empty = the SNMP communities of the scan (else "public")
   'events.onlyKnown': false,      // only from devices in the inventory
   'events.keepDays': 30,
+  'events.minSeverity': 7,        // messages kept from this severity on (7 = all, 6 = no debug, 4 = warning and worse)
   'events.winAllow': '',          // Windows event ids taken ("1116, 4740, 865-868"); empty = all
   'events.winDeny': '',           // Windows event ids never taken ("8004, 4624")
   'events.maxGb': 2,              // the messages file (data/events.sqlite) at most - less when the disk gets short

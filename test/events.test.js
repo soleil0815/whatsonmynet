@@ -67,6 +67,11 @@ test('off until an admin switches it on; viewers cannot', async () => {
   assert.equal((await call('GET', '/api/events', undefined, { who: 'viewer' })).status, 403);
   assert.equal((await call('GET', '/api/events/senders', undefined, { who: 'viewer' })).status, 403);
   assert.ok(Array.isArray((await call('GET', '/api/events/senders')).data.senders));
+  assert.equal((await call('PUT', '/api/events/senders/filter', { source: '10.0.0.9', min: -1 }, { who: 'viewer' })).status, 403);
+  assert.equal((await call('PUT', '/api/events/senders/filter', { source: 'x y', min: -1 })).status, 400);
+  assert.equal((await call('PUT', '/api/events/senders/filter', { source: '10.0.0.9', min: 9 })).status, 400);
+  assert.equal((await call('PUT', '/api/events/senders/filter', { source: '10.0.0.9', min: -1 })).status, 200);
+  assert.equal((await call('PUT', '/api/events/senders/filter', { source: '10.0.0.9', min: null })).status, 200);
   assert.equal((await call('PUT', '/api/events/settings', { traps: true, syslog: true, keepDays: 0 })).status, 400);
   const on = await call('PUT', '/api/events/settings', { traps: true, syslog: true, communities: 'Trap-Geheim, zweite' });
   assert.equal(on.status, 200);

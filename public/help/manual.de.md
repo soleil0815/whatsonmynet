@@ -194,6 +194,8 @@ Ohne `Exec` im Ausgang schickt NXLog Zeit, Rechner, Stufe, Ereignisnummer und Te
 
 Auch `Exec $Message = to_json(); to_syslog_ietf();` (alle Felder als JSON) wird verstanden. Die Suche findet eine Ereignisnummer, wenn man nur die Zahl eingibt. Umlaute in der Codepage von Windows (z. B. „NT-AUTORITÄT“) werden richtig gelesen, auch gemischt mit UTF-8 in derselben Zeile.
 
+**Was gespeichert wird:** Unter *Empfang einstellen* gilt für alle Absender z. B. „ab Warnung“; in der Ansicht *Nach Absender* bekommt jeder Absender über **Filter** seine eigene Grenze - alles (ein wichtiger Server), ab Fehler (ein gesprächiger Switch) oder gar nichts (stumm). Ein stummer Absender bleibt in der Liste, mit der Zahl der verworfenen Meldungen, damit man ihn wiederfindet. Was nicht gespeichert wird, löst auch keine Regel und keinen Monitor aus.
+
 **Nur bestimmte Ereignisnummern:** Unter *Empfang einstellen* legst du fest, welche Windows-Ereignisse überhaupt gespeichert werden - *nur diese Nummern annehmen* (z. B. `1116, 1117, 4740, 865-868`; leer = alle) und *diese Nummern nie annehmen* (z. B. `8004, 4624, 4634` für Gruppenrichtlinie und An-/Abmeldungen). Das hält die Liste und den Platz klein; Meldungen von Switches, NAS und Co. betrifft es nicht. Eine Ereignisregel für eine Nummer, die der Empfang nicht annimmt, lässt sich nicht speichern, und die Regelliste warnt, wenn eine Regel deshalb nie mehr greifen kann.
 
 **Gut zu wissen:** Dieselbe Nummer gibt es bei verschiedenen Quellen - 8004 ist bei AppLocker „Programm blockiert“, bei der Gruppenrichtlinie „Verarbeitung abgeschlossen“. Schickt NXLog ohne `Exec` (nur Nummer, keine Quelle), kann eine Regel beides nicht unterscheiden. Mit den `Exec`-Zeilen oben kommt die Quelle mit, und die Regel trifft genau.

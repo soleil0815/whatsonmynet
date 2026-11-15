@@ -6,6 +6,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Meldungen: was gespeichert wird - für alle ab einer Schwere (Empfang einstellen) und je Absender eigener Filter (alles, ab Warnung, ab Fehler … oder stumm); stumme Absender bleiben mit der Zahl der verworfenen Meldungen in der Liste
 - Windows-Ereignisse nach Nummer filtern (Empfang einstellen): nur bestimmte Nummern annehmen und/oder bestimmte nie (z. B. 8004 Gruppenrichtlinie, 4624/4634 An- und Abmeldung); Regeln für nicht angenommene Nummern werden abgelehnt, die Regelliste warnt
 - Umlaute: UTF-8 und Codepage von Windows gemischt in einer Zeile werden beide richtig gelesen („NT-AUTORITÄT … für“ statt „… fÃ¼r“)
 
