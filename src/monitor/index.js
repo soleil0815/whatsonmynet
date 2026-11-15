@@ -42,7 +42,8 @@ export function certStep(days, thresholds) {
 
 export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb'];
 export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'nodeTemp', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed', 'netOnline', 'netClients', 'netCpu', 'netMem', 'clientsTotal', 'netUpdates',
-  'rfHealth', 'rfPower', 'rfFan', 'rfTemp', 'rfPsu', 'rfDrive', 'rfDriveLife', 'rfVolume', 'rfWatts'];
+  'rfHealth', 'rfPower', 'rfFan', 'rfTemp', 'rfPsu', 'rfDrive', 'rfDriveLife', 'rfVolume', 'rfWatts',
+  'cloudCheck', 'cloudCpu', 'dbState', 'dbCpu', 'dbStorage', 'lbUnhealthy', 'cloudAlarms', 'cloudResources', 'costMonth'];
 export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service', 'upsPower', 'upsCharge', 'upsRuntime', 'upsLoad',
   'hostPdHealth', 'hostPdTemp', 'hostPdWear', 'hostUpdates', 'hostUpdatesSec', 'hostReboot', 'hostAv', 'hostFirewall', 'hostEvCritical', 'hostEvErrors', 'hostCert', 'hostTemp', 'hostTempMax'];
 const DB_TYPES = ['mysql', 'postgres', 'redis'];
@@ -66,7 +67,7 @@ export const LIMITS = { interval_s: [20, 86400, 60], timeout_s: [1, 60, 10], fai
 const clamp = (k, raw) => { const [lo, hi, def] = LIMITS[k]; return Math.min(hi, Math.max(lo, int(String(raw)) || def)); };
 // Values that are a state (on/off, healthy …): no own condition and limit, always "alarm when not ok"
 export const SENSOR_STATE_METRICS = ['printerErrors', 'health', 'disk', 'raid', 'port', 'hostOnline', 'service', 'upsPower', 'hostPdHealth', 'hostReboot', 'hostAv', 'hostFirewall'];
-export const PROXMOX_STATE_METRICS = ['nodeOnline', 'guestRunning', 'netOnline', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume'];
+export const PROXMOX_STATE_METRICS = ['nodeOnline', 'guestRunning', 'netOnline', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume', 'cloudCheck', 'dbState'];
 /** Does this monitor compare a measured value against a limit of its own (condition + threshold)? */
 export function hasLimit(m) {
   const metric = (typeof m.options === 'string' ? parse(m.options, {}) : m.options || {}).metric;

@@ -59,6 +59,15 @@ export async function renderHardware(main) {
   lockForEditing(body);
 }
 
+/** AWS, Azure, Google Cloud: own page under "Monitoring" (same building blocks as the hypervisors) */
+export async function renderCloud(main) {
+  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
+  const body = h('div', { class: 'stack' });
+  mount(main, h('div', { class: 'page' }, body));
+  await proxmox(body, null, () => renderCloud(main), 'cloud');
+  lockForEditing(body);
+}
+
 /** Planned reports: own page under "Monitoring" */
 export async function renderReports(main) {
   if (!state.user.isAdmin) { navigate('/', { replace: true }); return; }
@@ -453,6 +462,7 @@ function proxmoxDetail(x) {
     cmdBox(PX_FIX[d.kind === 'pbs' ? 'pbs' : 'pve'](user, x.token_id)),
     h('p', { class: 'small', style: { margin: '6px 0 0' } }, t('px.missingThen')))) : null;
   if (!d.kind) return head;
+  if (d.cloud) return cloudDetail(x, d, head);
   if (d.netdevices) return netDetail(d, head);
   // Cluster: which node answered, and which nodes can stand in
   const via = x.last_ok && d.via ? h('div', { class: 'note warn' }, t('px.via', { node: d.via.node, url: x.url, error: d.via.error || '' })) : null;
@@ -590,14 +600,15 @@ const VIRT = ['pve', 'pbs', 'vmware', 'xcpng', 'hyperv', 'nutanix', 'ovirt', 'li
 const PUSH = ['hyperv', 'libvirt'];
 const NET = ['unifi', 'omada', 'mikrotik'];
 const HW = ['redfish'];
+const CLOUD = ['aws', 'azure', 'gcp'];
 const VIRT_URL = { redfish: 'https://idrac-srv01.firma.local', unifi: 'https://unifi.firma.local', omada: 'https://omada.firma.local:8043', mikrotik: 'https://router.firma.local', vmware: 'https://vcenter.firma.local', xcpng: 'https://xcp-master.firma.local', nutanix: 'https://prism.firma.local:9440', ovirt: 'https://engine.firma.local' };
 const VIRT_USER = { redfish: 'whatsonmynet', unifi: 'whatsonmynet', omada: 'whatsonmynet', mikrotik: 'whatsonmynet', vmware: 'whatsonmynet@vsphere.local', xcpng: 'root', nutanix: 'whatsonmynet', ovirt: 'whatsonmynet@internal' };
 
 /** Step 1: what kind of host */
 function pickVirt(then, kinds = VIRT) {
   if (kinds.length === 1) { then(kinds[0]); return; }
-  const dlg = modal(t(kinds === NET ? 'net.add' : 'virt.add'), h('div', { class: 'pick-grid' }, kinds.map((k) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); then(k); } },
-    h('span', { class: 'pick-ico', html: icon(k === 'pbs' ? 'download' : NET.includes(k) ? 'accesspoint' : 'hypervisor') }),
+  const dlg = modal(t(kinds === NET ? 'net.add' : kinds === CLOUD ? 'cloud.add' : 'virt.add'), h('div', { class: 'pick-grid' }, kinds.map((k) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); then(k); } },
+    h('span', { class: 'pick-ico', html: icon(k === 'pbs' ? 'download' : NET.includes(k) ? 'accesspoint' : CLOUD.includes(k) ? 'cloud' : 'hypervisor') }),
     h('span', { class: 'pick-title' }, t(`virt.k.${k}`)),
     h('span', { class: 'pick-text' }, t(`virt.what.${k}`))))), { wide: true });
 }
@@ -657,6 +668,115 @@ function editVirt(x, kind, reload) {
     h('button', { class: 'btn btn-primary', type: 'submit' }, push ? t('save') : t('pxs.save'))] });
 }
 
+// The IAM policy for AWS: exactly what WhatsOnMyNet reads, nothing that changes anything
+const AWS_POLICY = JSON.stringify({ Version: '2012-10-17', Statement: [{ Sid: 'WhatsOnMyNetReadOnly', Effect: 'Allow', Resource: '*', Action: [
+  'ec2:DescribeInstances', 'ec2:DescribeInstanceStatus', 'rds:DescribeDBInstances', 'elasticloadbalancing:DescribeTargetGroups', 'elasticloadbalancing:DescribeTargetHealth',
+  'cloudwatch:GetMetricData', 'cloudwatch:DescribeAlarms', 'ce:GetCostAndUsage'] }] }, null, 2);
+const GCP_ROLES = ['roles/compute.viewer', 'roles/monitoring.viewer', 'roles/cloudsql.viewer'];
+const money = (amount, currency) => {
+  try { return new Intl.NumberFormat(getLang() === 'en' ? 'en-GB' : 'de-DE', { style: 'currency', currency: currency || 'USD' }).format(amount ?? 0); } catch { return `${amount ?? 0} ${currency || ''}`; }
+};
+
+/** AWS, Azure, Google Cloud: what to prepare there (an account that may only read), then the fields of the provider */
+function editCloud(x, kind, reload) {
+  const o = x?.options || {};
+  const steps = [1, 2, 3, 4].map((n) => t(`cl.${kind}.s${n}`)).filter((s) => !/^cl\./.test(s));
+  const guide = h('div', { class: 'px-setup' }, h('h3', { class: 'px-step' }, t('virt.step1', { kind: t(`virt.k.${kind}`) })),
+    h('ol', { class: 'px-steps' }, steps.map((s, i) => h('li', {}, rich(s),
+      kind === 'aws' && i === 1 ? cmdBox(AWS_POLICY.split('\n')) : null,
+      kind === 'gcp' && i === 1 ? cmdBox(GCP_ROLES) : null))));
+  const secretField = (label, hint, extra = {}) => field(label, input('secret', '', { type: 'password', autocomplete: 'new-password', required: !x?.has_secret, class: 'mono',
+    placeholder: x?.has_secret ? '••••••' : '', ...extra }), x?.has_secret ? t('set.smtpPasswordSet') : hint);
+  const costs = kind === 'gcp' ? null : field(t('cl.costs'), h('input', { type: 'checkbox', name: 'costs', checked: !!o.costs }), t(`cl.${kind}.costsHint`));
+  let fields;
+  if (kind === 'aws') {
+    fields = [
+      h('div', { class: 'form-grid' },
+        field(t('cl.aws.key'), input('token_id', x?.token_id || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: 'AKIA…', maxlength: 20 })),
+        secretField(t('cl.aws.secret'), t('cl.aws.secretHint'))),
+      field(t('cl.regions'), input('regions', (o.regions || []).join(', '), { required: true, class: 'mono', placeholder: 'eu-central-1, eu-west-1' }), t('cl.regionsHint')),
+      costs];
+  } else if (kind === 'azure') {
+    fields = [
+      h('div', { class: 'form-grid' },
+        field(t('cl.azure.tenant'), input('tenant', o.tenant || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: 'firma.onmicrosoft.com' }), t('cl.azure.tenantHint')),
+        field(t('cl.azure.subscription'), input('subscription', o.subscription || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: '00000000-0000-0000-0000-000000000000' }))),
+      h('div', { class: 'form-grid' },
+        field(t('cl.azure.client'), input('token_id', x?.token_id || '', { required: true, class: 'mono', autocomplete: 'off', placeholder: '00000000-0000-0000-0000-000000000000' })),
+        secretField(t('cl.azure.secret'), t('cl.azure.secretHint'))),
+      costs];
+  } else {
+    fields = [
+      field(t('cl.gcp.key'), h('textarea', { name: 'secret', rows: 5, class: 'mono', spellcheck: 'false', required: !x?.has_secret, autocomplete: 'off',
+        placeholder: x?.has_secret ? t('cl.gcp.keyKept') : '{ "type": "service_account", "project_id": "…", "private_key": "-----BEGIN PRIVATE KEY-----…", … }' }),
+      x?.has_secret ? t('cl.gcp.keyKeptHint', { who: x.token_id }) : t('cl.gcp.keyHint')),
+      field(t('cl.gcp.project'), input('project', o.project || '', { class: 'mono', autocomplete: 'off', placeholder: 'firma-prod-123' }), t('cl.gcp.projectHint'))];
+  }
+  const form = h('form', { class: 'form' },
+    x ? null : guide,
+    h('h3', { class: 'px-step' }, x ? t('pxs.connection') : t('pxs.step2')),
+    field(t('px.name'), input('name', x?.name || '', { required: true, maxlength: 80, placeholder: t(`cl.${kind}.namePh`) })),
+    ...fields,
+    h('p', { class: 'muted small', style: { margin: 0 } }, t('cl.where', { hosts: t(`cl.${kind}.hosts`) })));
+  const m = modal(x ? x.name : `${t('cloud.add')}: ${t(`virt.k.${kind}`)}`, form, { wide: true, onSubmit: async () => {
+    const d = { ...formData(form), kind };
+    if (!d.secret) delete d.secret;
+    try {
+      const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d);
+      m.close();
+      toast(r.last_ok ? t('cl.connected') : r.last_error, r.last_ok ? undefined : 'error');
+      reload();
+    } catch (ex) { fail(ex); }
+  }, actions: [
+    btn(t('cancel'), { onclick: () => m.close() }),
+    h('button', { class: 'btn btn-primary', type: 'submit' }, t('pxs.save'))] });
+}
+
+/** A cloud account: what the provider reports as broken first, then instances, databases, load balancers, costs */
+function cloudDetail(x, d, head) {
+  const badge = (text, tone) => h('span', { class: `badge ${tone ? `badge-${tone}` : ''}` }, text);
+  const sect = (title, ...kids) => [h('h3', { class: 'sub-title' }, title), ...kids];
+  const fix = { aws: () => cmdBox(AWS_POLICY.split('\n')), gcp: () => cmdBox(GCP_ROLES), azure: () => null }[d.kind];
+  const missing = x.last_ok && (d.missing || []).length ? h('div', { class: 'note warn' }, h('div', { style: { minWidth: 0, flex: 1 } },
+    h('strong', {}, t('cl.missing', { list: d.missing.join(', ') })),
+    h('p', { style: { margin: '4px 0 6px' } }, rich(t(`cl.${d.kind}.missingFix`))), fix())) : null;
+  const notes = (d.notes || []).length ? h('p', { class: 'muted small', style: { margin: '0 0 10px' } }, t('cl.notes', { list: d.notes.join(' · ') })) : null;
+  const guests = d.guests || []; const dbs = d.databases || [];
+  const running = guests.filter((g) => g.status === 'running').length;
+  const STATE_TONE = { running: 'ok', stopped: '', paused: 'warn' };
+  const checkBadge = (g) => (g.check === 'impaired' ? badge(t('cl.impaired'), 'bad') : g.check === 'ok' ? badge(t('cl.checksOk'), 'ok') : g.check === 'pending' ? badge(t('cl.checksPending'), '') : null);
+  return h('div', {}, head, missing, notes,
+    (d.alarms || []).length ? sect(t('cl.alarms', { n: d.alarms.length }), h('ul', { class: 'port-macs' }, d.alarms.slice(0, 30).map((a) => h('li', {},
+      badge(a.severity || t('cl.alarm'), 'bad'), h('strong', { class: 'small' }, a.name), a.text ? h('span', { class: 'muted small' }, a.text) : null)))) : null,
+    (d.resources || []).length ? sect(t('cl.resources', { n: d.resources.length }), h('ul', { class: 'port-macs' }, d.resources.slice(0, 30).map((r) => h('li', {},
+      badge(t(`cl.health.${r.state}`), r.state === 'Unavailable' ? 'bad' : 'warn'), h('strong', { class: 'small' }, r.name), h('span', { class: 'muted small mono' }, r.type), r.text ? h('span', { class: 'muted small' }, r.text) : null)))) : null,
+    sect(t('cl.instances', { running, n: guests.length }), guests.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('cl.name')), h('th', { class: 'hide-sm' }, t('cl.zone')), h('th', { class: 'hide-sm' }, t('cl.size')), h('th', {}, t('net.state')), h('th', {}, t('cl.checks')), h('th', {}, 'CPU'))),
+      h('tbody', {}, guests.slice(0, 300).map((g) => h('tr', {},
+        h('td', {}, h('span', { class: 'name' }, g.name), g.name !== g.vmid ? h('div', { class: 'sub mono' }, g.vmid) : null,
+          g.events ? h('div', { class: 'sub' }, badge(t('cl.event'), 'warn'), ' ', g.eventText || '') : null),
+        h('td', { class: 'hide-sm mono small' }, g.node || '–'),
+        h('td', { class: 'hide-sm mono small' }, g.size || '–'),
+        h('td', {}, badge(t(`val.state.${g.status}`) === `val.state.${g.status}` ? g.status : t(`val.state.${g.status}`), STATE_TONE[g.status] ?? '')),
+        h('td', {}, checkBadge(g) || '–', g.checkText ? h('div', { class: 'sub' }, g.checkText) : null),
+        h('td', { class: 'mono small' }, g.cpu === null || g.cpu === undefined ? '–' : `${g.cpu} %`)))))) : h('p', { class: 'muted small' }, t('cl.noInstances'))),
+    dbs.length ? sect(t('cl.databases', { n: dbs.length }), h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('cl.name')), h('th', { class: 'hide-sm' }, t('cl.engine')), h('th', {}, t('net.state')), h('th', {}, 'CPU'), h('th', {}, t('cl.storage')))),
+      h('tbody', {}, dbs.slice(0, 200).map((y) => h('tr', {},
+        h('td', {}, h('span', { class: 'name' }, y.name), h('div', { class: 'sub mono' }, y.node || '')),
+        h('td', { class: 'hide-sm small' }, y.engine || '–'),
+        h('td', {}, badge(y.status, y.good ? 'ok' : 'bad')),
+        h('td', { class: 'mono small' }, y.cpu === null || y.cpu === undefined ? '–' : `${y.cpu} %`),
+        h('td', { class: `mono small${y.storagePct >= 85 ? ' bad-text' : ''}` }, y.storagePct === null || y.storagePct === undefined ? '–' : `${y.storagePct} %`))))))) : null,
+    (d.balancers || []).length ? sect(t('cl.balancers'), h('ul', { class: 'port-macs' }, d.balancers.map((b) => h('li', {},
+      badge(b.unhealthy ? t('cl.unhealthy', { n: b.unhealthy }) : t('cl.allHealthy'), b.unhealthy ? 'bad' : 'ok'), h('strong', { class: 'small' }, b.name),
+      h('span', { class: 'muted small' }, t('cl.targets', { ok: b.healthy, n: b.healthy + b.unhealthy })), b.reasons?.length ? h('span', { class: 'muted small' }, b.reasons.join(' · ')) : null)))) : null,
+    d.cost ? sect(t('cl.cost'), h('p', { style: { margin: 0 } }, h('strong', {}, money(d.cost.amount, d.cost.currency)), ' ', h('span', { class: 'muted small' },
+      t('cl.costSoFar', { last: d.cost.lastAmount === null ? '–' : money(d.cost.lastAmount, d.cost.currency), when: fmtDate(d.cost.at, getLang()) }))))
+      : d.kind !== 'gcp' && !x.options?.costs ? h('p', { class: 'muted small' }, t('cl.costsOff')) : null,
+    d.kind === 'gcp' ? h('p', { class: 'muted small' }, t('cl.gcpLimits')) : null);
+}
+
 /** Hyper-V / KVM: token + script for the host, shown once, with the steps to run it every 5 minutes */
 async function showScript(x, reload) {
   if (x.has_secret && !await confirmDialog(t('virt.newScript'), t('virt.newScriptConfirm'), t('virt.newScript'), t('cancel'))) return;
@@ -666,7 +786,7 @@ async function showScript(x, reload) {
 }
 
 async function proxmox(body, _s, reload, scope = 'virt') {
-  const kinds = scope === 'net' ? NET : scope === 'hw' ? HW : VIRT;
+  const kinds = scope === 'net' ? NET : scope === 'hw' ? HW : scope === 'cloud' ? CLOUD : VIRT;
   const list = (await get('/proxmox')).filter((x) => kinds.includes(x.kind));
   const edit = (x, preset = 'pve') => {
     // Backup Server: port 8007 and realm pbs - also when it was chosen in the step before (not only by the select)
@@ -722,12 +842,12 @@ async function proxmox(body, _s, reload, scope = 'virt') {
       h('button', { class: 'btn btn-primary', type: 'submit' }, t('pxs.save'))] });
   };
   const admin = state.user.isAdmin;
-  const add = () => pickVirt((kind) => (kind === 'pve' || kind === 'pbs' ? edit(null, kind) : editVirt(null, kind, reload)), kinds);
-  const p = { net: 'net', hw: 'hw' }[scope] || 'virt';
+  const add = () => pickVirt((kind) => (kind === 'pve' || kind === 'pbs' ? edit(null, kind) : CLOUD.includes(kind) ? editCloud(null, kind, reload) : editVirt(null, kind, reload)), kinds);
+  const p = { net: 'net', hw: 'hw', cloud: 'cloud' }[scope] || 'virt';
   const actions = (x) => (!admin ? null : h('div', { class: 'actions' },
     PUSH.includes(x.kind) ? null : btn(t('prn.refresh'), { class: 'btn btn-sm', onclick: async (e) => { e.currentTarget.disabled = true; try { await post(`/proxmox/${x.id}/poll`, {}); reload(); } catch (ex) { fail(ex); } } }, 'refresh'),
     PUSH.includes(x.kind) ? btn(t('virt.newScript'), { class: 'btn btn-sm btn-ghost', onclick: () => showScript(x, reload) }) : null,
-    btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => (x.kind === 'pve' || x.kind === 'pbs' ? edit(x) : editVirt(x, x.kind, reload)) }),
+    btn(t('edit'), { class: 'btn btn-sm btn-ghost', onclick: () => (x.kind === 'pve' || x.kind === 'pbs' ? edit(x) : CLOUD.includes(x.kind) ? editCloud(x, x.kind, reload) : editVirt(x, x.kind, reload)) }),
     h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${x.name}`, html: icon('trash'), onclick: async () => {
       if (!await confirmDialog(t('delete'), t('px.deleteConfirm', { name: x.name }), t('delete'), t('cancel'), { danger: true })) return;
       try { await del(`/proxmox/${x.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
@@ -748,7 +868,8 @@ async function proxmox(body, _s, reload, scope = 'virt') {
   // From two hosts on: one line each with the figures; a single host stays open as before
   const compact = list.length > 1;
   let filter = 'all';
-  const q = h('input', { type: 'search', placeholder: t('vo.search'), 'aria-label': t('vo.search') });
+  const cloud = scope === 'cloud';
+  const q = h('input', { type: 'search', placeholder: t(cloud ? 'vo.searchCloud' : 'vo.search'), 'aria-label': t(cloud ? 'vo.searchCloud' : 'vo.search') });
   const qBox = h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q);
   const kindsHere = [...new Set(list.map((x) => x.kind))];
   const problems = rows.filter((r) => r.s.state === 'bad' || r.s.state === 'warn').length;
@@ -773,7 +894,7 @@ async function proxmox(body, _s, reload, scope = 'virt') {
     });
     det.append(h('summary', {},
       h('span', { class: `dot ${s.state === 'bad' ? 'dot-bad' : s.state === 'warn' ? 'dot-new' : s.state === 'wait' ? '' : 'dot-ok'}`, 'aria-hidden': 'true' }),
-      h('span', { class: 'host-name' }, h('strong', {}, x.name), h('span', { class: 'muted small mono' }, [t(`virt.k.${x.kind}`), x.url.replace(/^https:\/\//, '')].filter(Boolean).join(' · '))),
+      h('span', { class: 'host-name' }, h('strong', {}, x.name), h('span', { class: 'muted small mono' }, [t(CLOUD.includes(x.kind) ? `vo.k.${x.kind}` : `virt.k.${x.kind}`), whereOf(x)].filter(Boolean).join(' · '))),
       h('span', { class: 'host-figs' }, s.figures.map((f) => h('span', { class: 'fig' }, f))),
       h('span', { class: 'host-issues' }, s.issues.slice(0, 2).map((i) => h('span', { class: `badge ${i.tone === 'bad' ? 'badge-bad' : 'badge-new'}`, title: i.text }, i.text.length > 48 ? `${i.text.slice(0, 46)}…` : i.text)),
         s.issues.length > 2 ? h('span', { class: 'muted small' }, t('vo.more', { n: s.issues.length - 2 })) : null)));
@@ -785,9 +906,9 @@ async function proxmox(body, _s, reload, scope = 'virt') {
   const all = rows.map((r) => r.s);
   const sum = (k) => all.reduce((a, b) => a + (b.n[k] || 0), 0);
   const tiles = [
-    [t('vo.hosts'), rows.length, problems ? t('vo.withProblems', { n: problems }) : t('vo.allFine'), problems ? 'bad' : 'ok'],
+    [t(cloud ? 'vo.accounts' : 'vo.hosts'), rows.length, problems ? t('vo.withProblems', { n: problems }) : t('vo.allFine'), problems ? 'bad' : 'ok'],
     sum('nodes') ? [t('vo.nodes'), `${sum('nodesOn')}/${sum('nodes')}`, t('vo.online'), sum('nodesOn') < sum('nodes') ? 'bad' : 'ok'] : null,
-    sum('guests') ? [t('vo.guests'), `${sum('guestsOn')}/${sum('guests')}`, t('vo.running'), ''] : null,
+    sum('guests') ? [t(cloud ? 'vo.vms' : 'vo.guests'), `${sum('guestsOn')}/${sum('guests')}`, t('vo.running'), ''] : null,
     sum('stores') ? [t('vo.storage'), sum('storesFull'), t('vo.over85'), sum('storesFull') ? 'warn' : 'ok'] : null,
     sum('backupIssues') || sum('backupHosts') ? [t('vo.backups'), sum('backupIssues'), t('vo.backupIssues'), sum('backupIssues') ? 'bad' : 'ok'] : null,
   ].filter(Boolean);
@@ -796,6 +917,13 @@ async function proxmox(body, _s, reload, scope = 'virt') {
     compact ? h('div', { class: 'vo-toolbar' }, qBox, chips) : null,
     listBox);
   draw();
+}
+
+/** Where a host is: its address - for a cloud account the account and regions or project */
+function whereOf(x) {
+  if (!CLOUD.includes(x.kind)) return x.url.replace(/^https:\/\//, '');
+  const o = x.options || {};
+  return [x.data?.account, x.kind === 'aws' ? (o.regions || []).join(', ') : x.kind === 'gcp' && o.project !== x.data?.account ? o.project : ''].filter(Boolean).join(' · ');
 }
 
 /** One line per host: state (bad / warn / ok / wait), the key figures and what is wrong - also the text to search in */
@@ -840,6 +968,27 @@ function hostSummary(x) {
     figures.push(t('vo.fig.stores', { n: (d.datastores || []).length, pct: maxPct }), t('vo.fig.groups', { n: (d.groups || []).length }));
     n.stores = (d.datastores || []).length; n.storesFull = full.length; n.backupHosts = 1; n.backupIssues = old + crit;
     deep.push(...(d.datastores || []).map((y) => y.name), ...(d.groups || []).map((g) => `${g.type}/${g.id} ${g.comment || ''}`));
+  } else if (d.cloud) {
+    const guests = d.guests || []; const dbs = d.databases || [];
+    const on = guests.filter((g) => g.status === 'running').length;
+    const impaired = guests.filter((g) => g.check === 'impaired').length;
+    if (impaired) bad(tn('vo.clImpaired', { n: impaired }));
+    const dbBad = dbs.filter((y) => !y.good).length;
+    if (dbBad) bad(tn('vo.clDbBad', { n: dbBad }));
+    const full = dbs.filter((y) => y.storagePct >= 85);
+    if (full.length) (full.some((y) => y.storagePct >= 95) ? bad : warn)(tn('vo.storeFull', { n: full.length }));
+    const lb = (d.balancers || []).filter((b) => b.unhealthy > 0).length;
+    if (lb) bad(tn('vo.clLbBad', { n: lb }));
+    if ((d.alarms || []).length) bad(tn('vo.clAlarms', { n: d.alarms.length }));
+    const res = d.resources || [];
+    if (res.length) (res.some((y) => y.state === 'Unavailable') ? bad : warn)(tn('vo.clResources', { n: res.length }));
+    const events = guests.reduce((a, g) => a + (g.events || 0), 0);
+    if (events) warn(tn('vo.clEvents', { n: events }));
+    figures.push(t('vo.fig.instances', { on, n: guests.length }));
+    if (dbs.length) figures.push(tn('vo.fig.dbs', { n: dbs.length }));
+    if (d.cost) figures.push(money(d.cost.amount, d.cost.currency));
+    Object.assign(n, { guests: guests.length, guestsOn: on, backupIssues: 0 });
+    deep.push(d.account || '', ...guests.map((g) => `${g.vmid} ${g.name} ${g.node}`), ...dbs.map((y) => y.name), ...(d.balancers || []).map((b) => b.name), ...(d.alarms || []).map((a) => a.name));
   } else if (d.kind) {
     const nodes = d.nodes || []; const guests = d.guests || []; const stores = (d.storages || []).filter((y) => y.total);
     const offN = nodes.filter((y) => !y.online).length;
@@ -868,7 +1017,7 @@ function hostSummary(x) {
   }
   const state = !x.last_at ? 'wait' : issues.some((i) => i.tone === 'bad') ? 'bad' : issues.length ? 'warn' : 'ok';
   const deepText = deep.join(' ').toLowerCase();
-  return { state, issues, figures: figures.filter(Boolean), n, deep: deepText, text: `${x.name} ${x.url} ${t(`virt.k.${x.kind}`)} ${deepText}`.toLowerCase() };
+  return { state, issues, figures: figures.filter(Boolean), n, deep: deepText, text: `${x.name} ${whereOf(x)} ${t(`virt.k.${x.kind}`)} ${deepText}`.toLowerCase() };
 }
 
 /** After a restore the server restarts: wait until it answers again, then load the page anew */
