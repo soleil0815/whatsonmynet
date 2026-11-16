@@ -6,6 +6,7 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Failover: if master and standby run different versions for half an hour, the standby sends a reminder to the default channels - saying which server to bring to which version (again every 7 days while it stays so). If the standby cannot take the data any more because of the database version, the message comes at once, urgent and daily. When both are the same again, it says so once. The difference also shows under Settings → Failover, on the standby in the bar at the top too
 - Messages: fast search in many gigabytes too - a search index finds whole words and beginnings of words ("m.muster", "link down", "print" for printer), upper/lower case and umlauts alike, over 30 or 90 days in a fraction of a second. Parts in the middle of a word (e.g. "006A" of 0xC000006A) on request: "Search parts of words too". After the update the index for the stored messages is built once in the background (about half a minute per million), you can search all the time
 - About space: the search index takes about a quarter of the messages file. When the file is at its limit, the oldest messages go correspondingly earlier - to keep as many days, set a third more space under Receiving settings. The table in the manual now reckons with 2 KB per message
 

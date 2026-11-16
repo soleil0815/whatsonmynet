@@ -705,6 +705,8 @@ When pairing, the standby takes **all data of the master** (devices, monitors, u
 
 **When the master comes back:** as soon as it answers, the standby is quiet again ("… is back") and takes its data. **Nothing goes back to the master.** What the standby reported meanwhile is listed on the standby under *Takeovers*.
 
+**Both always on the same version:** update master and standby alike - only then does the standby work the same way when it has to take over, and only with the same database version can it take the data of the master. The standby keeps an eye on it: if the two run different versions for half an hour (updating one after the other is no problem), it sends a reminder to the default channels - e.g. "the master … runs version 0.39.0, this server (standby) 0.38.0. Please update this standby to 0.39.0." If it stays like that, it comes again every 7 days; if the standby cannot take the data any more because of the database version, at once and then daily, as an urgent message. When both are the same again, it says so once. Under *Failover* the difference shows on both sides, on the standby in the bar at the top too.
+
 **When the master does not come back:** on the standby, **Make this the master**. It is then the master for good and shows a new pairing code. If the old master comes up again after all, it learns this on its first contact and stops alarming. Best pair it there as standby of the new master.
 
 **Ending:** *End pairing* on either side. On the master: the standby does not take over any more and stays quiet until decided there. On the standby: it works alone afterwards (if the master still runs, alarms arrive twice). A new pairing code on the master also lets the current standby go.

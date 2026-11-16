@@ -85,7 +85,9 @@ export async function failoverSettings(body, _s, reload) {
   if (s.role === 'master') {
     const p = s.master?.peer;
     const fresh = p && Date.now() - Date.parse(p.at) < 3 * 60 * 1000;
+    const gap = p?.version && p.version !== s.version;
     mount(body, lead,
+      gap ? h('p', { class: 'note warn' }, t('fo.verMaster', { standby: p.version, here: s.version })) : null,
       panel(t('fo.thisMaster'),
         kv([
           [t('fo.role'), h('span', { class: 'badge badge-ok' }, t('fo.roleMaster'))],
@@ -113,6 +115,9 @@ export async function failoverSettings(body, _s, reload) {
     mount(body, lead,
       sb.state === 'active' ? h('p', { class: 'note bad' }, t('fo.activeNote', { since: when(sb.activeSince) })) : null,
       sb.state === 'detached' ? h('p', { class: 'note warn' }, t('fo.detachedNote', { why: why(sb.lastError) })) : null,
+      // both should always run the same version - a reminder goes to the default channels after half an hour
+      sb.versions ? h('p', { class: `note ${sb.versions.schema ? 'bad' : 'warn'}` }, t(sb.versions.schema ? 'fo.verStandbySchema' : 'fo.verStandby', { master: sb.versions.master, here: sb.versions.here }),
+        ' ', h('span', { class: 'muted' }, sb.versions.notifiedAt ? t('fo.verNotified', { at: when(sb.versions.notifiedAt) }) : t('fo.verSoon'))) : null,
       panel(t('fo.thisStandby'),
         kv([
           [t('fo.role'), h('span', { class: `badge ${badge[0]}` }, badge[1])],
@@ -193,6 +198,7 @@ export function failoverBar() {
   }[b.mode];
   return h('div', { id: 'fo-bar', class: `fo-bar ${tone}`, role: 'status' },
     h('span', { html: icon(b.mode === 'standby' ? 'shield' : 'bell') }),
-    h('span', {}, text, b.mode === 'standby' && b.syncError ? h('span', {}, ` · ${why(b.syncError)}`) : null),
+    h('span', {}, text, b.mode === 'standby' && b.versions ? h('span', {}, ` · ${t('fo.bar.versions', { master: b.versions.master, here: b.versions.here })}`)
+      : b.mode === 'standby' && b.syncError ? h('span', {}, ` · ${why(b.syncError)}`) : null),
     state.user?.isAdmin ? h('a', { href: '/settings/failover', 'data-link': true }, t('fo.bar.open')) : null);
 }
