@@ -6,6 +6,12 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Backup: the number of backups kept is now set where the backups are - under Settings → Backup → Retention (default 10). It applies to the copies before an update and before a restore as well; saving deletes the ones over it at once. Single backups can be deleted in the list (with a question first)
+- Settings tidied: "two-factor sign-in mandatory for administrators" is now with the users (section Sign-in), General keeps the name of the installation
+- Manual and README: how much space do the messages need? - formula, values per sender and typical setups with recommended settings
+
+## 0.36.0 - 2026-11-16
+
 - Failed logons (4625): the ready-made rule counts without the computer's own service logons and without "no logon server reachable" (laptop starting before its VPN) - neither is an attack. A rule made that way gets the exceptions with the update, one changed by hand stays
 - Windows sign-in events (4625, 4740, 4771, 4776): notifications and the message list show a summary instead of the cut start of the text - account, logon type, reason and origin
 - Message texts are kept up to 4000 instead of 1000 characters, so long Windows events are complete; the list shows them shortened with "whole text". The NXLog example in the manual sends each message in one piece

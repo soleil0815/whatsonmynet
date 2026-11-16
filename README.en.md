@@ -305,7 +305,7 @@ The proxy then forwards either to `https://<server>:8743` (self-signed - "do not
 
 ## Two-factor sign-in (from version 0.4)
 
-Local accounts switch on two-factor sign-in under *My account*: scan the QR code with an authenticator app (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), confirm a code and keep the ten **recovery codes** safe. Sign-in then asks for the six-digit code; each code works only once. Under *Settings → General* two-factor sign-in can be made **mandatory for administrators**. Admins can reset it for an account with a lost phone; accounts from Active Directory are protected by AD itself.
+Local accounts switch on two-factor sign-in under *My account*: scan the QR code with an authenticator app (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), confirm a code and keep the ten **recovery codes** safe. Sign-in then asks for the six-digit code; each code works only once. Under *Settings → Users* two-factor sign-in can be made **mandatory for administrators**. Admins can reset it for an account with a lost phone; accounts from Active Directory are protected by AD itself.
 
 ## Locked out?
 
@@ -323,7 +323,7 @@ What is new is in [CHANGELOG.en.md](CHANGELOG.en.md) (the same texts as in the p
 - Security updates are published on patch day (second Tuesday of the month) as `<version>-s<n>`: the same program with a new base image and updated Alpine and npm packages, built, tested and checked with Trivy. If nothing changed, nothing is published.
 - Trivy checks the published image every day. Fixable vulnerabilities open an issue; the security update on patch day fixes them.
 - In the week before patch day a ZAP scan attacks the program in a throwaway container without login. The monthly code audit evaluates the result.
-- WhatsOnMyNet writes a daily compressed database backup to `data/backups/` (`.sqlite.gz`, the 10 newest by default, number under *Settings → General*). Back up the whole `data/` folder, including `secret.key` and `tls/`. The messages of the devices (syslog, traps) are in `data/events.sqlite` - not in the database and not in the daily backups; at most 2 GB (adjustable).
+- WhatsOnMyNet writes a daily compressed database backup to `data/backups/` (`.sqlite.gz`, the 10 newest by default, number under *Settings → Backup*, where single backups can be deleted as well). Back up the whole `data/` folder, including `secret.key` and `tls/`. The messages of the devices (syslog, traps) are in `data/events.sqlite` - not in the database and not in the daily backups; at most 2 GB (adjustable).
 
 Under *Settings → Backup* (from 0.4) you download a current backup at any time, create one or restore one - uploaded (`.sqlite` or `.sqlite.gz`) or from the list on the server. The file is checked first (WhatsOnMyNet database, not newer than this version, same key), the current state is kept as `whatsonmynet-before-restore-…`, then the program restarts. **Keep `data/secret.key` (or your `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 

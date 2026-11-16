@@ -305,7 +305,7 @@ Der Proxy leitet dann entweder an `https://<server>:8743` (selbstsigniert, beim 
 
 ## Zwei-Faktor-Anmeldung (ab Version 0.4)
 
-Lokale Konten schalten unter *Mein Konto* die Zwei-Faktor-Anmeldung ein: QR-Code mit einer Authenticator-App scannen (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), Code bestätigen, die zehn **Wiederherstellungscodes** sicher aufbewahren. Danach fragt die Anmeldung nach dem sechsstelligen Code; jeder Code gilt nur einmal. Unter *Einstellungen → Allgemein* lässt sich die Zwei-Faktor-Anmeldung **für Administratoren verpflichtend** machen. Admins können sie bei verlorenem Handy für ein Konto zurücksetzen; Konten aus dem Active Directory schützt das AD selbst.
+Lokale Konten schalten unter *Mein Konto* die Zwei-Faktor-Anmeldung ein: QR-Code mit einer Authenticator-App scannen (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), Code bestätigen, die zehn **Wiederherstellungscodes** sicher aufbewahren. Danach fragt die Anmeldung nach dem sechsstelligen Code; jeder Code gilt nur einmal. Unter *Einstellungen → Benutzer* lässt sich die Zwei-Faktor-Anmeldung **für Administratoren verpflichtend** machen. Admins können sie bei verlorenem Handy für ein Konto zurücksetzen; Konten aus dem Active Directory schützt das AD selbst.
 
 ## Ausgesperrt?
 
@@ -323,7 +323,7 @@ Was neu ist, steht in [CHANGELOG.md](CHANGELOG.md) (dieselben Texte wie im Progr
 - Sicherheitsupdates erscheinen am Patchday (zweiter Dienstag im Monat) als `<version>-s<n>`: dasselbe Programm mit neuem Basis-Image sowie aktualisierten Alpine- und npm-Paketen, gebaut, getestet und mit Trivy geprüft. Hat sich nichts geändert, wird nichts veröffentlicht.
 - Jeden Tag prüft Trivy das veröffentlichte Image. Gibt es behebbare Lücken, öffnet sich ein Issue, und das Sicherheitsupdate am Patchday behebt sie.
 - In der Woche vor dem Patchday greift ein ZAP-Scan das Programm in einem Wegwerf-Container ohne Anmeldung an. Das Ergebnis wertet der monatliche Code-Audit aus.
-- WhatsOnMyNet legt jeden Tag eine komprimierte Sicherung der Datenbank in `data/backups/` an (`.sqlite.gz`, standardmäßig die 10 neuesten, Anzahl unter *Einstellungen → Allgemein*). Sichere den ganzen Ordner `data/`, inklusive `secret.key` und `tls/`. Die Meldungen der Geräte (Syslog, Traps) liegen in `data/events.sqlite` - nicht in der Datenbank und nicht in den täglichen Sicherungen; höchstens 2 GB (einstellbar).
+- WhatsOnMyNet legt jeden Tag eine komprimierte Sicherung der Datenbank in `data/backups/` an (`.sqlite.gz`, standardmäßig die 10 neuesten, Anzahl unter *Einstellungen → Sicherung*; dort lassen sich einzelne Sicherungen auch löschen). Sichere den ganzen Ordner `data/`, inklusive `secret.key` und `tls/`. Die Meldungen der Geräte (Syslog, Traps) liegen in `data/events.sqlite` - nicht in der Datenbank und nicht in den täglichen Sicherungen; höchstens 2 GB (einstellbar).
 
 Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle Sicherung herunter, legst eine an oder spielst eine ein - hochgeladen (`.sqlite` oder `.sqlite.gz`) oder aus der Liste auf dem Server. Die Datei wird vorher geprüft (WhatsOnMyNet-Datenbank, nicht neuer als diese Version, gleicher Schlüssel), der aktuelle Stand wird als `whatsonmynet-before-restore-…` gesichert, dann startet das Programm neu. **Bewahre `data/secret.key` (bzw. deinen `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
 

@@ -6,6 +6,12 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Sicherung: Die Anzahl der aufbewahrten Sicherungen stellst du jetzt dort ein, wo die Sicherungen sind - unter Einstellungen → Sicherung → Aufbewahrung (Standard 10). Sie gilt auch für die Kopien vor einem Update und vor einer Wiederherstellung; beim Speichern werden überzählige gleich gelöscht. Einzelne Sicherungen lassen sich in der Liste löschen (mit Rückfrage)
+- Einstellungen aufgeräumt: „Zwei-Faktor-Anmeldung für Administratoren verpflichtend“ steht jetzt bei den Benutzern (Abschnitt Anmeldung), unter Allgemein bleibt der Name der Installation
+- Handbuch und README: Wie viel Platz brauchen die Meldungen? - Formel, Werte je Absender und typische Umgebungen mit empfohlenen Einstellungen
+
+## 0.36.0 - 2026-11-16
+
 - Fehlgeschlagene Anmeldungen (4625): Die fertige Regel zählt ohne die Dienst-Anmeldungen des Rechners selbst und ohne „kein Anmeldeserver erreichbar“ (Laptop beim Hochfahren vor dem VPN) - beides ist kein Angriff. Eine so angelegte Regel bekommt die Ausnahmen beim Update, eine von Hand geänderte bleibt
 - Windows-Anmeldeereignisse (4625, 4740, 4771, 4776): In Benachrichtigungen und in der Meldungsliste steht statt des abgeschnittenen Textanfangs eine Kurzfassung - Konto, Anmeldeart, Grund und Herkunft
 - Meldungstexte werden bis 4000 statt 1000 Zeichen gespeichert, damit auch lange Windows-Ereignisse vollständig sind; die Liste zeigt sie gekürzt mit „ganzer Text“. Das NXLog-Beispiel im Handbuch schickt jede Meldung am Stück
