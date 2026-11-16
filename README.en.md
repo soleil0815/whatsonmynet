@@ -250,6 +250,16 @@ Under *Monitoring → Reports* WhatsOnMyNet sends reports by e-mail at set times
 - **Watch** turns a message into a monitor that alarms at once. **Event rules** send chosen messages - apart from the monitors and never to the default recipients - by mail, webhook or to the ticket system: ready-made rules for virus found (Defender), software restriction, AppLocker, locked account and more, one by one with a limit per hour or collected; nothing is lost when a recipient is briefly unreachable.
 - **Event console:** rules count ("from 5 failed logons in 10 minutes per computer"), use regular expressions (checked for speed before saving) and keep **open events** - the first match notifies, further ones only count up until someone acknowledges or the counter-message ("Port 7 link up") closes it. The page shows the messages **by sender**; per sender you set what is kept (everything, warning and worse … or muted).
 - The messages are in a **file of their own** (`data/events.sqlite`): 30 days in at most 2 GB, with a short disk at least 10 % stay free. The page shows how long the space lasts and who sends the most.
+- **Planning space:** reckon about 1.5 KB per message - *space ≈ messages per day × days × 1.5 KB*. Roughly for 30 days:
+
+  | Setup | Messages per day | Space for 30 days | Setting |
+  |---|---:|---:|---|
+  | Small: 5 - 20 PCs, 1 server, NAS, switches | 5,000 - 10,000 | 0.2 - 0.5 GB | default (2 GB) |
+  | Small with domain controller | 20,000 - 40,000 | 1 - 2 GB | 4 GB or the DC *warning and worse* |
+  | Medium: 20 - 100 PCs, 3 - 5 servers, 2 DCs | 50,000 - 150,000 | 2 - 7 GB | 10 GB |
+  | Large: 100 - 500 PCs, 10 - 20 servers, 2 - 4 DCs | 150,000 - 500,000 | 7 - 25 GB | 30 GB, filter noise |
+
+  For 90 days, three times as much. Values per sender and how to go about it are in the manual (*How much space do the messages need?*).
 
 ![Event rules](public/help/img/eventrules-en.png)
 
@@ -295,7 +305,7 @@ The proxy then forwards either to `https://<server>:8743` (self-signed - "do not
 
 ## Two-factor sign-in (from version 0.4)
 
-Local accounts switch on two-factor sign-in under *My account*: scan the QR code with an authenticator app (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), confirm a code and keep the ten **recovery codes** safe. Sign-in then asks for the six-digit code; each code works only once. Under *Settings → General* two-factor sign-in can be made **mandatory for administrators**. Admins can reset it for an account with a lost phone; accounts from Active Directory are protected by AD itself.
+Local accounts switch on two-factor sign-in under *My account*: scan the QR code with an authenticator app (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), confirm a code and keep the ten **recovery codes** safe. Sign-in then asks for the six-digit code; each code works only once. Under *Settings → Users* two-factor sign-in can be made **mandatory for administrators**. Admins can reset it for an account with a lost phone; accounts from Active Directory are protected by AD itself.
 
 ## Locked out?
 
@@ -313,7 +323,7 @@ What is new is in [CHANGELOG.en.md](CHANGELOG.en.md) (the same texts as in the p
 - Security updates are published on patch day (second Tuesday of the month) as `<version>-s<n>`: the same program with a new base image and updated Alpine and npm packages, built, tested and checked with Trivy. If nothing changed, nothing is published.
 - Trivy checks the published image every day. Fixable vulnerabilities open an issue; the security update on patch day fixes them.
 - In the week before patch day a ZAP scan attacks the program in a throwaway container without login. The monthly code audit evaluates the result.
-- WhatsOnMyNet writes a daily compressed database backup to `data/backups/` (`.sqlite.gz`, the 10 newest by default, number under *Settings → General*). Back up the whole `data/` folder, including `secret.key` and `tls/`. The messages of the devices (syslog, traps) are in `data/events.sqlite` - not in the database and not in the daily backups; at most 2 GB (adjustable).
+- WhatsOnMyNet writes a daily compressed database backup to `data/backups/` (`.sqlite.gz`, the 10 newest by default, number under *Settings → Backup*, where single backups can be deleted as well). Back up the whole `data/` folder, including `secret.key` and `tls/`. The messages of the devices (syslog, traps) are in `data/events.sqlite` - not in the database and not in the daily backups; at most 2 GB (adjustable).
 
 Under *Settings → Backup* (from 0.4) you download a current backup at any time, create one or restore one - uploaded (`.sqlite` or `.sqlite.gz`) or from the list on the server. The file is checked first (WhatsOnMyNet database, not newer than this version, same key), the current state is kept as `whatsonmynet-before-restore-…`, then the program restarts. **Keep `data/secret.key` (or your `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 

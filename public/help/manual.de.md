@@ -243,6 +243,49 @@ Unter *Meldungen → Ereignisregeln* legst du fest, welche Meldungen wohin gehen
 - Bei der Ausfallsicherung empfängt jede Installation für sich: In den Geräten Master **und** Standby als Ziel eintragen.
 - SNMPv3-Traps werden (noch) nicht angenommen.
 
+### Wie viel Platz brauchen die Meldungen?
+
+Eine gespeicherte Meldung braucht in `data/events.sqlite` gemessen rund **0,4 KB** (Zeile eines Switches, NAS oder einer USV) bis **4 KB** (langes Windows-Ereignis wie eine fehlgeschlagene Anmeldung 4625); gemischt kann man mit **1,5 KB** rechnen. Daraus:
+
+**Platz ≈ Meldungen pro Tag × Tage × 1,5 KB**
+
+| Meldungen pro Tag | 30 Tage | 90 Tage |
+|---:|---:|---:|
+| 1.000 | 45 MB | 135 MB |
+| 10.000 | 450 MB | 1,4 GB |
+| 50.000 | 2,3 GB | 6,8 GB |
+| 100.000 | 4,5 GB | 13,5 GB |
+| 300.000 | 13,5 GB | 40 GB |
+
+Wie viele Meldungen kommen? Grobe Werte pro Absender und Tag, mit der ab Werk ausgefilterten Rauschliste:
+
+| Absender | Meldungen pro Tag |
+|---|---|
+| Windows-Client | 100 - 1.000 (meist um 300) |
+| Windows-Server (Dateien, Druck, Anwendungen) | 500 - 5.000 |
+| Domänencontroller | 10.000 - 100.000 (Kerberos- und NTLM-Anmeldungen 4768, 4769, 4776) |
+| Switch, NAS, USV, Drucker | 50 - 500 |
+| Firewall oder Router mit Verbindungsprotokoll | 100.000 und mehr - nur Warnungen und Fehler schicken |
+
+Typische Umgebungen:
+
+| Umgebung | Beispiel | Meldungen pro Tag | Platz für 30 Tage | Einstellung |
+|---|---|---:|---:|---|
+| Klein | 5 - 20 PCs, 1 Server, NAS, Switches | 5.000 - 10.000 | 0,2 - 0,5 GB | Standard: 30 Tage, 2 GB |
+| Klein mit Domänencontroller | dazu ein DC | 20.000 - 40.000 | 1 - 2 GB | 4 GB - oder der DC *ab Warnung* |
+| Mittel | 20 - 100 PCs, 3 - 5 Server, 2 DCs | 50.000 - 150.000 | 2 - 7 GB | 10 GB |
+| Groß | 100 - 500 PCs, 10 - 20 Server, 2 - 4 DCs | 150.000 - 500.000 | 7 - 25 GB | 30 GB, Rauschen und DCs filtern; ab hier lohnt zusätzlich ein SIEM (z. B. Wazuh) |
+
+Für 90 Tage gilt das Dreifache. Dazu kommt, was WhatsOnMyNet ohnehin frei hält: mindestens 10 % des Datenträgers und 1 GB.
+
+**So gehst du vor:**
+
+1. Mit den Standardwerten anfangen (30 Tage, 2 GB).
+2. Nach einer Woche unter *Überwachung → Meldungen* ablesen: „… Meldungen am Tag“ und „reicht für etwa … Tage“.
+3. Reicht der Platz nicht: Unter *Nach Absender* steht, wer am meisten schickt. Erst dort ansetzen - gesprächige Absender auf *ab Warnung* (Domänencontroller, Firewalls), das übliche Rauschen unter *Empfang einstellen* ergänzen. Erst dann *Höchstens Platz (GB)* unter *Empfang einstellen* erhöhen.
+4. **Tage:** 30 Tage reichen für den Alltag (Was war letzte Woche los?). Wer Vorfälle auch später noch nachvollziehen will - ein Angriff fällt oft erst nach Wochen auf -, nimmt 90 Tage. Die Meldungen enthalten Benutzer- und Rechnernamen: die Dauer mit Datenschutz bzw. Personalrat abstimmen und nicht länger aufbewahren als nötig.
+5. Die Meldungsdatei ist nicht in den täglichen Sicherungen - ihre Größe zählt also nur einmal.
+
 ## Drucker, Switches und NAS
 
 Geräte vom Typ *Drucker*, *Switch* und *NAS* werden per SNMP gefragt (nur lesend). Die Community stellst du unter *Einstellungen → Scan* ein; am Gerät muss SNMP v1/v2c an sein.
@@ -590,7 +633,7 @@ Unter *Überwachung → Berichte* gehen Berichte zu festen Zeiten per E-Mail rau
 - **Rollen**: *Administrator* (alles), *Bearbeiter* (scannen, übernehmen, pflegen, Monitore), *Nur lesen*. Bearbeiter scannen nur private Netze (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) und die Subnetze der Standorte; öffentliche Adressen nur Administratoren.
 - **Standorte**: Bearbeiter und Leser lassen sich auf Standorte beschränken - sie sehen und ändern dann nur deren Geräte, Scans und Monitore.
 - **Active Directory**: Anmeldung mit dem Windows-Konto, siehe nächster Abschnitt.
-- **Zwei-Faktor-Anmeldung** (*Mein Konto*): QR-Code mit einer Authenticator-App scannen, Code bestätigen, Wiederherstellungscodes aufbewahren. Für Administratoren lässt sie sich unter *Einstellungen → Allgemein* verpflichtend machen.
+- **Zwei-Faktor-Anmeldung** (*Mein Konto*): QR-Code mit einer Authenticator-App scannen, Code bestätigen, Wiederherstellungscodes aufbewahren. Für Administratoren lässt sie sich unter *Einstellungen → Benutzer* (Abschnitt *Anmeldung*) verpflichtend machen.
 
 ## Anmeldung mit Active Directory
 
@@ -654,8 +697,8 @@ Beim Koppeln übernimmt der Standby **alle Daten des Masters** (Geräte, Monitor
 
 ## Sicherung und Updates
 
-- Einmal am Tag sichert WhatsOnMyNet die Datenbank komprimiert nach `data/backups/` (`whatsonmynet-….sqlite.gz`, das erste Mal eine Stunde nach dem Start); vor jedem Update der Datenbank zusätzlich. Aufbewahrt werden standardmäßig die 10 neuesten (*Einstellungen → Allgemein*), von den Kopien vor Updates und vor dem Einspielen je die 10 neuesten. Ältere unkomprimierte Sicherungen werden einmal komprimiert.
-- *Einstellungen → Sicherung*: Sicherung herunterladen, jetzt sichern, Sicherung einspielen - `.sqlite` oder `.sqlite.gz` (der aktuelle Stand wird vorher gesichert, dann startet das Programm neu). Zum Öffnen von Hand: `gunzip -k whatsonmynet-….sqlite.gz`.
+- Einmal am Tag sichert WhatsOnMyNet die Datenbank komprimiert nach `data/backups/` (`whatsonmynet-….sqlite.gz`, das erste Mal eine Stunde nach dem Start); vor jedem Update der Datenbank zusätzlich. Aufbewahrt werden standardmäßig die 10 neuesten, von den Kopien vor Updates und vor dem Einspielen ebenso je die 10 neuesten. Die Anzahl stellst du unter *Einstellungen → Sicherung → Aufbewahrung* ein (1 - 90); beim Speichern werden überzählige gleich gelöscht, die ältesten zuerst. Ältere unkomprimierte Sicherungen werden einmal komprimiert.
+- *Einstellungen → Sicherung*: Sicherung herunterladen, jetzt sichern, einzelne Sicherungen löschen (Papierkorb in der Liste, mit Rückfrage), Sicherung einspielen - `.sqlite` oder `.sqlite.gz` (der aktuelle Stand wird vorher gesichert, dann startet das Programm neu). Zum Öffnen von Hand: `gunzip -k whatsonmynet-….sqlite.gz`.
 - **Bewahre `data/secret.key` (bzw. `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
 - Updates: in Dockhand/Watchtower oder `docker compose pull && docker compose up -d`. Einmal im Monat erscheint ein Sicherheits-Update mit neuen Paketen.
 

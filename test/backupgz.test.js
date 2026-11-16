@@ -113,3 +113,59 @@ test('Windows noise: a new installation leaves it out, one already in use (migra
   migrate(own, { quiet: true });
   assert.equal(createSettings(own).get('events.winDeny'), '8004');
 });
+
+test('backups: the number set applies at once to daily copies and to each kind of special copy; one can be deleted by hand', async () => {
+  const dir = fs.mkdtempSync(path.join(tmp, 'gzk-'));
+  const { db, file } = makeDb(dir);
+  const bdir = path.join(dir, 'backups');
+  fs.mkdirSync(bdir, { recursive: true });
+  const put = (name, day) => { const f = path.join(bdir, name); fs.writeFileSync(f, zlib.gzipSync('x'), { mode: 0o600 }); fs.utimesSync(f, new Date(`2026-10-${day}T03:00:00Z`), new Date(`2026-10-${day}T03:00:00Z`)); };
+  for (let i = 10; i <= 17; i++) {
+    put(`whatsonmynet-2026-10-${i}-03-00-00.sqlite.gz`, i);
+    put(`whatsonmynet-before-schema-${i}-2026-10-${i}-03-00-00.sqlite.gz`, i);
+    put(`whatsonmynet-before-restore-2026-10-${i}-03-00-00.sqlite.gz`, i);
+  }
+  const settings = createSettings(db);
+  const backups = createBackups({ db, settings, dbFile: file, backupsDir: bdir, restart: () => {} });
+  settings.set('backup.keep', 3);
+  await backups.tidy();
+  const kinds = (k) => backups.list().filter((x) => x.kind === k).map((x) => x.name).sort();
+  assert.deepEqual(kinds('daily'), ['whatsonmynet-2026-10-15-03-00-00.sqlite.gz', 'whatsonmynet-2026-10-16-03-00-00.sqlite.gz', 'whatsonmynet-2026-10-17-03-00-00.sqlite.gz'], 'the newest three');
+  assert.equal(kinds('schema').length, 3);
+  assert.equal(kinds('restore').length, 3);
+  // copies before an update: the oldest go by their time - by name "before-schema-36" would sort before "-4"
+  for (const [n, day] of [[4, '01'], [9, '02'], [31, '20'], [36, '21']]) put(`whatsonmynet-before-schema-${n}-2026-10-${day}-03-00-00.sqlite.gz`, day);
+  await backups.tidy();
+  assert.deepEqual(kinds('schema'), ['whatsonmynet-before-schema-17-2026-10-17-03-00-00.sqlite.gz', 'whatsonmynet-before-schema-31-2026-10-20-03-00-00.sqlite.gz', 'whatsonmynet-before-schema-36-2026-10-21-03-00-00.sqlite.gz'], 'the newest by time');
+  backups.remove('whatsonmynet-2026-10-15-03-00-00.sqlite.gz');
+  assert.equal(kinds('daily').length, 2);
+  // only names from the list: no other file of the data folder, no way out of the folder
+  for (const bad of ['../whatsonmynet.sqlite', 'whatsonmynet.sqlite', '..%2Fwhatsonmynet.sqlite', 'whatsonmynet-2026-10-15-03-00-00.sqlite.gz']) {
+    assert.throws(() => backups.remove(bad), { code: 'err.notFound' }, bad);
+  }
+  assert.ok(fs.existsSync(file), 'the database itself is untouched');
+  db.close();
+});
+
+test('API: delete a backup only with the confirmation, setting the number tidies at once - administrators only', async () => {
+  const { startApp } = await import('./helpers.js');
+  const app = await startApp();
+  const { call, ctx } = app;
+  try {
+    assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+    ctx.users.create({ username: 'olaf', password: 'Sicher-Passwort-2', role: 'editor' });
+    await call('POST', '/api/login', { username: 'olaf', password: 'Sicher-Passwort-2' }, { who: 'editor' });
+    for (let i = 0; i < 3; i++) await call('POST', '/api/backups');
+    let { list } = (await call('GET', '/api/backups')).data;
+    assert.ok(list.length >= 1);
+    const name = list[0].name;
+    assert.equal((await call('DELETE', `/api/backups/file/${encodeURIComponent(name)}`, undefined, { who: 'editor', headers: { 'X-WOMN-Confirm': 'delete' } })).status, 403);
+    assert.equal((await call('DELETE', `/api/backups/file/${encodeURIComponent(name)}`)).status, 400, 'without confirmation');
+    assert.equal((await call('DELETE', `/api/backups/file/${encodeURIComponent(name)}`, undefined, { headers: { 'X-WOMN-Confirm': 'delete' } })).status, 200);
+    assert.ok(!(await call('GET', '/api/backups')).data.list.some((x) => x.name === name));
+    assert.equal((await call('DELETE', `/api/backups/file/${encodeURIComponent('../whatsonmynet.sqlite')}`, undefined, { headers: { 'X-WOMN-Confirm': 'delete' } })).status, 404);
+    assert.equal((await call('PUT', '/api/settings/backup', { keep: 1 })).data.keep, 1);
+    list = (await call('GET', '/api/backups')).data.list;
+    assert.ok(list.filter((x) => x.kind === 'daily').length <= 1, 'tidied when saved');
+  } finally { await app.close(); }
+});

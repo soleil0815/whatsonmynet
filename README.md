@@ -250,6 +250,16 @@ Unter *Überwachung → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Beric
 - **Überwachen** macht aus einer Meldung einen Monitor, der sofort alarmiert. **Ereignisregeln** schicken ausgewählte Meldungen - getrennt von den Monitoren und nie an die Standard-Empfänger - per Mail, Webhook oder ans Ticketsystem: fertige Regeln für Virenfund (Defender), Software-Einschränkung, AppLocker, gesperrtes Konto und mehr, einzeln mit Obergrenze je Stunde oder gesammelt; nichts geht verloren, wenn ein Empfänger kurz nicht erreichbar ist.
 - **Ereignis-Konsole:** Regeln zählen („ab 5 Fehlanmeldungen in 10 Minuten je Rechner“), nutzen reguläre Ausdrücke (vor dem Speichern auf Tempo geprüft) und führen **offene Ereignisse** - der erste Treffer meldet, weitere zählen nur hoch, bis jemand quittiert oder die Gegenmeldung („Port 7 link up“) es schließt. Die Seite zeigt die Meldungen **nach Absender**; je Absender lässt sich festlegen, was gespeichert wird (alles, ab Warnung … oder stumm).
 - Die Meldungen liegen in einer **eigenen Datei** (`data/events.sqlite`): 30 Tage in höchstens 2 GB, bei knappem Datenträger bleiben mindestens 10 % frei. Die Seite zeigt, wie lange der Platz reicht und wer die meisten Meldungen schickt.
+- **Platz planen:** gerechnet rund 1,5 KB je Meldung - *Platz ≈ Meldungen pro Tag × Tage × 1,5 KB*. Grob für 30 Tage:
+
+  | Umgebung | Meldungen pro Tag | Platz für 30 Tage | Einstellung |
+  |---|---:|---:|---|
+  | Klein: 5 - 20 PCs, 1 Server, NAS, Switches | 5.000 - 10.000 | 0,2 - 0,5 GB | Standard (2 GB) |
+  | Klein mit Domänencontroller | 20.000 - 40.000 | 1 - 2 GB | 4 GB oder DC *ab Warnung* |
+  | Mittel: 20 - 100 PCs, 3 - 5 Server, 2 DCs | 50.000 - 150.000 | 2 - 7 GB | 10 GB |
+  | Groß: 100 - 500 PCs, 10 - 20 Server, 2 - 4 DCs | 150.000 - 500.000 | 7 - 25 GB | 30 GB, Rauschen filtern |
+
+  Für 90 Tage das Dreifache. Werte je Absender und das Vorgehen stehen im Handbuch (*Wie viel Platz brauchen die Meldungen?*).
 
 ![Ereignisregeln](public/help/img/eventrules-de.png)
 
@@ -295,7 +305,7 @@ Der Proxy leitet dann entweder an `https://<server>:8743` (selbstsigniert, beim 
 
 ## Zwei-Faktor-Anmeldung (ab Version 0.4)
 
-Lokale Konten schalten unter *Mein Konto* die Zwei-Faktor-Anmeldung ein: QR-Code mit einer Authenticator-App scannen (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), Code bestätigen, die zehn **Wiederherstellungscodes** sicher aufbewahren. Danach fragt die Anmeldung nach dem sechsstelligen Code; jeder Code gilt nur einmal. Unter *Einstellungen → Allgemein* lässt sich die Zwei-Faktor-Anmeldung **für Administratoren verpflichtend** machen. Admins können sie bei verlorenem Handy für ein Konto zurücksetzen; Konten aus dem Active Directory schützt das AD selbst.
+Lokale Konten schalten unter *Mein Konto* die Zwei-Faktor-Anmeldung ein: QR-Code mit einer Authenticator-App scannen (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), Code bestätigen, die zehn **Wiederherstellungscodes** sicher aufbewahren. Danach fragt die Anmeldung nach dem sechsstelligen Code; jeder Code gilt nur einmal. Unter *Einstellungen → Benutzer* lässt sich die Zwei-Faktor-Anmeldung **für Administratoren verpflichtend** machen. Admins können sie bei verlorenem Handy für ein Konto zurücksetzen; Konten aus dem Active Directory schützt das AD selbst.
 
 ## Ausgesperrt?
 
@@ -313,7 +323,7 @@ Was neu ist, steht in [CHANGELOG.md](CHANGELOG.md) (dieselben Texte wie im Progr
 - Sicherheitsupdates erscheinen am Patchday (zweiter Dienstag im Monat) als `<version>-s<n>`: dasselbe Programm mit neuem Basis-Image sowie aktualisierten Alpine- und npm-Paketen, gebaut, getestet und mit Trivy geprüft. Hat sich nichts geändert, wird nichts veröffentlicht.
 - Jeden Tag prüft Trivy das veröffentlichte Image. Gibt es behebbare Lücken, öffnet sich ein Issue, und das Sicherheitsupdate am Patchday behebt sie.
 - In der Woche vor dem Patchday greift ein ZAP-Scan das Programm in einem Wegwerf-Container ohne Anmeldung an. Das Ergebnis wertet der monatliche Code-Audit aus.
-- WhatsOnMyNet legt jeden Tag eine komprimierte Sicherung der Datenbank in `data/backups/` an (`.sqlite.gz`, standardmäßig die 10 neuesten, Anzahl unter *Einstellungen → Allgemein*). Sichere den ganzen Ordner `data/`, inklusive `secret.key` und `tls/`. Die Meldungen der Geräte (Syslog, Traps) liegen in `data/events.sqlite` - nicht in der Datenbank und nicht in den täglichen Sicherungen; höchstens 2 GB (einstellbar).
+- WhatsOnMyNet legt jeden Tag eine komprimierte Sicherung der Datenbank in `data/backups/` an (`.sqlite.gz`, standardmäßig die 10 neuesten, Anzahl unter *Einstellungen → Sicherung*; dort lassen sich einzelne Sicherungen auch löschen). Sichere den ganzen Ordner `data/`, inklusive `secret.key` und `tls/`. Die Meldungen der Geräte (Syslog, Traps) liegen in `data/events.sqlite` - nicht in der Datenbank und nicht in den täglichen Sicherungen; höchstens 2 GB (einstellbar).
 
 Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle Sicherung herunter, legst eine an oder spielst eine ein - hochgeladen (`.sqlite` oder `.sqlite.gz`) oder aus der Liste auf dem Server. Die Datei wird vorher geprüft (WhatsOnMyNet-Datenbank, nicht neuer als diese Version, gleicher Schlüssel), der aktuelle Stand wird als `whatsonmynet-before-restore-…` gesichert, dann startet das Programm neu. **Bewahre `data/secret.key` (bzw. deinen `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
 
