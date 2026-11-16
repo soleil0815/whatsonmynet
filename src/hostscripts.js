@@ -21,8 +21,8 @@ const shList = (a) => (a.length ? a.map(shQuote).join(' ') : "''");
 const uninstallName = (file) => file.replace(/\.(ps1|sh)$/, '-uninstall.$1');
 
 /**
- * The script for a host. url: where it sends to; token: its key; pin: { sha1, spki } of a self-signed certificate
- * of WhatsOnMyNet (empty when a public CA vouches for it).
+ * The script for a host. url: where it sends to; token: its key; pin: { sha1, spki, key } of a self-signed
+ * certificate of WhatsOnMyNet (empty when a public CA vouches for it) - key is its public key as Windows reads it.
  */
 export function hostScript(kind, { url, token, pin = {} }) {
   const k = KINDS[kind];
@@ -31,8 +31,9 @@ export function hostScript(kind, { url, token, pin = {} }) {
     ? read('setup.ps1.part').replace('@TASK@', () => psQuote(k.task)).replace('@FILE@', () => psQuote(k.file)).replace('@OLD@', () => psList(k.old))
     : read('setup.sh.part').replace('@FILE@', () => shQuote(k.file)).replace('@CRON@', () => shQuote(k.cron)).replace('@OLD@', () => shList(k.old));
   let text = read(k.file).replace('@SETUP@', () => setup.trimEnd());
+  if (k.ps) text = text.replace('@PINCHECK@', () => read('pin.ps1.part').trimEnd());
   text = k.ps
-    ? text.replace('@URL@', () => psQuote(url)).replace('@TOKEN@', () => psQuote(token)).replace('@THUMB@', () => psQuote(pin.sha1 || '')).replace('@KEYPIN@', () => psQuote(pin.key || ''))
+    ? text.replace('@URL@', () => psQuote(url)).replace('@TOKEN@', () => psQuote(token)).replace('@THUMB@', () => psQuote(pin.sha1 || '')).replace('@PUBKEY@', () => psQuote(pin.key || ''))
     : text.replace('@URL@', () => shQuote(url)).replace('@TOKEN@', () => shQuote(token)).replace('@PIN@', () => shQuote(pin.spki ? `sha256//${pin.spki}` : ''));
   return { file: k.file, text, uninstall: uninstallScript(kind) };
 }

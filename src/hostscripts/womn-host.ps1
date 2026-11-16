@@ -7,23 +7,7 @@
 $ErrorActionPreference = 'Stop'
 $Url = @URL@
 $Token = @TOKEN@
-$Thumb = @THUMB@
-$KeyPin = @KEYPIN@
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-if ($Thumb -or $KeyPin) {
-  # Self-signed certificate of WhatsOnMyNet: trust exactly its key (it stays the same when the certificate is renewed),
-  # or this one certificate
-  Add-Type -TypeDefinition @"
-using System; using System.Net; using System.Net.Security; using System.Security.Cryptography; using System.Security.Cryptography.X509Certificates;
-public static class WomnPin { static string Thumb; static string Key;
-  static bool Check(object s, X509Certificate c, X509Chain ch, SslPolicyErrors e) {
-    if (c == null) return false;
-    if (Thumb.Length > 0 && c.GetCertHashString() == Thumb) return true;
-    using (SHA256 h = SHA256.Create()) { return Key.Length > 0 && BitConverter.ToString(h.ComputeHash(c.GetPublicKey())).Replace("-", "") == Key; } }
-  public static void Enable(string t, string k) { Thumb = t; Key = k; ServicePointManager.ServerCertificateValidationCallback = Check; } }
-"@
-  [WomnPin]::Enable($Thumb.Replace(':', '').ToUpper(), $KeyPin.ToUpper())
-}
+@PINCHECK@
 @SETUP@
 $os = Get-CimInstance Win32_OperatingSystem
 $cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
@@ -156,7 +140,10 @@ if (Test-Path -LiteralPath $ChkDir) {
     foreach ($f in @(Get-ChildItem -LiteralPath $ChkDir -File | Where-Object { @('.ps1', '.cmd', '.bat') -contains $_.Extension.ToLower() } | Sort-Object Name | Select-Object -First 50)) {
       if (-not (Test-Safe $f.FullName)) { $checks += Check-Entry $f.Name 'owner or rights not safe - not run (owner must be Administrators)' $f.Name; continue }
       $p = New-Object System.Diagnostics.Process
-      if ($f.Extension -ieq '.ps1') { $p.StartInfo.FileName = 'powershell.exe'; $p.StartInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$($f.FullName)`"" }
+      # A check of the administrators (owner and rights checked above) runs under RemoteSigned: a download mark is
+      # removed instead of switching the execution policy off
+      if ($f.Extension -ieq '.ps1') { try { Unblock-File -LiteralPath $f.FullName } catch { $null = $_ }
+        $p.StartInfo.FileName = 'powershell.exe'; $p.StartInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File `"$($f.FullName)`"" }
       else { $p.StartInfo.FileName = 'cmd.exe'; $p.StartInfo.Arguments = "/c `"`"$($f.FullName)`"`"" }
       $p.StartInfo.UseShellExecute = $false; $p.StartInfo.RedirectStandardOutput = $true; $p.StartInfo.RedirectStandardInput = $true; $p.StartInfo.CreateNoWindow = $true
       try { [void]$p.Start(); $p.StandardInput.Close(); $read = $p.StandardOutput.ReadToEndAsync() } catch { $checks += Check-Entry $f.Name "could not start: $($_.Exception.Message)" $f.Name; continue }

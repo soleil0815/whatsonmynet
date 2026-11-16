@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Windows and Hyper-V script: Windows logged every run as a "suspicious" script block (event 4104, warning) - because of the built-in C# code for the pinned certificate and "-ExecutionPolicy Bypass". The certificate is now checked by PowerShell itself (just as strict: exactly this key or this certificate), the scheduled task runs under RemoteSigned. Takes effect after New script and distributing it again
+
+## 0.33.2 - 2026-11-15
+
 - Windows scripts of the machines: setting up again took all rights from the existing copy in C:\ProgramData\WhatsOnMyNet - afterwards not even SYSTEM could get at it ("access denied"). The rights are now set on the folder only, existing files inherit them again (also ones damaged that way), and nobody but SYSTEM and administrators has access to the folder
 
 ## 0.33.1 - 2026-11-15
