@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Event rules: new ready-made rules - new scheduled task (4698), user account created (4720), Defender real-time protection turned off (5001), PowerShell: suspicious script (4104, warnings only) and error of a command (4100); "log cleared" now also covers the system log (104). The manual says which auditing Windows needs for them
+
+## 0.33.5 - 2026-11-16
+
 - Windows script of the machines: no more "System error" (event 4100, warning) on every run - the cause was "Select-Object -First" (first network address, Defender status, the first 10 events): Windows PowerShell stops the query before it that way and logs it as system error. The first entries are now taken by index, the values stay the same. Takes effect after New script and distributing it again
 
 ## 0.33.4 - 2026-11-16
