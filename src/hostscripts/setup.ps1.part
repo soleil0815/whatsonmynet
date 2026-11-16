@@ -37,7 +37,10 @@ if ($Setup) {
   }
   if ($copyError) { throw "WhatsOnMyNet: $Dest could not be replaced ($copyError) - please end the task '$Task' or remove the file and run the setup again." }
   (Get-Item -LiteralPath $Dest -Force).Attributes = [IO.FileAttributes]::Normal
-  & schtasks.exe /Create /F /TN $Task /SC MINUTE /MO 5 /RU SYSTEM /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Dest" | Out-Null
+  # The copy is a local file now: without the download mark it runs under RemoteSigned - no need to switch the
+  # execution policy off for the task (a policy set by group policy applies either way)
+  try { Unblock-File -LiteralPath $Dest } catch { $null = $_ }
+  & schtasks.exe /Create /F /TN $Task /SC MINUTE /MO 5 /RU SYSTEM /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File $Dest" | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'WhatsOnMyNet: the scheduled task could not be created - please run as administrator.' }
   # The setup of version 0.6.0 used another task name - remove it, so the host does not report twice
   foreach ($old in @OLD@) { & schtasks.exe /Query /TN $old *> $null; if ($LASTEXITCODE -eq 0) { & schtasks.exe /Delete /F /TN $old | Out-Null } }

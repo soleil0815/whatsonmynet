@@ -238,13 +238,15 @@ test('pinned company CA: the name of the server still has to fit', async (t) => 
   assert.ok(opts.checkServerIdentity('pve.firma.local', peer('drucker17.firma.local')) instanceof Error);
 });
 
-test('Windows key pin: as X509Certificate.GetPublicKey() hashes it', () => {
+test('Windows key pin: the public key as X509Certificate.GetPublicKeyString() gives it', () => {
   const { publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const j = publicKey.export({ format: 'jwk' });
   const raw = Buffer.concat([Buffer.from([4]), Buffer.from(j.x, 'base64url'), Buffer.from(j.y, 'base64url')]);
-  assert.equal(keyPin(publicKey), crypto.createHash('sha256').update(raw).digest('hex').toUpperCase());
+  assert.equal(keyPin(publicKey), raw.toString('hex').toUpperCase());
+  const rsa = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey;
+  assert.equal(keyPin(rsa), rsa.export({ type: 'pkcs1', format: 'der' }).toString('hex').toUpperCase());
   const s = hostScript('windows', { url: 'https://w/api/hosts/push', token: 't', pin: { sha1: 'AB', key: keyPin(publicKey) } });
-  assert.ok(s.text.includes(`$KeyPin = '${keyPin(publicKey)}'`));
+  assert.ok(s.text.includes(`$PublicKey = '${keyPin(publicKey)}'`));
 });
 
 test('scan agent: a company root CA is checked with the name, not as pinned server certificate', () => {

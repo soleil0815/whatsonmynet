@@ -254,9 +254,9 @@ async function pfxToPem(pfx, passphrase) {
 }
 
 /**
- * Pin of a public key as Windows sees it (X509Certificate.GetPublicKey(): for EC the point 04|x|y, for RSA the
- * PKCS#1 key), SHA-256 in hex. The Windows scripts compare this - it stays the same when the self-signed
- * certificate is renewed with the same key.
+ * A public key as Windows reads it (X509Certificate.GetPublicKeyString(): for EC the point 04|x|y, for RSA the
+ * PKCS#1 key), in hex. The Windows scripts compare it as it is - no hash, so they need no cryptography class of their
+ * own - and it stays the same when the self-signed certificate is renewed with the same key.
  */
 export function keyPin(publicKey) {
   let raw;
@@ -266,5 +266,5 @@ export function keyPin(publicKey) {
   } else if (publicKey.asymmetricKeyType === 'rsa') {
     raw = publicKey.export({ type: 'pkcs1', format: 'der' });
   } else return '';
-  return crypto.createHash('sha256').update(raw).digest('hex').toUpperCase();
+  return raw.toString('hex').toUpperCase();
 }
