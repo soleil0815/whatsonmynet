@@ -9,7 +9,7 @@ $profiles = @(
   'win-8_x64_10.0.14393.0_5.1.14393.2791_x64_4.0.30319.42000_framework', # Server 2016, PowerShell 5.1
   'win-8_x64_10.0.17763.0_5.1.17763.316_x64_4.0.30319.42000_framework'   # Server 2019, PowerShell 5.1
 )
-$settings = @{ Rules = @{
+$settings = @{ IncludeRules = @('PSUseCompatibleSyntax', 'PSUseCompatibleCommands', 'PSUseCompatibleTypes'); Rules = @{
   PSUseCompatibleSyntax = @{ Enable = $true; TargetVersions = @('3.0', '4.0', '5.1') }
   PSUseCompatibleCommands = @{ Enable = $true; TargetProfiles = $profiles }
   PSUseCompatibleTypes = @{ Enable = $true; TargetProfiles = $profiles }
