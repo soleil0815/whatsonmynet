@@ -72,3 +72,24 @@ jobs:
             ${{ runner.temp }}/serve.log
             ${{ runner.temp }}/serve.err
           retention-days: 7
+
+  # Windows Server 2012 to 2019 are not offered as runners: their PowerShell (3.0, 4.0, 5.1) is checked from recorded
+  # profiles instead - syntax, commands and .NET types the scripts use
+  older-windows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Scripts as handed out
+        run: node tools/wincheck/render.mjs "$RUNNER_TEMP/compat"
+      - name: PSScriptAnalyzer (fixed version)
+        shell: pwsh
+        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.23.0 -Scope CurrentUser -Force
+      - name: Compatible with Server 2012, 2012 R2, 2016 and 2019
+        shell: pwsh
+        run: tools/wincheck/compat.ps1 -Dir (Join-Path $env:RUNNER_TEMP 'compat')
