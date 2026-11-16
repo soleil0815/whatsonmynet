@@ -338,6 +338,9 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       out.sender_filters = db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((f) => ({ sender: an.anon(f.source_ip), min_severity: f.min_severity }));
       out.storage = { used: st.used, limit: st.limit, cap: st.cap, disk_short: !!st.diskShort, total: st.total, per_day: st.perDay, oldest: st.oldest, keep_days: st.keepDays,
         days_fit: st.daysFit, short: !!st.short, top_senders: (st.topSenders || []).map((x) => ({ name: an.anon(x.name), share: x.share })), top_events: st.topEvents || [] };
+      // the full-text index: how far it is (its size is part of "used")
+      const si = s.searchIndex || {};
+      out.search_index = { building: !!si.building, share: si.share ?? null, behind: si.behind ?? null };
     }
     const q = (sql, ...a) => db.prepare(sql).all(since, ...a);
     out.period = {

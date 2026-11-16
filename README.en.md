@@ -259,15 +259,16 @@ Under *Monitoring → Reports* WhatsOnMyNet sends reports by e-mail at set times
 - **Watch** turns a message into a monitor that alarms at once. **Event rules** send chosen messages - apart from the monitors and never to the default recipients - by mail, webhook or to the ticket system: ready-made rules for virus found (Defender), software restriction, AppLocker, locked account and more, one by one with a limit per hour or collected; nothing is lost when a recipient is briefly unreachable.
 - **Event console:** rules count ("from 5 failed logons in 10 minutes per computer"), use regular expressions (checked for speed before saving) and keep **open events** - the first match notifies, further ones only count up until someone acknowledges or the counter-message ("Port 7 link up") closes it. The page shows the messages **by sender**; per sender you set what is kept (everything, warning and worse … or muted).
 - **Time range and timeline** (as in Splunk or Wazuh): last 15 minutes to 30 days or a custom range; above the list a timeline counts the hits per step of time (errors, warnings, the rest). Search for an event, then click a bar or drag across several - list and timeline narrow to it. A click on the time of a message shows the 5 minutes before and after.
+- **Fast search in many GB too:** a search index finds whole words and beginnings of words (`m.muster`, `link down`, `print…`) in a fraction of a second, over 30 or 90 days as well; parts in the middle of a word on request.
 - The messages are in a **file of their own** (`data/events.sqlite`): 30 days in at most 2 GB, with a short disk at least 10 % stay free. The page shows how long the space lasts and who sends the most.
-- **Planning space:** reckon about 1.5 KB per message - *space ≈ messages per day × days × 1.5 KB*. Roughly for 30 days:
+- **Planning space:** reckon about 2 KB per message, search index included - *space ≈ messages per day × days × 2 KB*. Roughly for 30 days:
 
   | Setup | Messages per day | Space for 30 days | Setting |
   |---|---:|---:|---|
-  | Small: 5 - 20 PCs, 1 server, NAS, switches | 5,000 - 10,000 | 0.2 - 0.5 GB | default (2 GB) |
-  | Small with domain controller | 20,000 - 40,000 | 1 - 2 GB | 4 GB or the DC *warning and worse* |
-  | Medium: 20 - 100 PCs, 3 - 5 servers, 2 DCs | 50,000 - 150,000 | 2 - 7 GB | 10 GB |
-  | Large: 100 - 500 PCs, 10 - 20 servers, 2 - 4 DCs | 150,000 - 500,000 | 7 - 25 GB | 30 GB, filter noise |
+  | Small: 5 - 20 PCs, 1 server, NAS, switches | 5,000 - 10,000 | 0.3 - 0.6 GB | default (2 GB) |
+  | Small with domain controller | 20,000 - 40,000 | 1.2 - 2.4 GB | 4 GB or the DC *warning and worse* |
+  | Medium: 20 - 100 PCs, 3 - 5 servers, 2 DCs | 50,000 - 150,000 | 3 - 9 GB | 10 GB |
+  | Large: 100 - 500 PCs, 10 - 20 servers, 2 - 4 DCs | 150,000 - 500,000 | 9 - 30 GB | 40 GB, filter noise |
 
   For 90 days, three times as much. Values per sender and how to go about it are in the manual (*How much space do the messages need?*).
 

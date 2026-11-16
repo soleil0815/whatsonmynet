@@ -780,6 +780,29 @@ const EVENTS_SCHEMA = [
    );
    CREATE INDEX IF NOT EXISTS ev.event_open_live ON event_open(rule_id, source_ip, key, state);
    CREATE INDEX IF NOT EXISTS ev.event_open_closed ON event_open(closed_at);`,
+  // 4: search over many gigabytes - a full-text index of words (SQLite FTS5) next to the messages, filled in the
+  // background in batches (events.js): new messages are written as before, without waiting for the index, and a file
+  // from before is indexed bit by bit after the update. "done" is the highest id in the index - everything up to it is
+  // in, everything above is searched the slow way. A message that goes takes its words with it (only if they are in);
+  // if the newest messages go, "done" follows, so a number given again is indexed again. Event ids get an index of
+  // their own (a search for "4625").
+  `CREATE VIRTUAL TABLE IF NOT EXISTS ev.events_fts USING fts5(text, app, host, channel, account, source_ip,
+     content='events_in', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
+   CREATE TABLE IF NOT EXISTS ev.events_fts_state (k TEXT PRIMARY KEY, v INTEGER NOT NULL);
+   INSERT OR REPLACE INTO ev.events_fts_state(k, v) VALUES ('done', COALESCE((SELECT MIN(id) FROM ev.events_in), 1) - 1);
+   CREATE TRIGGER IF NOT EXISTS ev.events_fts_gone AFTER DELETE ON events_in BEGIN
+     INSERT INTO events_fts(events_fts, rowid, text, app, host, channel, account, source_ip)
+       SELECT 'delete', old.id, old.text, old.app, old.host, old.channel, old.account, old.source_ip
+       WHERE old.id <= (SELECT v FROM events_fts_state WHERE k = 'done');
+     UPDATE events_fts_state SET v = COALESCE((SELECT MAX(id) FROM events_in), 0)
+       WHERE k = 'done' AND v > COALESCE((SELECT MAX(id) FROM events_in), 0);
+   END;
+   CREATE TRIGGER IF NOT EXISTS ev.events_fts_changed AFTER UPDATE OF text, app, host, channel, account, source_ip ON events_in
+     WHEN old.id <= (SELECT v FROM events_fts_state WHERE k = 'done') BEGIN
+     INSERT INTO events_fts(events_fts, rowid, text, app, host, channel, account, source_ip) VALUES ('delete', old.id, old.text, old.app, old.host, old.channel, old.account, old.source_ip);
+     INSERT INTO events_fts(rowid, text, app, host, channel, account, source_ip) VALUES (new.id, new.text, new.app, new.host, new.channel, new.account, new.source_ip);
+   END;
+   CREATE INDEX IF NOT EXISTS ev.events_in_event ON events_in(event_id) WHERE event_id IS NOT NULL;`,
 ];
 export const eventsFile = (dbFile) => (dbFile === ':memory:' ? ':memory:' : path.join(path.dirname(dbFile), 'events.sqlite'));
 

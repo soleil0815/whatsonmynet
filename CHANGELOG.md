@@ -6,6 +6,11 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Meldungen: schnelle Suche auch in vielen Gigabyte - ein Suchindex findet ganze Wörter und Wortanfänge („m.muster“, „link down“, „Druck“ für Druckwarteschlange), Groß-/Kleinschreibung und Umlaute egal, über 30 oder 90 Tage in Sekundenbruchteilen. Teile mitten im Wort (z. B. „006A“ aus 0xC000006A) auf Wunsch: „Auch in Wortteilen suchen“. Nach dem Update wird der Index für die gespeicherten Meldungen einmal im Hintergrund aufgebaut (etwa eine halbe Minute je Million), gesucht werden kann die ganze Zeit
+- Hinweis zum Platz: Der Suchindex braucht etwa ein Viertel der Meldungsdatei. Ist die Datei an ihrer Grenze, gehen die ältesten Meldungen entsprechend früher - wer gleich viele Tage behalten will, stellt unter Empfang einstellen ein Drittel mehr Platz ein. Die Tabelle im Handbuch rechnet jetzt mit 2 KB je Meldung
+
+## 0.38.0 - 2026-11-16
+
 - Meldungen: Zeitraum und Zeitleiste wie in Splunk oder Wazuh - letzte 15 Minuten bis 30 Tage oder ein eigener Zeitraum; über der Liste zählt eine Zeitleiste die Treffer je Zeitabschnitt (Fehler, Warnungen, Rest). Nach einem Ereignis suchen, dann einen Balken anklicken oder über mehrere ziehen: Liste und Zeitleiste grenzen sich darauf ein, „Zurück“ geht einen Schritt zurück. Ein Klick auf die Uhrzeit einer Meldung zeigt, was in den 5 Minuten davor und danach sonst kam
 
 ## 0.37.0 - 2026-11-16
