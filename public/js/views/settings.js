@@ -88,15 +88,11 @@ async function general(body, s) {
     try {
       const d = formData(form);
       await put('/settings/general', { title: d.title });
-      await put('/settings/backup', { keep: d.keep });
-      await put('/settings/security', { require2faAdmins: d.require2faAdmins });
       state.boot.title = d.title;
       toast(t('saved'));
     } catch (ex) { fail(ex); }
   } },
   field(t('set.instance'), input('title', s.general.title, { maxlength: 60 })),
-  field(t('set.backupKeep'), input('keep', s.backup.keep, { type: 'number', min: 1, max: 90 }), t('set.backupHint')),
-  field(t('tf.requireAdmins'), h('input', { type: 'checkbox', name: 'require2faAdmins', checked: !!s.security?.require2faAdmins }), t('tf.requireAdminsHint')),
   saveBtn());
   mount(body, panel(t('set.general'), form));
 }
@@ -354,7 +350,14 @@ async function https(body, _s, reload) {
 }
 
 async function users(body, _s, reload) {
-  const [list, locs] = await Promise.all([get('/users'), get('/locations')]);
+  const [list, locs, all] = await Promise.all([get('/users'), get('/locations'), get('/settings')]);
+  // sign-in rules for everyone: next to the users they apply to
+  const secForm = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    try { await put('/settings/security', { require2faAdmins: formData(secForm).require2faAdmins }); toast(t('saved')); } catch (ex) { fail(ex); }
+  } },
+  field(t('tf.requireAdmins'), h('input', { type: 'checkbox', name: 'require2faAdmins', checked: !!all.security?.require2faAdmins }), t('tf.requireAdminsHint')),
+  saveBtn());
   const locName = Object.fromEntries(locs.map((l) => [l.id, l.name]));
   const roleSel = (v) => select('role', ['admin', 'editor', 'viewer'].map((r) => [r, `${t(`role.${r}`)} - ${t(`role.${r}.hint`)}`]), v);
   const edit = (u) => {
@@ -418,7 +421,8 @@ async function users(body, _s, reload) {
             if (!await confirmDialog(t('delete'), t('users.deleteConfirm', { name: u.username }), t('delete'), t('cancel'), { danger: true })) return;
             try { await del(`/users/${u.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
           } }) : null))))))),
-    h('p', { class: 'panel-pad muted small', style: { margin: 0 } }, t('users.adHint'), ' ', h('a', { href: '/settings/ad', 'data-link': true }, t('set.ad')))));
+    h('p', { class: 'panel-pad muted small', style: { margin: 0 } }, t('users.adHint'), ' ', h('a', { href: '/settings/ad', 'data-link': true }, t('set.ad')))),
+    panel(t('users.signIn'), secForm));
 }
 
 const bytes = (n) => { if (!n) return '0'; const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']; let i = 0; let v = n; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 ? 1 : 0)} ${u[i]}`; };
@@ -1107,6 +1111,13 @@ function waitForRestart() {
 
 async function backup(body, _s, reload) {
   const { list, keep } = await get('/backups');
+  // how many stay: here, where the backups are - saving removes the ones over the number right away
+  const keepForm = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    try { await put('/settings/backup', { keep: formData(keepForm).keep }); toast(t('saved')); reload(); } catch (ex) { fail(ex); }
+  } },
+  field(t('set.backupKeep'), input('keep', keep, { type: 'number', min: 1, max: 90, required: true }), t('set.backupHint')),
+  saveBtn());
   const size = (n) => `${(n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
   const confirmRestore = (what) => confirmDialog(t('bk.restore'), t('bk.restoreConfirm', { what }), t('bk.restore'), t('cancel'), { danger: true });
   const file = h('input', { type: 'file', accept: '.sqlite,.gz,.db,application/octet-stream,application/gzip' });
@@ -1125,11 +1136,13 @@ async function backup(body, _s, reload) {
         h('a', { class: 'btn btn-primary', href: '/api/backups/download', download: '' }, h('span', { html: icon('download') }), t('bk.download')),
         btn(t('bk.createNow'), { onclick: (e) => busy(e.currentTarget, async () => { try { await post('/backups'); toast(t('saved')); reload(); } catch (ex) { fail(ex); } }) }, 'plus')),
       h('p', { class: 'note warn', style: { marginBottom: 0 } }, t('bk.keyHint'))),
+    panel(t('bk.keepTitle'), keepForm),
     panel(t('bk.stored'), list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
-      h('thead', {}, h('tr', {}, h('th', {}, t('bk.file')), h('th', {}, t('bk.when')), h('th', { class: 'hide-sm' }, t('bk.size')), h('th', {}))),
+      h('thead', {}, h('tr', {}, h('th', {}, t('bk.when')), h('th', { class: 'hide-sm' }, t('bk.file')), h('th', { class: 'hide-sm' }, t('bk.size')), h('th', {}))),
       h('tbody', {}, list.map((x) => h('tr', {},
-        h('td', { class: 'mono small', style: { wordBreak: 'break-all' } }, x.name, x.kind !== 'daily' ? h('span', { class: 'badge', style: { marginLeft: '6px' } }, t(`bk.kind.${x.kind}`)) : null),
-        h('td', { style: { whiteSpace: 'nowrap' } }, fmtDate(x.at, getLang())),
+        h('td', { style: { whiteSpace: 'nowrap' } }, fmtDate(x.at, getLang()),
+          h('div', {}, h('span', { class: x.kind === 'daily' ? 'badge' : 'badge badge-warn' }, t(`bk.kind.${x.kind}`)))),
+        h('td', { class: 'mono small bk-name hide-sm' }, x.name),
         h('td', { class: 'hide-sm mono small', style: { whiteSpace: 'nowrap' } }, size(x.size)),
         h('td', { class: 'min' }, h('div', { class: 'actions' },
           h('a', { class: 'btn btn-sm', href: `/api/backups/file/${encodeURIComponent(x.name)}`, download: '' }, t('bk.downloadShort')),
@@ -1139,6 +1152,10 @@ async function backup(body, _s, reload) {
             if (b.disabled) return;
             b.disabled = true; // stays disabled on success: the server restarts
             try { await api(`/backups/file/${encodeURIComponent(x.name)}/restore`, { method: 'POST', body: {}, headers: { 'X-WOMN-Confirm': 'restore' } }); waitForRestart(); } catch (ex) { fail(ex); b.disabled = false; }
+          } }),
+          h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${x.name}`, title: t('delete'), html: icon('trash'), onclick: async () => {
+            if (!await confirmDialog(t('bk.delete'), t('bk.deleteConfirm', { name: x.name }), t('delete'), t('cancel'), { danger: true })) return;
+            try { await api(`/backups/file/${encodeURIComponent(x.name)}`, { method: 'DELETE', headers: { 'X-WOMN-Confirm': 'delete' } }); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
           } })))))))) : h('p', { class: 'muted' }, t('bk.none'))),
     panel(t('bk.restoreUpload'), h('p', { class: 'muted', style: { marginTop: 0 } }, t('bk.restoreLead')), field(t('bk.file'), file), h('div', { class: 'actions' }, upload)));
 }

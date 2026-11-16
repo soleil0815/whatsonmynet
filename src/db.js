@@ -890,12 +890,12 @@ export async function backupDatabase(db, keep = 10, dir = paths.backups) {
 
 const DAILY = /^whatsonmynet-\d{4}-.*\.sqlite(\.gz)?$/;
 const SPECIAL = [/^whatsonmynet-before-schema-.*\.sqlite(\.gz)?$/, /^whatsonmynet-before-restore-.*\.sqlite(\.gz)?$/];
-const SPECIAL_KEEP = 10;
 /**
  * Older uncompressed copies are compressed once; the daily ones are cut to `keep`, the copies before a schema update
  * or a restore to the newest 10 each (they used to pile up for ever).
  */
-async function tidyBackups(dir, keep) {
+/** Compress old uncompressed copies, then keep the newest `keep` daily ones and as many of each kind of special copy */
+export async function tidyBackups(dir, keep) {
   for (const f of fs.readdirSync(dir).filter((x) => /^whatsonmynet-.*\.sqlite$/.test(x))) {
     const src = path.join(dir, f);
     try {
@@ -905,10 +905,13 @@ async function tidyBackups(dir, keep) {
       fs.rmSync(src, { force: true });
     } catch (e) { log.warn(`Backups: could not compress ${f}: ${e.message}`); }
   }
+  // oldest first by their time, not by name: "before-schema-36" sorts before "before-schema-4" by name, and the newest
+  // copies before an update were deleted while old ones stayed
   const cut = (re, n) => {
-    const files = fs.readdirSync(dir).filter((f) => re.test(f)).sort();
+    const time = (f) => { try { return fs.statSync(path.join(dir, f)).mtimeMs; } catch { return 0; } };
+    const files = fs.readdirSync(dir).filter((f) => re.test(f)).map((f) => [f, time(f)]).sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).map(([f]) => f);
     for (const f of files.slice(0, Math.max(0, files.length - Math.max(1, n)))) fs.rmSync(path.join(dir, f), { force: true });
   };
   cut(DAILY, keep);
-  for (const re of SPECIAL) cut(re, SPECIAL_KEEP);
+  for (const re of SPECIAL) cut(re, keep);
 }
