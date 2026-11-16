@@ -72,3 +72,14 @@ function Invoke-RestMethod { param($Method, $Uri, $Headers, $ContentType, $Body,
   [IO.File]::WriteAllBytes($env:WOMN_BODY, [byte[]]$Body) }
 
 . $Script
+
+# The certificate check the script set (pinning of a self-signed certificate of WhatsOnMyNet): asked with the
+# certificates in $env:WOMN_CERTS (paths separated by ;), the answers go to $env:WOMN_PINRESULT
+if ($env:WOMN_CERTS) {
+  $cb = [Net.ServicePointManager]::ServerCertificateValidationCallback
+  $out = foreach ($p in $env:WOMN_CERTS.Split(';')) {
+    $c = [Security.Cryptography.X509Certificates.X509Certificate2]::new($p)
+    if ($cb) { [string]$cb.Invoke($null, $c, $null, [Net.Security.SslPolicyErrors]::RemoteCertificateChainErrors) } else { 'none' }
+  }
+  Set-Content -LiteralPath $env:WOMN_PINRESULT -Value ($out -join ',')
+}

@@ -1,0 +1,16 @@
+$Thumb = @THUMB@
+$PublicKey = @PUBKEY@
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+if ($Thumb -or $PublicKey) {
+  # Self-signed certificate of WhatsOnMyNet: trust exactly its key (it stays the same when the certificate is renewed),
+  # or this one certificate. Checked by PowerShell itself, not by compiled C#: script block logging marks every script
+  # that compiles code as suspicious (event 4104, warning) - on every run.
+  $pinThumb = $Thumb.Replace(':', '').ToUpper()
+  $pinKey = $PublicKey.ToUpper()
+  [Net.ServicePointManager]::ServerCertificateValidationCallback = {
+    param($s, $cert, $chain, $errors)
+    if ($null -eq $cert) { return $false }
+    if ($pinThumb -and $cert.GetCertHashString() -eq $pinThumb) { return $true }
+    return [bool]($pinKey -and $cert.GetPublicKeyString() -eq $pinKey)
+  }.GetNewClosure()
+}

@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Windows- und Hyper-V-Skript: Windows protokollierte jeden Lauf als „verdächtigen“ Skriptblock (Ereignis 4104, Warnung) - wegen des eingebauten C#-Codes für das angeheftete Zertifikat und „-ExecutionPolicy Bypass“. Das Zertifikat wird jetzt in PowerShell selbst geprüft (gleich streng: genau dieser Schlüssel bzw. dieses Zertifikat), die geplante Aufgabe läuft unter RemoteSigned. Wirkt nach Neues Skript und erneutem Verteilen',
+  ], en: [
+    'Windows and Hyper-V script: Windows logged every run as a "suspicious" script block (event 4104, warning) - because of the built-in C# code for the pinned certificate and "-ExecutionPolicy Bypass". The certificate is now checked by PowerShell itself (just as strict: exactly this key or this certificate), the scheduled task runs under RemoteSigned. Takes effect after New script and distributing it again',
+  ] },
+  { version: '0.33.2', date: '2026-11-15', de: [
     'Windows-Skripte der Rechner: Das erneute Einrichten nahm der vorhandenen Kopie unter C:\\ProgramData\\WhatsOnMyNet alle Rechte - danach kam selbst SYSTEM nicht mehr daran („Zugriff verweigert“). Die Rechte werden jetzt nur am Ordner gesetzt, vorhandene Dateien erben sie wieder (auch so beschädigte), und außer SYSTEM und Administratoren hat niemand Zugriff auf den Ordner',
   ], en: [
     'Windows scripts of the machines: setting up again took all rights from the existing copy in C:\\ProgramData\\WhatsOnMyNet - afterwards not even SYSTEM could get at it ("access denied"). The rights are now set on the folder only, existing files inherit them again (also ones damaged that way), and nobody but SYSTEM and administrators has access to the folder',
