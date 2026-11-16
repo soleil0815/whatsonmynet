@@ -270,6 +270,12 @@ test('Windows scripts contain nothing PowerShell logs as suspicious (warning 410
       assert.equal(r, '', `${name} contains "${r}"`);
     }
   }
+  // and no progress bar: under the scheduled task (no console window) it makes Windows PowerShell log "System error"
+  for (const kind of ['windows', 'hyperv']) {
+    const t = hostScript(kind, { url: 'u', token: 't', pin }).text;
+    const at = t.indexOf("$ProgressPreference = 'SilentlyContinue'");
+    assert.ok(at > 0 && at < t.indexOf('Invoke-RestMethod'), `${kind}: progress bar off before the first web request`);
+  }
   // the check itself works: the old pinning with Add-Type would be found
   const old = path.join(dir, 'old.ps1');
   fs.writeFileSync(old, 'Add-Type -TypeDefinition "public class X {}"');
