@@ -243,6 +243,50 @@ Under *Messages → Event rules* you set which messages go where - **apart from 
 - With failover every installation receives for itself: enter master **and** standby as targets in the devices.
 - SNMPv3 traps are not taken (yet).
 
+
+### How much space do the messages need?
+
+A stored message takes, measured in `data/events.sqlite`, about **0.4 KB** (a line from a switch, NAS or UPS) up to **4 KB** (a long Windows event such as a failed sign-in 4625); mixed, reckon with **1.5 KB**. So:
+
+**Space ≈ messages per day × days × 1.5 KB**
+
+| Messages per day | 30 days | 90 days |
+|---:|---:|---:|
+| 1,000 | 45 MB | 135 MB |
+| 10,000 | 450 MB | 1.4 GB |
+| 50,000 | 2.3 GB | 6.8 GB |
+| 100,000 | 4.5 GB | 13.5 GB |
+| 300,000 | 13.5 GB | 40 GB |
+
+How many messages come in? Rough values per sender and day, with the noise list left out by default:
+
+| Sender | Messages per day |
+|---|---|
+| Windows client | 100 - 1,000 (mostly around 300) |
+| Windows server (files, print, applications) | 500 - 5,000 |
+| Domain controller | 10,000 - 100,000 (Kerberos and NTLM sign-ins 4768, 4769, 4776) |
+| Switch, NAS, UPS, printer | 50 - 500 |
+| Firewall or router logging connections | 100,000 and more - send warnings and errors only |
+
+Typical setups:
+
+| Setup | Example | Messages per day | Space for 30 days | Setting |
+|---|---|---:|---:|---|
+| Small | 5 - 20 PCs, 1 server, NAS, switches | 5,000 - 10,000 | 0.2 - 0.5 GB | default: 30 days, 2 GB |
+| Small with domain controller | plus one DC | 20,000 - 40,000 | 1 - 2 GB | 4 GB - or the DC *warning and worse* |
+| Medium | 20 - 100 PCs, 3 - 5 servers, 2 DCs | 50,000 - 150,000 | 2 - 7 GB | 10 GB |
+| Large | 100 - 500 PCs, 10 - 20 servers, 2 - 4 DCs | 150,000 - 500,000 | 7 - 25 GB | 30 GB, filter noise and DCs; from here a SIEM (e.g. Wazuh) is worth it as well |
+
+For 90 days, three times as much. On top comes what WhatsOnMyNet keeps free anyway: at least 10 % of the disk and 1 GB.
+
+**How to go about it:**
+
+1. Start with the defaults (30 days, 2 GB).
+2. After a week read under *Monitoring → Messages*: "… messages a day" and "lasts about … days".
+3. Not enough space: *By sender* shows who sends the most. Start there - chatty senders to *warning and worse* (domain controllers, firewalls), add the usual noise under *Receiving settings*. Only then raise *At most space (GB)* under *Receiving settings*.
+4. **Days:** 30 days cover everyday work (what happened last week?). To trace incidents later as well - an attack is often noticed only after weeks - take 90 days. The messages contain user and computer names: agree the time with data protection or the works council and keep them no longer than needed.
+5. The messages file is not in the daily backups - its size counts only once.
+
 ## Printers, switches and NAS
 
 Devices of type *Printer*, *Switch* and *NAS* are queried via SNMP (read-only). Set the community under *Settings → Scan*; SNMP v1/v2c has to be on at the device.
