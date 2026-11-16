@@ -14,7 +14,7 @@ const ins = db.prepare("INSERT INTO events_in(at,kind,source_ip,severity,host,te
 const at = (h) => new Date(base + h * H).toISOString();
 
 test('setup with messages over a day', async () => {
-  assert.equal((await call('POST', '/api/setup', { username: 'michael', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+  assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
   ctx.users.create({ username: 'lisa', password: 'Sicher-Passwort-2', role: 'viewer' });
   assert.equal((await call('POST', '/api/login', { username: 'lisa', password: 'Sicher-Passwort-2' }, { who: 'viewer' })).status, 200);
   ins.run(at(0), '10.0.10.5', 6, 'PC-0001', 'Anmeldung erfolgreich', 4624);

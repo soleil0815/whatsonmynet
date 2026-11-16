@@ -27,7 +27,7 @@ function scanWith(db, rows) {
 
 test('the same thing is watched once - several services of one server are fine', async () => {
   const { inv, mon } = setup();
-  const nas = inv.create({ name: 'Synology', type: 'nas', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver.fritz.box' }, 'michael');
+  const nas = inv.create({ name: 'Synology', type: 'nas', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver.fritz.box' }, 'testadmin');
   const web = await mon.create({ name: 'DSM', type: 'http', target: 'https://192.168.0.253:5001/', device_id: nas.id });
   // the same address written differently, or by host name instead of IP: the same thing
   assert.equal(await refused(mon.create({ name: 'DSM 2', type: 'http', target: 'https://192.168.0.253:5001' })), 'err.monitorExists');
@@ -84,8 +84,8 @@ test('fingerprints: host name and IP of one inventory device are the same host',
 
 test('scan: a device probably in the inventory is a tip, skipped when adopting unless asked for', () => {
   const { db, inv } = setup();
-  const nas = inv.create({ name: 'Synology', type: 'nas', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver.fritz.box' }, 'michael');
-  const vm = inv.create({ name: 'Docker-VM', type: 'vm', ip: '192.168.0.30', mac: 'bc:24:11:00:00:30' }, 'michael');
+  const nas = inv.create({ name: 'Synology', type: 'nas', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver.fritz.box' }, 'testadmin');
+  const vm = inv.create({ name: 'Docker-VM', type: 'vm', ip: '192.168.0.30', mac: 'bc:24:11:00:00:30' }, 'testadmin');
   const { scanId, ids } = scanWith(db, [
     { ip: '192.168.0.254', mac: '00:11:32:aa:bb:cd', hostname: 'ihomeddserver.fritz.box' }, // second card of the NAS
     { ip: '192.168.0.30', mac: 'bc:24:11:00:00:99', type: 'vm' }, // the VM with a new MAC
@@ -100,24 +100,24 @@ test('scan: a device probably in the inventory is a tip, skipped when adopting u
   assert.equal(inv.likelyExisting(row(ids[2])), null);
   assert.equal(inv.likelyExisting(row(ids[3])), null);
   const skipped = [];
-  const created = inv.adopt(ids, {}, 'michael', skipped);
+  const created = inv.adopt(ids, {}, 'testadmin', skipped);
   assert.equal(created.length, 2);
   assert.deepEqual(skipped.map((x) => x.device.why), ['hostname', 'ip']);
   // "add as new anyway"
-  assert.equal(inv.adopt([ids[0]], { [ids[0]]: { force: true } }, 'michael').length, 1);
+  assert.equal(inv.adopt([ids[0]], { [ids[0]]: { force: true } }, 'testadmin').length, 1);
 });
 
 test('scan: "assign to this device" - a new MAC is taken over, a second card goes on the ignore list', () => {
   const { db, inv } = setup();
-  const nas = inv.create({ name: 'Synology', type: 'nas', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver' }, 'michael');
-  const vm = inv.create({ name: 'Docker-VM', type: 'vm', ip: '192.168.0.30', mac: 'bc:24:11:00:00:30' }, 'michael');
+  const nas = inv.create({ name: 'Synology', type: 'nas', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver' }, 'testadmin');
+  const vm = inv.create({ name: 'Docker-VM', type: 'vm', ip: '192.168.0.30', mac: 'bc:24:11:00:00:30' }, 'testadmin');
   const { scanId, ids } = scanWith(db, [
     { ip: '192.168.0.254', mac: '00:11:32:aa:bb:cd', hostname: 'ihomeddserver' },
     { ip: '192.168.0.30', mac: 'bc:24:11:00:00:99', type: 'vm' },
   ]);
   ids.forEach((id) => inv.applyResult(id));
   inv.finishScan(scanId);
-  assert.equal(inv.linkResults(ids, 'michael'), 2);
+  assert.equal(inv.linkResults(ids, 'testadmin'), 2);
   assert.equal(inv.get(vm.id).mac, 'bc:24:11:00:00:99');
   assert.equal(inv.get(nas.id).mac, '00:11:32:aa:bb:cc', 'the NAS keeps its own MAC');
   assert.match(db.prepare("SELECT label FROM ignored WHERE mac='00:11:32:aa:bb:cd'").get().label, /→ Synology/);
@@ -132,14 +132,14 @@ const row = (db, id) => db.prepare('SELECT * FROM scan_results WHERE id=?').get(
 
 test('inventory: one device twice is a tip, merging makes one of it (monitors, sensors, history, ignore list)', async () => {
   const { db, inv, mon } = setup();
-  const a = inv.create({ name: 'NAS LAN1', type: 'nas', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver' }, 'michael');
-  const b = inv.create({ name: 'NAS LAN2', type: 'nas', ip: '192.168.0.254', mac: '00:11:32:aa:bb:cd', hostname: 'ihomeddserver.fritz.box', serial: 'XYZ123' }, 'michael');
-  inv.create({ name: 'Other', ip: '192.168.0.9', hostname: 'other' }, 'michael');
+  const a = inv.create({ name: 'NAS LAN1', type: 'nas', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver' }, 'testadmin');
+  const b = inv.create({ name: 'NAS LAN2', type: 'nas', ip: '192.168.0.254', mac: '00:11:32:aa:bb:cd', hostname: 'ihomeddserver.fritz.box', serial: 'XYZ123' }, 'testadmin');
+  inv.create({ name: 'Other', ip: '192.168.0.9', hostname: 'other' }, 'testadmin');
   assert.deepEqual(inv.duplicates().map((p) => [p.keep.id, p.drop.id]), [[a.id, b.id]]);
   await mon.create({ name: 'Temp A', type: 'sensor', device_id: a.id, options: { metric: 'temp', op: 'ge', threshold: 55 } });
   await mon.create({ name: 'Temp B', type: 'sensor', device_id: b.id, options: { metric: 'temp', op: 'ge', threshold: 55 } });
   await mon.create({ name: 'Ping B', type: 'tcp', target: '192.168.0.254', port: 5001, device_id: b.id });
-  inv.merge(a.id, b.id, 'michael');
+  inv.merge(a.id, b.id, 'testadmin');
   assert.equal(inv.get(b.id), null);
   assert.equal(inv.get(a.id).serial, 'XYZ123', 'empty fields are filled');
   assert.equal(db.prepare('SELECT COUNT(*) n FROM monitors WHERE device_id=?').get(a.id).n, 3);
@@ -156,10 +156,10 @@ test('API: tip in the scan result, skipped when adopting, assign, merge - editor
   const app = await startApp();
   try {
     const { call, ctx, db } = app;
-    assert.equal((await call('POST', '/api/setup', { username: 'michael', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+    assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
     ctx.users.create({ username: 'lisa', password: 'Sicher-Passwort-2', role: 'viewer' });
     await call('POST', '/api/login', { username: 'lisa', password: 'Sicher-Passwort-2' }, { who: 'viewer' });
-    const nas = ctx.inventory.create({ name: 'Synology', type: 'nas', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver' }, 'michael');
+    const nas = ctx.inventory.create({ name: 'Synology', type: 'nas', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver' }, 'testadmin');
     const { scanId, ids } = scanWith(db, [{ ip: '192.168.0.254', mac: '00:11:32:aa:bb:cd', hostname: 'ihomeddserver' }]);
     ids.forEach((id) => ctx.inventory.applyResult(id));
     ctx.inventory.finishScan(scanId);
@@ -171,7 +171,7 @@ test('API: tip in the scan result, skipped when adopting, assign, merge - editor
     assert.equal((await call('POST', `/api/scans/${scanId}/link`, { ids }, { who: 'viewer' })).status, 403);
     assert.equal((await call('POST', `/api/scans/${scanId}/link`, { ids })).data.linked, 1);
     // two entries of one device in the inventory
-    const b = ctx.inventory.create({ name: 'NAS 2', type: 'nas', ip: '192.168.0.252', mac: '00:11:32:aa:bb:ce', hostname: 'ihomeddserver.fritz.box' }, 'michael');
+    const b = ctx.inventory.create({ name: 'NAS 2', type: 'nas', ip: '192.168.0.252', mac: '00:11:32:aa:bb:ce', hostname: 'ihomeddserver.fritz.box' }, 'testadmin');
     assert.equal((await call('GET', '/api/devices/duplicates')).data.list.length, 1);
     assert.equal((await call('POST', `/api/devices/${nas.id}/merge`, { from: b.id }, { who: 'viewer' })).status, 403);
     const m = await call('POST', `/api/devices/${nas.id}/merge`, { from: b.id });

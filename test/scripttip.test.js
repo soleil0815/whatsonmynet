@@ -11,10 +11,10 @@ const { call, ctx, db } = app;
 test.after(() => app.close());
 
 test('"do not show again" per device: editors only, kept on the device', async () => {
-  assert.equal((await call('POST', '/api/setup', { username: 'michael', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+  assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
   ctx.users.create({ username: 'lisa', password: 'Sicher-Passwort-2', role: 'viewer' });
   await call('POST', '/api/login', { username: 'lisa', password: 'Sicher-Passwort-2' }, { who: 'viewer' });
-  const d = ctx.inventory.create({ name: 'pve1', type: 'hypervisor', ip: '10.0.0.11', os: 'Proxmox VE 9' }, 'michael');
+  const d = ctx.inventory.create({ name: 'pve1', type: 'hypervisor', ip: '10.0.0.11', os: 'Proxmox VE 9' }, 'testadmin');
   assert.equal((await call('GET', `/api/devices/${d.id}`)).data.script_tip_hidden, 0);
   assert.equal((await call('PUT', `/api/devices/${d.id}/script-tip`, { hidden: true }, { who: 'viewer' })).status, 403);
   assert.equal((await call('PUT', `/api/devices/${d.id}/script-tip`, { hidden: true })).status, 200);
@@ -23,7 +23,7 @@ test('"do not show again" per device: editors only, kept on the device', async (
 });
 
 test('Proxmox nodes: which ones run the script; the tip of a host can be hidden', async () => {
-  const dev = ctx.inventory.create({ name: 'pve2', type: 'hypervisor', ip: '10.0.0.12', hostname: 'pve2.firma.local' }, 'michael');
+  const dev = ctx.inventory.create({ name: 'pve2', type: 'hypervisor', ip: '10.0.0.12', hostname: 'pve2.firma.local' }, 'testadmin');
   db.prepare('INSERT INTO host_reports(device_id, at, data) VALUES(?,?,?)').run(dev.id, new Date().toISOString(), JSON.stringify({ hostname: 'pve2' }));
   const data = nodeScriptsInto(db, { nodes: [{ name: 'pve1' }, { name: 'pve2' }] });
   assert.deepEqual(data.nodes.map((n) => n.script), [false, true]);

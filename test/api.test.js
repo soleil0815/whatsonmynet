@@ -6,7 +6,7 @@ const app = await startApp();
 const { call } = app;
 test.after(() => app.close());
 
-const ADMIN = { username: 'michael', password: 'Sicher-Passwort-1', email: 'm@example.org' };
+const ADMIN = { username: 'testadmin', password: 'Sicher-Passwort-1', email: 'm@example.org' };
 
 test('setup: needs the code from the log, only once', async () => {
   assert.equal((await call('GET', '/api/bootstrap')).data.setupRequired, true);
@@ -16,7 +16,7 @@ test('setup: needs the code from the log, only once', async () => {
   assert.equal(ok.status, 200);
   assert.equal(ok.data.user.role, 'admin');
   assert.equal((await call('POST', '/api/setup', { ...ADMIN, username: 'x', code: 'setup-123' }, { who: 'other' })).status, 409);
-  assert.equal((await call('GET', '/api/bootstrap')).data.user.username, 'michael');
+  assert.equal((await call('GET', '/api/bootstrap')).data.user.username, 'testadmin');
 });
 
 test('writing calls need the CSRF header', async () => {

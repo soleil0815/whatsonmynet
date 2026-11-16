@@ -1539,7 +1539,7 @@ const CH_FIELDS = {
   gotify: [['server', { ph: 'https://gotify.firma.local' }], ['token', { secret: true }]],
   pushover: [['user', {}], ['token', { secret: true }]],
   pushbullet: [['token', { secret: true }]],
-  homeassistant: [['server', { ph: 'http://homeassistant.local:8123' }], ['service', { ph: 'mobile_app_michaels_iphone' }], ['token', { secret: true }]],
+  homeassistant: [['server', { ph: 'http://homeassistant.local:8123' }], ['service', { ph: 'mobile_app_handy_it' }], ['token', { secret: true }]],
   apprise: [['url', { ph: 'http://apprise:8000/notify/womn' }], ['urls', { secret: true, optional: true, ph: 'tgram://…, mailto://…' }]],
 };
 /** Label of a field: a service-specific one if there is one ("App-Token" for Gotify), otherwise the general one */

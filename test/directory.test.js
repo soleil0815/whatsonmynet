@@ -8,8 +8,8 @@ import { createUsers } from '../src/auth/users.js';
 
 test('filter escaping and names', () => {
   assert.equal(escapeFilter('a*b(c)\\d'), 'a\\2ab\\28c\\29\\5cd');
-  assert.equal(plainName('FIRMA\\michael'), 'michael');
-  assert.equal(plainName('michael@firma.local'), 'michael@firma.local');
+  assert.equal(plainName('FIRMA\\m.muster'), 'm.muster');
+  assert.equal(plainName('m.muster@firma.local'), 'm.muster@firma.local');
 });
 
 test('role from groups: highest wins, DN compared loosely', () => {

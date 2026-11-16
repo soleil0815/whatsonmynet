@@ -150,7 +150,7 @@ export const PROVIDERS = {
     send: (c, m) => request('POST', `${API.pushbullet}/v2/pushes`, { body: { type: 'note', title: m.title, body: m.textPlain + (m.more ? `\n${m.more}` : '') }, headers: { 'Access-Token': c.token } }),
   },
   homeassistant: {
-    // Calls notify.<service>, e.g. mobile_app_michaels_iphone (Companion app) or a group
+    // Calls notify.<service>, e.g. mobile_app_handy_it (Companion app) or a group
     fields: {
       server: { kind: 'url', def: 'http://homeassistant.local:8123' },
       service: { kind: 'text', re: /^[a-z0-9_]{1,100}$/ },

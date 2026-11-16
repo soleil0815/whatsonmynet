@@ -19,7 +19,7 @@ export function escapeFilter(v) {
   return String(v).replace(/[\\*()\0]/g, (c) => `\\${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
 }
 
-/** "FIRMA\\michael" → "michael"; anything else unchanged */
+/** "FIRMA\\m.muster" → "m.muster"; anything else unchanged */
 export function plainName(name) {
   const s = String(name || '').trim();
   const i = s.indexOf('\\');

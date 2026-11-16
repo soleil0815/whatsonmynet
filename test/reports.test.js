@@ -122,7 +122,7 @@ test('API: reports on/off from the list - administrators only', async () => {
   const app = await startApp();
   const { call, ctx } = app;
   try {
-    assert.equal((await call('POST', '/api/setup', { username: 'michael', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+    assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
     ctx.users.create({ username: 'olaf', password: 'Sicher-Passwort-2', role: 'editor' });
     await call('POST', '/api/login', { username: 'olaf', password: 'Sicher-Passwort-2' }, { who: 'editor' });
     const r = await call('POST', '/api/reports', { name: 'Toner', sections: ['printers'], recipients: 'buero@firma.local', schedule: { freq: 'weekly', weekday: 1, time: '08:00' } });

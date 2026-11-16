@@ -152,7 +152,7 @@ test('API: delete a backup only with the confirmation, setting the number tidies
   const app = await startApp();
   const { call, ctx } = app;
   try {
-    assert.equal((await call('POST', '/api/setup', { username: 'michael', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+    assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
     ctx.users.create({ username: 'olaf', password: 'Sicher-Passwort-2', role: 'editor' });
     await call('POST', '/api/login', { username: 'olaf', password: 'Sicher-Passwort-2' }, { who: 'editor' });
     for (let i = 0; i < 3; i++) await call('POST', '/api/backups');

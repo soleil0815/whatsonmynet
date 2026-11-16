@@ -149,7 +149,7 @@ test('route: part of a word on request, the state of the index in the status', a
   const app = await startApp();
   try {
     const { call, ctx, db } = app;
-    assert.equal((await call('POST', '/api/setup', { username: 'michael', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+    assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
     ins(db, new Date().toISOString(), 'Status: 0xC000006A');
     ctx.events.indexBatch();
     assert.equal((await call('GET', '/api/events?q=C000006A')).data.list.length, 0);

@@ -25,10 +25,10 @@ const pkg = async (q = '', who = 'default') => {
 };
 
 test('setup: an admin, a NAS, a viewer, a secret or two, some log lines', async () => {
-  assert.equal((await call('POST', '/api/setup', { username: 'michael', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+  assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
   ctx.users.create({ username: 'lisa', password: 'Sicher-Passwort-2', role: 'viewer' });
   assert.equal((await call('POST', '/api/login', { username: 'lisa', password: 'Sicher-Passwort-2' }, { who: 'viewer' })).status, 200);
-  ctx.inventory.create({ name: 'ihomeddserver', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver.fritz.box', type: 'nas' }, 'michael');
+  ctx.inventory.create({ name: 'ihomeddserver', ip: '192.168.0.253', mac: '00:11:32:aa:bb:cc', hostname: 'ihomeddserver.fritz.box', type: 'nas' }, 'testadmin');
   ctx.settings.set('smtp.password', 'Mail-Geheim-77');
   ctx.settings.set('scan.snmpCommunities', 'SnmpGeheim42');
   ctx.settings.set('smtp.host', 'smtp.example-firma.de');
@@ -55,7 +55,7 @@ test('anonymised by default: no real name, address or secret anywhere in the pac
   assert.match(p.name, /whatsonmynet-diagnose-.*-7T-anonym\.zip/);
   for (const f of ['LIESMICH.txt', 'versionen.json', 'aenderungen.md', 'umgebung.json', 'einstellungen.json', 'statistik.json', 'protokoll.csv', 'fehler.txt',
     'monitore.json', 'ereignisse.csv', 'geraete.json', 'hypervisoren.json', 'meldungen.json', 'scans.csv', 'benachrichtigungen.json', 'aktionen.csv']) assert.ok(p.files[f], f);
-  for (const real of ['ihomeddserver', '192.168.0.253', '00:11:32', 'fritz.box', 'max.muster', 'example-firma', 'michael', 'lisa', 'SnmpGeheim42', 'Mail-Geheim-77', 'PC-0815', '192.168.0.77', 'm.weber', 'Helpdesk-Eingang']) {
+  for (const real of ['ihomeddserver', '192.168.0.253', '00:11:32', 'fritz.box', 'max.muster', 'example-firma', 'testadmin', 'lisa', 'SnmpGeheim42', 'Mail-Geheim-77', 'PC-0815', '192.168.0.77', 'm.weber', 'Helpdesk-Eingang']) {
     assert.equal(p.text.toLowerCase().includes(real.toLowerCase()), false, `${real} must not be in the package`);
   }
   assert.match(p.files['fehler.txt'].toString(), /WARN Synology GERAET-001 \(10\.99\.0\.\d+, 02:00:00:00:00:\w\w\): SNMP timeout, community=\*\*\*/);

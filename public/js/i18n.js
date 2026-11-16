@@ -874,7 +874,7 @@ const de = {
   'ch.help.gotify': 'In Gotify: **Apps → Create Application**, Namen vergeben und das angezeigte **Token** unten einfügen.',
   'ch.help.pushover': 'Den **User-Key** zeigt Pushover nach der Anmeldung oben rechts. Unter **Create an Application/API Token** eine Anwendung „WhatsOnMyNet“ anlegen und deren Token unten einfügen.',
   'ch.help.pushbullet': 'In Pushbullet: **Settings → Account → Create Access Token**, Token kopieren und unten einfügen.',
-  'ch.help.homeassistant': 'In Home Assistant: **Profil → Sicherheit → Langlebige Zugriffstokens → Token erstellen**. Der Dienst steht unter **Entwicklerwerkzeuge → Aktionen** als `notify.…`, z. B. `mobile_app_michaels_iphone` (nur den Teil nach „notify.“ eintragen).',
+  'ch.help.homeassistant': 'In Home Assistant: **Profil → Sicherheit → Langlebige Zugriffstokens → Token erstellen**. Der Dienst steht unter **Entwicklerwerkzeuge → Aktionen** als `notify.…`, z. B. `mobile_app_handy_it` (nur den Teil nach „notify.“ eintragen).',
   'ch.help.apprise': 'Apprise schickt an über 100 Dienste (SMS, Threema, Teams, Mail …). Dafür läuft die **Apprise-API** (Docker-Image `caronc/apprise`). Entweder dort eine Konfiguration mit Schlüssel anlegen (Adresse `…/notify/schlüssel`) oder die Dienst-URLs unten eintragen.',
 
   // Light scan, printers
@@ -1791,7 +1791,7 @@ const en = {
   'ch.help.gotify': 'In Gotify: **Apps → Create Application**, give it a name and paste the **token** shown below.',
   'ch.help.pushover': 'Pushover shows the **user key** top right after signing in. Under **Create an Application/API Token** create an application "WhatsOnMyNet" and paste its token below.',
   'ch.help.pushbullet': 'In Pushbullet: **Settings → Account → Create Access Token**, copy the token and paste it below.',
-  'ch.help.homeassistant': 'In Home Assistant: **Profile → Security → Long-lived access tokens → Create token**. The service is listed under **Developer tools → Actions** as `notify.…`, e.g. `mobile_app_michaels_iphone` (enter only the part after "notify.").',
+  'ch.help.homeassistant': 'In Home Assistant: **Profile → Security → Long-lived access tokens → Create token**. The service is listed under **Developer tools → Actions** as `notify.…`, e.g. `mobile_app_handy_it` (enter only the part after "notify.").',
   'ch.help.apprise': 'Apprise sends to more than 100 services (SMS, Threema, Teams, mail …). It needs the **Apprise API** (Docker image `caronc/apprise`). Either store a configuration with a key there (address `…/notify/key`) or enter the service URLs below.',
   // Light scan, printers
   'scan.kind.light': 'Light scan', 'set.printers': 'Printers',

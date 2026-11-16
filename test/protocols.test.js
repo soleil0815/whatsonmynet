@@ -172,7 +172,7 @@ test('SQL Server: PRELOGIN gives the version; something else answering is no SQL
 test('forms: defaults per protocol, wrong input refused', async () => {
   const app = await startApp();
   try {
-    assert.equal((await app.call('POST', '/api/setup', { username: 'michael', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+    assert.equal((await app.call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
     const mk = (body) => app.call('POST', '/api/monitors', { interval_s: 300, ...body });
     const mail = await mk({ name: 'Mail', type: 'mail', target: 'mail.firma.local', options: { proto: 'imap', tls: 'implicit' } });
     assert.equal(mail.status, 201, JSON.stringify(mail.data));

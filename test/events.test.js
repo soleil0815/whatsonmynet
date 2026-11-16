@@ -52,10 +52,10 @@ test('traps: v1 and v2c, well-known ones in words, the port of linkDown', () => 
 });
 
 test('setup: admin, viewer, a switch in the inventory', async () => {
-  assert.equal((await call('POST', '/api/setup', { username: 'michael', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+  assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
   ctx.users.create({ username: 'lisa', password: 'Sicher-Passwort-2', role: 'viewer' });
   assert.equal((await call('POST', '/api/login', { username: 'lisa', password: 'Sicher-Passwort-2' }, { who: 'viewer' })).status, 200);
-  ctx.inventory.create({ name: 'sw-core', ip: '127.0.0.1', mac: '00:11:22:33:44:55', type: 'switch' }, 'michael');
+  ctx.inventory.create({ name: 'sw-core', ip: '127.0.0.1', mac: '00:11:22:33:44:55', type: 'switch' }, 'testadmin');
 });
 
 test('off until an admin switches it on; viewers cannot', async () => {

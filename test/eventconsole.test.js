@@ -83,10 +83,10 @@ test('open events: one per sender and port, counted up instead of notified again
     assert.equal(rules.list()[0].openEvents, 3);
     // acknowledged: still open, a new "down" still only counts
     const p9 = open.find((o) => o.key === '9');
-    rules.ack(p9.id, 'michael');
+    rules.ack(p9.id, 'testadmin');
     rules.onEvent(event({ text: 'Port 9 link down' })); await tick();
     assert.equal(sent.length, 3);
-    assert.deepEqual(rules.openEvents().filter((o) => o.key === '9').map((o) => [o.state, o.count, o.ack_by]), [['ack', 2, 'michael']]);
+    assert.deepEqual(rules.openEvents().filter((o) => o.key === '9').map((o) => [o.state, o.count, o.ack_by]), [['ack', 2, 'testadmin']]);
     // the counter-message closes only its port on its switch - with an all-clear
     rules.onEvent(event({ severity: 6, text: 'Port 7 link up' })); await tick();
     assert.equal(sent.length, 4);
@@ -97,8 +97,8 @@ test('open events: one per sender and port, counted up instead of notified again
     rules.onEvent(event({ text: 'Port 7 link down' })); await tick();
     assert.equal(sent.length, 5);
     // by hand
-    rules.close(open.find((o) => o.key === '9').id, 'michael');
-    assert.throws(() => rules.close(open.find((o) => o.key === '9').id, 'michael'), /err.notFound/);
+    rules.close(open.find((o) => o.key === '9').id, 'testadmin');
+    assert.throws(() => rules.close(open.find((o) => o.key === '9').id, 'testadmin'), /err.notFound/);
     assert.ok(rules.openEvents({ all: true }).some((o) => o.closed_how === 'user'));
     // switched off: open events of the rule close
     rules.update(r.id, { enabled: false });

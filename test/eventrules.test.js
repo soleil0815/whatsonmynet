@@ -183,7 +183,7 @@ test('API: editors manage rules, viewers do not; "test" shows what a filter woul
   const app = await startApp();
   const { call, ctx } = app;
   try {
-    assert.equal((await call('POST', '/api/setup', { username: 'michael', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+    assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
     ctx.users.create({ username: 'lisa', password: 'Sicher-Passwort-2', role: 'viewer' });
     await call('POST', '/api/login', { username: 'lisa', password: 'Sicher-Passwort-2' }, { who: 'viewer' });
     const mail = ctx.channels.create({ name: 'Ticket', type: 'email', config: { to: 'ticket@firma.local' } });
