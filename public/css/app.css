@@ -842,3 +842,22 @@ td.nowrap { white-space: nowrap; }
 
 /* Backups: the long file names wrap instead of pushing the buttons out of sight */
 .data td.bk-name { word-break: break-all; white-space: normal; min-width: 14ch; max-width: 30ch; color: var(--muted); }
+/* the time range of the messages and its timeline (bars per step of time, errors at the bottom) */
+.ev-custom { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.ev-custom label { display: flex; align-items: center; gap: 6px; }
+.ev-custom input { width: auto; }
+.ev-hist { padding-bottom: 10px; }
+.ev-hist-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 8px; }
+.ev-hist-actions { margin-left: auto; display: flex; gap: 6px; }
+.ev-hist-svg { display: block; width: 100%; height: 72px; cursor: crosshair; touch-action: none; border-bottom: 1px solid var(--line-2); border-radius: 2px; }
+.ev-hist-svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.ev-hist-svg g:hover rect:not([fill]) { opacity: .75; }
+.ev-hist-err { fill: var(--bad); background: var(--bad); }
+.ev-hist-warn { fill: var(--new-fill); background: var(--new-fill); }
+.ev-hist-other { fill: var(--line-2); background: var(--line-2); }
+.ev-hist-sel { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
+.ev-hist-axis { display: flex; justify-content: space-between; margin-top: 4px; }
+.ev-hist-legend { display: flex; gap: 14px; margin-top: 6px; }
+.ev-hist-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.ev-when { font-size: inherit; color: inherit; text-align: left; }
+.ev-when:hover { color: var(--accent); }
