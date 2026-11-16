@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Event rules and reports: a switch in the list shows at a glance whether a rule or report is active and turns it on or off with one click - without opening it
+
+## 0.34.0 - 2026-11-16
+
 - Event rules: new ready-made rules - new scheduled task (4698), user account created (4720), Defender real-time protection turned off (5001), PowerShell: suspicious script (4104, warnings only) and error of a command (4100); "log cleared" now also covers the system log (104). The manual says which auditing Windows needs for them
 
 ## 0.33.5 - 2026-11-16

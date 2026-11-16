@@ -150,3 +150,24 @@ test('options: limits and defaults', () => {
   assert.throws(() => cleanOptions({ state: { closeRegex: bad('+)+a(') } }), (e) => e.code === 'err.regexUnsafe' && e.field === 'closeRegex');
   assert.equal(cleanOptions({ state: { closeIds: '7036 7040-7045' } }).state.closeIds, '7036, 7040-7045');
 });
+
+test('rule on/off from the list: off drops waiting hits and closes open events, on clears a self-switch-off', async () => {
+  const { db, rules, chan, event, tick } = setup();
+  const r = rules.create({ name: 'Ports', match: { regex: 'Port (\\d+) link down' }, channels: [chan], state: { open: true } });
+  rules.start();
+  try {
+    rules.onEvent(event({ text: 'Port 7 link down' })); await tick();
+    assert.equal(rules.openCount(), 1);
+    const off = rules.setEnabled(r.id, false);
+    assert.equal(off.enabled, false);
+    assert.deepEqual(off.match, r.match, 'the rule itself stays as it was');
+    assert.equal(rules.openCount(), 0);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM event_rule_hits WHERE rule_id=? AND sent_at IS NULL').get(r.id).n, 0);
+    db.prepare('UPDATE event_rules SET options=? WHERE id=?').run(JSON.stringify({ ...JSON.parse(db.prepare('SELECT options FROM event_rules WHERE id=?').get(r.id).options), disabledReason: 'regex slow (30 ms)' }), r.id);
+    const on = rules.setEnabled(r.id, true);
+    assert.equal(on.enabled, true);
+    assert.equal(on.disabled_reason, '');
+    assert.equal(on.state.open, true, 'options kept');
+    assert.throws(() => rules.setEnabled(999, true), /err.notFound/);
+  } finally { rules.stop(); }
+});
