@@ -6,7 +6,16 @@
 
 Netzwerk-Inventar, Monitoring und Sensoren in einem Container: WhatsOnMyNet scannt dein Netz, erkennt Geräte selbst, überwacht Webseiten, Dienste, Server und Hypervisoren und meldet sich, bevor jemand anruft. Läuft lokal, lädt nichts aus dem Internet, liest fremde Systeme nur.
 
-![Übersicht](public/help/img/dashboard-de.png)
+![Meldungen durchsuchen und zeitlich eingrenzen](.github/readme/logsearch-de.webp)
+
+<p>
+  <img src=".github/readme/dashboard-de.webp" alt="Übersicht: was zu tun ist" width="49%">
+  <img src=".github/readme/monitoring-de.webp" alt="Monitoring" width="49%">
+  <img src=".github/readme/virtualization-de.webp" alt="Proxmox und Hyper-V" width="49%">
+  <img src=".github/readme/topology-de.webp" alt="Netzplan" width="49%">
+  <img src=".github/readme/eventrules-de.webp" alt="Windows-Ereignisse mit Regeln" width="49%">
+  <img src=".github/readme/sensors-de.webp" alt="Sensoren mit Grenzwert" width="49%">
+</p>
 
 📖 **Handbuch:** [als PDF](public/help/WhatsOnMyNet-Handbuch.pdf) · in der App unter *Hilfe* · [English manual](public/help/WhatsOnMyNet-Manual.pdf) · **Neuigkeiten:** [CHANGELOG.md](CHANGELOG.md)
 
