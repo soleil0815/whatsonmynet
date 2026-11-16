@@ -28,6 +28,25 @@ function longText(text) {
   return h('span', { class: 'small' }, s.slice(0, 400), rest, more);
 }
 
+// The time range (as in Splunk or Wazuh): the last minutes, hours or days, or a range of one's own - narrowed further by
+// clicking or dragging over the bars of the timeline above the list
+const RANGES = [['', 'ev.range.all'], ['15m', 'ev.range.15m'], ['1h', 'ev.range.1h'], ['24h', 'ev.range.24h'], ['7d', 'ev.range.7d'], ['30d', 'ev.range.30d'], ['custom', 'ev.range.custom']];
+const RANGE_MS = { '15m': 900000, '1h': 3600000, '24h': 86400000, '7d': 7 * 86400000, '30d': 30 * 86400000 };
+const NS = 'http://www.w3.org/2000/svg';
+const svgEl = (tag, attrs = {}) => { const el = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v)); return el; };
+const locale = () => (getLang() === 'en' ? 'en-GB' : 'de-DE');
+// "2026-11-16T14:05" for <input type=datetime-local> (local time) and back
+const toLocalInput = (ms) => { const d = new Date(ms); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+const fromLocalInput = (v) => { const ms = v ? new Date(v).getTime() : NaN; return Number.isFinite(ms) ? ms : null; };
+/** "14:05", "Mo 16.11. 14:05" or "16.11.2026" - as much as the span needs */
+function tick(ms, spanMs) {
+  const d = new Date(ms);
+  if (spanMs <= 86400000 && new Date().toDateString() === d.toDateString()) return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+  if (spanMs <= 14 * 86400000) return d.toLocaleString(locale(), { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString(locale(), { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+const stepLabel = (s) => (s < 3600 ? t('ev.step.m', { n: s / 60 }) : s < 86400 ? t('ev.step.h', { n: s / 3600 }) : t('ev.step.d', { n: s / 86400 }));
+
 export async function renderEvents(main) {
   if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
@@ -45,6 +64,12 @@ export async function renderEvents(main) {
   const fromUrl = new URLSearchParams(location.search).get('from');
   if (fromUrl) source = { ip: fromUrl, label: fromUrl };
   let senders = [];
+  // the time range: a preset (remembered) or a range of one's own; zooming in keeps the way back
+  let range = '';
+  try { range = RANGES.some(([v]) => v && v !== 'custom' && v === localStorage.getItem('ev.range')) ? localStorage.getItem('ev.range') : ''; } catch { /* default */ }
+  let custom = { from: null, to: null }; // ms
+  const back = []; // earlier ranges, newest last
+  let hist = null; let dragging = false;
   const q = h('input', { type: 'search', placeholder: t('ev.search'), 'aria-label': t('ev.search') });
   const seg = h('div', { class: 'seg', role: 'group', 'aria-label': t('ev.view') });
   const sourceChip = h('div');
@@ -56,6 +81,26 @@ export async function renderEvents(main) {
   const spaceBox = h('div');
   const listBox = h('div');
   const more = h('div', { class: 'actions', style: { justifyContent: 'center' } });
+  const rangeSel = h('select', { 'aria-label': t('ev.range') }, RANGES.map(([v, k]) => h('option', { value: v }, t(k))));
+  rangeSel.value = range;
+  const fromIn = h('input', { type: 'datetime-local', 'aria-label': t('ev.rangeFrom') });
+  const toIn = h('input', { type: 'datetime-local', 'aria-label': t('ev.rangeTo') });
+  const customBox = h('div', { class: 'ev-custom', hidden: true }, h('label', {}, h('span', { class: 'small muted' }, t('ev.rangeFrom')), fromIn), h('label', {}, h('span', { class: 'small muted' }, t('ev.rangeTo')), toIn));
+  const histBox = h('div');
+  /** from and to (ISO) for the server: a preset counts back from now, so new messages keep coming in */
+  const rangeNow = () => {
+    if (range === 'custom') return { from: custom.from === null ? null : new Date(custom.from).toISOString(), to: custom.to === null ? null : new Date(custom.to).toISOString() };
+    return RANGE_MS[range] ? { from: new Date(Date.now() - RANGE_MS[range]).toISOString(), to: null } : { from: null, to: null };
+  };
+  const setRange = (r, c = custom, { remember: keep = true } = {}) => {
+    if (keep) back.push({ range, custom, q: q.value });
+    if (back.length > 20) back.shift();
+    range = r; custom = c;
+    if (r !== 'custom') remember('ev.range', r);
+    rangeSel.value = r;
+    load();
+  };
+  const zoom = (fromMs, toMs) => setRange('custom', { from: fromMs, to: toMs });
 
   async function load(append = false) {
     if (view === 'open') {
@@ -78,11 +123,17 @@ export async function renderEvents(main) {
       } catch (e) { fail(e); }
       return;
     }
-    const p = new URLSearchParams({ q: q.value.trim(), kind, maxSeverity: String(maxSeverity), limit: '200' });
+    const p = new URLSearchParams({ q: q.value.trim(), kind, maxSeverity: String(maxSeverity) });
     if (source) p.set('source', source.ip);
-    if (append && rows.length) p.set('before', String(rows[rows.length - 1].id));
+    const { from, to } = rangeNow();
+    if (from) p.set('from', from);
+    if (to) p.set('to', to);
+    const lp = new URLSearchParams(p); lp.set('limit', '200');
+    if (append && rows.length) lp.set('before', String(rows[rows.length - 1].id));
     try {
-      const r = await get(`/events?${p}`);
+      // the bars come with the first page of the list; more of the list leaves them as they are
+      const [r, hg] = await Promise.all([get(`/events?${lp}`), append ? null : get(`/events/histogram?${p}`)]);
+      if (hg) hist = hg;
       info = r;
       rows = append ? [...rows, ...r.list] : r.list;
       if (!body.isConnected) return;
@@ -121,7 +172,8 @@ export async function renderEvents(main) {
       'aria-pressed': String(v === view), onclick: () => setView(v) }, l)));
     if (view === 'open') {
       mount(chips, h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: showClosed, onchange: (e) => { showClosed = e.currentTarget.checked; load(); } }), t('ev.showClosed')));
-      sevSel.hidden = true; q.hidden = true; q.parentElement.hidden = true;
+      sevSel.hidden = true; q.hidden = true; q.parentElement.hidden = true; rangeSel.hidden = true; customBox.hidden = true;
+      mount(histBox, null);
       mount(sourceChip, null);
       const stateBadge = (o) => (o.state === 'open' ? h('span', { class: 'badge badge-bad' }, t('ev.st.open')) : o.state === 'ack' ? h('span', { class: 'badge badge-warn' }, t('ev.st.ack'))
         : h('span', { class: 'badge' }, t(`ev.closed.${o.closed_how || 'user'}`)));
@@ -145,6 +197,10 @@ export async function renderEvents(main) {
     q.hidden = false; q.parentElement.hidden = false;
     mount(chips, bySender ? null : [chip('', t('all')), chip('trap', 'Traps'), chip('syslog', 'Syslog')]);
     sevSel.hidden = bySender;
+    // the overview by sender counts the last 24 hours; the range is for the messages themselves
+    rangeSel.hidden = bySender; customBox.hidden = bySender || range !== 'custom';
+    if (range === 'custom') { fromIn.value = custom.from === null ? '' : toLocalInput(custom.from); toIn.value = custom.to === null ? '' : toLocalInput(custom.to); }
+    mount(histBox, bySender ? null : drawHist());
     q.placeholder = bySender ? t('ev.searchSenders') : t('ev.search');
     mount(sourceChip, source ? h('div', { class: 'actions', style: { justifyContent: 'flex-start', gap: '8px' } },
       h('span', {}, t('ev.onlyFrom')), h('strong', {}, source.label), source.label !== source.ip ? h('span', { class: 'muted mono small' }, source.ip) : null,
@@ -174,7 +230,8 @@ export async function renderEvents(main) {
     mount(listBox, rows.length ? h('div', { class: 'panel' }, h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-table' },
       h('thead', {}, h('tr', {}, h('th', {}, t('ev.when')), source ? null : h('th', {}, t('ev.from')), h('th', {}, t('ev.severity')), h('th', {}, t('ev.text')), h('th', {}))),
       h('tbody', {}, rows.map((r) => h('tr', {},
-        h('td', { class: 'nowrap small' }, fmtDate(r.at, getLang())),
+        h('td', { class: 'nowrap small' }, h('button', { type: 'button', class: 'btn-link ev-when', title: t('ev.aroundHint'),
+          onclick: () => { const at = Date.parse(r.at); back.push({ range, custom, q: q.value }); q.value = ''; setRange('custom', { from: at - 5 * 60000, to: at + 5 * 60000 + 1000 }, { remember: false }); } }, fmtDate(r.at, getLang()))),
         source ? null : h('td', {}, r.device_id ? h('a', { class: 'name', href: `/devices/${r.device_id}`, 'data-link': true }, r.device_name || r.source_ip) : h('span', { class: 'name mono' }, r.source_ip),
           h('div', { class: 'sub mono' }, [r.device_id ? r.source_ip : '', r.host && r.host !== r.device_name ? r.host : ''].filter(Boolean).join(' · ') || null)),
         h('td', {}, h('span', { class: `badge ${sevTone(r.severity) === 'muted' ? '' : `badge-${sevTone(r.severity)}`}` }, sevLabel(r.severity)),
@@ -187,10 +244,67 @@ export async function renderEvents(main) {
         h('td', { class: 'min nowrap' }, isReadOnly() ? null : [
           btn(t('ev.watch'), { class: 'btn btn-sm btn-ghost', title: t('ev.watchHint'), onclick: () => watch(r) }, 'pulse'),
           btn(t('ev.rule'), { class: 'btn btn-sm btn-ghost', title: t('ev.ruleHint'), onclick: () => ruleFrom(r) }, 'mail')])))))))
-      : h('div', { class: 'panel panel-pad muted' }, off ? t('ev.noneOff') : q.value || kind || maxSeverity < 7 ? t('ev.noMatch') : t('ev.none')));
+      : h('div', { class: 'panel panel-pad muted' }, off ? t('ev.noneOff') : q.value || kind || maxSeverity < 7 || range ? t('ev.noMatch') : t('ev.none')));
     mount(more, hasMore ? btn(t('ev.more'), { class: 'btn btn-sm', onclick: () => load(true) }) : null);
     lockForEditing(body);
   }
+  // The timeline: one bar per step of time, errors at the bottom, then warnings, then the rest. A click on a bar or
+  // dragging over several narrows the range to them; arrow keys and Enter do the same without a mouse.
+  function drawHist() {
+    const hg = hist;
+    const backBtn = back.length ? btn(t('ev.rangeBack'), { class: 'btn btn-sm btn-ghost', onclick: () => { const prev = back.pop(); q.value = prev.q; setRange(prev.range, prev.custom, { remember: false }); } }) : null;
+    const allBtn = range ? btn(t('ev.range.all'), { class: 'btn btn-sm btn-ghost', onclick: () => setRange('') }) : null;
+    if (!hg) return null;
+    const from = Date.parse(hg.from); const to = Date.parse(hg.to); const span = to - from;
+    const head = h('div', { class: 'ev-hist-head' },
+      h('span', { class: 'small' }, h('strong', {}, t(hg.total === 1 ? 'ev.histTotal1' : 'ev.histTotal', { n: hg.total.toLocaleString(getLang()) })),
+        hg.buckets.length ? ` · ${tick(from, span)} – ${tick(to, span)}` : ''),
+      hg.buckets.length > 1 && hg.total ? h('span', { class: 'small muted hide-sm' }, t('ev.histHint', { step: stepLabel(hg.step) })) : null,
+      h('span', { class: 'ev-hist-actions' }, backBtn, allBtn));
+    if (!hg.total || !hg.buckets.length) return h('div', { class: 'panel panel-pad ev-hist' }, head);
+    const n = hg.buckets.length; const W = 1000; const H = 72; const bw = W / n; const gap = bw > 4 ? 1 : 0;
+    const max = Math.max(1, ...hg.buckets.map((b) => b.err + b.warn + b.other));
+    const startOf = (i) => Date.parse(hg.buckets[i].at);
+    const endOf = (i) => Math.min(to, startOf(i) + hg.step * 1000);
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none', class: 'ev-hist-svg', tabindex: '0', role: 'img',
+      'aria-label': t('ev.histAria', { n: hg.total, from: tick(from, span), to: tick(to, span) }) });
+    const sel = svgEl('rect', { class: 'ev-hist-sel', x: 0, y: 0, width: 0, height: H, visibility: 'hidden' });
+    hg.buckets.forEach((b, i) => {
+      const g = svgEl('g');
+      const title = svgEl('title');
+      title.textContent = `${tick(startOf(i), span)} – ${tick(endOf(i), span)}: ${t('ev.histBar', { n: b.err + b.warn + b.other, err: b.err, warn: b.warn })}`;
+      g.append(title, svgEl('rect', { x: i * bw, y: 0, width: bw, height: H, fill: 'transparent' }));
+      let y = H;
+      for (const [k, cls] of [['err', 'ev-hist-err'], ['warn', 'ev-hist-warn'], ['other', 'ev-hist-other']]) {
+        if (!b[k]) continue;
+        const hh = Math.max(1.5, (b[k] / max) * (H - 2));
+        y -= hh;
+        g.append(svgEl('rect', { x: i * bw + gap / 2, y, width: Math.max(0.5, bw - gap), height: hh, class: cls }));
+      }
+      svg.append(g);
+    });
+    svg.append(sel);
+    // choosing: pointer down on one bar, up on the same or another one
+    let a = null; let cur = 0;
+    const idx = (e) => { const r = svg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.floor(((e.clientX - r.left) / r.width) * n))); };
+    const show = (i, j) => { const lo = Math.min(i, j); const hi = Math.max(i, j); sel.setAttribute('x', String(lo * bw)); sel.setAttribute('width', String((hi - lo + 1) * bw)); sel.setAttribute('visibility', 'visible'); };
+    const pickBars = (i, j) => zoom(startOf(Math.min(i, j)), endOf(Math.max(i, j)));
+    svg.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; dragging = true; a = idx(e); show(a, a); try { svg.setPointerCapture(e.pointerId); } catch { /* old browser */ } e.preventDefault(); });
+    svg.addEventListener('pointermove', (e) => { if (a !== null) show(a, idx(e)); });
+    svg.addEventListener('pointerup', (e) => { dragging = false; if (a === null) return; const i = a; a = null; pickBars(i, idx(e)); });
+    svg.addEventListener('pointercancel', () => { dragging = false; a = null; sel.setAttribute('visibility', 'hidden'); });
+    svg.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { cur = Math.max(0, Math.min(n - 1, cur + (e.key === 'ArrowLeft' ? -1 : 1))); show(cur, cur); e.preventDefault(); }
+      else if (e.key === 'Enter' || e.key === ' ') { pickBars(cur, cur); e.preventDefault(); }
+    });
+    svg.addEventListener('focus', () => { cur = Math.max(0, hg.buckets.findIndex((b) => b.err + b.warn + b.other)); show(cur, cur); });
+    svg.addEventListener('blur', () => { if (a === null) sel.setAttribute('visibility', 'hidden'); });
+    const axis = h('div', { class: 'ev-hist-axis small muted' }, h('span', {}, tick(from, span)), h('span', { class: 'hide-sm' }, tick(from + span / 2, span)), h('span', {}, tick(to, span)));
+    const legend = h('div', { class: 'ev-hist-legend small muted' },
+      h('span', {}, h('i', { class: 'ev-hist-err' }), t('ev.histErr')), h('span', {}, h('i', { class: 'ev-hist-warn' }), t('ev.histWarn')), h('span', {}, h('i', { class: 'ev-hist-other' }), t('ev.histOther')));
+    return h('div', { class: 'panel panel-pad ev-hist' }, head, svg, axis, legend);
+  }
+
   // A message → a monitor that alarms when it comes again: same sender, same kind, its severity, the start of its text
   function watch(r) {
     const words = String(r.text).replace(/\d+/g, ' ').split(/\s+/).filter((w) => w.length > 2).slice(0, 3).join(' ');
@@ -259,14 +373,28 @@ export async function renderEvents(main) {
   let timer = null;
   q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => load(), 300); });
   sevSel.addEventListener('change', () => { maxSeverity = Number(sevSel.value); load(); });
+  rangeSel.addEventListener('change', () => {
+    // a range of one's own starts with what was shown: the last 24 hours, or the preset just chosen
+    if (rangeSel.value === 'custom') { const r = rangeNow(); setRange('custom', { from: r.from ? Date.parse(r.from) : Date.now() - 86400000, to: Date.now() }); }
+    else setRange(rangeSel.value);
+  });
+  const applyCustom = () => {
+    const f = fromLocalInput(fromIn.value); const tt = fromLocalInput(toIn.value);
+    const bad = f !== null && tt !== null && f >= tt;
+    fromIn.setAttribute('aria-invalid', String(bad)); toIn.setAttribute('aria-invalid', String(bad));
+    if (bad) { toast(t('ev.rangeBad')); return; }
+    setRange('custom', { from: f, to: tt });
+  };
+  fromIn.addEventListener('change', applyCustom);
+  toIn.addEventListener('change', applyCustom);
   const head = pageHead(t('ev.title'), t('ev.lead'),
     btn(t('ev.rules'), { class: 'btn', onclick: () => navigate('/events/rules') }, 'mail'),
     admin ? btn(t('ev.settings'), { class: 'btn', onclick: () => info && settingsDialog(info.settings) }, 'settings') : null,
     btn(t('ev.reload'), { class: 'btn', onclick: () => load() }, 'refresh'));
   mount(body, head, statusBox, spaceBox,
-    h('div', { class: 'vo-toolbar ev-toolbar' }, seg, h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q), sevSel, chips),
-    sourceChip, listBox, more);
+    h('div', { class: 'vo-toolbar ev-toolbar' }, seg, h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q), sevSel, rangeSel, chips),
+    customBox, sourceChip, histBox, listBox, more);
   await load();
   // new messages show up by themselves while the page is open (not while searching through older ones)
-  const auto = setInterval(() => { if (!body.isConnected) { clearInterval(auto); return; } if ((view === 'senders' && !source) || (rows.length <= 200 && !document.hidden)) { if (!document.hidden) load(); } }, 15000);
+  const auto = setInterval(() => { if (!body.isConnected) { clearInterval(auto); return; } if (dragging) return; if ((view === 'senders' && !source) || (rows.length <= 200 && !document.hidden)) { if (!document.hidden) load(); } }, 15000);
 }

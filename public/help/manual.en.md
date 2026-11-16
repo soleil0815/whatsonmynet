@@ -217,6 +217,15 @@ Without `Exec` in the output NXLog sends time, computer, level, event id and tex
 
 **By sender:** the page first shows one row per computer or device - with the last message and the messages, warnings and errors of the last 24 hours - instead of all messages one below the other. A click on the sender shows only its messages; *All messages* shows everything as before. On the page of a device *More → Messages of the device* leads straight there.
 
+**Time range and timeline:** in *All messages* and for a single sender you set the **time range** next to the severity - last 15 minutes, hour, 24 hours, 7 or 30 days, or a *custom range* with From and To. Above the list a timeline shows how many messages with the same filters came per step of time - errors in red at the bottom, warnings in yellow above them, the rest in grey. Searching works as in Splunk or Wazuh:
+
+1. Search for the event, e.g. `4625` or an account name - the timeline shows when it piled up.
+2. Click a bar or drag the mouse across several: list and timeline show only that time, with finer bars (down to one minute). With the keyboard: focus the timeline, arrow keys, Enter.
+3. A click on the **time** of a message shows what else came in the 5 minutes before and after - without the search term, so the messages around it too.
+4. *Back* goes one step back (with the search term from before), *Whole time range* lifts the narrowing.
+
+The browser remembers the preset chosen (e.g. *Last 24 hours*); a custom range only holds while the page is open. The *By sender* overview still counts the last 24 hours.
+
 ### Event rules: chosen messages by mail or to the ticket system
 
 Under *Messages → Event rules* you set which messages go where - **apart from the monitors**: a rule only sends to the recipients ticked in it, never to the default recipients. So "virus found" lands in the mailbox of the ticket system and not on the phone.

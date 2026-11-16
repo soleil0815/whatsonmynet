@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Messages: time range and timeline as in Splunk or Wazuh - last 15 minutes to 30 days or a custom range; above the list a timeline counts the hits per step of time (errors, warnings, the rest). Search for an event, then click a bar or drag across several: list and timeline narrow to it, "Back" goes one step back. A click on the time of a message shows what else came in the 5 minutes before and after
+
+## 0.37.0 - 2026-11-16
+
 - Backup: the number of backups kept is now set where the backups are - under Settings → Backup → Retention (default 10). It applies to the copies before an update and before a restore as well; saving deletes the ones over it at once. Single backups can be deleted in the list (with a question first)
 - Settings tidied: "two-factor sign-in mandatory for administrators" is now with the users (section Sign-in), General keeps the name of the installation
 - Manual and README: how much space do the messages need? - formula, values per sender and typical setups with recommended settings
