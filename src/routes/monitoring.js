@@ -176,6 +176,46 @@ export function createMonitoringApi(ctx) {
         .map((r) => { const summary = logonSummary(r.event_id, r.text, req.user?.language === 'en' ? 'en' : 'de'); return summary ? { ...r, summary } : r; }) });
   });
   // how many messages per step of time, with the same filters as the list (the bars above it)
+  // Saved searches: search, severity, kind and time range (a preset - not a fixed day) under a name; one's own, or shared
+  // with everyone who sees the messages. Only who made it (or an admin) deletes it.
+  const SEARCH_RANGES = ['', '15m', '1h', '24h', '7d', '30d'];
+  const SEARCHES_MAX = 50;
+  const searchRow = (req) => (x) => {
+    let q = {}; try { q = JSON.parse(x.query); } catch { /* broken: empty */ }
+    return { id: x.id, name: x.name, shared: !!x.shared, mine: x.user_id === req.user.id, owner: x.owner || '', ...q };
+  };
+  r.get('/events/searches', editor, unscoped, (req, res) => {
+    res.json(db.prepare(`SELECT s.*, COALESCE(NULLIF(u.display_name, ''), u.username) owner FROM event_searches s LEFT JOIN users u ON u.id = s.user_id
+      WHERE s.user_id = ? OR s.shared = 1 ORDER BY s.name COLLATE NOCASE`).all(req.user.id).map(searchRow(req)));
+  });
+  r.post('/events/searches', editor, unscoped, (req, res) => {
+    const b = req.body || {};
+    const name = str(b.name, 60).trim();
+    if (!name) throw new HttpError(400, 'err.searchName', undefined, 'name');
+    const q = {
+      q: str(b.q, 200).trim(), kind: ['trap', 'syslog'].includes(b.kind) ? b.kind : '',
+      maxSeverity: Math.max(0, Math.min(7, Number.isFinite(Number(b.maxSeverity)) ? Math.round(Number(b.maxSeverity)) : 7)),
+      range: SEARCH_RANGES.includes(b.range) ? b.range : '', part: !!b.part,
+    };
+    if (!q.q && !q.kind && q.maxSeverity === 7 && !q.range) throw new HttpError(400, 'err.searchEmpty');
+    // the same name again: the search is replaced (saving a changed search under its name)
+    const same = db.prepare('SELECT id FROM event_searches WHERE user_id = ? AND name = ? COLLATE NOCASE').get(req.user.id, name);
+    if (same) db.prepare('UPDATE event_searches SET query = ?, shared = ? WHERE id = ?').run(JSON.stringify(q), b.shared ? 1 : 0, same.id);
+    else {
+      if (db.prepare('SELECT COUNT(*) FROM event_searches WHERE user_id = ?').pluck().get(req.user.id) >= SEARCHES_MAX) throw new HttpError(400, 'err.searchMax', String(SEARCHES_MAX));
+      db.prepare('INSERT INTO event_searches(user_id, name, query, shared, created_at) VALUES(?,?,?,?,?)').run(req.user.id, name, JSON.stringify(q), b.shared ? 1 : 0, new Date().toISOString());
+    }
+    audit(req, 'events.search.save', name);
+    res.status(same ? 200 : 201).json({ ok: true });
+  });
+  r.delete('/events/searches/:id', editor, unscoped, (req, res) => {
+    const x = db.prepare('SELECT * FROM event_searches WHERE id = ?').get(idParam(req));
+    if (!x || (x.user_id !== req.user.id && !x.shared)) throw new HttpError(404, 'err.notFound');
+    if (x.user_id !== req.user.id && req.user.role !== 'admin') throw new HttpError(403, 'err.forbidden');
+    db.prepare('DELETE FROM event_searches WHERE id = ?').run(x.id);
+    audit(req, 'events.search.delete', x.name);
+    res.json({ ok: true });
+  });
   r.get('/events/histogram', editor, unscoped, (req, res) => res.json(ctx.events.histogram(eventFilter(req.query || {}))));
   // What is kept of one sender (admins, like the receiving settings): min severity 0-7, -1 = nothing, null = as for all
   r.put('/events/senders/filter', admin, (req, res) => {

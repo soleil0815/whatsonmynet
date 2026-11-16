@@ -6,6 +6,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Meldungen: Suchen speichern - unter „Gespeichert“ Suchbegriff, Schwere, Art und Zeitraum unter einem Namen ablegen und mit einem Klick wieder einstellen, für sich oder für alle sichtbar
 - Windows-Skript auf Windows Server: Es fragte das Sicherheitscenter ab, das es nur auf Client-Windows gibt (bei anderem Virenschutz fehlt auch der Defender-Bereich) - der abgefangene Fehler landete trotzdem bei jedem Lauf als Warnung 4100 „Ungültiger Namespace“ im PowerShell-Protokoll. Jetzt schaut das Skript erst nach, ob es den Bereich gibt. Der automatische Test läuft jetzt auf Windows Server 2022 und 2025 und prüft auch fehlende Bereiche
 
 ## 0.39.0 - 2026-11-16
