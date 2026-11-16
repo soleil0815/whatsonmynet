@@ -90,6 +90,6 @@ jobs:
       - name: PSScriptAnalyzer (fixed version)
         shell: pwsh
         run: Install-Module PSScriptAnalyzer -RequiredVersion 1.23.0 -Scope CurrentUser -Force
-      - name: Compatible with Server 2012, 2012 R2, 2016 and 2019
+      - name: Compatible with Server 2012, 2012 R2, 2016, 2019 and Windows 10/11
         shell: pwsh
         run: tools/wincheck/compat.ps1 -Dir (Join-Path $env:RUNNER_TEMP 'compat')
