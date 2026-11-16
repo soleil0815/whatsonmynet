@@ -155,13 +155,28 @@ export function createMonitoringApi(ctx) {
   const eventSettings = () => ({ traps: !!settings.get('events.traps'), syslog: !!settings.get('events.syslog'), syslogTcp: !!settings.get('events.syslogTcp'), syslogTls: !!settings.get('events.syslogTls'),
     syslogTcpPort: config.syslogTcpPort, syslogTlsPort: config.syslogTlsPort, communitiesSet: !!settings.get('events.communities'),
     onlyKnown: !!settings.get('events.onlyKnown'), keepDays: Number(settings.get('events.keepDays')) || 30, maxGb: Number(settings.get('events.maxGb')) || 2, minSeverity: Number(settings.get('events.minSeverity') ?? 7), winAllow: String(settings.get('events.winAllow') || ''), winDeny: String(settings.get('events.winDeny') || ''), winNoise: WIN_NOISE, trapPort: config.trapPort, syslogPort: config.syslogPort });
+  // The filters of the list and of its timeline: search, kind, severity, sender and a time range (from inclusive, to not)
+  const when = (v, name) => {
+    if (v === undefined || v === null || v === '') return null;
+    const d = new Date(String(v).slice(0, 40));
+    if (!Number.isFinite(d.getTime())) throw new HttpError(400, 'err.badRequest', name, name);
+    return d.toISOString();
+  };
+  const eventFilter = (q) => {
+    const f = { q: String(q.q ?? ''), kind: String(q.kind ?? ''), maxSeverity: q.maxSeverity ?? 7, device: q.device || null, source: String(q.source ?? ''),
+      from: when(q.from, 'from'), to: when(q.to, 'to') };
+    if (f.from && f.to && f.from >= f.to) throw new HttpError(400, 'err.eventRange', undefined, 'from');
+    return f;
+  };
   r.get('/events', editor, unscoped, (req, res) => {
     const q = req.query || {};
     res.json({ status: ctx.events.status(), settings: eventSettings(), openEvents: ctx.eventRules.openCount(),
       // sign-in events get a short line (account, way, reason, source) above their long text
-      list: ctx.events.list({ q: String(q.q ?? ''), kind: String(q.kind ?? ''), maxSeverity: q.maxSeverity ?? 7, device: q.device || null, source: String(q.source ?? ''), before: q.before || null, limit: q.limit || 200 })
+      list: ctx.events.list({ ...eventFilter(q), before: q.before || null, limit: q.limit || 200 })
         .map((r) => { const summary = logonSummary(r.event_id, r.text, req.user?.language === 'en' ? 'en' : 'de'); return summary ? { ...r, summary } : r; }) });
   });
+  // how many messages per step of time, with the same filters as the list (the bars above it)
+  r.get('/events/histogram', editor, unscoped, (req, res) => res.json(ctx.events.histogram(eventFilter(req.query || {}))));
   // What is kept of one sender (admins, like the receiving settings): min severity 0-7, -1 = nothing, null = as for all
   r.put('/events/senders/filter', admin, (req, res) => {
     const b = req.body || {};

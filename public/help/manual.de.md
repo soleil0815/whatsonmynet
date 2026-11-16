@@ -217,6 +217,15 @@ Auch `Exec $Message = to_json(); to_syslog_ietf();` (alle Felder als JSON) wird 
 
 **Nach Absender:** Die Seite zeigt zuerst je Rechner oder Gerät eine Zeile - mit der letzten Meldung und den Meldungen, Warnungen und Fehlern der letzten 24 Stunden - statt alle Meldungen untereinander. Ein Klick auf den Absender zeigt nur seine Meldungen; *Alle Meldungen* zeigt wie bisher alles. Auf der Seite eines Geräts führt *Mehr → Meldungen des Geräts* direkt dorthin.
 
+**Zeitraum und Zeitleiste:** In *Alle Meldungen* und bei einem einzelnen Absender legst du neben der Schwere den **Zeitraum** fest - letzte 15 Minuten, Stunde, 24 Stunden, 7 oder 30 Tage oder einen *eigenen Zeitraum* mit Von und Bis. Über der Liste zeigt eine Zeitleiste, wie viele Meldungen mit denselben Filtern je Zeitabschnitt kamen - unten rot die Fehler, darüber gelb die Warnungen, grau der Rest. So geht die Suche wie in Splunk oder Wazuh:
+
+1. Nach dem Ereignis suchen, z. B. `4625` oder einem Kontonamen - die Zeitleiste zeigt, wann es gehäuft kam.
+2. Einen Balken anklicken oder mit der Maus über mehrere ziehen: Liste und Zeitleiste zeigen nur noch diese Zeit, mit feineren Balken (bis hinunter zu einer Minute). Mit der Tastatur: Zeitleiste anwählen, Pfeiltasten, Eingabe.
+3. Ein Klick auf die **Uhrzeit** einer Meldung zeigt, was sonst in den 5 Minuten davor und danach kam - ohne Suchbegriff, also auch die Meldungen drumherum.
+4. *Zurück* geht einen Schritt zurück (mit dem Suchbegriff von vorher), *Ganzer Zeitraum* hebt die Eingrenzung auf.
+
+Die gewählte Vorgabe (z. B. *Letzte 24 Stunden*) merkt sich der Browser; ein eigener Zeitraum gilt nur, solange die Seite offen ist. Die Übersicht *Nach Absender* zählt weiter die letzten 24 Stunden.
+
 ### Ereignisregeln: ausgewählte Meldungen per Mail oder ans Ticketsystem
 
 Unter *Meldungen → Ereignisregeln* legst du fest, welche Meldungen wohin gehen - **getrennt von den Monitoren**: Eine Regel schickt nur an die Empfänger, die bei ihr angehakt sind, nie an die Standard-Empfänger. So landet „Virus gefunden“ im Postfach des Ticketsystems und nicht auf dem Handy.

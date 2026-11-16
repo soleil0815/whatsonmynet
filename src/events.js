@@ -469,20 +469,65 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     startStreams();
   }
 
-  function list({ q = '', kind = '', maxSeverity = 7, device = null, source = '', limit = 200, before = null } = {}) {
+  // A time as the database keeps it (ISO in UTC), or null; anything that is not a date is refused by the route first
+  const iso = (v) => { if (v === null || v === undefined || v === '') return null; const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toISOString() : null; };
+
+  // The same filters for the list and for the timeline above it
+  function filterSql({ q = '', kind = '', maxSeverity = 7, device = null, source = '', from = null, to = null } = {}) {
     const where = ['severity <= ?']; const args = [Math.max(0, Math.min(7, Number(maxSeverity)))];
     if (kind === 'trap' || kind === 'syslog') { where.push('kind = ?'); args.push(kind); }
     if (device) { where.push('e.device_id = ?'); args.push(Number(device)); }
     if (source) { where.push('e.source_ip = ?'); args.push(String(source).slice(0, 64)); }
-    if (before) { where.push('e.id < ?'); args.push(Number(before)); }
+    // from is inclusive, to is not: two ranges side by side never count a message twice
+    if (iso(from)) { where.push('e.at >= ?'); args.push(iso(from)); }
+    if (iso(to)) { where.push('e.at < ?'); args.push(iso(to)); }
     if (q) {
       // a number also finds the Windows event with that id
       const n = /^\d{1,6}$/.test(String(q).trim()) ? Number(String(q).trim()) : -1;
       where.push("(text LIKE ? ESCAPE '\\' OR app LIKE ? ESCAPE '\\' OR source_ip LIKE ? ESCAPE '\\' OR d.name LIKE ? ESCAPE '\\' OR e.host LIKE ? ESCAPE '\\' OR e.channel LIKE ? ESCAPE '\\' OR e.account LIKE ? ESCAPE '\\' OR e.event_id = ?)");
       const like = `%${String(q).slice(0, 100).replace(/[\\%_]/g, (c) => `\\${c}`)}%`; args.push(like, like, like, like, like, like, like, n);
     }
-    return db.prepare(`SELECT e.*, d.name device_name FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where.join(' AND ')} ORDER BY e.id DESC LIMIT ?`)
+    return { where: where.join(' AND '), args };
+  }
+
+  function list({ limit = 200, before = null, ...filter } = {}) {
+    const { where, args } = filterSql(filter);
+    const w = before ? `${where} AND e.id < ?` : where;
+    if (before) args.push(Number(before));
+    return db.prepare(`SELECT e.*, d.name device_name FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${w} ORDER BY e.id DESC LIMIT ?`)
       .all(...args, Math.max(1, Math.min(1000, Number(limit) || 200)));
+  }
+
+  /**
+   * The timeline above the list (as in Splunk or Wazuh): how many messages with the same filters came in per step of
+   * time, split into errors (0-3), warnings (4) and the rest. The step follows the span (a minute for the last hour, a
+   * day for a month), at most about 60 bars. Without a start the span begins with the oldest message that matches.
+   */
+  const STEPS = [60, 300, 900, 1800, 3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 7 * 86400];
+  function histogram(filter = {}) {
+    const end = iso(filter.to) ? new Date(iso(filter.to)).getTime() : Date.now();
+    let start = iso(filter.from) ? new Date(iso(filter.from)).getTime() : null;
+    if (start === null) {
+      const { where, args } = filterSql({ ...filter, from: null });
+      const first = db.prepare(`SELECT MIN(e.at) a FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where}`).get(...args)?.a;
+      start = first ? new Date(first).getTime() : end - 3600000;
+    }
+    if (!(end > start)) return { from: new Date(start).toISOString(), to: new Date(end).toISOString(), step: 60, total: 0, buckets: [] };
+    const span = (end - start) / 1000;
+    const step = STEPS.find((s) => span / s <= 60) || Math.ceil(span / 60 / 86400) * 86400;
+    // bars start on a round time (local midnight does not matter here: the browser labels them in its own time)
+    const t0 = Math.floor(start / 1000 / step) * step;
+    const n = Math.ceil((end / 1000 - t0) / step);
+    const { where, args } = filterSql({ ...filter, from: new Date(start).toISOString(), to: new Date(end).toISOString() });
+    const rows = db.prepare(`SELECT CAST((CAST(strftime('%s', e.at) AS INTEGER) - ?) / ? AS INTEGER) b, SUM(e.severity <= 3) err, SUM(e.severity = 4) warn, COUNT(*) n
+      FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where} GROUP BY b`).all(t0, step, ...args);
+    const buckets = Array.from({ length: n }, (_, i) => ({ at: new Date((t0 + i * step) * 1000).toISOString(), err: 0, warn: 0, other: 0 }));
+    let total = 0;
+    for (const r of rows) {
+      const b = buckets[r.b]; if (!b) continue;
+      b.err = r.err; b.warn = r.warn; b.other = r.n - r.err - r.warn; total += r.n;
+    }
+    return { from: new Date(start).toISOString(), to: new Date(end).toISOString(), step, total, buckets };
   }
 
   /**
@@ -585,7 +630,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   let pruneTimer = null;
 
   return {
-    receive, list, senders, prune, apply, communities,
+    receive, list, histogram, senders, prune, apply, communities,
     /** What is kept of one sender: min severity 0-7, -1 muted, null = as for all */
     setSenderFilter(ip, min, by = '') {
       const a = String(ip || '').trim().slice(0, 64);

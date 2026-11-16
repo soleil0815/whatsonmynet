@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Meldungen: Zeitraum und Zeitleiste wie in Splunk oder Wazuh - letzte 15 Minuten bis 30 Tage oder ein eigener Zeitraum; über der Liste zählt eine Zeitleiste die Treffer je Zeitabschnitt (Fehler, Warnungen, Rest). Nach einem Ereignis suchen, dann einen Balken anklicken oder über mehrere ziehen: Liste und Zeitleiste grenzen sich darauf ein, „Zurück“ geht einen Schritt zurück. Ein Klick auf die Uhrzeit einer Meldung zeigt, was in den 5 Minuten davor und danach sonst kam
+
+## 0.37.0 - 2026-11-16
+
 - Sicherung: Die Anzahl der aufbewahrten Sicherungen stellst du jetzt dort ein, wo die Sicherungen sind - unter Einstellungen → Sicherung → Aufbewahrung (Standard 10). Sie gilt auch für die Kopien vor einem Update und vor einer Wiederherstellung; beim Speichern werden überzählige gleich gelöscht. Einzelne Sicherungen lassen sich in der Liste löschen (mit Rückfrage)
 - Einstellungen aufgeräumt: „Zwei-Faktor-Anmeldung für Administratoren verpflichtend“ steht jetzt bei den Benutzern (Abschnitt Anmeldung), unter Allgemein bleibt der Name der Installation
 - Handbuch und README: Wie viel Platz brauchen die Meldungen? - Formel, Werte je Absender und typische Umgebungen mit empfohlenen Einstellungen
