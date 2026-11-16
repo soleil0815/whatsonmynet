@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Windows- und Hyper-V-Skript: ohne Fortschrittsanzeige - unter der geplanten Aufgabe gibt es kein Konsolenfenster, Windows PowerShell protokollierte dann bei jedem Lauf „Systemfehler“ (Ereignis 4100, Warnung). Wirkt nach Neues Skript und erneutem Verteilen',
+  ], en: [
+    'Windows and Hyper-V script: without progress bar - under the scheduled task there is no console window, Windows PowerShell then logged "System error" (event 4100, warning) on every run. Takes effect after New script and distributing it again',
+  ] },
+  { version: '0.33.3', date: '2026-11-16', de: [
     'Windows- und Hyper-V-Skript: Windows protokollierte jeden Lauf als „verdächtigen“ Skriptblock (Ereignis 4104, Warnung) - wegen des eingebauten C#-Codes für das angeheftete Zertifikat und „-ExecutionPolicy Bypass“. Das Zertifikat wird jetzt in PowerShell selbst geprüft (gleich streng: genau dieser Schlüssel bzw. dieses Zertifikat), die geplante Aufgabe läuft unter RemoteSigned. Wirkt nach Neues Skript und erneutem Verteilen',
   ], en: [
     'Windows and Hyper-V script: Windows logged every run as a "suspicious" script block (event 4104, warning) - because of the built-in C# code for the pinned certificate and "-ExecutionPolicy Bypass". The certificate is now checked by PowerShell itself (just as strict: exactly this key or this certificate), the scheduled task runs under RemoteSigned. Takes effect after New script and distributing it again',

@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Windows and Hyper-V script: without progress bar - under the scheduled task there is no console window, Windows PowerShell then logged "System error" (event 4100, warning) on every run. Takes effect after New script and distributing it again
+
+## 0.33.3 - 2026-11-16
+
 - Windows and Hyper-V script: Windows logged every run as a "suspicious" script block (event 4104, warning) - because of the built-in C# code for the pinned certificate and "-ExecutionPolicy Bypass". The certificate is now checked by PowerShell itself (just as strict: exactly this key or this certificate), the scheduled task runs under RemoteSigned. Takes effect after New script and distributing it again
 
 ## 0.33.2 - 2026-11-15

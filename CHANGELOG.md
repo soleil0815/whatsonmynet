@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Windows- und Hyper-V-Skript: ohne Fortschrittsanzeige - unter der geplanten Aufgabe gibt es kein Konsolenfenster, Windows PowerShell protokollierte dann bei jedem Lauf „Systemfehler“ (Ereignis 4100, Warnung). Wirkt nach Neues Skript und erneutem Verteilen
+
+## 0.33.3 - 2026-11-16
+
 - Windows- und Hyper-V-Skript: Windows protokollierte jeden Lauf als „verdächtigen“ Skriptblock (Ereignis 4104, Warnung) - wegen des eingebauten C#-Codes für das angeheftete Zertifikat und „-ExecutionPolicy Bypass“. Das Zertifikat wird jetzt in PowerShell selbst geprüft (gleich streng: genau dieser Schlüssel bzw. dieses Zertifikat), die geplante Aufgabe läuft unter RemoteSigned. Wirkt nach Neues Skript und erneutem Verteilen
 
 ## 0.33.2 - 2026-11-15
