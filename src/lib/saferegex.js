@@ -6,7 +6,7 @@
 //   2. at saving: tried in a separate thread on hostile texts and on real messages - with a hard time limit (the thread
 //      is stopped when it does not answer);
 //   3. while running: a rule whose expression ever takes longer than 20 ms on a message is switched off (eventrules.js).
-// Texts are cut to 1000 characters before they get here (events.js), which keeps every run short as well.
+// Texts are cut to 4000 characters before they get here (events.js), which keeps every run short as well.
 import { Worker } from 'node:worker_threads';
 import { HttpError } from './http.js';
 
@@ -64,7 +64,7 @@ parentPort.postMessage(worst);
 function hostile() {
   const out = [];
   for (const ch of ['a', ' ', '0', 'a ', '-', '.', 'aA0 ', 'x=1,', '\\']) {
-    const r = ch.repeat(Math.ceil(1000 / ch.length)).slice(0, 999);
+    const r = ch.repeat(Math.ceil(4000 / ch.length)).slice(0, 3999);
     out.push(`${r}!`, `${r}\n`, r);
   }
   return out;
@@ -77,7 +77,7 @@ function hostile() {
 export function checkRegexTime(src, samples = [], { limitMs = 2000, slowMs = SLOW_MS, field = 'regex' } = {}) {
   if (!src) return Promise.resolve(0);
   return new Promise((resolve, reject) => {
-    const w = new Worker(WORKER, { eval: true, workerData: { src, samples: [...hostile(), ...samples.map((x) => String(x).slice(0, 1000))].slice(0, 400) },
+    const w = new Worker(WORKER, { eval: true, workerData: { src, samples: [...hostile(), ...samples.map((x) => String(x).slice(0, 4000))].slice(0, 400) },
       resourceLimits: { maxOldGenerationSizeMb: 64 } });
     let done = false;
     const end = (fn) => { if (done) return; done = true; clearTimeout(timer); w.terminate().catch(() => {}); fn(); };
