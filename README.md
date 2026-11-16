@@ -250,6 +250,16 @@ Unter *Überwachung → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Beric
 - **Überwachen** macht aus einer Meldung einen Monitor, der sofort alarmiert. **Ereignisregeln** schicken ausgewählte Meldungen - getrennt von den Monitoren und nie an die Standard-Empfänger - per Mail, Webhook oder ans Ticketsystem: fertige Regeln für Virenfund (Defender), Software-Einschränkung, AppLocker, gesperrtes Konto und mehr, einzeln mit Obergrenze je Stunde oder gesammelt; nichts geht verloren, wenn ein Empfänger kurz nicht erreichbar ist.
 - **Ereignis-Konsole:** Regeln zählen („ab 5 Fehlanmeldungen in 10 Minuten je Rechner“), nutzen reguläre Ausdrücke (vor dem Speichern auf Tempo geprüft) und führen **offene Ereignisse** - der erste Treffer meldet, weitere zählen nur hoch, bis jemand quittiert oder die Gegenmeldung („Port 7 link up“) es schließt. Die Seite zeigt die Meldungen **nach Absender**; je Absender lässt sich festlegen, was gespeichert wird (alles, ab Warnung … oder stumm).
 - Die Meldungen liegen in einer **eigenen Datei** (`data/events.sqlite`): 30 Tage in höchstens 2 GB, bei knappem Datenträger bleiben mindestens 10 % frei. Die Seite zeigt, wie lange der Platz reicht und wer die meisten Meldungen schickt.
+- **Platz planen:** gerechnet rund 1,5 KB je Meldung - *Platz ≈ Meldungen pro Tag × Tage × 1,5 KB*. Grob für 30 Tage:
+
+  | Umgebung | Meldungen pro Tag | Platz für 30 Tage | Einstellung |
+  |---|---:|---:|---|
+  | Klein: 5 - 20 PCs, 1 Server, NAS, Switches | 5.000 - 10.000 | 0,2 - 0,5 GB | Standard (2 GB) |
+  | Klein mit Domänencontroller | 20.000 - 40.000 | 1 - 2 GB | 4 GB oder DC *ab Warnung* |
+  | Mittel: 20 - 100 PCs, 3 - 5 Server, 2 DCs | 50.000 - 150.000 | 2 - 7 GB | 10 GB |
+  | Groß: 100 - 500 PCs, 10 - 20 Server, 2 - 4 DCs | 150.000 - 500.000 | 7 - 25 GB | 30 GB, Rauschen filtern |
+
+  Für 90 Tage das Dreifache. Werte je Absender und das Vorgehen stehen im Handbuch (*Wie viel Platz brauchen die Meldungen?*).
 
 ![Ereignisregeln](public/help/img/eventrules-de.png)
 
