@@ -12,7 +12,7 @@ import Database from 'better-sqlite3';
 import { HttpError } from './lib/http.js';
 import { decrypt } from './lib/crypto.js';
 import { log } from './lib/log.js';
-import { backupDatabase, MIGRATIONS, migrate } from './db.js';
+import { backupDatabase, MIGRATIONS, migrate, tidyBackups } from './db.js';
 import { gzipFileSync, gunzipFile, isGzip, freeName } from './lib/gz.js';
 import zlib from 'node:zlib';
 
@@ -111,6 +111,15 @@ export function createBackups({ db, settings, dbFile, backupsDir, restart = () =
     async create() {
       const file = await backupDatabase(db, settings.get('backup.keep'), backupsDir);
       return path.basename(file);
+    },
+    /** Keep only as many as set (daily ones, and the same number of copies before an update or a restore) - right when
+     * the number is changed, not only at the next nightly backup */
+    async tidy() {
+      if (fs.existsSync(backupsDir)) await tidyBackups(backupsDir, Number(settings.get('backup.keep')) || 10);
+    },
+    /** Delete one stored backup by hand (a name from the list only) */
+    remove(name) {
+      fs.rmSync(this.file(name), { force: true });
     },
     /** Path of a stored backup (only names from the list - never a path from outside) */
     file(name) {

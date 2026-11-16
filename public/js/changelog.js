@@ -3,6 +3,15 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Sicherung: Die Anzahl der aufbewahrten Sicherungen stellst du jetzt dort ein, wo die Sicherungen sind - unter Einstellungen → Sicherung → Aufbewahrung (Standard 10). Sie gilt auch für die Kopien vor einem Update und vor einer Wiederherstellung; beim Speichern werden überzählige gleich gelöscht. Einzelne Sicherungen lassen sich in der Liste löschen (mit Rückfrage)',
+    'Einstellungen aufgeräumt: „Zwei-Faktor-Anmeldung für Administratoren verpflichtend“ steht jetzt bei den Benutzern (Abschnitt Anmeldung), unter Allgemein bleibt der Name der Installation',
+    'Handbuch und README: Wie viel Platz brauchen die Meldungen? - Formel, Werte je Absender und typische Umgebungen mit empfohlenen Einstellungen',
+  ], en: [
+    'Backup: the number of backups kept is now set where the backups are - under Settings → Backup → Retention (default 10). It applies to the copies before an update and before a restore as well; saving deletes the ones over it at once. Single backups can be deleted in the list (with a question first)',
+    'Settings tidied: "two-factor sign-in mandatory for administrators" is now with the users (section Sign-in), General keeps the name of the installation',
+    'Manual and README: how much space do the messages need? - formula, values per sender and typical setups with recommended settings',
+  ] },
+  { version: '0.36.0', date: '2026-11-16', de: [
     'Fehlgeschlagene Anmeldungen (4625): Die fertige Regel zählt ohne die Dienst-Anmeldungen des Rechners selbst und ohne „kein Anmeldeserver erreichbar“ (Laptop beim Hochfahren vor dem VPN) - beides ist kein Angriff. Eine so angelegte Regel bekommt die Ausnahmen beim Update, eine von Hand geänderte bleibt',
     'Windows-Anmeldeereignisse (4625, 4740, 4771, 4776): In Benachrichtigungen und in der Meldungsliste steht statt des abgeschnittenen Textanfangs eine Kurzfassung - Konto, Anmeldeart, Grund und Herkunft',
     'Meldungstexte werden bis 4000 statt 1000 Zeichen gespeichert, damit auch lange Windows-Ereignisse vollständig sind; die Liste zeigt sie gekürzt mit „ganzer Text“. Das NXLog-Beispiel im Handbuch schickt jede Meldung am Stück',

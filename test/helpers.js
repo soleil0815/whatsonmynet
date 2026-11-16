@@ -28,8 +28,8 @@ export async function startApp({ setupToken = 'setup-123', tls = null, dataDir =
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const url = `http://127.0.0.1:${server.address().port}`;
   const jar = {};
-  async function call(method, p, body, { who = 'default', csrf = true, raw = false } = {}) {
-    const headers = { Accept: 'application/json' };
+  async function call(method, p, body, { who = 'default', csrf = true, raw = false, headers: extra = {} } = {}) {
+    const headers = { Accept: 'application/json', ...extra };
     if (csrf && method !== 'GET') headers['X-WOMN-Request'] = '1';
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (jar[who]) headers.Cookie = jar[who];

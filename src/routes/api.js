@@ -541,6 +541,13 @@ export function createApi(ctx) {
     audit(req, 'backup.restore', `upload (${info.devices} devices)`);
     res.json({ ok: true, ...info });
   });
+  // deleting cannot be undone: like a restore only with the confirmation header the page sends after asking
+  r.delete('/backups/file/:name', admin, (req, res) => {
+    if (req.get('X-WOMN-Confirm') !== 'delete') throw new HttpError(400, 'err.backupConfirm');
+    ctx.backups.remove(req.params.name);
+    audit(req, 'backup.delete', req.params.name);
+    res.json({ ok: true });
+  });
   r.post('/backups/file/:name/restore', admin, async (req, res) => {
     confirmRestore(req);
     const info = await ctx.backups.restore({ name: req.params.name });
@@ -722,8 +729,10 @@ export function createApi(ctx) {
     audit(req, 'settings.smtp.test', to);
     res.json({ ok: true });
   });
-  r.put('/settings/backup', admin, (req, res) => {
+  r.put('/settings/backup', admin, async (req, res) => {
     settings.set('backup.keep', Math.min(90, Math.max(1, int(String(req.body.keep)) || 10)));
+    await ctx.backups.tidy();
+    audit(req, 'settings.backup', String(settings.get('backup.keep')));
     res.json(settings.publicGroup('backup'));
   });
 
