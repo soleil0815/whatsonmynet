@@ -861,3 +861,6 @@ td.nowrap { white-space: nowrap; }
 .ev-hist-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .ev-when { font-size: inherit; color: inherit; text-align: left; }
 .ev-when:hover { color: var(--accent); }
+/* search in parts of words: offered when no whole word fits, a line while it is on */
+.ev-part { margin-top: 8px; }
+.panel > .ev-part:first-child, .ev-part.small { margin: 0 0 8px; }

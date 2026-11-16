@@ -217,6 +217,10 @@ Auch `Exec $Message = to_json(); to_syslog_ietf();` (alle Felder als JSON) wird 
 
 **Nach Absender:** Die Seite zeigt zuerst je Rechner oder Gerät eine Zeile - mit der letzten Meldung und den Meldungen, Warnungen und Fehlern der letzten 24 Stunden - statt alle Meldungen untereinander. Ein Klick auf den Absender zeigt nur seine Meldungen; *Alle Meldungen* zeigt wie bisher alles. Auf der Seite eines Geräts führt *Mehr → Meldungen des Geräts* direkt dorthin.
 
+**Suchen:** Die Suche findet **ganze Wörter und Wortanfänge** in Text, Quelle, Absender, Protokoll und Konto - Groß- und Kleinschreibung und Umlaute egal (`Lufter` findet *Lüfter*). Mehrere Wörter müssen in dieser Reihenfolge stehen: `link down` findet *Port 7 link down*, `m.muster` das Konto *FIRMA\m.muster*, `Druck` die *Druckwarteschlange*. Eine Zahl wie `4625` findet zusätzlich die Windows-Ereignis-ID, ein Name auch das Gerät aus dem Inventar. Dafür führt WhatsOnMyNet einen **Suchindex** - so bleibt die Suche auch bei vielen Gigabyte und 30 oder 90 Tagen schnell. Teile mitten im Wort (z. B. `006A` aus *0xC000006A*) findet die normale Suche nicht; findet sie nichts, bietet die Seite **Auch in Wortteilen suchen** an - dann wird jede Meldung im gewählten Zeitraum gelesen, mit einem kurzen Zeitraum geht das trotzdem flott.
+
+Nach dem Update auf 0.39 baut WhatsOnMyNet den Index für die schon gespeicherten Meldungen einmal im Hintergrund auf (etwa eine halbe Minute je Million Meldungen); die Seite zeigt *Suchindex wird aufgebaut: … %*. Gesucht werden kann die ganze Zeit, bis dahin nur langsamer. Neue Meldungen kommen alle paar Sekunden in den Index und werden bis dahin trotzdem gefunden.
+
 **Zeitraum und Zeitleiste:** In *Alle Meldungen* und bei einem einzelnen Absender legst du neben der Schwere den **Zeitraum** fest - letzte 15 Minuten, Stunde, 24 Stunden, 7 oder 30 Tage oder einen *eigenen Zeitraum* mit Von und Bis. Über der Liste zeigt eine Zeitleiste, wie viele Meldungen mit denselben Filtern je Zeitabschnitt kamen - unten rot die Fehler, darüber gelb die Warnungen, grau der Rest. So geht die Suche wie in Splunk oder Wazuh:
 
 1. Nach dem Ereignis suchen, z. B. `4625` oder einem Kontonamen - die Zeitleiste zeigt, wann es gehäuft kam.
@@ -254,17 +258,17 @@ Unter *Meldungen → Ereignisregeln* legst du fest, welche Meldungen wohin gehen
 
 ### Wie viel Platz brauchen die Meldungen?
 
-Eine gespeicherte Meldung braucht in `data/events.sqlite` gemessen rund **0,4 KB** (Zeile eines Switches, NAS oder einer USV) bis **4 KB** (langes Windows-Ereignis wie eine fehlgeschlagene Anmeldung 4625); gemischt kann man mit **1,5 KB** rechnen. Daraus:
+Eine gespeicherte Meldung braucht in `data/events.sqlite` gemessen rund **0,5 KB** (Zeile eines Switches, NAS oder einer USV) bis **5 KB** (langes Windows-Ereignis wie eine fehlgeschlagene Anmeldung 4625); gemischt kann man mit **2 KB** rechnen. Darin steckt der Suchindex (ab Version 0.39), der etwa ein Viertel davon ausmacht und die Suche auch in vielen GB schnell hält. Daraus:
 
-**Platz ≈ Meldungen pro Tag × Tage × 1,5 KB**
+**Platz ≈ Meldungen pro Tag × Tage × 2 KB**
 
 | Meldungen pro Tag | 30 Tage | 90 Tage |
 |---:|---:|---:|
-| 1.000 | 45 MB | 135 MB |
-| 10.000 | 450 MB | 1,4 GB |
-| 50.000 | 2,3 GB | 6,8 GB |
-| 100.000 | 4,5 GB | 13,5 GB |
-| 300.000 | 13,5 GB | 40 GB |
+| 1.000 | 60 MB | 180 MB |
+| 10.000 | 600 MB | 1,8 GB |
+| 50.000 | 3 GB | 9 GB |
+| 100.000 | 6 GB | 18 GB |
+| 300.000 | 18 GB | 54 GB |
 
 Wie viele Meldungen kommen? Grobe Werte pro Absender und Tag, mit der ab Werk ausgefilterten Rauschliste:
 
@@ -280,10 +284,10 @@ Typische Umgebungen:
 
 | Umgebung | Beispiel | Meldungen pro Tag | Platz für 30 Tage | Einstellung |
 |---|---|---:|---:|---|
-| Klein | 5 - 20 PCs, 1 Server, NAS, Switches | 5.000 - 10.000 | 0,2 - 0,5 GB | Standard: 30 Tage, 2 GB |
-| Klein mit Domänencontroller | dazu ein DC | 20.000 - 40.000 | 1 - 2 GB | 4 GB - oder der DC *ab Warnung* |
-| Mittel | 20 - 100 PCs, 3 - 5 Server, 2 DCs | 50.000 - 150.000 | 2 - 7 GB | 10 GB |
-| Groß | 100 - 500 PCs, 10 - 20 Server, 2 - 4 DCs | 150.000 - 500.000 | 7 - 25 GB | 30 GB, Rauschen und DCs filtern; ab hier lohnt zusätzlich ein SIEM (z. B. Wazuh) |
+| Klein | 5 - 20 PCs, 1 Server, NAS, Switches | 5.000 - 10.000 | 0,3 - 0,6 GB | Standard: 30 Tage, 2 GB |
+| Klein mit Domänencontroller | dazu ein DC | 20.000 - 40.000 | 1,2 - 2,4 GB | 4 GB - oder der DC *ab Warnung* |
+| Mittel | 20 - 100 PCs, 3 - 5 Server, 2 DCs | 50.000 - 150.000 | 3 - 9 GB | 10 GB |
+| Groß | 100 - 500 PCs, 10 - 20 Server, 2 - 4 DCs | 150.000 - 500.000 | 9 - 30 GB | 40 GB, Rauschen und DCs filtern; ab hier lohnt zusätzlich ein SIEM (z. B. Wazuh) |
 
 Für 90 Tage gilt das Dreifache. Dazu kommt, was WhatsOnMyNet ohnehin frei hält: mindestens 10 % des Datenträgers und 1 GB.
 

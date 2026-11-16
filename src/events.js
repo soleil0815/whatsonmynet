@@ -473,28 +473,107 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   const iso = (v) => { if (v === null || v === undefined || v === '') return null; const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toISOString() : null; };
 
   // The same filters for the list and for the timeline above it
-  function filterSql({ q = '', kind = '', maxSeverity = 7, device = null, source = '', from = null, to = null } = {}) {
+  // ---------------------------------------------------------------------------------------- full-text index
+  // Search over many gigabytes (see db.js, schema 4): the index knows words and beginnings of words. New messages are
+  // written without waiting for it and go into it in batches, every few seconds; a file from before the update is
+  // indexed bit by bit in the background (a few seconds per million messages), the search works all the time.
+  const FTS_BATCH = 5000;
+  const FTS_MS = 3000;
+  const ftsDoneQ = db.prepare("SELECT v FROM events_fts_state WHERE k = 'done'").pluck();
+  const ftsDone = () => ftsDoneQ.get() ?? 0;
+  const ftsTop = db.prepare('SELECT MAX(id) FROM events_in').pluck();
+  const ftsHas = db.prepare('SELECT 1 FROM events_fts WHERE events_fts MATCH ? LIMIT 1').pluck();
+  const ftsAdd = db.prepare(`INSERT INTO events_fts(rowid, text, app, host, channel, account, source_ip)
+    SELECT id, text, app, host, channel, account, source_ip FROM events_in WHERE id > ? AND id <= ? ORDER BY id`);
+  const ftsSet = db.prepare("UPDATE events_fts_state SET v = ? WHERE k = 'done'");
+  /** One batch into the index; how many ids are left above it */
+  function indexBatch(max = FTS_BATCH) {
+    const done = ftsDone(); const top = ftsTop.get() || 0;
+    if (top <= done) return 0;
+    const to = Math.min(top, done + max);
+    db.transaction(() => { ftsAdd.run(done, to); ftsSet.run(to); })();
+    return top - to;
+  }
+  let ftsTimer = null; let ftsRunning = false; let ftsStart = null;
+  /** Batches until the index has caught up - between them the receivers get their turn */
+  function indexPump() {
+    if (ftsRunning) return;
+    ftsRunning = true;
+    const step = () => {
+      let left = 0;
+      try { left = indexBatch(); } catch (e) { log.warn(`Messages: search index: ${e.message}`); left = 0; }
+      if (left > 0) { if (left > 50000 && !ftsStart) { ftsStart = { at: Date.now(), done: ftsDone() }; log.info('Messages: building the search index in the background'); } setImmediate(step); return; }
+      if (ftsStart) { log.info(`Messages: search index ready (${Math.round((Date.now() - ftsStart.at) / 1000)} s)`); ftsStart = null; }
+      ftsRunning = false;
+    };
+    step();
+  }
+  /** How far the index is: share of the messages in it (by id) */
+  function indexStatus() {
+    const done = ftsDone(); const top = ftsTop.get() || 0;
+    const low = db.prepare('SELECT MIN(id) FROM events_in').pluck().get() || 0;
+    const behind = Math.max(0, top - done);
+    // a few seconds behind is normal (batches); "building" is the first round after an update
+    return { building: behind > 50000, share: top > low ? Math.max(0, Math.min(1, (done - low + 1) / (top - low + 1))) : 1, behind };
+  }
+  /** The words of a search for the index: '"a b c"*' - the words in this order, the last one may go on */
+  function ftsQuery(text) {
+    const words = String(text).match(/[\p{L}\p{N}]+/gu);
+    if (!words) return '';
+    return `"${words.slice(0, 16).join(' ')}"*`;
+  }
+
+  // The first message at or after a time (ids grow with the time of arrival)
+  const firstIdAt = db.prepare('SELECT id FROM events_in WHERE at >= ? ORDER BY at LIMIT 1').pluck();
+  const NONE = Number.MAX_SAFE_INTEGER;
+  const MANY = 20000;
+  const ftsCount = db.prepare(`SELECT COUNT(*) FROM (SELECT 1 FROM events_fts WHERE events_fts MATCH ? AND rowid >= ? AND rowid < ? LIMIT ${MANY + 1})`).pluck();
+  const eventCount = db.prepare(`SELECT COUNT(*) FROM (SELECT 1 FROM events_in WHERE event_id = ? AND id >= ? AND id < ? LIMIT ${MANY + 1})`).pluck();
+  /**
+   * The same filters for the list and for the timeline above it. A search goes by words (the index: whole words and
+   * beginnings of words, in this order); part = true searches parts of words too - every message in the range is read.
+   * With words the time range is turned into a range of ids for the index and checked exactly on what it finds, so
+   * SQLite starts from the few messages with the words - not from the millions in the time range.
+   */
+  function filterSql({ q = '', kind = '', maxSeverity = 7, device = null, source = '', from = null, to = null, part = false } = {}) {
     const where = ['severity <= ?']; const args = [Math.max(0, Math.min(7, Number(maxSeverity)))];
     if (kind === 'trap' || kind === 'syslog') { where.push('kind = ?'); args.push(kind); }
     if (device) { where.push('e.device_id = ?'); args.push(Number(device)); }
     if (source) { where.push('e.source_ip = ?'); args.push(String(source).slice(0, 64)); }
-    // from is inclusive, to is not: two ranges side by side never count a message twice
-    if (iso(from)) { where.push('e.at >= ?'); args.push(iso(from)); }
-    if (iso(to)) { where.push('e.at < ?'); args.push(iso(to)); }
-    if (q) {
-      // a number also finds the Windows event with that id
-      const n = /^\d{1,6}$/.test(String(q).trim()) ? Number(String(q).trim()) : -1;
-      where.push("(text LIKE ? ESCAPE '\\' OR app LIKE ? ESCAPE '\\' OR source_ip LIKE ? ESCAPE '\\' OR d.name LIKE ? ESCAPE '\\' OR e.host LIKE ? ESCAPE '\\' OR e.channel LIKE ? ESCAPE '\\' OR e.account LIKE ? ESCAPE '\\' OR e.event_id = ?)");
-      const like = `%${String(q).slice(0, 100).replace(/[\\%_]/g, (c) => `\\${c}`)}%`; args.push(like, like, like, like, like, like, like, n);
+    const text = String(q || '').trim().slice(0, 100);
+    const match = text && !part ? ftsQuery(text) : '';
+    // from is inclusive, to is not: two ranges side by side never count a message twice ("+": no index for the time
+    // when the words lead)
+    const at = match ? '+e.at' : 'e.at';
+    let lo = 0; let hi = NONE; let many = false;
+    if (iso(from)) { where.push(`${at} >= ?`); args.push(iso(from)); if (match) lo = firstIdAt.get(iso(from)) ?? NONE; }
+    if (iso(to)) { where.push(`${at} < ?`); args.push(iso(to)); if (match) hi = firstIdAt.get(iso(to)) ?? NONE; }
+    if (text) {
+      // a number also finds the Windows event with that id; a device by its name in the inventory
+      const n = /^\d{1,6}$/.test(text) ? Number(text) : -1;
+      const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      const likeCols = "(e.text LIKE ? ESCAPE '\\' OR e.app LIKE ? ESCAPE '\\' OR e.source_ip LIKE ? ESCAPE '\\' OR e.host LIKE ? ESCAPE '\\' OR e.channel LIKE ? ESCAPE '\\' OR e.account LIKE ? ESCAPE '\\')";
+      const others = "e.device_id IN (SELECT id FROM devices WHERE name LIKE ? ESCAPE '\\')";
+      if (match) {
+        // the index up to "done"; what came in since its last round (a few seconds) the slow way
+        where.push(`(e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ? AND rowid >= ? AND rowid < ?) OR (e.id > ? AND ${likeCols}) OR ${others} OR (e.event_id = ? AND e.id >= ? AND e.id < ?))`);
+        args.push(match, lo, hi, Math.max(ftsDone(), lo - 1), like, like, like, like, like, like, like, n, lo, hi);
+        // many hits (a common word): the newest come quickly when walking back from the newest message
+        many = (ftsCount.get(match, lo, hi) || 0) + (n >= 0 ? eventCount.get(n, lo, hi) || 0 : 0) > MANY;
+      } else {
+        where.push(`(${likeCols} OR ${others} OR e.event_id = ?)`);
+        args.push(like, like, like, like, like, like, like, n);
+      }
     }
-    return { where: where.join(' AND '), args };
+    return { where: where.join(' AND '), args, words: !!match, many };
   }
 
   function list({ limit = 200, before = null, ...filter } = {}) {
-    const { where, args } = filterSql(filter);
+    const { where, args, words, many } = filterSql(filter);
     const w = before ? `${where} AND e.id < ?` : where;
     if (before) args.push(Number(before));
-    return db.prepare(`SELECT e.*, d.name device_name FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${w} ORDER BY e.id DESC LIMIT ?`)
+    // with a rare word: what the index found, newest first ("+": not by walking through all messages until 200 match)
+    return db.prepare(`SELECT e.*, d.name device_name FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${w} ORDER BY ${words && !many ? '+e.id' : 'e.id'} DESC LIMIT ?`)
       .all(...args, Math.max(1, Math.min(1000, Number(limit) || 200)));
   }
 
@@ -508,8 +587,10 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const end = iso(filter.to) ? new Date(iso(filter.to)).getTime() : Date.now();
     let start = iso(filter.from) ? new Date(iso(filter.from)).getTime() : null;
     if (start === null) {
-      const { where, args } = filterSql({ ...filter, from: null });
-      const first = db.prepare(`SELECT MIN(e.at) a FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where}`).get(...args)?.a;
+      const { where, args, words } = filterSql({ ...filter, from: null });
+      const first = words
+        ? db.prepare(`SELECT e.at a FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where} ORDER BY +e.id LIMIT 1`).get(...args)?.a
+        : db.prepare(`SELECT MIN(e.at) a FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where}`).get(...args)?.a;
       start = first ? new Date(first).getTime() : end - 3600000;
     }
     if (!(end > start)) return { from: new Date(start).toISOString(), to: new Date(end).toISOString(), step: 60, total: 0, buckets: [] };
@@ -640,16 +721,17 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
         .run(a, Math.max(-1, Math.min(7, Number(min))), new Date().toISOString(), String(by).slice(0, 120));
       sevFilter = null; sendersCache = null;
     },
-    reloadTls,
-    status: () => ({ traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, filtered, total: storage().total,
+    reloadTls, indexBatch, indexPump, indexStatus,
+    status: () => ({ searchIndex: indexStatus(), traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, filtered, total: storage().total,
       last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null, storage: storage() }),
     storage,
     /** Receivers as set, and the cleanup every 10 minutes (the limit holds between the daily rounds too) */
     start() {
       apply();
       if (!pruneTimer) { pruneTimer = setInterval(() => { try { prune(); } catch (e) { log.warn(`Messages cleanup failed: ${e.message}`); } }, PRUNE_MS); pruneTimer.unref(); }
+      if (!ftsTimer) { ftsTimer = setInterval(indexPump, FTS_MS); ftsTimer.unref(); setImmediate(indexPump); }
     },
-    stop() { clearInterval(pruneTimer); pruneTimer = null; stopAll(); },
+    stop() { clearInterval(pruneTimer); pruneTimer = null; clearInterval(ftsTimer); ftsTimer = null; stopAll(); },
   };
 }
 
