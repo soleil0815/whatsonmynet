@@ -3,6 +3,13 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Meldungen: schnelle Suche auch in vielen Gigabyte - ein Suchindex findet ganze Wörter und Wortanfänge („m.muster“, „link down“, „Druck“ für Druckwarteschlange), Groß-/Kleinschreibung und Umlaute egal, über 30 oder 90 Tage in Sekundenbruchteilen. Teile mitten im Wort (z. B. „006A“ aus 0xC000006A) auf Wunsch: „Auch in Wortteilen suchen“. Nach dem Update wird der Index für die gespeicherten Meldungen einmal im Hintergrund aufgebaut (etwa eine halbe Minute je Million), gesucht werden kann die ganze Zeit',
+    'Hinweis zum Platz: Der Suchindex braucht etwa ein Viertel der Meldungsdatei. Ist die Datei an ihrer Grenze, gehen die ältesten Meldungen entsprechend früher - wer gleich viele Tage behalten will, stellt unter Empfang einstellen ein Drittel mehr Platz ein. Die Tabelle im Handbuch rechnet jetzt mit 2 KB je Meldung',
+  ], en: [
+    'Messages: fast search in many gigabytes too - a search index finds whole words and beginnings of words ("m.muster", "link down", "print" for printer), upper/lower case and umlauts alike, over 30 or 90 days in a fraction of a second. Parts in the middle of a word (e.g. "006A" of 0xC000006A) on request: "Search parts of words too". After the update the index for the stored messages is built once in the background (about half a minute per million), you can search all the time',
+    'About space: the search index takes about a quarter of the messages file. When the file is at its limit, the oldest messages go correspondingly earlier - to keep as many days, set a third more space under Receiving settings. The table in the manual now reckons with 2 KB per message',
+  ] },
+  { version: '0.38.0', date: '2026-11-16', de: [
     'Meldungen: Zeitraum und Zeitleiste wie in Splunk oder Wazuh - letzte 15 Minuten bis 30 Tage oder ein eigener Zeitraum; über der Liste zählt eine Zeitleiste die Treffer je Zeitabschnitt (Fehler, Warnungen, Rest). Nach einem Ereignis suchen, dann einen Balken anklicken oder über mehrere ziehen: Liste und Zeitleiste grenzen sich darauf ein, „Zurück“ geht einen Schritt zurück. Ein Klick auf die Uhrzeit einer Meldung zeigt, was in den 5 Minuten davor und danach sonst kam',
   ], en: [
     'Messages: time range and timeline as in Splunk or Wazuh - last 15 minutes to 30 days or a custom range; above the list a timeline counts the hits per step of time (errors, warnings, the rest). Search for an event, then click a bar or drag across several: list and timeline narrow to it, "Back" goes one step back. A click on the time of a message shows what else came in the 5 minutes before and after',

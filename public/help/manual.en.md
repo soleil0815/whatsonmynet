@@ -217,6 +217,10 @@ Without `Exec` in the output NXLog sends time, computer, level, event id and tex
 
 **By sender:** the page first shows one row per computer or device - with the last message and the messages, warnings and errors of the last 24 hours - instead of all messages one below the other. A click on the sender shows only its messages; *All messages* shows everything as before. On the page of a device *More → Messages of the device* leads straight there.
 
+**Searching:** the search finds **whole words and beginnings of words** in text, source, sender, log and account - upper or lower case and umlauts alike (`Lufter` finds *Lüfter*). Several words must be in this order: `link down` finds *Port 7 link down*, `m.muster` the account *FIRMA\m.muster*, `print` the *printer*. A number like `4625` also finds the Windows event id, a name also the device in the inventory. For this WhatsOnMyNet keeps a **search index** - searching stays fast with many gigabytes and 30 or 90 days too. Parts in the middle of a word (e.g. `006A` of *0xC000006A*) are not found by the normal search; when it finds nothing, the page offers **Search parts of words too** - then every message in the time range is read, which is still quick with a short range.
+
+After the update to 0.39 WhatsOnMyNet builds the index for the messages already stored once in the background (about half a minute per million messages); the page shows *Building the search index: … %*. You can search all the time, just more slowly until then. New messages go into the index every few seconds and are found before that as well.
+
 **Time range and timeline:** in *All messages* and for a single sender you set the **time range** next to the severity - last 15 minutes, hour, 24 hours, 7 or 30 days, or a *custom range* with From and To. Above the list a timeline shows how many messages with the same filters came per step of time - errors in red at the bottom, warnings in yellow above them, the rest in grey. Searching works as in Splunk or Wazuh:
 
 1. Search for the event, e.g. `4625` or an account name - the timeline shows when it piled up.
@@ -255,17 +259,17 @@ Under *Messages → Event rules* you set which messages go where - **apart from 
 
 ### How much space do the messages need?
 
-A stored message takes, measured in `data/events.sqlite`, about **0.4 KB** (a line from a switch, NAS or UPS) up to **4 KB** (a long Windows event such as a failed sign-in 4625); mixed, reckon with **1.5 KB**. So:
+A stored message takes, measured in `data/events.sqlite`, about **0.5 KB** (a line from a switch, NAS or UPS) up to **5 KB** (a long Windows event such as a failed sign-in 4625); mixed, reckon with **2 KB**. That includes the search index (from version 0.39), about a quarter of it, which keeps searching fast in many GB too. So:
 
-**Space ≈ messages per day × days × 1.5 KB**
+**Space ≈ messages per day × days × 2 KB**
 
 | Messages per day | 30 days | 90 days |
 |---:|---:|---:|
-| 1,000 | 45 MB | 135 MB |
-| 10,000 | 450 MB | 1.4 GB |
-| 50,000 | 2.3 GB | 6.8 GB |
-| 100,000 | 4.5 GB | 13.5 GB |
-| 300,000 | 13.5 GB | 40 GB |
+| 1,000 | 60 MB | 180 MB |
+| 10,000 | 600 MB | 1.8 GB |
+| 50,000 | 3 GB | 9 GB |
+| 100,000 | 6 GB | 18 GB |
+| 300,000 | 18 GB | 54 GB |
 
 How many messages come in? Rough values per sender and day, with the noise list left out by default:
 
@@ -281,10 +285,10 @@ Typical setups:
 
 | Setup | Example | Messages per day | Space for 30 days | Setting |
 |---|---|---:|---:|---|
-| Small | 5 - 20 PCs, 1 server, NAS, switches | 5,000 - 10,000 | 0.2 - 0.5 GB | default: 30 days, 2 GB |
-| Small with domain controller | plus one DC | 20,000 - 40,000 | 1 - 2 GB | 4 GB - or the DC *warning and worse* |
-| Medium | 20 - 100 PCs, 3 - 5 servers, 2 DCs | 50,000 - 150,000 | 2 - 7 GB | 10 GB |
-| Large | 100 - 500 PCs, 10 - 20 servers, 2 - 4 DCs | 150,000 - 500,000 | 7 - 25 GB | 30 GB, filter noise and DCs; from here a SIEM (e.g. Wazuh) is worth it as well |
+| Small | 5 - 20 PCs, 1 server, NAS, switches | 5,000 - 10,000 | 0.3 - 0.6 GB | default: 30 days, 2 GB |
+| Small with domain controller | plus one DC | 20,000 - 40,000 | 1.2 - 2.4 GB | 4 GB - or the DC *warning and worse* |
+| Medium | 20 - 100 PCs, 3 - 5 servers, 2 DCs | 50,000 - 150,000 | 3 - 9 GB | 10 GB |
+| Large | 100 - 500 PCs, 10 - 20 servers, 2 - 4 DCs | 150,000 - 500,000 | 9 - 30 GB | 40 GB, filter noise and DCs; from here a SIEM (e.g. Wazuh) is worth it as well |
 
 For 90 days, three times as much. On top comes what WhatsOnMyNet keeps free anyway: at least 10 % of the disk and 1 GB.
 

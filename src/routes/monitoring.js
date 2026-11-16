@@ -164,7 +164,7 @@ export function createMonitoringApi(ctx) {
   };
   const eventFilter = (q) => {
     const f = { q: String(q.q ?? ''), kind: String(q.kind ?? ''), maxSeverity: q.maxSeverity ?? 7, device: q.device || null, source: String(q.source ?? ''),
-      from: when(q.from, 'from'), to: when(q.to, 'to') };
+      from: when(q.from, 'from'), to: when(q.to, 'to'), part: q.part === '1' || q.part === 'true' };
     if (f.from && f.to && f.from >= f.to) throw new HttpError(400, 'err.eventRange', undefined, 'from');
     return f;
   };

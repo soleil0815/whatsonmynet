@@ -70,7 +70,9 @@ export async function renderEvents(main) {
   let custom = { from: null, to: null }; // ms
   const back = []; // earlier ranges, newest last
   let hist = null; let dragging = false;
-  const q = h('input', { type: 'search', placeholder: t('ev.search'), 'aria-label': t('ev.search') });
+  // parts of words (e.g. "006A" of 0xC000006A): only on request - every message in the range is read then
+  let part = false;
+  const q = h('input', { type: 'search', placeholder: t('ev.search'), 'aria-label': t('ev.search'), title: t('ev.searchHint') });
   const seg = h('div', { class: 'seg', role: 'group', 'aria-label': t('ev.view') });
   const sourceChip = h('div');
   const setView = (v) => { view = v; source = null; if (v !== 'open') remember('ev.view', v); q.value = ''; history.replaceState(null, '', v === 'open' ? '/events?view=open' : '/events'); load(); };
@@ -124,6 +126,7 @@ export async function renderEvents(main) {
       return;
     }
     const p = new URLSearchParams({ q: q.value.trim(), kind, maxSeverity: String(maxSeverity) });
+    if (part && q.value.trim()) p.set('part', '1');
     if (source) p.set('source', source.ip);
     const { from, to } = rangeNow();
     if (from) p.set('from', from);
@@ -153,6 +156,7 @@ export async function renderEvents(main) {
         cfg.syslogTcp || s.syslogTcp?.error ? recv(s.syslogTcp.on, 'Syslog TCP', `${cfg.syslogTcpPort}`, s.syslogTcp.error) : null,
         cfg.syslogTls || s.syslogTls?.error ? recv(s.syslogTls.on, 'Syslog TLS', `${cfg.syslogTlsPort}`, s.syslogTls.error) : null,
         h('span', { class: 'muted small' }, t('ev.total', { n: s.total })),
+        s.searchIndex?.building ? h('span', { class: 'muted small', title: t('ev.indexHint') }, t('ev.indexBuilding', { pct: Math.floor(s.searchIndex.share * 100) })) : null,
         s.filtered ? h('span', { class: 'muted small', title: t('ev.filteredHint') }, t('ev.filtered', { n: s.filtered.toLocaleString(getLang()) })) : null,
         s.storage ? h('span', { class: 'muted small' }, t(s.storage.short ? (s.storage.daysFit < 1 ? 'ev.space0' : 'ev.space') : 'ev.spaceOk', { used: gb(s.storage.used), limit: gb(s.storage.cap),
           day: s.storage.perDay.toLocaleString(getLang()), days: s.storage.daysFit, keep: s.storage.keepDays })) : null,
@@ -244,7 +248,10 @@ export async function renderEvents(main) {
         h('td', { class: 'min nowrap' }, isReadOnly() ? null : [
           btn(t('ev.watch'), { class: 'btn btn-sm btn-ghost', title: t('ev.watchHint'), onclick: () => watch(r) }, 'pulse'),
           btn(t('ev.rule'), { class: 'btn btn-sm btn-ghost', title: t('ev.ruleHint'), onclick: () => ruleFrom(r) }, 'mail')])))))))
-      : h('div', { class: 'panel panel-pad muted' }, off ? t('ev.noneOff') : q.value || kind || maxSeverity < 7 || range ? t('ev.noMatch') : t('ev.none')));
+      : h('div', { class: 'panel panel-pad muted' }, off ? t('ev.noneOff') : q.value || kind || maxSeverity < 7 || range ? t('ev.noMatch') : t('ev.none'),
+        // nothing as a word: offer parts of words
+        q.value.trim() && !part ? h('div', { class: 'ev-part' }, t('ev.partOffer'), ' ', h('button', { type: 'button', class: 'btn-link', onclick: () => { part = true; load(); } }, t('ev.partTry'))) : null));
+    if (q.value.trim() && part) listBox.prepend(h('div', { class: 'small muted ev-part' }, t('ev.partOn'), ' ', h('button', { type: 'button', class: 'btn-link', onclick: () => { part = false; load(); } }, t('ev.partOff'))));
     mount(more, hasMore ? btn(t('ev.more'), { class: 'btn btn-sm', onclick: () => load(true) }) : null);
     lockForEditing(body);
   }
@@ -371,7 +378,7 @@ export async function renderEvents(main) {
   }
 
   let timer = null;
-  q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => load(), 300); });
+  q.addEventListener('input', () => { part = false; clearTimeout(timer); timer = setTimeout(() => load(), 300); });
   sevSel.addEventListener('change', () => { maxSeverity = Number(sevSel.value); load(); });
   rangeSel.addEventListener('change', () => {
     // a range of one's own starts with what was shown: the last 24 hours, or the preset just chosen

@@ -6,6 +6,11 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Messages: fast search in many gigabytes too - a search index finds whole words and beginnings of words ("m.muster", "link down", "print" for printer), upper/lower case and umlauts alike, over 30 or 90 days in a fraction of a second. Parts in the middle of a word (e.g. "006A" of 0xC000006A) on request: "Search parts of words too". After the update the index for the stored messages is built once in the background (about half a minute per million), you can search all the time
+- About space: the search index takes about a quarter of the messages file. When the file is at its limit, the oldest messages go correspondingly earlier - to keep as many days, set a third more space under Receiving settings. The table in the manual now reckons with 2 KB per message
+
+## 0.38.0 - 2026-11-16
+
 - Messages: time range and timeline as in Splunk or Wazuh - last 15 minutes to 30 days or a custom range; above the list a timeline counts the hits per step of time (errors, warnings, the rest). Search for an event, then click a bar or drag across several: list and timeline narrow to it, "Back" goes one step back. A click on the time of a message shows what else came in the 5 minutes before and after
 
 ## 0.37.0 - 2026-11-16
