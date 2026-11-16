@@ -17,10 +17,18 @@ Start-Sleep -Seconds 2
 "first run: exit code $LASTEXITCODE"
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
-# 2. the scheduled task, twice (the first of these also looks for Windows updates)
+# an own check, as administrators put them into the checks folder
+$chk = Join-Path $env:ProgramData 'WhatsOnMyNet\checks'
+[void](New-Item -ItemType Directory -Force -Path $chk)
+Set-Content -Path (Join-Path $chk 'ci-check.ps1') -Value "Write-Output '0 CI_Check count=1 all fine'" -Encoding ASCII
+Set-Content -Path (Join-Path $chk 'ci-check.cmd') -Value '@echo 1 CI_Cmd - only a warning' -Encoding ASCII
+
+# 2. the scheduled task, twice (the first of these also looks for Windows updates; before the second the system log
+#    is emptied - a machine without errors in the last 24 hours)
 $task = 'WhatsOnMyNet-Host'
 function Get-TaskRow { @(& schtasks.exe /Query /TN $task /FO CSV /V | ConvertFrom-Csv)[0] }
 foreach ($i in 1, 2) {
+  if ($i -eq 2) { & wevtutil.exe cl System }
   $before = (Get-TaskRow).'Last Run Time'
   & schtasks.exe /Run /TN $task | Out-Null
   $until = (Get-Date).AddMinutes(10)

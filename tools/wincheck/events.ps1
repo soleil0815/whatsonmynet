@@ -18,7 +18,13 @@ if ($bad.Count) {
   foreach ($e in $bad) { "---- $($e.Id) level $($e.Level) $($e.TimeCreated.ToString('o'))"; $m = [string]$e.Message; if ($m.Length -gt 3000) { $m.Substring(0, 3000) + ' ...' } else { $m } }
   exit 1
 }
-$n = @(Get-Content (Join-Path $Work 'reports.jsonl')).Count
+$lines = @(Get-Content (Join-Path $Work 'reports.jsonl'))
+$n = $lines.Count
+# what the last report said about the own checks and the events of the system log
+$last = $lines[-1] | ConvertFrom-Json
+"checks in the last report: $(@($last.checks | ForEach-Object { "$($_.name)=$($_.status)" }) -join ', ')"
+"system log in the last report: $($last.events.errors) error(s), $($last.events.critical) critical"
+if (@($last.checks).Count -lt 2) { 'expected the two own checks in the report'; exit 1 }
 "reports received: $n"
 if ($n -lt 3) { 'expected 3 reports (first run and two task runs)'; exit 1 }
 'no warnings or errors in the PowerShell logs'

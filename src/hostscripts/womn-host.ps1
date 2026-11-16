@@ -78,7 +78,9 @@ $pdisks = @(Try-Get { Get-Cim $StorageNs 'MSFT_PhysicalDisk' | ForEach-Object {
 # Windows updates: the search takes a while, so it runs after the report at most every 6 hours; the report sends
 # the last result. A pending restart is read every time (registry, quick).
 $UpdFile = Join-Path $Dir 'womn-updates.json'
-$upd = Try-Get { Get-Content -Raw -Path $UpdFile | ConvertFrom-Json }
+# (only when it is there: Get-Content on a missing file is a cmdlet error - logged as event 4100 even when caught)
+$upd = $null
+if (Test-Path -LiteralPath $UpdFile) { $upd = Try-Get { Get-Content -Raw -LiteralPath $UpdFile | ConvertFrom-Json } }
 $reboot = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') -or
   (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending')
 $updates = @{ pending = $(if ($upd) { $upd.pending }); security = $(if ($upd) { $upd.security }); checkedAt = $(if ($upd) { $upd.checkedAt })
