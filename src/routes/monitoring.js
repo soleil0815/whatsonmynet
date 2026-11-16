@@ -227,6 +227,17 @@ export function createMonitoringApi(ctx) {
     audit(req, 'eventrule.update', `${x.name}${x.enabled ? '' : ' (off)'}`);
     res.json(x);
   });
+  // on/off from the list; switching on checks the expressions again like saving does
+  r.post('/event-rules/:id/enabled', editor, unscoped, async (req, res) => {
+    const id = idParam(req);
+    const on = req.body?.enabled === true;
+    const old = ctx.eventRules.get(id);
+    if (!old) throw new HttpError(404, 'err.notFound');
+    if (on) await ctx.eventRules.checkTimes(old);
+    const x = ctx.eventRules.setEnabled(id, on);
+    audit(req, 'eventrule.update', `${x.name}${x.enabled ? ' (on)' : ' (off)'}`);
+    res.json(x);
+  });
   // open events: the list, acknowledge, close (editors - like the rules)
   r.get('/events/open', editor, unscoped, (req, res) => res.json({ list: ctx.eventRules.openEvents({ all: req.query?.all === '1' }), open: ctx.eventRules.openCount() }));
   r.post('/events/open/:id/ack', editor, unscoped, (req, res) => { ctx.eventRules.ack(idParam(req), who(req)); audit(req, 'eventopen.ack', req.params.id); res.json({ ok: true }); });
