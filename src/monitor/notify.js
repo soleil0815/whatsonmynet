@@ -10,6 +10,7 @@ import { config } from '../config.js';
 import { PROVIDERS, PROVIDER_TYPES, publicConfig, cleanProviderConfig, sendProvider } from './providers.js';
 import { forgetChannel } from '../lib/idlists.js';
 import { checkText } from '../../public/js/checktext.js';
+import { logonSummary } from '../lib/winlogon.js';
 
 export const CHANNEL_TYPES = ['email', 'telegram', 'webhook', ...PROVIDER_TYPES];
 let telegramApi = 'https://api.telegram.org';
@@ -161,7 +162,9 @@ const deviceLabel = (d) => [d.ip, d.vendor || d.hostname].filter(Boolean).join('
 const ruleWho = (e) => e.device_name || e.host || e.source_ip || '';
 const ruleWhat = (e, T, n) => {
   const head = [e.event_id !== null && e.event_id !== undefined ? fill(T.ruleEvent, { id: e.event_id }) : '', e.app].filter(Boolean).join(' · ');
-  const text = String(e.text || '');
+  // sign-in events: account, how, why and from where - instead of the start of a long text that ends before any of it
+  const sum = logonSummary(e.event_id, e.text, T === TEXT.en ? 'en' : 'de');
+  const text = sum || String(e.text || '');
   return `${head ? `${head}: ` : ''}${text.length > n ? `${text.slice(0, n - 1)}…` : text}`;
 };
 

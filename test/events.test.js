@@ -34,7 +34,7 @@ test('syslog: RFC 3164, RFC 5424, devices that leave things out', () => {
   assert.equal(parseSyslog('<11>Link is down on port 3').text, 'Link is down on port 3');
   assert.equal(parseSyslog('just text').severity, 5);
   assert.equal(parseSyslog('<999>x').text, '<999>x');
-  assert.equal(parseSyslog(`<13>${'x'.repeat(5000)}`).text.length, 1000);
+  assert.equal(parseSyslog(`<13>${'x'.repeat(9000)}`).text.length, 4000, 'cut to 4000 characters');
   assert.equal(parseSyslog('<13>a\x00b\x1bc').text, 'a b c');
 });
 

@@ -10,7 +10,7 @@
 // see db.js): kept 30 days, in at most 2 GB - and never so much that less than 10 % of the disk (at least 1 GB) is left.
 // Whatever comes first: the oldest messages go.
 // A flood (a device in a loop, or someone sending on purpose) is cut: at most 20 messages per second per sender and
-// 300 in all; text is cut to 1000 characters. UDP has no sender check - traps at least need a known community.
+// 300 in all; text is cut to 4000 characters (a German failed sign-in 4625 is some 2000 - the reason is in its middle). UDP has no sender check - traps at least need a known community.
 import dgram from 'node:dgram';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,6 +29,7 @@ const STATS_MS = 60 * 1000;
 const STATS_FRESH_MS = 15 * 1000;
 const PER_SENDER = 20;
 const PER_SECOND = 300;
+export const TEXT_MAX = 4000;
 const clip = (s, n) => String(s ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // ---------------------------------------------------------------------------------------------- syslog
@@ -80,7 +81,7 @@ function finish(out, rest) {
     if (w.severity !== null && w.severity !== undefined) out.severity = w.severity;
     rest = w.text;
   }
-  out.text = clip(rest, 1000);
+  out.text = clip(rest, TEXT_MAX);
   return out;
 }
 
@@ -351,7 +352,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const sev = Math.max(0, Math.min(7, Number(ev.severity) || 0));
     if (!sevWanted(addr, sev)) { filtered++; droppedBy.set(addr, (droppedBy.get(addr) || 0) + 1); return null; }
     const row = { at: at.toISOString(), kind, source_ip: addr, device_id: device, severity: Math.max(0, Math.min(7, Number(ev.severity) || 0)), facility: ev.facility ?? null,
-      host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, 1000) || '(empty)',
+      host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, TEXT_MAX) || '(empty)',
       event_id: Number.isInteger(ev.eventId) ? ev.eventId : null, channel: clip(ev.channel, 120), account: clip(ev.account, 120) };
     row.id = insert.run(row.at, row.kind, row.source_ip, row.device_id, row.severity, row.facility, row.host, row.app, row.oid, row.text, row.event_id, row.channel, row.account).lastInsertRowid;
     senderUp.run(row.source_ip, row.device_id, row.host, row.at, row.at, row.id);

@@ -697,6 +697,13 @@ export const MIGRATIONS = [
   // 35: new installations leave the usual Windows noise out (settings.js WIN_NOISE); one already in use keeps taking
   // what it took - its empty list is written down instead of following the new default
   `INSERT OR IGNORE INTO settings(key, value) SELECT 'events.winDeny', '""' WHERE EXISTS (SELECT 1 FROM users);`,
+  // 36: the ready-made rule "failed sign-ins" as it was made (4625, Security-Auditing, nothing left out, no own words or
+  // expression) leaves out the computer's own service logons and "no logon server" - like the rule made from now on.
+  // A rule changed by hand in any of these stays as it is.
+  `UPDATE event_rules SET match = json_set(match, '$.notWords', json('["Anmeldetyp: 5","Logon Type: 5","0xc000005e"]')), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+     WHERE json_valid(match) AND json_extract(match, '$.eventIds') = '4625' AND lower(json_extract(match, '$.source')) = 'security-auditing'
+       AND json_array_length(coalesce(json_extract(match, '$.notWords'), '[]')) = 0 AND json_array_length(coalesce(json_extract(match, '$.words'), '[]')) = 0
+       AND coalesce(json_extract(match, '$.regex'), '') = '' AND json_array_length(coalesce(json_extract(match, '$.from'), '[]')) = 0;`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached
