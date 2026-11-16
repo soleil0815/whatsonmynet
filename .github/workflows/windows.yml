@@ -49,6 +49,21 @@ jobs:
       - name: PowerShell logs without warnings or errors
         shell: powershell
         run: tools/wincheck/events.ps1 -Work (Join-Path $env:RUNNER_TEMP 'wincheck')
+      - name: Experiment (temporary) - what Select-Object -First leaves in the log
+        if: always()
+        shell: powershell
+        run: |
+          $f = Join-Path $env:RUNNER_TEMP 'exp.ps1'
+          Set-Content -Path $f -Encoding ASCII -Value @'
+          $ErrorActionPreference = 'Stop'
+          $a = Get-CimInstance Win32_Service | Select-Object -First 1
+          $b = @(Get-ChildItem C:\Windows | Select-Object -First 3)
+          'done'
+          '@
+          & wevtutil.exe cl 'Microsoft-Windows-PowerShell/Operational'
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $f
+          Start-Sleep -Seconds 2
+          Get-WinEvent -LogName 'Microsoft-Windows-PowerShell/Operational' | Where-Object { $_.Id -eq 4100 } | ForEach-Object { '----'; $_.Message }
       - name: Remove again (uninstall script)
         if: always()
         shell: powershell
