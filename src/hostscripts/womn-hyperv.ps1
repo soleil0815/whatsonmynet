@@ -2,6 +2,9 @@
 # Run it once as administrator (or via software distribution): it sets itself up as scheduled task under SYSTEM.
 # Reads with Get-VM / CIM only, changes nothing. Removing: womn-hyperv-uninstall.ps1.
 $ErrorActionPreference = 'Stop'
+# No progress bar: under the scheduled task there is no console window to draw it in - Windows PowerShell then
+# logs "System error" (event 4100) on every run, and web requests are faster without it
+$ProgressPreference = 'SilentlyContinue'
 $Url = @URL@
 $Token = @TOKEN@
 @PINCHECK@

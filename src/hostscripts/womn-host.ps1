@@ -5,6 +5,9 @@
 # software distribution / GPO) - it sets itself up as scheduled task under SYSTEM. Removing: womn-host-uninstall.ps1.
 # Talks only to the address below; loads nothing from anywhere.
 $ErrorActionPreference = 'Stop'
+# No progress bar: under the scheduled task there is no console window to draw it in - Windows PowerShell then
+# logs "System error" (event 4100) on every run, and web requests are faster without it
+$ProgressPreference = 'SilentlyContinue'
 $Url = @URL@
 $Token = @TOKEN@
 @PINCHECK@
