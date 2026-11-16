@@ -39,7 +39,25 @@ function Try-Get([scriptblock]$Block) { try { & $Block } catch { $null } }
 # Get-PhysicalDisk, Get-MpComputerStatus or Get-NetFirewallProfile: those modules are generated anew in every run, and
 # PowerShell script block logging writes each of them as a "suspicious" event 4104 (some 70 per run)
 $StorageNs = 'root/Microsoft/Windows/Storage'
+# Only what this Windows has: asking for a namespace or class that is not there is a cmdlet error, and Windows
+# PowerShell logs it as event 4100 even when it is caught (Windows Server has no Security Center; with another virus
+# protection there is no Defender namespace). So it looks first - a query that finds nothing is no error.
+$CimSeen = @{}
+function Test-Cim([string]$Ns, [string]$Class) {
+  $key = "$Ns|$Class"
+  if (-not $CimSeen.ContainsKey($key)) {
+    $parts = @($Ns -split '/')
+    $ok = $true
+    for ($i = 1; $ok -and $i -lt $parts.Count; $i++) {
+      $ok = @(Get-CimInstance -Namespace ($parts[0..($i - 1)] -join '/') -ClassName '__NAMESPACE' -Filter "Name='$($parts[$i])'").Count -gt 0
+    }
+    if ($ok) { $ok = @(Get-CimInstance -Namespace $Ns -Query "SELECT * FROM meta_class WHERE __CLASS = '$Class'").Count -gt 0 }
+    $CimSeen[$key] = $ok
+  }
+  $CimSeen[$key]
+}
 function Get-Cim([string]$Ns, [string]$Class, [string]$Filter) {
+  if (-not (Test-Cim $Ns $Class)) { return }
   if ($Filter) { Get-CimInstance -Namespace $Ns -ClassName $Class -Filter $Filter } else { Get-CimInstance -Namespace $Ns -ClassName $Class } }
 # The words the Storage module shows for its numbers (what WhatsOnMyNet has always been sent)
 $BusNames = @{ 0 = 'Unknown'; 1 = 'SCSI'; 2 = 'ATAPI'; 3 = 'ATA'; 4 = '1394'; 5 = 'SSA'; 6 = 'Fibre Channel'; 7 = 'USB'; 8 = 'RAID'; 9 = 'iSCSI'; 10 = 'SAS'
@@ -89,7 +107,7 @@ $updates = @{ pending = $(if ($upd) { $upd.pending }); security = $(if ($upd) { 
 # Virus protection: Defender, on client Windows also another product registered in the Security Center
 $av = Try-Get {
   $m = Try-Get { @(Get-Cim 'root/Microsoft/Windows/Defender' 'MSFT_MpComputerStatus')[0] }
-  $sc = @(Try-Get { Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName AntiVirusProduct })
+  $sc = @(Try-Get { Get-Cim 'root/SecurityCenter2' 'AntiVirusProduct' })
   $other = @($sc | Where-Object { $_.displayName -notmatch 'Defender' -and ([int]$_.productState -band 0x1000) })[0]
   if ($m -and $m.AntivirusEnabled -and $m.RealTimeProtectionEnabled) {
     @{ name = 'Microsoft Defender'; enabled = $true; realtime = $true; upToDate = ([int]$m.AntivirusSignatureAge -le 3); sigAge = [int]$m.AntivirusSignatureAge }

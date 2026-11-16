@@ -36,5 +36,25 @@ foreach ($i in 1, 2) {
   "task run ${i}: status $($row.Status), last result $($row.'Last Result')"
   if ($row.'Last Result' -ne '0') { exit 1 }
 }
+# 3. what other Windows have not: a namespace or class missing (Windows Server has no Security Center, another virus
+#    protection leaves no Defender namespace) - the helpers of the script, as installed, on their own
+$installed = Get-Content -Raw -Path (Join-Path $env:ProgramData 'WhatsOnMyNet\womn-host.ps1')
+$from = $installed.IndexOf('$CimSeen = @{}'); $to = $installed.IndexOf('# The words the Storage module')
+if ($from -lt 0 -or $to -lt $from) { 'helpers not found in the script'; exit 1 }
+$probe = Join-Path $Work 'probe.ps1'
+Set-Content -Path $probe -Encoding UTF8 -Value ("`$ErrorActionPreference = 'Stop'`r`n" + $installed.Substring($from, $to - $from) + @'
+$r = @(
+  (Test-Cim 'root/NotThere' 'X'),
+  (Test-Cim 'root/Microsoft/Windows/NotThere' 'X'),
+  (Test-Cim 'root/cimv2' 'Not_A_Class'),
+  (Test-Cim 'root/cimv2' 'Win32_OperatingSystem'),
+  (@(Get-Cim 'root/NotThere' 'X').Count),
+  (@(Get-Cim 'root/cimv2' 'Win32_OperatingSystem').Count)
+)
+$r -join ' '
+'@)
+$res = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $probe
+"helpers: $res"
+if ([string]$res -ne 'False False False True 0 1') { 'expected: False False False True 0 1'; exit 1 }
 Start-Sleep -Seconds 3
 (Get-Date).ToUniversalTime().ToString('o') | Set-Content -Path (Join-Path $Work 'end.txt')

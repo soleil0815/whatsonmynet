@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Windows script on Windows Server: it asked the Security Center, which only client Windows have (with another virus protection the Defender part is missing too) - the caught error still landed in the PowerShell log as warning 4100 "Invalid namespace" on every run. Now the script looks first whether the part is there. The automatic test now runs on Windows Server 2022 and 2025 and checks missing parts too
+
+## 0.39.0 - 2026-11-16
+
 - Messages: the search takes several terms - all must be there, in any order and any field: "PC-0001 4104 svc-pocketknife" finds the events 4104 of PC-0001 with svc-pocketknife in the text. "In quotes" is a fixed sequence of words, a minus leaves out ("4625 -svc-backup"). Before, several words counted as one sequence
 - Windows script: on its first run (and until the first search for Windows updates) it wrote a warning 4100 to the PowerShell log, because it tried to read a status file not there yet - fixed. The script is now tested automatically on a real Windows with every change: set up by hand once, then run as scheduled task under SYSTEM, with script block logging on - any warning or error in the PowerShell log fails the test
 - Failover: if master and standby run different versions for half an hour, the standby sends a reminder to the default channels - saying which server to bring to which version (again every 7 days while it stays so). If the standby cannot take the data any more because of the database version, the message comes at once, urgent and daily. When both are the same again, it says so once. The difference also shows under Settings → Failover, on the standby in the bar at the top too
