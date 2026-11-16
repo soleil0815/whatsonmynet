@@ -33,8 +33,21 @@ test('words, beginnings of words, the order of words; parts of words only on req
   assert.deepEqual(ids(ev.list({ q: 'muster' })), [c, a], 'a word on its own');
   assert.deepEqual(ids(ev.list({ q: 'Druck' })), [b], 'the beginning of a word');
   assert.deepEqual(ids(ev.list({ q: 'druckwarteschlange' })), [b], 'upper and lower case alike');
-  assert.deepEqual(ids(ev.list({ q: 'link down' })), [d], 'words in this order');
-  assert.deepEqual(ids(ev.list({ q: 'down link' })), []);
+  assert.deepEqual(ids(ev.list({ q: 'link down' })), [d], 'several words');
+  assert.deepEqual(ids(ev.list({ q: 'down link' })), [d], 'in any order');
+  assert.deepEqual(ids(ev.list({ q: '"link down"' })), [d], 'in quotes: one after the other');
+  assert.deepEqual(ids(ev.list({ q: '"down link"' })), []);
+  // all of them, in any field: sender, event id, words of the text, account
+  assert.deepEqual(ids(ev.list({ q: 'PC-0001 4625 m.muster' })), [a]);
+  assert.deepEqual(ids(ev.list({ q: 'PC-0001 4625 max.muster' })), [], 'every word must be there');
+  assert.deepEqual(ids(ev.list({ q: 'Konto PC-0001' })), [c, a]);
+  // -word leaves out
+  assert.deepEqual(ids(ev.list({ q: 'muster -max' })), [a]);
+  assert.deepEqual(ids(ev.list({ q: 'Kontoname -4625' })), [c]);
+  assert.deepEqual(ids(ev.list({ q: '-PC-0001' })), [d], 'only leaving out');
+  // parts of words with several terms too
+  assert.deepEqual(ids(ev.list({ q: 'C000006A PC-0001', part: true })), [a]);
+  assert.deepEqual(ids(ev.list({ q: 'arteschlan -beendet', part: true })), []);
   assert.deepEqual(ids(ev.list({ q: '10.0.10.99' })), [d], 'an address');
   assert.deepEqual(ids(ev.list({ q: 'sw-core' })), [d], 'the sender name');
   assert.deepEqual(ids(ev.list({ q: '4625' })), [a], 'the Windows event id');
