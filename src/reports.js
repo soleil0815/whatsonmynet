@@ -316,6 +316,11 @@ ${r.signature ? `<p style="font-size:14px;line-height:1.5;margin:24px 0 0">${par
       db.prepare(`UPDATE reports SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`).run(...keys.map((k) => v[k]), id);
       return get(id);
     },
+    /** Switch a report on or off - from the list, without opening it */
+    setEnabled(id, on) {
+      if (!db.prepare('UPDATE reports SET enabled=? WHERE id=?').run(on ? 1 : 0, id).changes) throw new HttpError(404, 'err.notFound');
+      return get(id);
+    },
     remove(id) { if (!db.prepare('DELETE FROM reports WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound'); },
     render,
     send,

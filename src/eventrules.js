@@ -394,6 +394,22 @@ export function createEventRules({ db, channels, settings = null, now = () => ne
       forget();
       return this.get(id);
     },
+    /** Switch a rule on or off - from the list, without opening it. Off: what was waiting is dropped, open events close
+     * (as when saved off); on: the reason it was switched off by itself goes */
+    setEnabled(id, on) {
+      const row = db.prepare('SELECT options FROM event_rules WHERE id=?').get(id);
+      if (!row) throw new HttpError(404, 'err.notFound');
+      const o = parse(row.options || '{}', {});
+      if (on) delete o.disabledReason;
+      db.prepare('UPDATE event_rules SET enabled=?, options=?, updated_at=? WHERE id=?').run(on ? 1 : 0, JSON.stringify(o), iso(), id);
+      if (!on) {
+        db.prepare('DELETE FROM event_rule_hits WHERE rule_id=? AND sent_at IS NULL').run(id);
+        db.prepare("UPDATE event_open SET state='closed', closed_at=?, closed_how='rule' WHERE rule_id=? AND state IN ('open','ack')").run(iso(), id);
+      }
+      singles.delete(id);
+      forget();
+      return this.get(id);
+    },
     remove(id) {
       if (!db.prepare('DELETE FROM event_rules WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound');
       db.prepare('DELETE FROM event_rule_hits WHERE rule_id=?').run(id);

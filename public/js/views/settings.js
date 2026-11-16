@@ -4,7 +4,7 @@ import { get, put, post, patch, del, api } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
-import { pageHead, field, input, select, formData, btn, channelPicker } from './common.js';
+import { pageHead, field, input, select, formData, btn, channelPicker, onOffSwitch } from './common.js';
 import { openMonitorForm } from './monitoring.js';
 import { scriptDialog, hostScriptsSettings, helpLink } from './hostscripts.js';
 import { aboutContent } from './about.js';
@@ -1224,9 +1224,13 @@ async function reports(body, _s, reload) {
   };
   mount(body, pageHead(t('set.reports'), t('rep.lead'), btn(t('rep.add'), { class: 'btn btn-primary', onclick: () => edit(null) }, 'plus')), h('section', { class: 'panel' },
     list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
-      h('thead', {}, h('tr', {}, h('th', {}, t('rep.name')), h('th', {}, t('rep.when')), h('th', { class: 'hide-sm' }, t('rep.recipients')), h('th', {}))),
-      h('tbody', {}, list.map((r) => h('tr', {},
-        h('td', {}, h('span', { class: 'name' }, r.name), r.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('user.inactive')),
+      h('thead', {}, h('tr', {}, h('th', { class: 'min' }, t('switch.head')), h('th', {}, t('rep.name')), h('th', {}, t('rep.when')), h('th', { class: 'hide-sm' }, t('rep.recipients')), h('th', {}))),
+      h('tbody', {}, list.map((r) => h('tr', { class: r.enabled ? '' : 'muted' },
+        h('td', { class: 'min nowrap' }, onOffSwitch({ on: r.enabled, label: r.name, onChange: async (on) => {
+          await post(`/reports/${r.id}/enabled`, { enabled: on });
+          toast(t(on ? 'switch.onDone' : 'switch.offDone', { name: r.name })); reload();
+        } })),
+        h('td', {}, h('span', { class: 'name' }, r.name),
           h('div', { class: 'sub' }, r.sections.map((x) => t(`rep.sec.${x}`)).join(', '),
             r.device_ids.length + r.monitor_ids.length ? ` · ${t('rep.pickedN', { n: r.device_ids.length + r.monitor_ids.length })}` : '')),
         h('td', {}, when(r.schedule), r.last_run ? h('div', { class: 'sub' }, `${t('rep.last')}: ${fmtDate(r.last_run, getLang())}`,

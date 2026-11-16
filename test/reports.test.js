@@ -106,3 +106,32 @@ test('report for chosen devices; page counter and pages in the period', () => {
   assert.ok(reports.candidates().printers.some((x) => x.id === p2));
   assert.ok(reports.candidates().nas.some((x) => x.id === nas));
 });
+
+test('report on/off from the list: only the switch changes, the rest of the report stays', () => {
+  const { reports } = setup();
+  const r = reports.create({ name: 'Toner', sections: ['printers'], recipients: 'buero@firma.local', schedule: { freq: 'weekly', weekday: 1, time: '08:00' }, intro: 'Hallo' });
+  const off = reports.setEnabled(r.id, false);
+  assert.equal(off.enabled, false);
+  assert.deepEqual({ ...off, enabled: true }, { ...r, enabled: true });
+  assert.equal(reports.setEnabled(r.id, true).enabled, true);
+  assert.throws(() => reports.setEnabled(999, true), { code: 'err.notFound' });
+});
+
+test('API: reports on/off from the list - administrators only', async () => {
+  const { startApp } = await import('./helpers.js');
+  const app = await startApp();
+  const { call, ctx } = app;
+  try {
+    assert.equal((await call('POST', '/api/setup', { username: 'testadmin', password: 'Sicher-Passwort-1', code: 'setup-123' })).status, 200);
+    ctx.users.create({ username: 'olaf', password: 'Sicher-Passwort-2', role: 'editor' });
+    await call('POST', '/api/login', { username: 'olaf', password: 'Sicher-Passwort-2' }, { who: 'editor' });
+    const r = await call('POST', '/api/reports', { name: 'Toner', sections: ['printers'], recipients: 'buero@firma.local', schedule: { freq: 'weekly', weekday: 1, time: '08:00' } });
+    assert.equal(r.status, 201);
+    assert.equal((await call('POST', `/api/reports/${r.data.id}/enabled`, { enabled: false }, { who: 'editor' })).status, 403);
+    const off = await call('POST', `/api/reports/${r.data.id}/enabled`, { enabled: false });
+    assert.deepEqual([off.status, off.data.enabled, off.data.name, off.data.recipients], [200, false, 'Toner', ['buero@firma.local']]);
+    assert.equal((await call('GET', '/api/reports')).data[0].enabled, false);
+    assert.equal((await call('POST', `/api/reports/${r.data.id}/enabled`, { enabled: true })).data.enabled, true);
+    assert.equal((await call('POST', '/api/reports/9999/enabled', { enabled: true })).status, 404);
+  } finally { await app.close(); }
+});

@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Ereignis-Regeln und Berichte: ein Schalter in der Liste zeigt auf einen Blick, ob eine Regel bzw. ein Bericht aktiv ist, und schaltet sie mit einem Klick ein oder aus - ohne sie zu öffnen',
+  ], en: [
+    'Event rules and reports: a switch in the list shows at a glance whether a rule or report is active and turns it on or off with one click - without opening it',
+  ] },
+  { version: '0.34.0', date: '2026-11-16', de: [
     'Ereignis-Regeln: neue fertige Regeln - neue geplante Aufgabe (4698), Benutzerkonto angelegt (4720), Echtzeitschutz von Defender ausgeschaltet (5001), PowerShell: verdächtiges Skript (4104, nur Warnungen) und Fehler eines Befehls (4100); „Protokoll gelöscht“ erkennt jetzt auch das Systemprotokoll (104). Im Handbuch steht, welche Überwachung Windows dafür braucht',
   ], en: [
     'Event rules: new ready-made rules - new scheduled task (4698), user account created (4720), Defender real-time protection turned off (5001), PowerShell: suspicious script (4104, warnings only) and error of a command (4100); "log cleared" now also covers the system log (104). The manual says which auditing Windows needs for them',

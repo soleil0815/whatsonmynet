@@ -492,6 +492,11 @@ export function createApi(ctx) {
   r.get('/reports/candidates', admin, (_req, res) => res.json(ctx.reports.candidates()));
   r.post('/reports', admin, (req, res) => { const x = ctx.reports.create(req.body); audit(req, 'report.create', x.name); res.status(201).json(x); });
   r.put('/reports/:id', admin, (req, res) => { const x = ctx.reports.update(idParam(req), req.body); audit(req, 'report.update', x.name); res.json(x); });
+  r.post('/reports/:id/enabled', admin, (req, res) => {
+    const x = ctx.reports.setEnabled(idParam(req), req.body?.enabled === true);
+    audit(req, 'report.update', `${x.name}${x.enabled ? ' (on)' : ' (off)'}`);
+    res.json(x);
+  });
   r.delete('/reports/:id', admin, (req, res) => { ctx.reports.remove(idParam(req)); audit(req, 'report.delete', req.params.id); res.json({ ok: true }); });
   // Preview as the recipients see it (own CSP: the mail has inline styles, nothing else is allowed)
   r.get('/reports/:id/preview', admin, (req, res) => {

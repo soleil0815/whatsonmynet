@@ -5,7 +5,7 @@ import { h, mount, modal, toast, fmtDate, confirmDialog } from '../dom.js';
 import { get, post, put, del } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { state, fail, navigate } from '../app.js';
-import { pageHead, field, input, select, btn, formData } from './common.js';
+import { pageHead, field, input, select, btn, formData, onOffSwitch } from './common.js';
 import { lockForEditing, isReadOnly } from './failover.js';
 import { sevLabel } from './events.js';
 
@@ -69,9 +69,13 @@ export async function renderEventRules(main) {
     if (!body.isConnected) return;
     const chanName = (id) => chans.find((c) => c.id === id)?.name || '?';
     mount(box, rules.length ? h('div', { class: 'panel' }, h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
-      h('thead', {}, h('tr', {}, h('th', {}, t('er.name')), h('th', {}, t('er.to')), h('th', {}, t('er.sending')), h('th', {}, t('er.hits')), h('th', {}))),
+      h('thead', {}, h('tr', {}, h('th', { class: 'min' }, t('switch.head')), h('th', {}, t('er.name')), h('th', {}, t('er.to')), h('th', {}, t('er.sending')), h('th', {}, t('er.hits')), h('th', {}))),
       h('tbody', {}, rules.map((r) => h('tr', { class: r.enabled ? '' : 'muted' },
-        h('td', {}, h('span', { class: 'name' }, r.name), r.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('er.off')),
+        h('td', { class: 'min nowrap' }, onOffSwitch({ on: r.enabled, label: r.name, disabled: isReadOnly(), onChange: async (on) => {
+          await post(`/event-rules/${r.id}/enabled`, { enabled: on });
+          toast(t(on ? 'switch.onDone' : 'switch.offDone', { name: r.name })); load();
+        } })),
+        h('td', {}, h('span', { class: 'name' }, r.name),
           h('div', { class: 'sub' }, summary(r.match)),
           extras(r) ? h('div', { class: 'sub' }, extras(r)) : null,
           r.disabled_reason ? h('div', { class: 'sub bad-text' }, t('er.slowOff')) : null,
