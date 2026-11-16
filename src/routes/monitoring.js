@@ -8,6 +8,7 @@ import { inScope } from '../auth/scope.js';
 import { config } from '../config.js';
 import { parseEventIds } from '../eventrules.js';
 import { WIN_NOISE } from '../settings.js';
+import { logonSummary } from '../lib/winlogon.js';
 
 export function createMonitoringApi(ctx) {
   const { db, monitoring, channels, maintenance, dockerHosts, settings } = ctx;
@@ -157,7 +158,9 @@ export function createMonitoringApi(ctx) {
   r.get('/events', editor, unscoped, (req, res) => {
     const q = req.query || {};
     res.json({ status: ctx.events.status(), settings: eventSettings(), openEvents: ctx.eventRules.openCount(),
-      list: ctx.events.list({ q: String(q.q ?? ''), kind: String(q.kind ?? ''), maxSeverity: q.maxSeverity ?? 7, device: q.device || null, source: String(q.source ?? ''), before: q.before || null, limit: q.limit || 200 }) });
+      // sign-in events get a short line (account, way, reason, source) above their long text
+      list: ctx.events.list({ q: String(q.q ?? ''), kind: String(q.kind ?? ''), maxSeverity: q.maxSeverity ?? 7, device: q.device || null, source: String(q.source ?? ''), before: q.before || null, limit: q.limit || 200 })
+        .map((r) => { const summary = logonSummary(r.event_id, r.text, req.user?.language === 'en' ? 'en' : 'de'); return summary ? { ...r, summary } : r; }) });
   });
   // What is kept of one sender (admins, like the receiving settings): min severity 0-7, -1 = nothing, null = as for all
   r.put('/events/senders/filter', admin, (req, res) => {

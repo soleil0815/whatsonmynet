@@ -6,6 +6,12 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Failed logons (4625): the ready-made rule counts without the computer's own service logons and without "no logon server reachable" (laptop starting before its VPN) - neither is an attack. A rule made that way gets the exceptions with the update, one changed by hand stays
+- Windows sign-in events (4625, 4740, 4771, 4776): notifications and the message list show a summary instead of the cut start of the text - account, logon type, reason and origin
+- Message texts are kept up to 4000 instead of 1000 characters, so long Windows events are complete; the list shows them shortened with "whole text". The NXLog example in the manual sends each message in one piece
+
+## 0.35.0 - 2026-11-16
+
 - Event rules and reports: a switch in the list shows at a glance whether a rule or report is active and turns it on or off with one click - without opening it
 
 ## 0.34.0 - 2026-11-16

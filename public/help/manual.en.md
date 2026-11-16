@@ -170,6 +170,8 @@ Event rules can do more than "a mail at every match":
 - **Regular expression** on the text (case does not matter), e.g. `Failed password|Invalid user` or `Port (\d+) link down`. It is checked before saving: shapes that can backtrack without end (a repeated group that repeats itself or has alternatives, backreferences) are refused, and it is tried in a separate process with a time limit on hostile texts and real messages. Should it still take longer than 20 ms on a message while running, the rule is switched off and shows why.
 - **Open events** (*Keep as an open event*): the first match opens an event and notifies; further ones only count up instead of notifying again. Each event belongs to a sender and a **key** - the first group of the expression, e.g. the port number. It is closed by the **counter-message** (words, event ids or expression - with a group only the event with the same key, so "Port 7 link up" only closes port 7), by hand, or after a time without a new message. On request an all-clear comes with the counter-message. *Messages → Open* lists all open events; **Acknowledge** means "seen, being dealt with".
 - Ready-made rules for it: SSH (5 in 10 min per computer), Windows failed logons 4625 (10 in 10 min per computer), switch port down (open until "up"), UPS on battery (open until back on mains).
+- **Failed logons (4625)** count by default without the computer's own service logons (*logon type 5*) and without "no logon server reachable" (*0xC000005E* - e.g. a laptop starting up before its VPN is up): neither is an attack. What is left are wrong passwords and unknown users over the network, at the device or by remote desktop. A rule made that way by an older version gets the exceptions with the update; one changed by hand stays as it is.
+- **Summary for sign-in events:** for 4625, 4740, 4771 and 4776 the notification and the message list show what it is about instead of the start of the text - e.g. "account FIRMA\\m.muster · network (3) · wrong password (0xC000006A) · from 10.0.10.23". Message texts are kept up to 4000 characters; the list shows long texts shortened, *whole text* opens the rest.
 
 ### Windows events (NXLog)
 
@@ -184,6 +186,10 @@ With [NXLog](https://nxlog.co) Windows servers and clients send their event log 
     Module om_tcp
     Host   womn.example.local
     Port   1514
+    # Windows writes many messages over several lines - over TCP every line would
+    # become a message of its own. This way each message arrives in one piece.
+    Exec   $raw_event = replace($raw_event, "\r\n", " ");
+    Exec   $raw_event = replace($raw_event, "\n", " ");
 </Output>
 
 <Route r1>

@@ -18,6 +18,16 @@ const keepOptions = () => [['7', t('ev.keep.all')], ['6', t('ev.keep.noDebug')],
 const keepLabel = (n) => (n === -1 ? t('ev.keep.none') : (keepOptions().find(([v]) => Number(v) === n) || [])[1] || '');
 const gb = (b) => (b < 1024 ** 3 ? `${Math.max(0.1, b / 1024 ** 2).toLocaleString(getLang(), { maximumFractionDigits: b < 10 * 1024 ** 2 ? 1 : 0 })} MB` : `${(b / 1024 ** 3).toLocaleString(getLang(), { maximumFractionDigits: 1 })} GB`);
 
+// Long texts (Windows events reach 4000 characters): the start, the rest one click away
+function longText(text) {
+  const s = String(text ?? '');
+  if (s.length <= 400) return h('span', { class: 'small' }, s);
+  const rest = h('span', { hidden: true }, s.slice(400));
+  const more = h('button', { type: 'button', class: 'btn-link small' }, ` … ${t('ev.textMore')}`);
+  more.addEventListener('click', () => { rest.hidden = false; more.remove(); });
+  return h('span', { class: 'small' }, s.slice(0, 400), rest, more);
+}
+
 export async function renderEvents(main) {
   if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
@@ -169,7 +179,8 @@ export async function renderEvents(main) {
           h('div', { class: 'sub mono' }, [r.device_id ? r.source_ip : '', r.host && r.host !== r.device_name ? r.host : ''].filter(Boolean).join(' · ') || null)),
         h('td', {}, h('span', { class: `badge ${sevTone(r.severity) === 'muted' ? '' : `badge-${sevTone(r.severity)}`}` }, sevLabel(r.severity)),
           h('div', { class: 'sub' }, r.kind === 'trap' ? 'Trap' : 'Syslog')),
-        h('td', { class: 'ev-text' }, r.app && r.event_id === null ? h('strong', { class: 'small' }, `${r.app}: `) : null, h('span', { class: 'small' }, r.text),
+        h('td', { class: 'ev-text' }, r.summary ? h('div', { class: 'small ev-summary' }, r.summary) : null,
+          r.app && r.event_id === null ? h('strong', { class: 'small' }, `${r.app}: `) : null, longText(r.text),
           r.oid && r.kind === 'trap' && !r.app ? h('div', { class: 'sub mono' }, r.oid) : null,
           // Windows (NXLog): event id, log, source and account below the text, as in the event viewer
           r.event_id !== null && r.event_id !== undefined ? h('div', { class: 'sub' }, [t('ev.eventId', { id: r.event_id }), r.channel, r.event_id !== null && r.app ? r.app : '', r.account].filter(Boolean).join(' · ')) : null),
