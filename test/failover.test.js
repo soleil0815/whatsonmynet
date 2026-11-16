@@ -8,7 +8,8 @@ import https from 'node:https';
 import { spawnSync } from 'node:child_process';
 import { tmp, startApp } from './helpers.js';
 import { createTls } from '../src/tls.js';
-import { normalizeAddress, parseCode, spkiPin, pinnedRequest } from '../src/failover.js';
+import { normalizeAddress, parseCode, spkiPin, pinnedRequest, compareVersions } from '../src/failover.js';
+import { eventText } from '../src/monitor/notify.js';
 
 const dirA = fs.mkdtempSync(path.join(tmp, 'fo-a-'));
 const dirB = fs.mkdtempSync(path.join(tmp, 'fo-b-'));
@@ -19,10 +20,14 @@ const tlsB = createTls(path.join(dirB, 'tls'));
 await tlsB.ensure();
 const B = await startApp({ tls: tlsB, dataDir: dirB });
 // the master also on HTTPS (the standby only talks HTTPS)
-let httpsA = null; let port = 0;
+let httpsA = null; let port = 0; let helloOverride = null;
 const listenA = (cert = null, key = null) => new Promise((resolve) => {
   const c = tlsA.current();
-  httpsA = https.createServer({ cert: cert || c.cert, key: key || c.key }, A.app);
+  // helloOverride: the master answers as if it ran another version
+  httpsA = https.createServer({ cert: cert || c.cert, key: key || c.key }, (req, res) => {
+    if (helloOverride && req.url.startsWith('/api/failover/hello')) { const over = helloOverride; res.json = function json(o) { return Object.getPrototypeOf(this).json.call(this, { ...o, ...over }); }; }
+    A.app(req, res);
+  });
   httpsA.listen(port, '127.0.0.1', () => { port = httpsA.address().port; resolve(); });
 });
 await listenA();
@@ -196,6 +201,67 @@ test('the time until it takes over can be set (3 to 240 minutes)', async () => {
   assert.equal((await B.call('PUT', '/api/failover/delay', { delayMin: 30 })).data.standby.delayMin, 30);
   assert.equal((await B.call('PUT', '/api/failover/delay', { delayMin: 1 })).data.standby.delayMin, 3);
   assert.equal((await B.call('PUT', '/api/failover/delay', { delayMin: 9999 })).data.standby.delayMin, 240);
+});
+
+test('master and standby on different versions: a reminder after half an hour, again when both are the same', async () => {
+  assert.equal(compareVersions('0.38.0', '0.39.0'), -1);
+  assert.equal(compareVersions('v1.2.10', '1.2.9'), 1);
+  assert.equal(compareVersions('0.39.0', '0.39.0'), 0);
+  assert.equal(compareVersions('dev', '0.39.0'), null);
+  const sent = [];
+  const real = B.ctx.channels.notifyIds;
+  B.ctx.channels.notifyIds = async (ids, ev) => { sent.push(ev); return []; };
+  const st = () => B.ctx.failover._state().standby;
+  const here = B.ctx.failover.status().version;
+  try {
+    // the master was updated, this standby not yet - one after the other is normal: nothing yet
+    helloOverride = { version: '99.0.0' };
+    await B.ctx.failover.tick();
+    assert.equal(sent.length, 0);
+    assert.deepEqual((await B.call('GET', '/api/failover/banner')).data.versions, { master: '99.0.0', here, schema: false });
+    assert.equal(B.ctx.failover.status().standby.versions.notifiedAt, null);
+    // still so after half an hour: a reminder - which one to update
+    st().gap.since = new Date(Date.now() - 31 * 60000).toISOString();
+    await B.ctx.failover.tick();
+    assert.equal(sent.length, 1);
+    assert.deepEqual([sent[0].kind, sent[0].what, sent[0].older, sent[0].schema], ['failover', 'versions', 'standby', false]);
+    assert.ok(eventText(sent[0], 'de').includes(`Version 99.0.0, dieses System (Standby) mit ${here}. Bitte diesen Standby auf 99.0.0 aktualisieren`), eventText(sent[0], 'de'));
+    assert.match(eventText(sent[0], 'en'), /Please update this standby to 99\.0\.0/);
+    // not every minute
+    await B.ctx.failover.tick();
+    assert.equal(sent.length, 1);
+    // the database versions differ too: the data cannot be taken - told at once, urgent
+    helloOverride = { version: '99.0.0', schema: 9999 };
+    await B.ctx.failover.tick();
+    assert.equal(sent.length, 2);
+    assert.equal(sent[1].schema, true);
+    assert.match(eventText(sent[1], 'de'), /kann der Standby die Daten des Masters nicht mehr übernehmen/);
+    assert.match(B.ctx.failover.status().standby.syncError, /program versions differ/);
+    // an older master: that one is to be updated
+    helloOverride = { version: '0.0.1' };
+    await B.ctx.failover.tick();
+    st().gap.since = new Date(Date.now() - 31 * 60000).toISOString();
+    await B.ctx.failover.tick();
+    assert.equal(sent.at(-1).older, 'master');
+    assert.ok(eventText(sent.at(-1), 'de').includes(`Bitte den Master auf ${here} aktualisieren`));
+    // both the same again: said once, the note goes
+    const n = sent.length;
+    helloOverride = null;
+    await B.ctx.failover.tick();
+    assert.equal(sent.length, n + 1);
+    assert.equal(sent.at(-1).what, 'versionsOk');
+    assert.match(eventText(sent.at(-1), 'de'), /wieder mit derselben Version/);
+    assert.equal(B.ctx.failover.status().standby.versions, null);
+    assert.equal((await B.call('GET', '/api/failover/banner')).data.versions, null);
+    await B.ctx.failover.tick();
+    assert.equal(sent.length, n + 1);
+    // different, but back to the same within the half hour: no message at all
+    helloOverride = { version: '99.0.1' };
+    await B.ctx.failover.tick();
+    helloOverride = null;
+    await B.ctx.failover.tick();
+    assert.equal(sent.length, n + 1);
+  } finally { helloOverride = null; B.ctx.channels.notifyIds = real; }
 });
 
 test('the master ends the pairing: the standby keeps quiet (does not take over) until it is decided there', async () => {
