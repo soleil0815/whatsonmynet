@@ -28,7 +28,9 @@ export const RULE_PRESETS = [
   ['deviceErrors', { kind: 'syslog', maxSeverity: 3 }],
   // counting and open events
   ['sshFail', { source: 'sshd', regex: 'Failed password|Invalid user' }, { count: { n: 5, minutes: 10, perSender: true } }],
-  ['logonFail', { eventIds: '4625', source: 'Security-Auditing' }, { count: { n: 10, minutes: 10, perSender: true } }],
+  // failed sign-ins: not the computer's own service logons (type 5) and not "no logon server" (laptop at start-up before
+  // its VPN is up) - what is left are wrong passwords and unknown users over the network, at the device, by RDP
+  ['logonFail', { eventIds: '4625', source: 'Security-Auditing', notWords: 'Anmeldetyp: 5, Logon Type: 5, 0xc000005e' }, { count: { n: 10, minutes: 10, perSender: true } }],
   ['portDown', { regex: 'port\\s*(\\d+)\\D*down' }, { state: { open: true, closeRegex: 'port\\s*(\\d+)\\D*up', notifyClose: true } }],
   ['upsBattery', { words: ['on battery', 'auf Batterie'] }, { state: { open: true, closeWords: ['on line', 'online', 'on mains', 'Netzbetrieb'], notifyClose: true } }],
 ];

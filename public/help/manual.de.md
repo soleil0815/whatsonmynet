@@ -170,6 +170,8 @@ Ereignisregeln können mehr als „bei jedem Treffer eine Mail“:
 - **Regulärer Ausdruck** auf den Text (Groß-/Kleinschreibung egal), z. B. `Failed password|Invalid user` oder `Port (\d+) link down`. Vor dem Speichern wird er geprüft: Formen, die sich endlos verrennen können (eine wiederholte Gruppe, die sich selbst wiederholt oder Alternativen hat, Rückverweise), werden abgelehnt, und er wird in einem eigenen Prozess mit Zeitlimit an feindseligen Texten und echten Meldungen ausprobiert. Braucht er im Betrieb trotzdem einmal länger als 20 ms für eine Meldung, wird die Regel ausgeschaltet und zeigt den Grund.
 - **Offene Ereignisse** (*Als offenes Ereignis führen*): Der erste Treffer öffnet ein Ereignis und benachrichtigt; weitere zählen nur hoch, statt erneut zu melden. Jedes Ereignis gehört zu einem Absender und einem **Schlüssel** - der ersten Klammer des Ausdrucks, z. B. der Portnummer. Geschlossen wird es durch die **Gegenmeldung** (Wörter, Ereignisnummern oder Ausdruck - mit Klammer nur das Ereignis mit demselben Schlüssel, also „Port 7 link up“ schließt nur Port 7), von Hand, oder nach einer einstellbaren Zeit ohne neue Meldung. Auf Wunsch kommt bei der Gegenmeldung eine Entwarnung. Unter *Meldungen → Offen* stehen alle offenen Ereignisse; **Quittieren** heißt „gesehen, wird erledigt“.
 - Fertige Regeln dafür: SSH (5 in 10 Min. je Rechner), Windows-Anmeldefehler 4625 (10 in 10 Min. je Rechner), Switch-Port down (offen bis „up“), USV auf Batterie (offen bis Netzbetrieb).
+- **Fehlgeschlagene Anmeldungen (4625)** zählen ab Werk ohne die Dienst-Anmeldungen des Rechners selbst (*Anmeldetyp 5*) und ohne „kein Anmeldeserver erreichbar“ (*0xC000005E* - z. B. ein Laptop beim Hochfahren, bevor das VPN steht): beides ist kein Angriff. Übrig bleiben falsche Kennwörter und unbekannte Benutzer über das Netz, am Gerät oder per Remotedesktop. Eine so angelegte Regel aus einer älteren Version bekommt die Ausnahmen beim Update; eine von Hand geänderte bleibt, wie sie ist.
+- **Kurzfassung bei Anmeldeereignissen:** Bei 4625, 4740, 4771 und 4776 steht in der Benachrichtigung und in der Meldungsliste statt des Textanfangs, worum es geht - z. B. „Konto FIRMA\\m.muster · Netzwerk (3) · falsches Kennwort (0xC000006A) · von 10.0.10.23“. Meldungstexte werden bis 4000 Zeichen gespeichert; lange Texte zeigt die Liste gekürzt, *ganzer Text* klappt den Rest auf.
 
 ### Windows-Ereignisse (NXLog)
 
@@ -184,6 +186,10 @@ Mit [NXLog](https://nxlog.co) schicken Windows-Server und -Clients ihre Ereignis
     Module om_tcp
     Host   womn.firma.local
     Port   1514
+    # Windows schreibt viele Meldungen über mehrere Zeilen - über TCP würde jede Zeile
+    # eine eigene Meldung. So kommt jede Meldung am Stück an.
+    Exec   $raw_event = replace($raw_event, "\r\n", " ");
+    Exec   $raw_event = replace($raw_event, "\n", " ");
 </Output>
 
 <Route r1>
