@@ -276,6 +276,14 @@ test('Windows scripts contain nothing PowerShell logs as suspicious (warning 410
     const at = t.indexOf("$ProgressPreference = 'SilentlyContinue'");
     assert.ok(at > 0 && at < t.indexOf('Invoke-RestMethod'), `${kind}: progress bar off before the first web request`);
   }
+  // and no Select-Object -First: stopping the command before it is logged as "System error" (4100) on every run
+  for (const kind of ['windows', 'hyperv']) {
+    const s = hostScript(kind, { url: 'u', token: 't', pin });
+    for (const text of [s.text, s.uninstall.text]) {
+      const code = text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+      assert.doesNotMatch(code, /Select-Object\s+-First/i, `${kind}: Select-Object -First`);
+    }
+  }
   // the check itself works: the old pinning with Add-Type would be found
   const old = path.join(dir, 'old.ps1');
   fs.writeFileSync(old, 'Add-Type -TypeDefinition "public class X {}"');
