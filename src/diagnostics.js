@@ -341,6 +341,7 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       // the full-text index: how far it is (its size is part of "used")
       const si = s.searchIndex || {};
       out.search_index = { building: !!si.building, share: si.share ?? null, behind: si.behind ?? null };
+      try { out.saved_searches = db.prepare('SELECT COUNT(*) n, SUM(shared) shared FROM event_searches').get(); } catch { /* older database */ }
     }
     const q = (sql, ...a) => db.prepare(sql).all(since, ...a);
     out.period = {

@@ -704,6 +704,17 @@ export const MIGRATIONS = [
      WHERE json_valid(match) AND json_extract(match, '$.eventIds') = '4625' AND lower(json_extract(match, '$.source')) = 'security-auditing'
        AND json_array_length(coalesce(json_extract(match, '$.notWords'), '[]')) = 0 AND json_array_length(coalesce(json_extract(match, '$.words'), '[]')) = 0
        AND coalesce(json_extract(match, '$.regex'), '') = '' AND json_array_length(coalesce(json_extract(match, '$.from'), '[]')) = 0;`,
+  // 37: saved searches of the messages (search, severity, kind, time range) - one's own, or shared with everyone who
+  // sees the messages
+  `CREATE TABLE IF NOT EXISTS event_searches (
+     id INTEGER PRIMARY KEY,
+     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     name TEXT NOT NULL,
+     query TEXT NOT NULL,
+     shared INTEGER NOT NULL DEFAULT 0,
+     created_at TEXT NOT NULL
+   );
+   CREATE INDEX IF NOT EXISTS event_searches_user ON event_searches(user_id);`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

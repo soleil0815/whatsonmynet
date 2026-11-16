@@ -1,7 +1,7 @@
 // Messages devices sent by themselves (SNMP traps, syslog): the newest first, filtered and searched; one click turns a
 // message into an event monitor. Admins switch the receivers on here.
 import { h, mount, modal, toast, fmtDate } from '../dom.js';
-import { get, put, post } from '../api.js';
+import { get, put, post, del } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, fail, navigate } from '../app.js';
@@ -89,6 +89,11 @@ export async function renderEvents(main) {
   const toIn = h('input', { type: 'datetime-local', 'aria-label': t('ev.rangeTo') });
   const customBox = h('div', { class: 'ev-custom', hidden: true }, h('label', {}, h('span', { class: 'small muted' }, t('ev.rangeFrom')), fromIn), h('label', {}, h('span', { class: 'small muted' }, t('ev.rangeTo')), toIn));
   const histBox = h('div');
+  // Saved searches: search, severity, kind and time range under a name - one click instead of typing it again
+  const savedList = h('div', { class: 'menu-list ev-saved-list' });
+  const savedMenu = h('details', { class: 'menu ev-saved' }, h('summary', { class: 'btn', title: t('ev.savedHint') }, h('span', { html: icon('history') }), t('ev.saved')), savedList);
+  savedMenu.addEventListener('toggle', () => { if (savedMenu.open) drawSaved(); });
+  document.addEventListener('click', (e) => { if (savedMenu.open && !savedMenu.contains(e.target)) savedMenu.open = false; });
   /** from and to (ISO) for the server: a preset counts back from now, so new messages keep coming in */
   const rangeNow = () => {
     if (range === 'custom') return { from: custom.from === null ? null : new Date(custom.from).toISOString(), to: custom.to === null ? null : new Date(custom.to).toISOString() };
@@ -176,7 +181,7 @@ export async function renderEvents(main) {
       'aria-pressed': String(v === view), onclick: () => setView(v) }, l)));
     if (view === 'open') {
       mount(chips, h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: showClosed, onchange: (e) => { showClosed = e.currentTarget.checked; load(); } }), t('ev.showClosed')));
-      sevSel.hidden = true; q.hidden = true; q.parentElement.hidden = true; rangeSel.hidden = true; customBox.hidden = true;
+      sevSel.hidden = true; q.hidden = true; q.parentElement.hidden = true; rangeSel.hidden = true; customBox.hidden = true; savedMenu.hidden = true;
       mount(histBox, null);
       mount(sourceChip, null);
       const stateBadge = (o) => (o.state === 'open' ? h('span', { class: 'badge badge-bad' }, t('ev.st.open')) : o.state === 'ack' ? h('span', { class: 'badge badge-warn' }, t('ev.st.ack'))
@@ -200,7 +205,7 @@ export async function renderEvents(main) {
     }
     q.hidden = false; q.parentElement.hidden = false;
     mount(chips, bySender ? null : [chip('', t('all')), chip('trap', 'Traps'), chip('syslog', 'Syslog')]);
-    sevSel.hidden = bySender;
+    sevSel.hidden = bySender; savedMenu.hidden = false;
     // the overview by sender counts the last 24 hours; the range is for the messages themselves
     rangeSel.hidden = bySender; customBox.hidden = bySender || range !== 'custom';
     if (range === 'custom') { fromIn.value = custom.from === null ? '' : toLocalInput(custom.from); toIn.value = custom.to === null ? '' : toLocalInput(custom.to); }
@@ -255,6 +260,45 @@ export async function renderEvents(main) {
     mount(more, hasMore ? btn(t('ev.more'), { class: 'btn btn-sm', onclick: () => load(true) }) : null);
     lockForEditing(body);
   }
+  async function drawSaved() {
+    const list = savedList;
+    mount(list, h('span', { class: 'muted small', style: { padding: '8px 10px' } }, t('loading')));
+    let saved = [];
+    try { saved = await get('/events/searches'); } catch (e) { fail(e); }
+    const what = (x) => [x.q ? `„${x.q}“` : '', x.kind ? (x.kind === 'trap' ? 'Traps' : 'Syslog') : '', x.maxSeverity < 7 ? t({ 4: 'ev.f.warning', 3: 'ev.f.err', 2: 'ev.f.crit' }[x.maxSeverity] || 'ev.f.all') : '',
+      x.range ? t(`ev.range.${x.range}`) : '', x.part ? t('ev.savedPart') : ''].filter(Boolean).join(' · ');
+    mount(list,
+      saved.length ? saved.map((x) => h('div', { class: 'ev-saved-row' },
+        h('button', { type: 'button', class: 'ev-saved-use', title: what(x), onclick: () => { savedMenu.open = false; applySaved(x); } },
+          h('span', {}, x.name, x.shared ? h('span', { class: 'badge', style: { marginLeft: '6px' } }, x.mine ? t('ev.savedShared') : x.owner) : null),
+          h('span', { class: 'small muted' }, what(x))),
+        x.mine || state.user?.isAdmin ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('ev.savedDelete', { name: x.name }), title: t('ev.savedDelete', { name: x.name }),
+          onclick: async (e) => { e.stopPropagation(); try { await del(`/events/searches/${x.id}`); toast(t('ev.savedDeleted')); drawSaved(); } catch (ex) { fail(ex); } } }, '×') : null))
+        : h('span', { class: 'muted small', style: { padding: '8px 10px', maxWidth: '280px' } }, t('ev.savedNone')),
+      isReadOnly() ? null : h('button', { type: 'button', class: 'ev-saved-add', onclick: () => { savedMenu.open = false; saveDialog(saved); } }, h('span', { html: icon('plus') }), t('ev.savedAdd')));
+  }
+  function applySaved(x) {
+    // a search is about messages: from the overview by sender or the open events to all messages
+    if (view === 'open' || (view === 'senders' && !source)) { view = 'all'; remember('ev.view', 'all'); history.replaceState(null, '', '/events'); }
+    q.value = x.q || ''; kind = x.kind || ''; maxSeverity = Number.isInteger(x.maxSeverity) ? x.maxSeverity : 7; sevSel.value = String(maxSeverity); part = !!x.part;
+    setRange(x.range || '');
+  }
+  function saveDialog(saved) {
+    const cur = { q: q.value.trim(), kind, maxSeverity, range: range === 'custom' ? '' : range, part: part && !!q.value.trim() };
+    const name = input('name', cur.q.slice(0, 60), { required: true, maxlength: 60, autocomplete: 'off' });
+    const shared = h('input', { type: 'checkbox', name: 'shared' });
+    const form = h('form', { class: 'form' },
+      h('p', { class: 'muted', style: { margin: 0 } }, t('ev.savedWhat'), ' ', h('strong', {}, [cur.q ? `„${cur.q}“` : t('ev.savedNoText'), cur.kind ? (cur.kind === 'trap' ? 'Traps' : 'Syslog') : '',
+        cur.maxSeverity < 7 ? t({ 4: 'ev.f.warning', 3: 'ev.f.err', 2: 'ev.f.crit' }[cur.maxSeverity]) : '', cur.range ? t(`ev.range.${cur.range}`) : ''].filter(Boolean).join(' · ')),
+        range === 'custom' ? h('span', { class: 'small' }, ` ${t('ev.savedNoCustom')}`) : null),
+      field(t('ev.savedName'), name, saved.some((x) => x.mine) ? t('ev.savedNameHint') : ''),
+      h('label', { class: 'check' }, shared, t('ev.savedShare')));
+    const m = modal(t('ev.savedAdd'), form, { onSubmit: async () => {
+      try { await post('/events/searches', { ...cur, name: name.value, shared: shared.checked }); m.close(); toast(t('ev.savedDone', { name: name.value.trim() })); } catch (e) { fail(e, form); }
+    }, actions: [btn(t('cancel'), { onclick: () => m.close() }), h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
+    name.focus(); name.select();
+  }
+
   // The timeline: one bar per step of time, errors at the bottom, then warnings, then the rest. A click on a bar or
   // dragging over several narrows the range to them; arrow keys and Enter do the same without a mouse.
   function drawHist() {
@@ -399,7 +443,7 @@ export async function renderEvents(main) {
     admin ? btn(t('ev.settings'), { class: 'btn', onclick: () => info && settingsDialog(info.settings) }, 'settings') : null,
     btn(t('ev.reload'), { class: 'btn', onclick: () => load() }, 'refresh'));
   mount(body, head, statusBox, spaceBox,
-    h('div', { class: 'vo-toolbar ev-toolbar' }, seg, h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q), sevSel, rangeSel, chips),
+    h('div', { class: 'vo-toolbar ev-toolbar' }, seg, h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q), savedMenu, sevSel, rangeSel, chips),
     customBox, sourceChip, histBox, listBox, more);
   await load();
   // new messages show up by themselves while the page is open (not while searching through older ones)
