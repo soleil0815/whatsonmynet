@@ -516,11 +516,23 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     // a few seconds behind is normal (batches); "building" is the first round after an update
     return { building: behind > 50000, share: top > low ? Math.max(0, Math.min(1, (done - low + 1) / (top - low + 1))) : 1, behind };
   }
-  /** The words of a search for the index: '"a b c"*' - the words in this order, the last one may go on */
-  function ftsQuery(text) {
-    const words = String(text).match(/[\p{L}\p{N}]+/gu);
-    if (!words) return '';
-    return `"${words.slice(0, 16).join(' ')}"*`;
+  /**
+   * A search as typed: words separated by spaces must all be there, in any order and any field ("pc001 4104
+   * svc-pocketknife"); "in quotes" is one phrase - these words one after the other; -word leaves out what has it.
+   * Each term: { raw, not, match } - match is the term for the index ('"svc pocketknife"*': these words in this
+   * order, the last one may go on), '' when it has no word in it.
+   */
+  function searchTerms(text) {
+    const out = [];
+    for (const m of String(text).matchAll(/(-?)"([^"]*)"?|(-?)(\S+)/g)) {
+      const not = (m[1] || m[3]) === '-';
+      const raw = (m[2] ?? m[4] ?? '').trim();
+      if (!raw) continue;
+      const words = raw.match(/[\p{L}\p{N}]+/gu);
+      out.push({ raw: raw.slice(0, 100), not, match: words ? `"${words.slice(0, 16).join(' ')}"*` : '' });
+      if (out.length >= 10) break;
+    }
+    return out;
   }
 
   // The first message at or after a time (ids grow with the time of arrival)
@@ -540,32 +552,41 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     if (kind === 'trap' || kind === 'syslog') { where.push('kind = ?'); args.push(kind); }
     if (device) { where.push('e.device_id = ?'); args.push(Number(device)); }
     if (source) { where.push('e.source_ip = ?'); args.push(String(source).slice(0, 64)); }
-    const text = String(q || '').trim().slice(0, 100);
-    const match = text && !part ? ftsQuery(text) : '';
+    const terms = searchTerms(String(q || '').trim().slice(0, 200));
+    // the index leads when at least one term is wanted (not only left out) and has a word in it
+    const words = !part && terms.some((t) => !t.not && t.match);
     // from is inclusive, to is not: two ranges side by side never count a message twice ("+": no index for the time
     // when the words lead)
-    const at = match ? '+e.at' : 'e.at';
+    const at = words ? '+e.at' : 'e.at';
     let lo = 0; let hi = NONE; let many = false;
-    if (iso(from)) { where.push(`${at} >= ?`); args.push(iso(from)); if (match) lo = firstIdAt.get(iso(from)) ?? NONE; }
-    if (iso(to)) { where.push(`${at} < ?`); args.push(iso(to)); if (match) hi = firstIdAt.get(iso(to)) ?? NONE; }
-    if (text) {
+    if (iso(from)) { where.push(`${at} >= ?`); args.push(iso(from)); if (words) lo = firstIdAt.get(iso(from)) ?? NONE; }
+    if (iso(to)) { where.push(`${at} < ?`); args.push(iso(to)); if (words) hi = firstIdAt.get(iso(to)) ?? NONE; }
+    const likeCols = "(e.text LIKE ? ESCAPE '\\' OR e.app LIKE ? ESCAPE '\\' OR e.source_ip LIKE ? ESCAPE '\\' OR e.host LIKE ? ESCAPE '\\' OR e.channel LIKE ? ESCAPE '\\' OR e.account LIKE ? ESCAPE '\\')";
+    const devName = "e.device_id IN (SELECT id FROM devices WHERE name LIKE ? ESCAPE '\\')";
+    const tail = Math.max(ftsDone(), lo - 1);
+    let fewest = Infinity;
+    for (const t of terms) {
       // a number also finds the Windows event with that id; a device by its name in the inventory
-      const n = /^\d{1,6}$/.test(text) ? Number(text) : -1;
-      const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-      const likeCols = "(e.text LIKE ? ESCAPE '\\' OR e.app LIKE ? ESCAPE '\\' OR e.source_ip LIKE ? ESCAPE '\\' OR e.host LIKE ? ESCAPE '\\' OR e.channel LIKE ? ESCAPE '\\' OR e.account LIKE ? ESCAPE '\\')";
-      const others = "e.device_id IN (SELECT id FROM devices WHERE name LIKE ? ESCAPE '\\')";
-      if (match) {
+      const n = /^\d{1,6}$/.test(t.raw) ? Number(t.raw) : -1;
+      const like = `%${t.raw.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      let cond; let a;
+      if (!part && t.match) {
         // the index up to "done"; what came in since its last round (a few seconds) the slow way
-        where.push(`(e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ? AND rowid >= ? AND rowid < ?) OR (e.id > ? AND ${likeCols}) OR ${others} OR (e.event_id = ? AND e.id >= ? AND e.id < ?))`);
-        args.push(match, lo, hi, Math.max(ftsDone(), lo - 1), like, like, like, like, like, like, like, n, lo, hi);
-        // many hits (a common word): the newest come quickly when walking back from the newest message
-        many = (ftsCount.get(match, lo, hi) || 0) + (n >= 0 ? eventCount.get(n, lo, hi) || 0 : 0) > MANY;
+        cond = `(e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ? AND rowid >= ? AND rowid < ?) OR (e.id > ? AND ${likeCols}) OR ${devName} OR (e.event_id = ? AND e.id >= ? AND e.id < ?))`;
+        a = [t.match, lo, hi, tail, like, like, like, like, like, like, like, n, lo, hi];
+        if (!t.not) fewest = Math.min(fewest, (ftsCount.get(t.match, lo, hi) || 0) + (n >= 0 ? eventCount.get(n, lo, hi) || 0 : 0));
       } else {
-        where.push(`(${likeCols} OR ${others} OR e.event_id = ?)`);
-        args.push(like, like, like, like, like, like, like, n);
+        // parts of words (asked for), or a term without a word in it ("::1"): every message is read
+        cond = `(${likeCols} OR ${devName} OR e.event_id = ?)`;
+        a = [like, like, like, like, like, like, like, n];
       }
+      // (a message without a device or event id makes parts of it NULL - left out means: not there)
+      where.push(t.not ? `NOT COALESCE(${cond}, 0)` : cond);
+      args.push(...a);
     }
-    return { where: where.join(' AND '), args, words: !!match, many };
+    // many hits (common words): the newest come quickly when walking back from the newest message
+    many = words && fewest > MANY;
+    return { where: where.join(' AND '), args, words, many };
   }
 
   function list({ limit = 200, before = null, ...filter } = {}) {
