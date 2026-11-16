@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Ereignis-Regeln: neue fertige Regeln - neue geplante Aufgabe (4698), Benutzerkonto angelegt (4720), Echtzeitschutz von Defender ausgeschaltet (5001), PowerShell: verdächtiges Skript (4104, nur Warnungen) und Fehler eines Befehls (4100); „Protokoll gelöscht“ erkennt jetzt auch das Systemprotokoll (104). Im Handbuch steht, welche Überwachung Windows dafür braucht
+
+## 0.33.5 - 2026-11-16
+
 - Windows-Skript der Rechner: kein „Systemfehler“ (Ereignis 4100, Warnung) mehr bei jedem Lauf - die Ursache war „Select-Object -First“ (erste Netzwerkadresse, Defender-Status, die ersten 10 Ereignisse): Windows PowerShell bricht damit die Abfrage davor ab und protokolliert das als Systemfehler. Die ersten Einträge werden jetzt per Index genommen, die Werte bleiben gleich. Wirkt nach Neues Skript und erneutem Verteilen
 
 ## 0.33.4 - 2026-11-16

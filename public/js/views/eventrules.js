@@ -16,8 +16,15 @@ export const RULE_PRESETS = [
   ['applocker', { eventIds: '8004, 8007', source: 'AppLocker' }],
   ['lockout', { eventIds: '4740', source: 'Security-Auditing' }],
   ['group', { eventIds: '4728, 4732, 4756', source: 'Security-Auditing' }],
-  ['logCleared', { eventIds: '1102', source: 'Eventlog' }],
+  ['logCleared', { eventIds: '1102, 104', source: 'Eventlog' }],
   ['service', { eventIds: '7045', source: 'Service Control Manager' }],
+  ['schedTask', { eventIds: '4698', source: 'Security-Auditing' }],
+  ['userCreated', { eventIds: '4720', source: 'Security-Auditing' }],
+  ['defenderOff', { eventIds: '5001', source: 'Defender' }],
+  // PowerShell: scripts Windows rates as suspicious, and errors of commands - warnings only (the verbose 4104 of
+  // every script stays out); with tools that are quiet themselves, what is left means something
+  ['psSuspicious', { eventIds: '4104', source: 'PowerShell', maxSeverity: 4 }],
+  ['psErrors', { eventIds: '4100', source: 'PowerShell', maxSeverity: 4 }],
   ['deviceErrors', { kind: 'syslog', maxSeverity: 3 }],
   // counting and open events
   ['sshFail', { source: 'sshd', regex: 'Failed password|Invalid user' }, { count: { n: 5, minutes: 10, perSender: true } }],

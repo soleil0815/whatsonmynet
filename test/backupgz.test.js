@@ -93,7 +93,13 @@ test('Windows noise: a new installation leaves it out, one already in use (migra
   assert.equal(createSettings(fresh).get('events.winDeny'), WIN_NOISE);
   for (const id of ['4624', '4634', '5858', '7036', '10016']) assert.ok(WIN_NOISE.split(', ').includes(id), id);
   // the ready-made rules must keep working: none of their ids in the noise
-  for (const id of ['4625', '4740', '1116', '1117', '8004', '8007', '1102', '7045', '4728', '4732', '4756', '865']) assert.equal(WIN_NOISE.split(', ').includes(id), false, id);
+  // the ready-made rules must keep working: none of their ids in the noise (read from the rules page itself)
+  const presets = fs.readFileSync(new URL('../public/js/views/eventrules.js', import.meta.url), 'utf8');
+  const ids = [...presets.matchAll(/eventIds: '([^']+)'/g)].flatMap((m) => m[1].split(/,\s*/)).flatMap((x) => {
+    const [a, b] = x.split('-').map(Number); return b ? Array.from({ length: b - a + 1 }, (_, i) => String(a + i)) : [String(a)];
+  });
+  for (const id of ['4625', '4740', '1116', '1117', '5001', '8004', '8007', '1102', '104', '7045', '4698', '4720', '4728', '4732', '4756', '865', '4100', '4104']) assert.ok(ids.includes(id), `preset ${id}`);
+  for (const id of ids) assert.equal(WIN_NOISE.split(', ').includes(id), false, id);
   const used = memoryDb();
   used.prepare("INSERT INTO users(username,password_hash,role,created_at) VALUES('admin','x','admin','x')").run();
   used.prepare("DELETE FROM settings WHERE key='events.winDeny'").run();
