@@ -40,6 +40,11 @@ const TEXT = {
     test: '✅ Testnachricht von WhatsOnMyNet - dieser Kanal funktioniert.',
     foTakeover: '🛟 Ausfallsicherung: Der Master {master} ist seit {min} Min. nicht erreichbar - dieses System (Standby) hat die Überwachung übernommen.',
     foBack: '✅ Ausfallsicherung: Der Master {master} ist wieder da - er überwacht wieder, dieses System ist wieder Standby.',
+    foVersions: '🔄 Ausfallsicherung: Der Master {master} läuft mit Version {masterVersion}, dieses System (Standby) mit {here}. {update} Beide sollten immer dieselbe Version haben, damit der Standby im Notfall genauso arbeitet.',
+    foVersionsSchema: '⚠️ Ausfallsicherung: Der Master {master} läuft mit Version {masterVersion}, dieses System (Standby) mit {here} - so kann der Standby die Daten des Masters nicht mehr übernehmen (zuletzt: {lastSync}). {update}',
+    foUpdateMaster: 'Bitte den Master auf {to} aktualisieren.', foUpdateStandby: 'Bitte diesen Standby auf {to} aktualisieren.', foUpdateBoth: 'Bitte beide auf dieselbe Version bringen.',
+    foVersionsOk: '✅ Ausfallsicherung: Master {master} und Standby laufen wieder mit derselben Version ({version}).',
+    foNever: 'noch nie',
     newDevice: '🆕 Neues Gerät im Netz: {list}',
     newDevices: '🆕 {n} neue Geräte im Netz: {list}',
     supplyLow: '🟠 {name}: {supply} nur noch {pct} %',
@@ -83,6 +88,11 @@ const TEXT = {
     test: '✅ Test message from WhatsOnMyNet - this channel works.',
     foTakeover: '🛟 Failover: the master {master} has not answered for {min} min - this server (standby) has taken over monitoring.',
     foBack: '✅ Failover: the master {master} is back - it monitors again, this server is standby again.',
+    foVersions: '🔄 Failover: the master {master} runs version {masterVersion}, this server (standby) {here}. {update} Both should always run the same version, so that the standby works the same way when it has to take over.',
+    foVersionsSchema: '⚠️ Failover: the master {master} runs version {masterVersion}, this server (standby) {here} - like this the standby cannot take the data of the master any more (last: {lastSync}). {update}',
+    foUpdateMaster: 'Please update the master to {to}.', foUpdateStandby: 'Please update this standby to {to}.', foUpdateBoth: 'Please bring both to the same version.',
+    foVersionsOk: '✅ Failover: master {master} and standby run the same version again ({version}).',
+    foNever: 'never',
     newDevice: '🆕 New device on the network: {list}',
     newDevices: '🆕 {n} new devices on the network: {list}',
     supplyLow: '🟠 {name}: {supply} down to {pct} %',
@@ -142,7 +152,15 @@ export function eventText(ev, lang = 'de') {
       const what = fill(T[`nas.${p.kind}`] || p.kind || '', { item: p.name || '', status: p.status || '', pct: p.pct ?? '' });
       return fill(p.solved ? T.nasOk : T.nasBad, { name: ev.device?.name || '', what });
     }
-    case 'failover': return fill(ev.what === 'back' ? T.foBack : T.foTakeover, { master: ev.master || '', min: ev.min ?? '' });
+    case 'failover': {
+      if (ev.what === 'versionsOk') return fill(T.foVersionsOk, { master: ev.master || '', version: ev.version || '' });
+      if (ev.what === 'versions') {
+        const update = ev.older === 'master' ? fill(T.foUpdateMaster, { to: ev.here || '' }) : ev.older === 'standby' ? fill(T.foUpdateStandby, { to: ev.masterVersion || '' }) : T.foUpdateBoth;
+        const lastSync = ev.lastSync ? new Date(ev.lastSync).toLocaleString(L === 'en' ? 'en-GB' : 'de-DE', { timeZone: process.env.TZ || undefined, dateStyle: 'short', timeStyle: 'short' }) : T.foNever;
+        return fill(ev.schema ? T.foVersionsSchema : T.foVersions, { master: ev.master || '', masterVersion: ev.masterVersion || '?', here: ev.here || '?', update, lastSync });
+      }
+      return fill(ev.what === 'back' ? T.foBack : T.foTakeover, { master: ev.master || '', min: ev.min ?? '' });
+    }
     case 'logRule': {
       const rule = ev.rule?.name || '';
       const list = ev.events || [];
@@ -320,8 +338,8 @@ export function createChannels(db, mailer, settings = null) {
     const more = details(ev, lang);
     if (PROVIDERS[row.type]) {
       const textPlain = text.replace(/^\S+\s/, '');
-      const urgent = ev.kind === 'down' || ev.kind === 'escalate' || (ev.kind === 'failover' && ev.what !== 'back') || (ev.kind === 'cert' && ev.certDays < 0) || (ev.kind === 'supply' && ev.empty) || (ev.kind === 'nas' && !ev.problem?.solved);
-      const good = ev.kind === 'up' || ev.kind === 'test' || (ev.kind === 'logRule' && !!ev.closed) || (ev.kind === 'failover' && ev.what === 'back') || (ev.kind === 'nas' && !!ev.problem?.solved);
+      const urgent = ev.kind === 'down' || ev.kind === 'escalate' || (ev.kind === 'failover' && (ev.what === 'takeover' || (ev.what === 'versions' && !!ev.schema))) || (ev.kind === 'cert' && ev.certDays < 0) || (ev.kind === 'supply' && ev.empty) || (ev.kind === 'nas' && !ev.problem?.solved);
+      const good = ev.kind === 'up' || ev.kind === 'test' || (ev.kind === 'logRule' && !!ev.closed) || (ev.kind === 'failover' && (ev.what === 'back' || ev.what === 'versionsOk')) || (ev.kind === 'nas' && !!ev.problem?.solved);
       try {
         await sendProvider(row.type, c, { title: sender || 'WhatsOnMyNet', sender, text: `${head}${text}`, textPlain, more, body: `${text}${more ? `\n${more}` : ''}`, full: `${head}${text}${more ? `\n${more}` : ''}`, urgent, good });
       } catch (e) { throw new Error(`${row.type}: ${e.message}`); }

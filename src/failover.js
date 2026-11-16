@@ -36,6 +36,19 @@ const CODE_RE = /^WOMN1-([A-Za-z0-9_-]{43})-([A-Za-z0-9_-]{43})$/;
 const HELLO_MS = 60 * 1000;
 const SYNC_MS = 5 * 60 * 1000;
 export const DELAY_MIN = { min: 3, max: 240, default: 10 };
+// Master and standby on different program versions: a reminder once it stays so for half an hour (updating both one
+// after the other is not worth a message), again every 7 days - every day while the standby cannot take the data
+const GAP_GRACE_MS = 30 * 60 * 1000;
+const GAP_REPEAT_MS = 7 * 24 * 3600 * 1000;
+const GAP_REPEAT_SCHEMA_MS = 24 * 3600 * 1000;
+/** -1, 0, 1 for versions like 0.39.0 (anything else: null - only "different" is known then) */
+export function compareVersions(a, b) {
+  const p = (v) => { const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(String(v || '').trim()); return m ? m.slice(1).map(Number) : null; };
+  const x = p(a); const y = p(b);
+  if (!x || !y) return null;
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  return 0;
+}
 const MAX_SNAPSHOT = 4 * 1024 * 1024 * 1024;
 // Tables that stay with each installation: who is signed in here, its own log, its versions and diagnostic placeholders
 export const LOCAL_TABLES = new Set(['sessions', 'server_log', 'version_history', 'diag_alias']);
@@ -323,6 +336,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       }
       if (s.state !== 'listening') { s.state = 'listening'; setRunning(false); }
       const mine = db.pragma('user_version', { simple: true });
+      versionGap(s, hello.schema !== mine);
       if (hello.schema !== mine) {
         // different program versions: the data cannot be taken; taking over still works with the last copy
         s.syncError = `program versions differ (master ${s.masterVersion}, here ${config.version}) - update both`;
@@ -360,6 +374,35 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       notify({ kind: 'failover', what: 'takeover', master: s.address, min: Math.round((Date.now() - since) / 60000) }).catch(() => {});
     }
     save();
+  }
+
+  /**
+   * Both should always run the same version: a standby on another one may not take the data (database versions) or
+   * behaves differently when it has to take over. Told to the default channels from here - the standby is the one
+   * that hears from the master every minute - and told again when both are the same once more.
+   */
+  function versionGap(s, schema) {
+    const master = s.masterVersion || ''; const here = config.version;
+    if (master === here && !schema) {
+      if (s.gap?.notifiedAt) {
+        notify({ kind: 'failover', what: 'versionsOk', master: s.address, version: here }).catch(() => {});
+        log.info(`Failover: master and standby run the same version again (${here})`);
+      }
+      delete s.gap;
+      return;
+    }
+    // another pair (one of them was updated meanwhile): counted from now
+    const g = s.gap && s.gap.master === master && s.gap.here === here ? s.gap : { since: nowIso(), master, here };
+    g.schema = schema;
+    const now = Date.now();
+    const repeat = schema ? GAP_REPEAT_SCHEMA_MS : GAP_REPEAT_MS;
+    if (now - Date.parse(g.since) >= GAP_GRACE_MS && (!g.notifiedAt || now - Date.parse(g.notifiedAt) >= repeat || (schema && !g.notifiedSchema))) {
+      const cmp = compareVersions(master, here);
+      notify({ kind: 'failover', what: 'versions', master: s.address, masterVersion: master, here, schema, older: cmp === -1 ? 'master' : cmp === 1 ? 'standby' : '', lastSync: s.lastSync || null }).catch(() => {});
+      g.notifiedAt = nowIso(); g.notifiedSchema = schema;
+      log.warn(`Failover: master ${master}, standby ${here}${schema ? ' - the data of the master cannot be taken' : ''} - update both to the same version`);
+    }
+    s.gap = g;
   }
 
   /** End of a takeover: what happened here meanwhile is kept with it (the data are replaced by the master's next) */
@@ -436,7 +479,8 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       const s = st.standby;
       if (st.role === 'yielded') return { mode: 'yielded', since: st.yielded?.at || null };
       if (st.role !== 'standby' || !s) return { mode: null };
-      return { mode: s.state === 'active' ? 'active' : s.state === 'detached' ? 'detached' : 'standby', since: s.state === 'active' ? s.activeSince : null, lastSync: s.lastSync || null, syncError: s.syncError || '' };
+      return { mode: s.state === 'active' ? 'active' : s.state === 'detached' ? 'detached' : 'standby', since: s.state === 'active' ? s.activeSince : null, lastSync: s.lastSync || null, syncError: s.syncError || '',
+        versions: s.gap ? { master: s.gap.master, here: s.gap.here, schema: !!s.gap.schema } : null };
     },
 
     status() {
@@ -447,7 +491,8 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
         envKey: keyFromEnvironment(),
         master: st.role === 'master' ? { createdAt: st.master?.createdAt || null, peer: st.master?.peer || null } : null,
         standby: st.role === 'standby' && s ? { address: s.address, delayMin: s.delayMin, state: s.state, pairedAt: s.pairedAt, lastContact: s.lastContact || null,
-          lastSync: s.lastSync || null, syncError: s.syncError || '', lastError: s.lastError || '', activeSince: s.state === 'active' ? s.activeSince : null, masterVersion: s.masterVersion || '' } : null,
+          lastSync: s.lastSync || null, syncError: s.syncError || '', lastError: s.lastError || '', activeSince: s.state === 'active' ? s.activeSince : null, masterVersion: s.masterVersion || '',
+          versions: s.gap ? { master: s.gap.master, here: s.gap.here, schema: !!s.gap.schema, since: s.gap.since, notifiedAt: s.gap.notifiedAt || null } : null } : null,
         former: st.former ? { address: st.former.address } : null,
         yielded: st.role === 'yielded' ? st.yielded || {} : null,
         takeovers: st.takeovers || [],
