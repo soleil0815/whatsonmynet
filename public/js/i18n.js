@@ -23,6 +23,7 @@ const de = {
   'user.passwordHint': 'Mindestens 10 Zeichen.', 'user.passwordRepeat': 'Passwort wiederholen', 'user.passwordMismatch': 'Die Passwörter stimmen nicht überein.',
   'user.role': 'Rolle', 'role.admin': 'Administrator', 'role.editor': 'Bearbeiter', 'role.viewer': 'Nur lesen',
   'role.admin.hint': 'Alles, auch Einstellungen, Standorte und Benutzer', 'role.editor.hint': 'Scannen, Geräte übernehmen und pflegen', 'role.viewer.hint': 'Inventar ansehen und exportieren',
+  'switch.head': 'Aktiv', 'switch.on': 'an', 'switch.off': 'aus', 'switch.onDone': '„{name}“ eingeschaltet', 'switch.offDone': '„{name}“ ausgeschaltet',
   'user.active': 'Aktiv', 'user.inactive': 'Deaktiviert', 'user.lastLogin': 'Letzte Anmeldung',
   // dashboard
   'dash.title': 'Übersicht', 'dash.devices': 'Geräte im Inventar', 'dash.online': 'beim letzten Scan gesehen', 'dash.missing': 'nicht gesehen',
@@ -932,6 +933,7 @@ const en = {
   'user.passwordHint': 'At least 10 characters.', 'user.passwordRepeat': 'Repeat password', 'user.passwordMismatch': 'The passwords do not match.',
   'user.role': 'Role', 'role.admin': 'Administrator', 'role.editor': 'Editor', 'role.viewer': 'Read only',
   'role.admin.hint': 'Everything, including settings, locations and users', 'role.editor.hint': 'Scan, adopt and maintain devices', 'role.viewer.hint': 'View and export the inventory',
+  'switch.head': 'Active', 'switch.on': 'on', 'switch.off': 'off', 'switch.onDone': '"{name}" switched on', 'switch.offDone': '"{name}" switched off',
   'user.active': 'Active', 'user.inactive': 'Disabled', 'user.lastLogin': 'Last sign-in',
   'dash.title': 'Overview', 'dash.devices': 'devices in the inventory', 'dash.online': 'seen in the last scan', 'dash.missing': 'not seen',
   'dash.waiting': 'new devices waiting', 'dash.waitingAction': 'Review and adopt', 'dash.telematik': 'Telematik',

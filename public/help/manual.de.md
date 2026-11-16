@@ -217,6 +217,7 @@ Unter *Meldungen → Ereignisregeln* legst du fest, welche Meldungen wohin gehen
 
 ![Ereignisregeln](img/eventrules-de.png)
 
+- **Ein und aus:** Der Schalter in der Spalte *Aktiv* der Regelliste schaltet eine Regel direkt ein oder aus. Ausgeschaltet verfallen noch nicht verschickte Treffer, offene Ereignisse der Regel werden geschlossen.
 - **Fertige Regeln:** Virenfund (Defender 1116/1117), Software-Einschränkung (865-868), AppLocker (8004/8007), Benutzerkonto gesperrt (4740), Mitglied zu einer Sicherheitsgruppe hinzugefügt (4728/4732/4756), Ereignisprotokoll gelöscht (1102 Sicherheit, 104 System), neuer Dienst (7045), neue geplante Aufgabe (4698), Benutzerkonto angelegt (4720), Echtzeitschutz von Defender ausgeschaltet (5001), PowerShell: verdächtiges Skript (4104, nur Warnungen) und Fehler eines Befehls (4100), Fehler eines Geräts (Syslog), dazu gezählt: fehlgeschlagene Anmeldungen (4625) und SSH-Fehlversuche. Danach lässt sich alles ändern.
   - 4698 und 4720 schreibt Windows nur mit erweiterter Überwachung (Gruppenrichtlinie *Erweiterte Überwachungsrichtlinienkonfiguration*: *Objektzugriff → Andere Objektzugriffsereignisse* bzw. *Kontoverwaltung → Benutzerkontenverwaltung*, jeweils *Erfolg*). Die PowerShell-Regeln brauchen die Skriptblockprotokollierung (*Administrative Vorlagen → Windows-Komponenten → Windows PowerShell*).
   - Die PowerShell-Regeln sind am aussagekräftigsten, wenn die eigenen Werkzeuge still sind: Das Windows-Skript von WhatsOnMyNet erzeugt keine Warnungen 4104 und keine 4100.
@@ -576,7 +577,7 @@ Unter *Überwachung → Berichte* gehen Berichte zu festen Zeiten per E-Mail rau
 - **Geräte**: alle Geräte der gewählten Inhalte - oder nur ausgewählte, z. B. ein eigener Bericht für den Drucker im Sekretariat.
 - Drucker zeigen die **gedruckten Seiten** (gesamt und im Berichtszeitraum, z. B. „in den letzten 7 Tagen“) und - wenn der Drucker es meldet - wie viele Seiten der Toner noch reicht.
 - Die Mail ist **neutral**: kein Link, kein Programmname - nur dein Absendername, Betreff (`{kw}`, `{datum}`), Einleitung, die Geräte und dein Gruß.
-- „Vorschau“, „Test an mich“ und „Jetzt senden“ direkt in der Liste.
+- „Vorschau“, „Test an mich“ und „Jetzt senden“ direkt in der Liste; mit dem Schalter in der Spalte *Aktiv* schaltest du einen Bericht ein oder aus, ohne ihn zu öffnen.
 
 ## Benutzer und Rechte
 

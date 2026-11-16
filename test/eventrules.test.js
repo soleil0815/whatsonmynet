@@ -201,6 +201,12 @@ test('API: editors manage rules, viewers do not; "test" shows what a filter woul
     assert.equal(ok.status, 201);
     assert.equal((await call('PUT', `/api/event-rules/${ok.data.id}`, { enabled: false })).data.enabled, false);
     assert.equal((await call('GET', '/api/event-rules')).data[0].name, 'Virenfund');
+    // on/off from the list: editors only, nothing else of the rule changes
+    assert.equal((await call('POST', `/api/event-rules/${ok.data.id}/enabled`, { enabled: true }, { who: 'viewer' })).status, 403);
+    const on = await call('POST', `/api/event-rules/${ok.data.id}/enabled`, { enabled: true });
+    assert.deepEqual([on.status, on.data.enabled, on.data.match.eventIds], [200, true, '1116, 1117']);
+    assert.equal((await call('POST', `/api/event-rules/${ok.data.id}/enabled`, {})).data.enabled, false, 'only true switches on');
+    assert.equal((await call('POST', '/api/event-rules/9999/enabled', { enabled: true })).status, 404);
     assert.equal((await call('DELETE', `/api/event-rules/${ok.data.id}`)).status, 200);
     // expressions: checked for shape and for speed before saving (and before a test)
     const rev = (reversed) => [...reversed].reverse().join(''); // deliberately bad expressions, kept reversed (test data)
@@ -223,6 +229,6 @@ test('API: editors manage rules, viewers do not; "test" shows what a filter woul
     assert.equal((await call('POST', `/api/events/open/${open.data.list[0].id}/close`)).status, 200);
     assert.equal((await call('GET', '/api/events/open')).data.open, 0);
     ctx.eventRules.stop();
-    assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM audit WHERE action LIKE 'eventrule.%'").get().n, 4);
+    assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM audit WHERE action LIKE 'eventrule.%'").get().n, 6, 'also the two switches');
   } finally { ctx.events.stop(); await app.close(); }
 });

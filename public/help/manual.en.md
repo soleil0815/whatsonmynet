@@ -217,6 +217,7 @@ Under *Messages → Event rules* you set which messages go where - **apart from 
 
 ![Event rules](img/eventrules-en.png)
 
+- **On and off:** the switch in the *Active* column of the rule list turns a rule on or off right there. Switched off, matches not yet sent are dropped and open events of the rule are closed.
 - **Ready-made rules:** virus found (Defender 1116/1117), software restriction (865-868), AppLocker (8004/8007), user account locked (4740), member added to a security group (4728/4732/4756), event log cleared (1102 security, 104 system), new service (7045), new scheduled task (4698), user account created (4720), Defender real-time protection turned off (5001), PowerShell: suspicious script (4104, warnings only) and error of a command (4100), errors of a device (syslog), and counted: failed logons (4625) and SSH failures. Everything can be changed afterwards.
   - Windows writes 4698 and 4720 only with advanced auditing (group policy *Advanced Audit Policy Configuration*: *Object Access → Other Object Access Events* and *Account Management → User Account Management*, *Success* each). The PowerShell rules need script block logging (*Administrative Templates → Windows Components → Windows PowerShell*).
   - The PowerShell rules say the most when your own tools are quiet: the Windows script of WhatsOnMyNet causes no warnings 4104 and no 4100.
@@ -576,7 +577,7 @@ Under *Monitoring → Reports* reports go out by e-mail at set times - e.g. the 
 - **Devices**: all devices of the chosen content - or only chosen ones, e.g. a report of its own for the printer in the front office.
 - Printers show the **pages printed** (in total and in the report period, e.g. "in the last 7 days") and - if the printer reports it - how many pages the toner still lasts.
 - The mail is **neutral**: no link, no program name - only your sender name, subject (`{week}`, `{date}`), introduction, the devices and your closing.
-- "Preview", "Test to me" and "Send now" right in the list.
+- "Preview", "Test to me" and "Send now" right in the list; the switch in the *Active* column turns a report on or off without opening it.
 
 ## Users and rights
 

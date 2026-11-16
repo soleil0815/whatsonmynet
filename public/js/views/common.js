@@ -2,6 +2,7 @@
 import { h } from '../dom.js';
 import { t } from '../i18n.js';
 import { icon } from '../icons.js';
+import { fail } from '../app.js';
 
 export const TI = new Set(['ti_connector', 'ti_terminal']);
 
@@ -42,6 +43,24 @@ export function typeOptions(types) {
 
 export function btn(label, attrs = {}, ico = null) {
   return h('button', { type: 'button', class: 'btn', ...attrs }, ico ? h('span', { html: icon(ico) }) : null, label);
+}
+
+/**
+ * On/off switch for a list row: shows the state at a glance and changes it with one click. onChange(on) saves and
+ * throws on failure - then the switch goes back. label names what is switched (for screen readers).
+ */
+export function onOffSwitch({ on, label, onChange, disabled = false }) {
+  const text = h('span', { class: 'switch-text' });
+  const b = h('button', { type: 'button', class: 'switch', role: 'switch', disabled, 'aria-label': label });
+  const show = (v) => { b.setAttribute('aria-checked', String(v)); text.textContent = t(v ? 'switch.on' : 'switch.off'); };
+  show(on);
+  b.addEventListener('click', async () => {
+    const next = b.getAttribute('aria-checked') !== 'true';
+    show(next); b.disabled = true;
+    try { await onChange(next); } catch (e) { show(!next); fail(e); }
+    b.disabled = disabled;
+  });
+  return h('span', { class: 'switch-wrap' }, b, text);
 }
 
 /** Read named fields of a form into an object (checkboxes → boolean) */
