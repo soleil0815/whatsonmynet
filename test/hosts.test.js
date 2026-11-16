@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import { keyPin } from '../src/tls.js';
 import { memoryDb, tmp, startApp } from './helpers.js';
 import { createHosts, cleanReport } from '../src/hosts.js';
 import { hostScript, uninstallScript } from '../src/hostscripts.js';
@@ -247,6 +249,58 @@ test('Windows setup replaces an older read-only copy and leaves the new one writ
   assert.ok(reset > acl.findIndex((l) => l.includes('/grant:r')), 'existing files take the folder rights again');
   assert.deepEqual(acl.filter((l) => l.includes('/remove:g')).map((l) => l.split(' ').find((w) => w.startsWith('*S-'))), ['*S-1-5-21-1000-2000-3000-1104'],
     'only SYSTEM and Administrators keep rights on the folder');
+});
+
+// PowerShell logs every script block containing one of its "suspicious" words (Add-Type, Bypass, Cryptography …) as
+// warning 4104 - for a script that runs every 5 minutes that is a flood of false alarms on every machine
+// (the file is only parsed, never run: its path goes in through the environment)
+const suspicious = (file) => execFileSync(pwsh, ['-NoProfile', '-NonInteractive', '-Command',
+  "$m = [scriptblock].GetMethod('CheckSuspiciousContent', [Reflection.BindingFlags]'NonPublic,Static'); if (-not $m) { 'n/a' } else { [string]$m.Invoke($null, @([scriptblock]::Create((Get-Content -Raw -LiteralPath $env:WOMN_CHECK_FILE)).Ast)) }"],
+  { env: { ...process.env, WOMN_CHECK_FILE: file } }).toString().trim();
+test('Windows scripts contain nothing PowerShell logs as suspicious (warning 4104 on every run)', { skip: !pwsh && 'pwsh missing' }, () => {
+  const dir = fs.mkdtempSync(path.join(tmp, 'susp-'));
+  const pin = { sha1: 'A1B2C3', key: '04ABCDEF' };
+  for (const kind of ['windows', 'hyperv']) {
+    const s = hostScript(kind, { url: 'https://womn:8443/api/hosts/push', token: 'tok', pin });
+    for (const [name, text] of [[s.file, s.text], [s.uninstall.file, s.uninstall.text]]) {
+      const f = path.join(dir, name);
+      fs.writeFileSync(f, text);
+      const r = suspicious(f);
+      if (r === 'n/a') return;
+      assert.equal(r, '', `${name} contains "${r}"`);
+    }
+  }
+  // the check itself works: the old pinning with Add-Type would be found
+  const old = path.join(dir, 'old.ps1');
+  fs.writeFileSync(old, 'Add-Type -TypeDefinition "public class X {}"');
+  assert.equal(suspicious(old), 'Add-Type');
+});
+
+test('Windows script pins the self-signed certificate by its key or fingerprint - without compiled code', { skip: !pwsh && 'pwsh missing' }, () => {
+  const dir = fs.mkdtempSync(path.join(tmp, 'winpin-'));
+  const cert = (name, key) => {
+    if (!fs.existsSync(path.join(dir, key))) execFileSync('openssl', ['genpkey', '-algorithm', 'EC', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-out', key], { cwd: dir, stdio: 'pipe' });
+    execFileSync('openssl', ['req', '-x509', '-key', key, '-out', name, '-days', '2', '-subj', '/CN=womn'], { cwd: dir, stdio: 'pipe' });
+    return path.join(dir, name);
+  };
+  const a = cert('a.pem', 'k1');
+  const renewed = cert('b.pem', 'k1');       // renewed with the same key
+  const other = cert('c.pem', 'k2');         // another key: an impostor
+  const x = new crypto.X509Certificate(fs.readFileSync(a));
+  const ask = (pin) => {
+    const s = hostScript('windows', { url: 'https://womn:8443/api/hosts/push', token: 'tok', pin });
+    const home = path.join(dir, `h${Math.random().toString(36).slice(2)}`, 'WhatsOnMyNet');
+    fs.mkdirSync(home, { recursive: true });
+    const file = path.join(home, s.file);
+    fs.writeFileSync(file, s.text);
+    const res = path.join(dir, 'pin.txt');
+    execFileSync(pwsh, ['-NoProfile', '-NonInteractive', '-File', path.resolve('test/fixtures/winmock.ps1'), '-Script', file],
+      { env: { ...process.env, ProgramData: path.dirname(home), WOMN_BODY: path.join(dir, 'body.json'), WOMN_CERTS: [a, renewed, other].join(';'), WOMN_PINRESULT: res, COMPUTERNAME: 'SRV-DC01' }, timeout: 60000 });
+    return fs.readFileSync(res, 'utf8').trim();
+  };
+  assert.equal(ask({ sha1: x.fingerprint.replace(/:/g, ''), key: keyPin(x.publicKey) }), 'True,True,False', 'key pin: also the renewed certificate, never another key');
+  assert.equal(ask({ sha1: x.fingerprint.replace(/:/g, ''), key: '' }), 'True,False,False', 'fingerprint only: exactly this certificate');
+  assert.equal(ask({}), 'none,none,none', 'public CA: no own check, Windows checks as usual');
 });
 
 test('Windows scripts: set up / remove the scheduled task, also the one of version 0.6.0 (Hyper-V)', () => {
