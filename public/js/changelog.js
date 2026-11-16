@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Ereignis-Regeln: neue fertige Regeln - neue geplante Aufgabe (4698), Benutzerkonto angelegt (4720), Echtzeitschutz von Defender ausgeschaltet (5001), PowerShell: verdächtiges Skript (4104, nur Warnungen) und Fehler eines Befehls (4100); „Protokoll gelöscht“ erkennt jetzt auch das Systemprotokoll (104). Im Handbuch steht, welche Überwachung Windows dafür braucht',
+  ], en: [
+    'Event rules: new ready-made rules - new scheduled task (4698), user account created (4720), Defender real-time protection turned off (5001), PowerShell: suspicious script (4104, warnings only) and error of a command (4100); "log cleared" now also covers the system log (104). The manual says which auditing Windows needs for them',
+  ] },
+  { version: '0.33.5', date: '2026-11-16', de: [
     'Windows-Skript der Rechner: kein „Systemfehler“ (Ereignis 4100, Warnung) mehr bei jedem Lauf - die Ursache war „Select-Object -First“ (erste Netzwerkadresse, Defender-Status, die ersten 10 Ereignisse): Windows PowerShell bricht damit die Abfrage davor ab und protokolliert das als Systemfehler. Die ersten Einträge werden jetzt per Index genommen, die Werte bleiben gleich. Wirkt nach Neues Skript und erneutem Verteilen',
   ], en: [
     'Windows script of the machines: no more "System error" (event 4100, warning) on every run - the cause was "Select-Object -First" (first network address, Defender status, the first 10 events): Windows PowerShell stops the query before it that way and logs it as system error. The first entries are now taken by index, the values stay the same. Takes effect after New script and distributing it again',
