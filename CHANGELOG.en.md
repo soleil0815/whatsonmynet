@@ -6,7 +6,11 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
-- Windows and Hyper-V script: without progress bar - under the scheduled task there is no console window, Windows PowerShell then logged "System error" (event 4100, warning) on every run. Takes effect after New script and distributing it again
+- Windows script of the machines: no more "System error" (event 4100, warning) on every run - the cause was "Select-Object -First" (first network address, Defender status, the first 10 events): Windows PowerShell stops the query before it that way and logs it as system error. The first entries are now taken by index, the values stay the same. Takes effect after New script and distributing it again
+
+## 0.33.4 - 2026-11-16
+
+- Windows and Hyper-V script: no progress bar when reporting to WhatsOnMyNet (under the scheduled task there is no window for it)
 
 ## 0.33.3 - 2026-11-16
 

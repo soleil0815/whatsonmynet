@@ -6,7 +6,11 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
-- Windows- und Hyper-V-Skript: ohne Fortschrittsanzeige - unter der geplanten Aufgabe gibt es kein Konsolenfenster, Windows PowerShell protokollierte dann bei jedem Lauf „Systemfehler“ (Ereignis 4100, Warnung). Wirkt nach Neues Skript und erneutem Verteilen
+- Windows-Skript der Rechner: kein „Systemfehler“ (Ereignis 4100, Warnung) mehr bei jedem Lauf - die Ursache war „Select-Object -First“ (erste Netzwerkadresse, Defender-Status, die ersten 10 Ereignisse): Windows PowerShell bricht damit die Abfrage davor ab und protokolliert das als Systemfehler. Die ersten Einträge werden jetzt per Index genommen, die Werte bleiben gleich. Wirkt nach Neues Skript und erneutem Verteilen
+
+## 0.33.4 - 2026-11-16
+
+- Windows- und Hyper-V-Skript: ohne Fortschrittsanzeige bei der Meldung an WhatsOnMyNet (unter der geplanten Aufgabe gibt es kein Fenster dafür)
 
 ## 0.33.3 - 2026-11-16
 

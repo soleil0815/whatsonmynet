@@ -24,7 +24,7 @@ $services = @(Get-CimInstance Win32_Service -Filter "StartMode='Auto'" | ForEach
 # UPS on USB: Windows sees it like a battery (BatteryStatus 1 = discharging, 4/5 = low/critical)
 $ups = $null
 try {
-  $bat = @(Get-CimInstance Win32_Battery) | Select-Object -First 1
+  $bat = @(Get-CimInstance Win32_Battery)[0]
   if ($bat) {
     $rt = [int64]$bat.EstimatedRunTime
     $ups = @{ status = $(if (@(1, 4, 5) -contains [int]$bat.BatteryStatus) { 'OB' } else { 'OL' }) + $(if (@(4, 5) -contains [int]$bat.BatteryStatus) { ' LB' } else { '' })
@@ -33,6 +33,8 @@ try {
 } catch { $ups = $null }
 # Every part on its own: what this Windows cannot tell (older version, role missing) is simply left out
 function Try-Get([scriptblock]$Block) { try { & $Block } catch { $null } }
+# The first entries are taken by index, never with Select-Object -First: it stops the command before it with an
+# exception that Windows PowerShell logs as "System error" (event 4100, warning) - several times per run
 # Network cards, disks, Defender and firewall straight from their WMI classes - not through Get-NetAdapter,
 # Get-PhysicalDisk, Get-MpComputerStatus or Get-NetFirewallProfile: those modules are generated anew in every run, and
 # PowerShell script block logging writes each of them as a "suspicious" event 4104 (some 70 per run)
@@ -61,7 +63,7 @@ $hw = Try-Get {
       vendor = ([string]$_.Manufacturer).Trim(); part = ([string]$_.PartNumber).Trim() } })
     # physical cards (as Get-NetAdapter -Physical: with a connector); the address in use, else the burnt-in one
     nics = @(Try-Get { Get-Cim 'root/StandardCimv2' 'MSFT_NetAdapter' 'ConnectorPresent=TRUE' | ForEach-Object {
-      $mac = Format-Mac ([string](@($_.NetworkAddresses) | Where-Object { $_ } | Select-Object -First 1)); if (-not $mac) { $mac = Format-Mac ([string]$_.PermanentAddress) }
+      $mac = Format-Mac ([string]@(@($_.NetworkAddresses) | Where-Object { $_ })[0]); if (-not $mac) { $mac = Format-Mac ([string]$_.PermanentAddress) }
       @{ name = [string]$_.Name; desc = [string]$_.InterfaceDescription; mac = $mac; speed = [int64]$_.Speed; up = ([int]$_.InterfaceOperationalStatus -eq 1) } } }) }
 }
 
@@ -84,9 +86,9 @@ $updates = @{ pending = $(if ($upd) { $upd.pending }); security = $(if ($upd) { 
 
 # Virus protection: Defender, on client Windows also another product registered in the Security Center
 $av = Try-Get {
-  $m = Try-Get { Get-Cim 'root/Microsoft/Windows/Defender' 'MSFT_MpComputerStatus' | Select-Object -First 1 }
+  $m = Try-Get { @(Get-Cim 'root/Microsoft/Windows/Defender' 'MSFT_MpComputerStatus')[0] }
   $sc = @(Try-Get { Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName AntiVirusProduct })
-  $other = $sc | Where-Object { $_.displayName -notmatch 'Defender' -and ([int]$_.productState -band 0x1000) } | Select-Object -First 1
+  $other = @($sc | Where-Object { $_.displayName -notmatch 'Defender' -and ([int]$_.productState -band 0x1000) })[0]
   if ($m -and $m.AntivirusEnabled -and $m.RealTimeProtectionEnabled) {
     @{ name = 'Microsoft Defender'; enabled = $true; realtime = $true; upToDate = ([int]$m.AntivirusSignatureAge -le 3); sigAge = [int]$m.AntivirusSignatureAge }
   } elseif ($other) {
@@ -108,12 +110,12 @@ $fw = Try-Get {
 $events = Try-Get {
   $all = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1, 2; StartTime = (Get-Date).AddHours(-24) } -MaxEvents 300 -ErrorAction SilentlyContinue)
   @{ hours = 24; critical = @($all | Where-Object { $_.Level -eq 1 }).Count; errors = @($all | Where-Object { $_.Level -eq 2 }).Count
-    items = @($all | Select-Object -First 10 | ForEach-Object { @{ at = $_.TimeCreated.ToUniversalTime().ToString('o'); level = $(if ($_.Level -eq 1) { 'critical' } else { 'error' })
+    items = @($all[0..9] | ForEach-Object { @{ at = $_.TimeCreated.ToUniversalTime().ToString('o'); level = $(if ($_.Level -eq 1) { 'critical' } else { 'error' })
       source = [string]$_.ProviderName; id = [int]$_.Id; message = ([string]$_.Message -split "`n")[0].Trim() } }) }
 }
 
 # Certificates of the machine (store "My"): IIS, RDP gateway, Exchange … - the expired ones only for 30 days
-$certs = @(Try-Get { Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.NotAfter -gt (Get-Date).AddDays(-30) } | Select-Object -First 50 | ForEach-Object {
+$certs = @(Try-Get { @(Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.NotAfter -gt (Get-Date).AddDays(-30) })[0..49] | ForEach-Object {
   @{ subject = [string]$_.Subject; issuer = [string]$_.Issuer; name = [string]$_.FriendlyName; notAfter = $_.NotAfter.ToUniversalTime().ToString('o'); thumb = [string]$_.Thumbprint } } })
 
 # Own checks: every .ps1, .cmd or .bat in the checks folder prints lines in the Checkmk "local check" format
@@ -140,7 +142,7 @@ function Check-Entry($Name, $Text, $File) { @{ name = $Name; status = 3; text = 
 if (Test-Path -LiteralPath $ChkDir) {
   if (-not (Test-Safe $ChkDir)) { $checks = @(Check-Entry '_checks' "folder $ChkDir may be changed by others - checks not run" '') }
   else {
-    foreach ($f in @(Get-ChildItem -LiteralPath $ChkDir -File | Where-Object { @('.ps1', '.cmd', '.bat') -contains $_.Extension.ToLower() } | Sort-Object Name | Select-Object -First 50)) {
+    foreach ($f in @(@(Get-ChildItem -LiteralPath $ChkDir -File | Where-Object { @('.ps1', '.cmd', '.bat') -contains $_.Extension.ToLower() } | Sort-Object Name)[0..49])) {
       if (-not (Test-Safe $f.FullName)) { $checks += Check-Entry $f.Name 'owner or rights not safe - not run (owner must be Administrators)' $f.Name; continue }
       $p = New-Object System.Diagnostics.Process
       # A check of the administrators (owner and rights checked above) runs under RemoteSigned: a download mark is
