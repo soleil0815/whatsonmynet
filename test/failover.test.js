@@ -225,7 +225,7 @@ test('master and standby on different versions: a reminder after half an hour, a
     await B.ctx.failover.tick();
     assert.equal(sent.length, 1);
     assert.deepEqual([sent[0].kind, sent[0].what, sent[0].older, sent[0].schema], ['failover', 'versions', 'standby', false]);
-    assert.match(eventText(sent[0], 'de'), new RegExp(`Version 99\\.0\\.0, dieses System \\(Standby\\) mit ${here.replace(/\./g, '\\.')}\\. Bitte diesen Standby auf 99\\.0\\.0 aktualisieren`));
+    assert.ok(eventText(sent[0], 'de').includes(`Version 99.0.0, dieses System (Standby) mit ${here}. Bitte diesen Standby auf 99.0.0 aktualisieren`), eventText(sent[0], 'de'));
     assert.match(eventText(sent[0], 'en'), /Please update this standby to 99\.0\.0/);
     // not every minute
     await B.ctx.failover.tick();
@@ -243,7 +243,7 @@ test('master and standby on different versions: a reminder after half an hour, a
     st().gap.since = new Date(Date.now() - 31 * 60000).toISOString();
     await B.ctx.failover.tick();
     assert.equal(sent.at(-1).older, 'master');
-    assert.match(eventText(sent.at(-1), 'de'), new RegExp(`Bitte den Master auf ${here.replace(/\./g, '\\.')} aktualisieren`));
+    assert.ok(eventText(sent.at(-1), 'de').includes(`Bitte den Master auf ${here} aktualisieren`));
     // both the same again: said once, the note goes
     const n = sent.length;
     helloOverride = null;
