@@ -5,8 +5,23 @@ param([string]$Script)
 $ErrorActionPreference = 'Stop'
 $o = { param($h) [pscustomobject]$h }
 
+# The namespaces and classes of this (server) Windows: no Security Center. Asking for anything else throws, as WMI does
+# ("Invalid namespace" / "Invalid class") - and Windows would log it as event 4100, so the script must look first.
+$CimNs = @('root', 'root/cimv2', 'root/StandardCimv2', 'root/Microsoft', 'root/Microsoft/Windows', 'root/Microsoft/Windows/Storage', 'root/Microsoft/Windows/Defender')
+$CimClasses = @('MSFT_NetAdapter', 'MSFT_NetFirewallProfile', 'MSFT_PhysicalDisk', 'MSFT_MpComputerStatus')
 function Get-CimInstance {
-  param([Parameter(Position = 0)][string]$ClassName, [string]$Filter, [string]$Namespace)
+  param([Parameter(Position = 0)][string]$ClassName, [string]$Filter, [string]$Namespace, [string]$Query)
+  if ($Namespace -and $CimNs -notcontains $Namespace) { throw "Invalid namespace $Namespace" }
+  if ($ClassName -eq '__NAMESPACE') {
+    $n = if ($Filter -match "^Name='(.+)'$") { $Matches[1] } else { throw "filter $Filter" }
+    if ($CimNs -contains "$Namespace/$n") { & $o @{ Name = $n } }
+    return
+  }
+  if ($Query) {
+    if ($Query -notmatch "^SELECT \* FROM meta_class WHERE __CLASS = '(.+)'$") { throw "query $Query" }
+    if ($CimClasses -contains $Matches[1] -or $Matches[1] -like 'Win32_*') { & $o @{ CimClassName = $Matches[1] } }
+    return
+  }
   switch ($ClassName) {
     'Win32_OperatingSystem' { & $o @{ Caption = 'Microsoft Windows Server 2022 Standard'; Version = '10.0.20348'; TotalVisibleMemorySize = 33554432; FreePhysicalMemory = 8388608; LastBootUpTime = (Get-Date).AddDays(-3) } }
     'Win32_Processor' { foreach ($i in 0, 1) { & $o @{ LoadPercentage = 12; Name = 'Intel(R) Xeon(R) Silver 4210R CPU @ 2.40GHz  '; NumberOfCores = 10; NumberOfLogicalProcessors = 20 } } }

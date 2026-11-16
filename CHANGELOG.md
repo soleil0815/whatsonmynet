@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Windows-Skript auf Windows Server: Es fragte das Sicherheitscenter ab, das es nur auf Client-Windows gibt (bei anderem Virenschutz fehlt auch der Defender-Bereich) - der abgefangene Fehler landete trotzdem bei jedem Lauf als Warnung 4100 „Ungültiger Namespace“ im PowerShell-Protokoll. Jetzt schaut das Skript erst nach, ob es den Bereich gibt. Der automatische Test läuft jetzt auf Windows Server 2022 und 2025 und prüft auch fehlende Bereiche
+
+## 0.39.0 - 2026-11-16
+
 - Meldungen: Die Suche nimmt mehrere Begriffe - alle müssen vorkommen, egal in welcher Reihenfolge und in welchem Feld: „PC-0001 4104 svc-pocketknife“ findet die Ereignisse 4104 von PC-0001 mit svc-pocketknife im Text. „In Anführungszeichen“ steht eine feste Wortfolge, ein Minus schließt aus („4625 -svc-backup“). Bisher galten mehrere Wörter als eine Wortfolge
 - Windows-Skript: Beim ersten Lauf (und bis zur ersten Suche nach Windows-Updates) schrieb es eine Warnung 4100 ins PowerShell-Protokoll, weil es eine noch nicht vorhandene Statusdatei lesen wollte - behoben. Das Skript wird jetzt bei jeder Änderung automatisch auf einem echten Windows getestet: einmal von Hand eingerichtet, dann als geplante Aufgabe unter SYSTEM, mit eingeschalteter Skriptblock-Protokollierung - jede Warnung oder jeder Fehler im PowerShell-Protokoll lässt den Test scheitern
 - Ausfallsicherung: Laufen Master und Standby eine halbe Stunde lang mit unterschiedlichen Versionen, schickt der Standby eine Erinnerung an die Standard-Kanäle - mit dem Hinweis, welches System auf welche Version zu bringen ist (alle 7 Tage wieder, solange es so bleibt). Kann der Standby die Daten wegen der Datenbankversion nicht mehr übernehmen, kommt die Meldung sofort, dringend und täglich. Sind beide wieder gleich, meldet er das einmal. Der Unterschied steht auch unter Einstellungen → Ausfallsicherung, auf dem Standby zusätzlich in der Leiste oben
