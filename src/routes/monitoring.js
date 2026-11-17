@@ -239,9 +239,9 @@ export function createMonitoringApi(ctx) {
     && !(src && x.match.source && !src.toLowerCase().includes(String(x.match.source).toLowerCase()))).map((x) => x.name);
   const denyList = () => parseDenyList(String(settings.get('events.winDeny') || '')) || { ranges: [], pairs: [] };
   function noiseView(days) {
-    const n = ctx.events.noise({ days });
     const deny = denyList();
-    return { ...n, events: n.events.map((e) => ({ ...e, rules: rulesFor(e.id, e.app), keep: inList(WIN_KEEP, e.id), usual: inList(WIN_NOISE, e.id), denied: denies(deny, e.id, e.app) })) };
+    const n = ctx.events.noise({ days, denied: (id, app) => denies(deny, id, app) });
+    return { ...n, events: n.events.map((e) => ({ ...e, rules: rulesFor(e.id, e.app), keep: inList(WIN_KEEP, e.id), usual: inList(WIN_NOISE, e.id) })) };
   }
   r.get('/events/noise', editor, unscoped, (req, res) => res.json(noiseView(Number(req.query?.days) || 7)));
   // the same as a question for an AI chat - names, addresses, accounts and domains replaced by placeholders

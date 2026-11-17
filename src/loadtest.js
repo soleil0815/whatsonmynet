@@ -66,6 +66,8 @@ export async function loadTest({ dataDir, out = (s) => process.stdout.write(`${s
   const { openDatabase } = await import('./db.js');
   const { createSettings } = await import('./settings.js');
   const { createEvents, FLOOD } = await import('./events.js');
+  // the log lines of the receiver (listening, search index …) would break up the table
+  (await import('./lib/log.js')).setPrintLevel('warn');
   try {
     const st = fs.statfsSync(dataDir);
     if (st.bavail * st.bsize < NEED_FREE) { out(`Not enough free space in ${dataDir} (needs 3 GB for the test file) - no test.`); return null; }

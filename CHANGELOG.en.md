@@ -6,6 +6,12 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- What takes the space?: events left out already are no longer at the top but folded at the end - with the day their older messages are gone. At the top it says how much of the amount a day is only such leftovers; the list shows the 30 biggest one can still act on instead
+- What takes the space?: the button "Do not keep" was cut off at the right in a narrower window - the window is wider, the columns fit
+- Load test: shows only its table, without log lines in between
+
+## 0.43.0 - 2026-11-17
+
 - Messages for large networks: new messages are written in batches - many times faster (on a small server with an SSD more than 10,000 a second). The flood protection now takes 100 instead of 20 a second per sender and 3,000 instead of 300 in all (changeable with WOMN_MESSAGES_PER_SECOND); over TCP and TLS nothing is lost any more - the sender waits a moment instead of messages being dropped. Dropped ones (UDP) are shown at the top of the page
 - By sender: a page at a time (100, then "Show 100 more"), with quick filters and their numbers - errors, warnings, silent for 24 hours, with a filter of its own -, device type from the inventory and order (newest message, most messages, name)
 - What takes the space?: "from … computers" is counted exactly, with thousands too (before: estimated from the newest 500 messages); below the 15 biggest senders stands what all others take together, and with devices in the inventory the split by device type

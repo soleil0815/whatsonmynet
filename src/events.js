@@ -938,7 +938,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
    * its share, how much a day and roughly how much space over the days kept - to find what need not be collected at all.
    * From the counts; an example and the senders of an event from its newest messages (through the event index).
    */
-  function noise({ days = 7, top = 30 } = {}) {
+  function noise({ days = 7, top = 30, denied = () => false } = {}) {
     const d = [1, 7, 30].includes(Number(days)) ? Number(days) : 7;
     const sinceMs = Date.now() - d * 86400000;
     const perSender = [...countSince(sinceMs).values()];
@@ -955,12 +955,13 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const avgAll = db.prepare(`SELECT AVG(${LEN}) FROM (SELECT * FROM events_in ORDER BY id DESC LIMIT 2000)`).pluck().get() || 1;
     const keepDays = st.keepDays;
     const names = new Map(db.prepare('SELECT source_ip, host FROM event_senders').all().map((r) => [r.source_ip, r.host]));
-    const newest = db.prepare(`SELECT source_ip, host, app, channel, severity, text, ${LEN} len FROM events_in WHERE event_id = ? ORDER BY id DESC LIMIT 500`);
+    const newest = db.prepare(`SELECT at, source_ip, host, app, channel, severity, text, ${LEN} len FROM events_in WHERE event_id = ? ORDER BY id DESC LIMIT 500`);
     // One number can come from several sources (1 of Ntfs, 1 of Sysmon): such a number is split by source - counted
     // exactly when it is not too many messages, else in the share of its newest 500 (marked as estimated)
     const bySource = db.prepare('SELECT COALESCE(app, \'\') app, COUNT(*) n FROM events_in WHERE event_id = ? AND at >= ? GROUP BY 1');
     const entries = [];
-    for (const [id, n] of [...ids].filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]).slice(0, top)) {
+    // (more than "top": events left out already go to a list of their own and must not crowd out the others)
+    for (const [id, n] of [...ids].filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]).slice(0, top + 15)) {
       const rows = newest.all(id);
       const apps = new Map();
       for (const r of rows) { const k = r.app || ''; if (!apps.has(k)) apps.set(k, []); apps.get(k).push(r); }
@@ -979,7 +980,10 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const fromCountsApp = db.prepare(`SELECT COUNT(*) FROM (SELECT source_ip FROM events_day_src WHERE event_id = ? AND app = ? AND day >= ?
       UNION SELECT source_ip FROM events_in NOT INDEXED WHERE id > ? AND event_id = ? AND COALESCE(app, '') = ?)`).pluck();
     const splitIds = new Set(entries.map((e) => e.id).filter((id, i, all) => all.indexOf(id) !== i));
-    const events = entries.sort((a, b) => b.n - a.n).slice(0, top).map(({ id, app, n, rows, estimated }) => {
+    // Left out already (the list "never take"): only older messages, gone after the days kept - at the end, apart
+    for (const e of entries) e.denied = !!denied(e.id, e.app);
+    const chosen = [...entries.filter((e) => !e.denied).sort((a, b) => b.n - a.n).slice(0, top), ...entries.filter((e) => e.denied).sort((a, b) => b.n - a.n).slice(0, 10)];
+    const events = chosen.map(({ id, app, n, rows, estimated, denied: off }) => {
       const ex = rows[0] || {};
       const who = new Map();
       for (const r of rows) { const k = r.host || names.get(r.source_ip) || r.source_ip; who.set(k, (who.get(k) || 0) + 1); }
@@ -991,7 +995,9 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
         bytes: Math.round(perDay * keepDays * perRow * (avg / avgAll)),
         worst: rows.length ? Math.min(...rows.map((r) => r.severity)) : null,
         senders: [...who].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name), moreSenders: Math.max(0, computers - Math.min(3, who.size)), computers,
-        example: { host: ex.host || names.get(ex.source_ip) || ex.source_ip || '', app: ex.app || app || '', channel: ex.channel || '', text: String(ex.text || '').slice(0, 300) } };
+        example: { host: ex.host || names.get(ex.source_ip) || ex.source_ip || '', app: ex.app || app || '', channel: ex.channel || '', text: String(ex.text || '').slice(0, 300) },
+        // left out: the newest stored one leaves after the days kept (or earlier, when the space runs short)
+        denied: off, goneBy: off && rows.length ? new Date(Math.max(...rows.map((r) => Date.parse(r.at))) + keepDays * 86400000).toISOString() : null };
     });
     const filters = new Map(db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((r) => [r.source_ip, r.min_severity]));
     const busy = perSender.filter((r) => r.n > 0).sort((a, b) => b.n - a.n);
@@ -1009,7 +1015,9 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     for (const r of busy) { const k = typeOf.get(r.source_ip) || '-'; const x = g.get(k) || { type: k, senders: 0, n: 0 }; x.senders++; x.n += r.n; g.set(k, x); }
     const groups = [...g.values()].sort((a, b) => b.n - a.n).map((x) => ({ ...x, perDay: Math.round(x.n / d), share: total ? Math.round((x.n / total) * 1000) / 10 : 0,
       bytes: Math.round((x.n / d) * keepDays * perRow) }));
-    return { days: d, total, perDay: Math.round(total / d), keepDays, used: st.used, events, senders, senderCount: busy.length, rest, groups };
+    // what of the period comes from events left out already (stored before they were): goes by itself
+    const deniedN = entries.filter((e) => e.denied).reduce((x, e) => x + e.n, 0);
+    return { days: d, total, perDay: Math.round(total / d), deniedPerDay: Math.round(deniedN / d), keepDays, used: st.used, events, senders, senderCount: busy.length, rest, groups };
   }
 
   // How the space goes: for the page (cached a minute - counting a few million rows is not free; once new messages
