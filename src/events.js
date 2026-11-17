@@ -337,9 +337,11 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   }
   let stats = null; let statsAt = 0; let receivedSince = 0; // the space figures for the page (see storage)
   // one row per sender: the newest message, the computer name it gave (a name only fills in, never empties it)
-  const senderUp = db.prepare(`INSERT INTO event_senders(source_ip, device_id, host, first_at, last_at, last_id) VALUES(?,?,?,?,?,?)
+  // and how it sends: the way of the newest message, when it last came over UDP
+  const senderUp = db.prepare(`INSERT INTO event_senders(source_ip, device_id, host, first_at, last_at, last_id, transport, udp_at) VALUES(?,?,?,?,?,?,?,?)
     ON CONFLICT(source_ip) DO UPDATE SET device_id=excluded.device_id, host=CASE WHEN excluded.host <> '' THEN excluded.host ELSE event_senders.host END,
-    last_at=excluded.last_at, last_id=excluded.last_id`);
+    last_at=excluded.last_at, last_id=excluded.last_id, transport=CASE WHEN excluded.transport <> '' THEN excluded.transport ELSE event_senders.transport END,
+    udp_at=COALESCE(excluded.udp_at, event_senders.udp_at)`);
   const insert = db.prepare('INSERT INTO events_in(at, kind, source_ip, device_id, severity, facility, host, app, oid, text, event_id, channel, account) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
   let index = null; let indexAt = 0;
   // ip → inventory device (refreshed every minute; a new device is matched soon after the scan took it)
@@ -371,7 +373,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   };
 
   /** The checks of one message → the row to write, or null (not taken). rated: the flood check was done already */
-  function accept(kind, ip, ev, at, rated = false) {
+  function accept(kind, ip, ev, at, rated = false, transport = '') {
     const addr = String(ip || '').replace(/^::ffff:/, '');
     if (!rated && !allowed(addr)) return null;
     const device = deviceOf(addr);
@@ -381,7 +383,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     if (!sevWanted(addr, sev)) { filtered++; droppedBy.set(addr, (droppedBy.get(addr) || 0) + 1); return null; }
     const row = { at: at.toISOString(), kind, source_ip: addr, device_id: device, severity: Math.max(0, Math.min(7, Number(ev.severity) || 0)), facility: ev.facility ?? null,
       host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, TEXT_MAX) || '(empty)',
-      event_id: Number.isInteger(ev.eventId) ? ev.eventId : null, channel: clip(ev.channel, 120), account: clip(ev.account, 120) };
+      event_id: Number.isInteger(ev.eventId) ? ev.eventId : null, channel: clip(ev.channel, 120), account: clip(ev.account, 120),
+      transport: ['udp', 'tcp', 'tls', 'trap'].includes(transport) ? transport : '' };
     return row;
   }
   /** Rows into the file in one transaction (one row per sender in the overview), then the rules and monitors */
@@ -391,9 +394,10 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       r.id = insert.run(r.at, r.kind, r.source_ip, r.device_id, r.severity, r.facility, r.host, r.app, r.oid, r.text, r.event_id, r.channel, r.account).lastInsertRowid;
       const l = last.get(r.source_ip);
       // the first message of the batch for a new sender, the newest one for the rest; a name only fills in
-      last.set(r.source_ip, { first: l?.first ?? r.at, row: r, host: r.host || l?.host || '' });
+      last.set(r.source_ip, { first: l?.first ?? r.at, row: r, host: r.host || l?.host || '', transport: r.transport || l?.transport || '',
+        udpAt: r.transport === 'udp' ? r.at : l?.udpAt ?? null });
     }
-    for (const [ip, l] of last) senderUp.run(ip, l.row.device_id, l.host, l.first, l.row.at, l.row.id);
+    for (const [ip, l] of last) senderUp.run(ip, l.row.device_id, l.host, l.first, l.row.at, l.row.id, l.transport, l.udpAt);
   });
   function write(rows) {
     writeRows(rows);
@@ -412,8 +416,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     }
   }
   /** A message of a receiver: checked now, written with the others of this turn */
-  function queue(kind, ip, ev, rated = false) {
-    const row = accept(kind, ip, ev, new Date(), rated);
+  function queue(kind, ip, ev, rated = false, transport = '') {
+    const row = accept(kind, ip, ev, new Date(), rated, transport);
     if (!row) return;
     pending.push(row);
     if (pending.length >= BATCH_MAX) flush();
@@ -421,9 +425,9 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   }
 
   /** Stores one message right away (also used by the tests) → the stored row or null (dropped) */
-  function receive(kind, ip, ev, at = new Date()) {
+  function receive(kind, ip, ev, at = new Date(), transport = '') {
     flush();
-    const row = accept(kind, ip, ev, at);
+    const row = accept(kind, ip, ev, at, false, transport);
     if (!row) return null;
     write([row]);
     return row;
@@ -450,7 +454,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
           return;
         }
         const d = describeTrap(n.pdu);
-        queue('trap', n.rinfo?.address, { severity: d.severity, oid: d.oid, app: d.name, text: d.text });
+        queue('trap', n.rinfo?.address, { severity: d.severity, oid: d.oid, app: d.name, text: d.text }, false, 'trap');
       });
       for (const c of communities()) trapRx.getAuthorizer().addCommunity(c);
       status.traps.on = true;
@@ -470,7 +474,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     sysSock.on('message', (buf, rinfo) => {
       // the flood check first: a flood is not even parsed
       if (!allowed(String(rinfo.address || '').replace(/^::ffff:/, ''))) return;
-      queue('syslog', rinfo.address, parseSyslog(buf), true);
+      queue('syslog', rinfo.address, parseSyslog(buf), true, 'udp');
     });
     sysSock.bind(port.syslog, bind || undefined, () => { status.syslog.on = true; status.syslog.port = sysSock.address().port; log.info(`Syslog: listening on UDP ${status.syslog.port}`); });
   }
@@ -495,7 +499,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       // Above the limit a message waits (in order) and the connection pauses until the next second: the agent keeps
       // the rest meanwhile - TCP loses nothing, it only comes a little later
       const held = []; let waiting = null;
-      const take = (frame) => queue('syslog', ip, parseSyslog(frame), true);
+      const take = (frame) => queue('syslog', ip, parseSyslog(frame), true, kind === 'syslogTls' ? 'tls' : 'tcp');
       const pass = (frame) => { if (held.length || !allowed(ip, true)) held.push(frame); else take(frame); };
       const wait = () => { if (!waiting && !sock.destroyed) { sock.pause(); waiting = setTimeout(drain, 1005 - (Date.now() % 1000)); } };
       const drain = () => {
@@ -809,13 +813,13 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     // counted again at most every 5 seconds while messages come in (the 24 hours are not free on a busy network)
     if (fresh || !sendersCache || Date.now() - sendersAt > (receivedSince ? 5000 : STATS_MS)) {
       const day = countSince(Date.now() - 86400000);
-      const list = db.prepare(`SELECT s.source_ip, s.device_id, s.host, s.first_at, s.last_at, s.last_id, d.name device_name, d.type device_type
+      const list = db.prepare(`SELECT s.source_ip, s.device_id, s.host, s.first_at, s.last_at, s.last_id, s.transport, s.udp_at, d.name device_name, d.type device_type
         FROM event_senders s LEFT JOIN devices d ON d.id = s.device_id ORDER BY s.last_at DESC`).all()
         .map((r) => { const x = day.get(r.source_ip) || {}; return { ...r, day: x.n || 0, warn: x.warn || 0, err: x.err || 0 }; });
       // a muted sender has nothing stored - it stays in the list all the same, or it could never be unmuted
       const have = new Set(list.map((r) => r.source_ip));
       for (const f of db.prepare('SELECT f.source_ip, d.id device_id, d.name device_name, d.type device_type FROM event_source_filters f LEFT JOIN devices d ON d.ip = f.source_ip').all()) {
-        if (!have.has(f.source_ip)) list.push({ source_ip: f.source_ip, device_id: f.device_id, host: '', first_at: null, last_at: null, last_id: null, device_name: f.device_name, device_type: f.device_type, day: 0, warn: 0, err: 0 });
+        if (!have.has(f.source_ip)) list.push({ source_ip: f.source_ip, device_id: f.device_id, host: '', first_at: null, last_at: null, last_id: null, transport: '', udp_at: null, device_name: f.device_name, device_type: f.device_type, day: 0, warn: 0, err: 0 });
       }
       sendersCache = list; sendersAt = Date.now();
     }
@@ -838,6 +842,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     err: (r) => r.err > 0,
     warn: (r) => r.warn - r.err > 0,
     silent: (r) => r.day === 0,
+    // still sends over UDP (in the last 24 hours): a device that could go over to TCP
+    udp: (r) => !!r.udp_at && Date.parse(r.udp_at) > Date.now() - 86400000,
     filter: (r) => r.filter !== null && r.filter !== undefined,
   };
   const SORT = {

@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- By sender: every sender shows how it sends - UDP, TCP, TLS or trap; "also UDP" when it still sent over UDP today. The quick filter "Still over UDP" shows the devices that could go over to TCP (nothing is lost there in a flood). Existing senders get the mark with their next message
+
+## 0.43.1 - 2026-11-17
+
 - What takes the space?: events left out already are no longer at the top but folded at the end - with the day their older messages are gone. At the top it says how much of the amount a day is only such leftovers; the list shows the 30 biggest one can still act on instead
 - What takes the space?: the button "Do not keep" was cut off at the right in a narrower window - the window is wider, the columns fit
 - Load test: shows only its table, without log lines in between

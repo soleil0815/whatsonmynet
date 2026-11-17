@@ -351,6 +351,11 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       // Windows event ids left out / only taken (numbers only - they say nothing about the network)
       out.win_deny = String(settings.get('events.winDeny') || '');
       out.win_allow = String(settings.get('events.winAllow') || '');
+      // how the senders send (the way of the newest message) and how many still sent over UDP in the last 24 hours
+      try {
+        out.senders_by_transport = Object.fromEntries(db.prepare("SELECT CASE WHEN transport = '' THEN 'unknown' ELSE transport END t, COUNT(*) n FROM event_senders GROUP BY 1").all().map((r) => [r.t, r.n]));
+        out.senders_udp_24h = db.prepare('SELECT COUNT(*) FROM event_senders WHERE udp_at > ?').pluck().get(new Date(Date.now() - 86400000).toISOString());
+      } catch { /* older file */ }
       out.sender_filters = db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((f) => ({ sender: an.anon(f.source_ip), min_severity: f.min_severity }));
       out.storage = { used: st.used, limit: st.limit, cap: st.cap, disk_short: !!st.diskShort, total: st.total, per_day: st.perDay, oldest: st.oldest, keep_days: st.keepDays,
         days_fit: st.daysFit, short: !!st.short, top_senders: (st.topSenders || []).map((x) => ({ name: an.anon(x.name), share: x.share })), top_events: st.topEvents || [] };

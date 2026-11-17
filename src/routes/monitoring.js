@@ -294,7 +294,7 @@ export function createMonitoringApi(ctx) {
   r.get('/events/senders', editor, unscoped, (req, res) => {
     const qy = req.query || {};
     const pick = (v, list) => (list.includes(String(v ?? '')) ? String(v) : '');
-    const page = ctx.events.senderPage({ q: String(qy.q ?? '').slice(0, 100), show: pick(qy.show, ['err', 'warn', 'silent', 'filter']),
+    const page = ctx.events.senderPage({ q: String(qy.q ?? '').slice(0, 100), show: pick(qy.show, ['err', 'warn', 'silent', 'filter', 'udp']),
       type: String(qy.type ?? '').slice(0, 40), sort: pick(qy.sort, ['last', 'day', 'name']) || 'last',
       offset: Math.max(0, Math.min(1e6, Number(qy.offset) || 0)), limit: Math.max(1, Math.min(500, Number(qy.limit) || 100)) });
     res.json({ status: ctx.events.status(), settings: eventSettings(), openEvents: ctx.eventRules.openCount(), ...page });

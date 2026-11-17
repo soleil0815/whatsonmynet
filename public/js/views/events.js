@@ -229,6 +229,7 @@ export async function renderEvents(main) {
         h('tbody', {}, senders.map((s) => h('tr', {},
           h('td', {}, h('button', { type: 'button', class: 'ev-name-btn', onclick: () => pick(s) }, s.device_name || s.host || s.source_ip),
             h('div', { class: 'sub mono' }, [s.source_ip, s.host && s.host !== s.device_name ? s.host : ''].filter(Boolean).join(' · ')),
+            transportBadges(s),
             s.filter !== null && s.filter !== undefined ? h('div', {}, h('span', { class: `badge${s.filter === -1 ? ' badge-warn' : ''}`, title: t('ev.filterHint') }, s.filter === -1 ? t('ev.muted') : t('ev.keepsFrom', { what: keepLabel(s.filter) }))) : null,
             s.dropped ? h('div', { class: 'sub' }, t('ev.droppedSince', { n: s.dropped.toLocaleString(getLang()) })) : null),
           h('td', { class: 'ev-text' }, h('div', { class: 'small' }, h('span', { class: 'nowrap muted' }, s.last_at ? `${fmtDate(s.last_at, getLang())} ` : `${t('ev.nothingKept')} `),
@@ -397,6 +398,13 @@ export async function renderEvents(main) {
       try { await put('/events/senders/filter', { source: s.source_ip, min: sel.value === '' ? null : Number(sel.value) }); m.close(); toast(t('saved')); load(); } catch (e) { fail(e); }
     }, actions: [btn(t('cancel'), { onclick: () => m.close() }), h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   }
+  /** How a sender sends: the way of its newest message; "also UDP" when it sent over UDP in the last 24 hours as well */
+  function transportBadges(s) {
+    const recentUdp = !!s.udp_at && Date.parse(s.udp_at) > Date.now() - 86400000;
+    const main = s.transport ? h('span', { class: 'badge ev-transport', title: t(`ev.via.${s.transport}Hint`) }, t(`ev.via.${s.transport}`)) : null;
+    const also = recentUdp && s.transport && s.transport !== 'udp' ? h('span', { class: 'badge ev-transport', title: t('ev.via.udpHint') }, t('ev.via.alsoUdp')) : null;
+    return main || also ? h('div', { class: 'row', style: { gap: '4px', marginTop: '2px' } }, main, also) : null;
+  }
   /** Quick filters, type of device and order above the overview by sender (with how many each has) */
   function senderControls() {
     const c = senderInfo.counts || {};
@@ -413,7 +421,7 @@ export async function renderEvents(main) {
     const sortSel = h('select', { 'aria-label': t('ev.senderSort'), onchange: (e) => set('sort', e.currentTarget.value) },
       [['last', t('ev.sort.last')], ['day', t('ev.sort.day')], ['name', t('ev.sort.name')]].map(([v, l]) => h('option', { value: v }, l)));
     sortSel.value = senderOpt.sort;
-    return [fc('', t('all'), c.all), fc('err', t('ev.show.err'), c.err), fc('warn', t('ev.show.warn'), c.warn), fc('silent', t('ev.show.silent'), c.silent), fc('filter', t('ev.show.filter'), c.filter),
+    return [fc('', t('all'), c.all), fc('err', t('ev.show.err'), c.err), fc('warn', t('ev.show.warn'), c.warn), fc('silent', t('ev.show.silent'), c.silent), fc('filter', t('ev.show.filter'), c.filter), fc('udp', t('ev.show.udp'), c.udp),
       senderInfo.types.length > 1 || senderOpt.type ? typeSel : null, sortSel];
   }
 
