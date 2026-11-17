@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Nach Absender: Jeder Absender zeigt, wie er schickt - UDP, TCP, TLS oder Trap; „auch UDP“, wenn er heute noch über UDP geschickt hat. Der Schnellfilter „Noch per UDP“ zeigt die Geräte, die man auf TCP umstellen kann (dort geht bei einer Flut nichts verloren). Bestehende Absender bekommen das Kennzeichen mit ihrer nächsten Meldung',
+  ], en: [
+    'By sender: every sender shows how it sends - UDP, TCP, TLS or trap; "also UDP" when it still sent over UDP today. The quick filter "Still over UDP" shows the devices that could go over to TCP (nothing is lost there in a flood). Existing senders get the mark with their next message',
+  ] },
+  { version: '0.43.1', date: '2026-11-17', de: [
     'Was belegt den Platz?: Schon ausgeschlossene Ereignisse stehen nicht mehr oben, sondern zugeklappt am Ende - mit dem Tag, an dem ihre älteren Meldungen weg sind. Oben steht, wie viel der Menge pro Tag nur noch solche Altlast ist; die Liste zeigt dafür die 30 größten, bei denen man noch etwas tun kann',
     'Was belegt den Platz?: Der Knopf „Nicht speichern“ war bei schmalerem Fenster rechts abgeschnitten - das Fenster ist breiter, die Spalten passen',
     'Lasttest: zeigt nur noch seine Tabelle, ohne Protokollzeilen dazwischen',

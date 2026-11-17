@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Nach Absender: Jeder Absender zeigt, wie er schickt - UDP, TCP, TLS oder Trap; „auch UDP“, wenn er heute noch über UDP geschickt hat. Der Schnellfilter „Noch per UDP“ zeigt die Geräte, die man auf TCP umstellen kann (dort geht bei einer Flut nichts verloren). Bestehende Absender bekommen das Kennzeichen mit ihrer nächsten Meldung
+
+## 0.43.1 - 2026-11-17
+
 - Was belegt den Platz?: Schon ausgeschlossene Ereignisse stehen nicht mehr oben, sondern zugeklappt am Ende - mit dem Tag, an dem ihre älteren Meldungen weg sind. Oben steht, wie viel der Menge pro Tag nur noch solche Altlast ist; die Liste zeigt dafür die 30 größten, bei denen man noch etwas tun kann
 - Was belegt den Platz?: Der Knopf „Nicht speichern“ war bei schmalerem Fenster rechts abgeschnitten - das Fenster ist breiter, die Spalten passen
 - Lasttest: zeigt nur noch seine Tabelle, ohne Protokollzeilen dazwischen

@@ -858,6 +858,10 @@ const EVENTS_SCHEMA = [
    INSERT OR IGNORE INTO ev.events_day_src(event_id, app, day, source_ip)
      SELECT DISTINCT event_id, app, CAST(strftime('%s', at) AS INTEGER) / 86400, source_ip FROM ev.events_in
      WHERE event_id IS NOT NULL AND id <= (SELECT v FROM ev.events_fts_state WHERE k = 'counted');`,
+  // 7: how a sender sends: the way of its newest message (udp, tcp, tls, trap) and when it last sent over UDP - to see
+  // which devices could still go over to TCP (nothing lost in a flood, the device notices when no one listens)
+  `ALTER TABLE ev.event_senders ADD COLUMN transport TEXT NOT NULL DEFAULT '';
+   ALTER TABLE ev.event_senders ADD COLUMN udp_at TEXT;`,
 ];
 export const eventsFile = (dbFile) => (dbFile === ':memory:' ? ':memory:' : path.join(path.dirname(dbFile), 'events.sqlite'));
 

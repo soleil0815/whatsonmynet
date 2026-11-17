@@ -149,3 +149,35 @@ test('messages of one turn are written together: one row per sender, the newest 
   assert.deepEqual(d3.prepare('SELECT text FROM events_in WHERE source_ip = ? ORDER BY id').pluck().all('10.0.10.7'), ['waiting', 'now']);
   e3.stop();
 });
+
+test('how a sender sends: UDP, TCP, TLS or trap - the newest way, "still over UDP" for 24 hours', async () => {
+  const d4 = memoryDb(); const s4 = createSettings(d4);
+  s4.set('events.syslog', true); s4.set('events.syslogTcp', true);
+  const e4 = createEvents({ db: d4, settings: s4, ports: { syslog: 0, syslogTcp: 0 }, bind: '127.0.0.1' });
+  e4.apply();
+  for (let i = 0; i < 40 && !(e4.status().syslog.on && e4.status().syslogTcp.on); i++) await wait(25);
+  const { default: dgram } = await import('node:dgram');
+  const u = dgram.createSocket('udp4');
+  await new Promise((r) => u.send(Buffer.from('<14>nas01 kernel: over udp'), e4.status().syslog.port, '127.0.0.1', r));
+  u.close();
+  const way = () => d4.prepare("SELECT transport, udp_at FROM event_senders WHERE source_ip = '127.0.0.1'").get();
+  for (let i = 0; i < 40 && !way(); i++) await wait(25);
+  assert.equal(way().transport, 'udp');
+  assert.ok(way().udp_at);
+  assert.deepEqual(e4.senderPage({ show: 'udp' }).senders.map((x) => x.transport), ['udp']);
+  // the same device over to TCP: the newest way is TCP, "still over UDP" for the rest of the day
+  const c = net.connect(e4.status().syslogTcp.port, '127.0.0.1');
+  await new Promise((r) => c.once('connect', r));
+  c.end('<14>nas01 kernel: over tcp\n');
+  for (let i = 0; i < 40 && way().transport !== 'tcp'; i++) await wait(25);
+  assert.equal(way().transport, 'tcp');
+  const page = e4.senderPage({ fresh: true });
+  assert.equal(page.counts.udp, 1);
+  // a day later it no longer counts as UDP
+  d4.prepare("UPDATE event_senders SET udp_at = ?").run(new Date(Date.now() - 2 * 86400000).toISOString());
+  assert.equal(e4.senderPage({ fresh: true }).counts.udp, 0);
+  // a message stored directly (tests, older code) does not empty the way
+  e4.receive('syslog', '127.0.0.1', { severity: 6, text: 'x' });
+  assert.equal(way().transport, 'tcp');
+  e4.stop();
+});

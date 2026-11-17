@@ -167,13 +167,13 @@ test('a file from before the update gets its counts in the background', () => {
   const dir = dirOf('cnt5');
   openDatabase(path.join(dir, 'whatsonmynet.sqlite')).close();
   const f = new Database(path.join(dir, 'events.sqlite'));
-  f.exec('DROP TRIGGER events_counts_gone; DROP TRIGGER events_counts_changed; DROP TABLE events_minute; DROP TABLE events_hour; DROP TABLE events_hour_id; DROP TABLE events_day_src; PRAGMA user_version = 4;');
+  f.exec('DROP TRIGGER events_counts_gone; DROP TRIGGER events_counts_changed; DROP TABLE events_minute; DROP TABLE events_hour; DROP TABLE events_hour_id; DROP TABLE events_day_src; ALTER TABLE event_senders DROP COLUMN transport; ALTER TABLE event_senders DROP COLUMN udp_at; PRAGMA user_version = 4;');
   f.prepare("DELETE FROM events_fts_state WHERE k = 'counted'").run();
   const ins = f.prepare("INSERT INTO events_in(at,kind,source_ip,severity,text) VALUES(?, 'syslog', '10.0.10.5', 3, 'alt')");
   f.transaction(() => { for (let i = 0; i < 3000; i++) ins.run(new Date(Date.now() - i * 60000).toISOString()); })();
   f.close();
   const db = openDatabase(path.join(dir, 'whatsonmynet.sqlite'));
-  assert.equal(db.pragma('ev.user_version', { simple: true }), 6);
+  assert.equal(db.pragma('ev.user_version', { simple: true }), 7);
   assert.equal(counted(db), 0, 'everything still to count');
   const ev = createEvents({ db, settings: createSettings(db) });
   const h = ev.histogram({ from: new Date(Date.now() - 86400000).toISOString() });
