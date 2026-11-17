@@ -34,6 +34,15 @@ test('Windows events: readable bracket format, JSON, NXLog line - and plain sysl
   assert.equal(parseSyslog(fb({ EventID: 4624, Keywords: '0x8020000000000000' })).severity, 6, 'audit success');
   assert.deepEqual([2, 3, 4, 5].map((lv) => parseSyslog(fb({ ProviderName: 'Service Control Manager', EventID: 7031, Level: lv, Keywords: '0x8080000000000000', Channel: 'System' })).severity), [3, 4, 6, 7]);
   assert.equal(parseSyslog(fb({ Level: 1, Keywords: '0x80000000000000' })).severity, 2, 'critical');
+  // NXLog's readable form as it arrives (to_syslog_bsd): the source as tag with the process id - also a source longer
+  // than the 32 characters of RFC 3164, and one with a space
+  const ts = parseSyslog('<14>Nov 17 18:07:00 PC-0002.firma.local Microsoft-Windows-TerminalServices-LocalSessionManager[1564]: [59] [Microsoft-Windows-TerminalServices-LocalSessionManager/Operational] RpcGetCurrentSessionCapabilities von "C:\\Programme\\x.exe" ( #0x1/0x6856 )');
+  assert.deepEqual([ts.host, ts.app, ts.eventId, ts.channel, ts.text], ['PC-0002.firma.local', 'Microsoft-Windows-TerminalServices-LocalSessionManager', 59,
+    'Microsoft-Windows-TerminalServices-LocalSessionManager/Operational', 'RpcGetCurrentSessionCapabilities von "C:\\Programme\\x.exe" ( #0x1/0x6856 )']);
+  const dp = parseSyslog(`<12>Nov 17 18:07:00 PC-0001 Microsoft-Windows-Windows Defender[3120]: [1116] [Microsoft-Windows-Windows Defender/Operational] ${DEFENDER}`);
+  assert.deepEqual([dp.app, dp.eventId, dp.channel, dp.text], ['Microsoft-Windows-Windows Defender', 1116, 'Microsoft-Windows-Windows Defender/Operational', DEFENDER]);
+  const kc = parseSyslog('<14>Nov 17 15:50:00 PC-0001 Microsoft-Windows-Kernel-Cache[4]: [101] [Microsoft-Windows-Kernel-Cache/Operational] Initialisierte VolumeCacheMap');
+  assert.deepEqual([kc.app, kc.eventId], ['Microsoft-Windows-Kernel-Cache', 101]);
   assert.equal(windowsFields('{"no":"event id"}'), null);
   assert.equal(windowsFields('{broken'), null);
   assert.equal(windowsFields('[12] not a log'), null);

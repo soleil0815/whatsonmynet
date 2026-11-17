@@ -82,7 +82,8 @@ export function windowsFields(raw) {
 function finish(out, rest) {
   // a source with a space ("Microsoft-Windows-Windows Defender") is no syslog tag to the parser above - in front of
   // "[id] [log]" it still is the source
-  const tag = !out.app && /^([^:[\]\r\n]{1,80}): (?=\[\d{1,6}\] \[)/.exec(rest);
+  // (NXLog adds the process id: "Microsoft-Windows-Windows Defender[3120]: [1116] [...]")
+  const tag = !out.app && /^([^:[\]\r\n]{1,80})(\[\d+\])?: (?=\[\d{1,6}\] \[)/.exec(rest);
   if (tag) { out.app = clip(tag[1], 60); rest = rest.slice(tag[0].length); }
   const w = windowsFields(rest);
   if (w) {
@@ -167,7 +168,9 @@ export function parseSyslog(raw) {
     const hostTag = /^([\w.-]{1,120}) (?=[^\s:[\]]{1,48}(\[\d+\])?: )/.exec(rest);
     if (hostTag) { out.host = clip(hostTag[1], 120); rest = rest.slice(hostTag[0].length); }
   }
-  const tag = /^([^\s:[\]]{1,48})(\[\d+\])?: ?/.exec(rest);
+  // RFC 3164 allows 32 characters for the tag; Windows sources are longer
+  // ("Microsoft-Windows-TerminalServices-LocalSessionManager" has 54)
+  const tag = /^([^\s:[\]]{1,80})(\[\d+\])?: ?/.exec(rest);
   if (tag) { out.app = clip(tag[1], 60); rest = rest.slice(tag[0].length); }
   return finish(out, rest);
 }
