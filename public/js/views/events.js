@@ -385,6 +385,86 @@ export async function renderEvents(main) {
       try { await put('/events/senders/filter', { source: s.source_ip, min: sel.value === '' ? null : Number(sel.value) }); m.close(); toast(t('saved')); load(); } catch (e) { fail(e); }
     }, actions: [btn(t('cancel'), { onclick: () => m.close() }), h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   }
+  // What takes the space: the Windows events and senders with the biggest share - to see what need not be collected.
+  // With what speaks for keeping one (a rule needs it, usually important) and, for admins, leaving it out with a click.
+  function noiseDialog() {
+    let days = 7; let data = null;
+    const daysSel = h('select', { 'aria-label': t('ev.noise.period'), style: { width: 'auto' } }, [[1, 'ev.range.24h'], [7, 'ev.range.7d'], [30, 'ev.range.30d']].map(([v, k]) => h('option', { value: String(v) }, t(k))));
+    daysSel.value = '7';
+    const box = h('div', { class: 'stack' }, h('p', { class: 'muted' }, t('loading')));
+    const n = (x) => Number(x).toLocaleString(getLang());
+    const perDay = (x) => (x.perDay < 1 && x.n > 0 ? '< 1' : n(x.perDay));
+    const bar = (share) => h('span', { class: 'ev-share', title: `${share} %` }, h('span', { style: { width: `${Math.min(100, share)}%` } }));
+    let changed = false;
+    // the messages of one event: all messages, searched for its number, over the period looked at
+    const show = (id) => { changed = false; m.close(); view = 'all'; source = null; remember('ev.view', 'all'); q.value = id; part = false;
+      history.replaceState(null, '', '/events'); setRange(days === 1 ? '24h' : days === 30 ? '30d' : '7d'); };
+    async function deny(e) {
+      if (e.keep && !confirm(t('ev.noise.keepAsk', { id: e.id }))) return;
+      try { await post('/events/noise/deny', { id: e.id }); toast(t('ev.noise.denied', { id: e.id })); changed = true; await fetchIt(); } catch (ex) { fail(ex); }
+    }
+    function drawIt() {
+      if (!data.total) { mount(box, h('p', { class: 'muted' }, t('ev.noise.none'))); return; }
+      const hints = (e) => [
+        e.rules.length ? h('span', { class: 'badge badge-ok', title: e.rules.join(', ') }, t('ev.noise.rule', { n: e.rules.length })) : null,
+        e.keep ? h('span', { class: 'badge badge-warn', title: t('ev.noise.keepHint') }, t('ev.noise.keep')) : null,
+        e.usual ? h('span', { class: 'badge', title: t('ev.noise.usualHint') }, t('ev.noise.usual')) : null,
+        e.denied ? h('span', { class: 'badge' }, t('ev.noise.isDenied')) : null];
+      const sevText = (w) => (w === null ? '' : w <= 3 ? t('ev.noise.worstErr') : w === 4 ? t('ev.noise.worstWarn') : t('ev.noise.worstInfo'));
+      mount(box,
+        h('p', { class: 'muted', style: { margin: 0 } }, t('ev.noise.lead', { day: n(data.perDay), keep: data.keepDays, used: gb(data.used) })),
+        data.events.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-noise' },
+          h('thead', {}, h('tr', {}, h('th', {}, t('ev.noise.event')), h('th', { class: 'num' }, t('ev.noise.perDay')), h('th', {}, t('ev.noise.share')),
+            h('th', { class: 'num', title: t('ev.noise.spaceHint', { keep: data.keepDays }) }, t('ev.noise.space', { keep: data.keepDays })), h('th', {}))),
+          h('tbody', {}, data.events.map((e) => h('tr', {},
+            h('td', {}, h('strong', {}, String(e.id)), ' ', h('span', { class: 'muted small' }, String(e.example.app || e.example.channel || '').replace(/^Microsoft-Windows-/, '')),
+              h('div', { class: 'sub' }, [e.senders.join(', '), e.moreSenders ? t('ev.noise.more', { n: e.moreSenders }) : '', sevText(e.worst)].filter(Boolean).join(' · ')),
+              e.example.text ? h('div', { class: 'sub ev-noise-text', title: e.example.text }, e.example.text.slice(0, 160)) : null,
+              h('div', { class: 'row', style: { gap: '4px', flexWrap: 'wrap', marginTop: '4px' } }, hints(e))),
+            h('td', { class: 'num nowrap' }, perDay(e)),
+            h('td', { class: 'nowrap' }, bar(e.share), ` ${e.share.toLocaleString(getLang())} %`),
+            h('td', { class: 'num nowrap' }, `≈ ${gb(e.bytes)}`),
+            h('td', { class: 'min' }, h('div', { class: 'ev-noise-act' },
+              btn(t('ev.noise.show'), { class: 'btn btn-sm btn-ghost', onclick: () => show(String(e.id)) }),
+              admin && !isReadOnly() && !e.denied ? btn(t('ev.noise.deny'), { class: 'btn btn-sm', disabled: e.rules.length > 0,
+                title: e.rules.length ? t('ev.noise.ruleBlocks', { list: e.rules.join(', ') }) : t('ev.noise.denyHint'), onclick: () => deny(e) }) : null)))))))
+          : null,
+        data.senders.length ? h('div', {}, h('h3', { style: { margin: '8px 0 4px' } }, t('ev.noise.senders')),
+          h('p', { class: 'muted small', style: { margin: '0 0 6px' } }, t('ev.noise.sendersLead')),
+          h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-noise' },
+            h('thead', {}, h('tr', {}, h('th', {}, t('ev.from')), h('th', { class: 'num' }, t('ev.noise.perDay')), h('th', {}, t('ev.noise.share')), h('th', { class: 'num' }, t('ev.noise.info')),
+              h('th', { class: 'num' }, t('ev.noise.space', { keep: data.keepDays })), h('th', {}))),
+            h('tbody', {}, data.senders.map((x) => h('tr', {},
+              h('td', {}, h('span', { class: 'name' }, x.name || x.source_ip), x.name ? h('div', { class: 'sub mono' }, x.source_ip) : null),
+              h('td', { class: 'num nowrap' }, perDay(x)),
+              h('td', { class: 'nowrap' }, bar(x.share), ` ${x.share.toLocaleString(getLang())} %`),
+              h('td', { class: 'num nowrap' }, `${x.info} %`),
+              h('td', { class: 'num nowrap' }, `≈ ${gb(x.bytes)}`),
+              h('td', { class: 'min nowrap' }, admin && !isReadOnly() ? btn(t('ev.filter'), { class: 'btn btn-sm', onclick: () => senderFilter({ source_ip: x.source_ip, host: x.name, filter: x.filter }) }) : null))))))) : null,
+        h('p', { class: 'muted small', style: { margin: 0 } }, t('ev.noise.foot')));
+    }
+    async function fetchIt() {
+      try { data = await get(`/events/noise?days=${days}`); drawIt(); } catch (e) { fail(e); }
+    }
+    // the list as a question for an AI chat: shown first, so one sees what leaves the house
+    async function forAi() {
+      try {
+        const r = await get(`/events/noise/text?days=${days}&lang=${getLang()}`);
+        const area = h('textarea', { readonly: true, rows: 16, class: 'mono small', style: { width: '100%' }, 'aria-label': t('ev.noise.aiTitle') }, r.text);
+        const a = modal(t('ev.noise.aiTitle'), h('div', { class: 'stack' }, h('p', { class: 'muted', style: { margin: 0 } }, t('ev.noise.aiLead')), area), { wide: true, actions: [
+          btn(t('close'), { onclick: () => a.close() }),
+          btn(t('agent.copy'), { class: 'btn btn-primary', onclick: async () => {
+            try { await navigator.clipboard.writeText(r.text); toast(t('agent.copied')); } catch { area.select(); toast(t('ev.noise.copyHand')); }
+          } }, 'download')] });
+      } catch (e) { fail(e); }
+    }
+    daysSel.addEventListener('change', () => { days = Number(daysSel.value); fetchIt(); });
+    const m = modal(t('ev.noise.title'), h('div', { class: 'stack' },
+      h('div', { class: 'row', style: { gap: '8px', alignItems: 'center', flexWrap: 'wrap' } }, daysSel,
+        btn(t('ev.noise.ai'), { class: 'btn btn-sm', title: t('ev.noise.aiHint'), onclick: forAi }, 'chat')), box), { wide: true,
+      actions: [btn(t('close'), { onclick: () => m.close() })], onClose: () => { if (changed) load(); } });
+    fetchIt();
+  }
   function settingsDialog(cfg) {
     const traps = h('input', { type: 'checkbox', name: 'traps', checked: cfg.traps });
     const syslog = h('input', { type: 'checkbox', name: 'syslog', checked: cfg.syslog });
@@ -440,6 +520,7 @@ export async function renderEvents(main) {
   toIn.addEventListener('change', applyCustom);
   const head = pageHead(t('ev.title'), t('ev.lead'),
     btn(t('ev.rules'), { class: 'btn', onclick: () => navigate('/events/rules') }, 'mail'),
+    btn(t('ev.noise.title'), { class: 'btn', title: t('ev.noise.hint'), onclick: () => noiseDialog() }, 'gauge'),
     admin ? btn(t('ev.settings'), { class: 'btn', onclick: () => info && settingsDialog(info.settings) }, 'settings') : null,
     btn(t('ev.reload'), { class: 'btn', onclick: () => load() }, 'refresh'));
   mount(body, head, statusBox, spaceBox,

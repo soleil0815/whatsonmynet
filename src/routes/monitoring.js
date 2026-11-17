@@ -7,7 +7,8 @@ import { requireRole } from '../auth/session.js';
 import { inScope } from '../auth/scope.js';
 import { config } from '../config.js';
 import { parseEventIds } from '../eventrules.js';
-import { WIN_NOISE } from '../settings.js';
+import { WIN_NOISE, WIN_KEEP } from '../settings.js';
+import { createMasker } from '../lib/aimask.js';
 import { logonSummary } from '../lib/winlogon.js';
 
 export function createMonitoringApi(ctx) {
@@ -229,6 +230,52 @@ export function createMonitoringApi(ctx) {
     res.json({ ok: true });
   });
   // the overview by sender (the list of all messages floods quickly)
+  // What takes the space: Windows events and senders by share, with what speaks for keeping them (a rule uses the
+  // event, it is usually important) - and, for admins, leaving one out with a click
+  const inList = (list, id) => (parseEventIds(list) || []).some(([a, b]) => id >= a && id <= b);
+  const rulesFor = (id) => ctx.eventRules.list().filter((x) => x.match?.eventIds && inList(x.match.eventIds, id)).map((x) => x.name);
+  function noiseView(days) {
+    const n = ctx.events.noise({ days });
+    const deny = String(settings.get('events.winDeny') || '');
+    return { ...n, events: n.events.map((e) => ({ ...e, rules: rulesFor(e.id), keep: inList(WIN_KEEP, e.id), usual: inList(WIN_NOISE, e.id), denied: inList(deny, e.id) })) };
+  }
+  r.get('/events/noise', editor, unscoped, (req, res) => res.json(noiseView(Number(req.query?.days) || 7)));
+  // the same as a question for an AI chat - names, addresses, accounts and domains replaced by placeholders
+  r.get('/events/noise/text', editor, unscoped, (req, res) => {
+    const de = String(req.query?.lang || 'de') !== 'en';
+    const v = noiseView(Number(req.query?.days) || 7);
+    const names = [...db.prepare("SELECT host, source_ip FROM event_senders").all().flatMap((x) => [x.host, x.source_ip]),
+      ...db.prepare("SELECT name FROM devices WHERE name IS NOT NULL AND name <> ''").pluck().all()];
+    const mask = createMasker({ names, lang: de ? 'de' : 'en' });
+    const num = (x) => Number(x).toLocaleString(de ? 'de-DE' : 'en-US');
+    const sev = (x) => (x === null ? '' : x <= 3 ? (de ? ', auch Fehler' : ', errors too') : x === 4 ? (de ? ', auch Warnungen' : ', warnings too') : (de ? ', nur Info' : ', info only'));
+    const lines = [de
+      ? `Ich sammle mit WhatsOnMyNet (Netzwerk-Inventar und Monitoring) die Windows-Ereignisse und Syslog-Meldungen unserer Rechner und Geräte - in den letzten ${v.days === 1 ? '24 Stunden' : `${v.days} Tagen`} etwa ${num(v.perDay)} Meldungen pro Tag. Welche der folgenden Windows-Ereignisse sind für Betrieb und Sicherheit meist ohne Wert und können ausgeschlossen werden, und welche sollte ich auf jeden Fall behalten? Bitte je Ereignis-ID kurz begründen und am Ende die auszuschließenden IDs als Liste mit Komma nennen. Namen, Adressen und Konten sind durch Platzhalter ersetzt.`
+      : `With WhatsOnMyNet (network inventory and monitoring) I collect the Windows events and syslog messages of our computers and devices - over the last ${v.days === 1 ? '24 hours' : `${v.days} days`} about ${num(v.perDay)} messages a day. Which of the following Windows events are usually of no value for operations and security and can be left out, and which should I keep in any case? Please give a short reason for each event id and at the end list the ids to leave out, separated by commas. Names, addresses and accounts are replaced by placeholders.`, '',
+      de ? 'Windows-Ereignisse, die meisten zuerst:' : 'Windows events, most first:'];
+    for (const e of v.events) {
+      const src = [e.example.app, e.example.channel].filter(Boolean).join(de ? ', Protokoll ' : ', log ');
+      lines.push(`- ${e.id}${src ? ` (${src})` : ''}: ${num(e.perDay)} ${de ? 'pro Tag' : 'a day'}, ${num(e.share)} %, ${de ? 'von' : 'from'} ${e.senders.length + e.moreSenders} ${de ? (e.senders.length + e.moreSenders === 1 ? 'Rechner' : 'Rechnern') : (e.senders.length + e.moreSenders === 1 ? 'computer' : 'computers')}${sev(e.worst)}${e.rules.length ? (de ? ', von einer Benachrichtigungsregel gebraucht' : ', used by a notification rule') : ''}`);
+      if (e.example.text) lines.push(`  ${de ? 'Beispiel' : 'Example'}: "${mask(e.example.text).replace(/\s+/g, ' ').slice(0, 300)}"`);
+    }
+    const deny = String(settings.get('events.winDeny') || '');
+    lines.push('', `${de ? 'Schon ausgeschlossen' : 'Already left out'}: ${deny || (de ? 'nichts' : 'none')}`);
+    res.json({ text: lines.join('\n') });
+  });
+  r.post('/events/noise/deny', admin, (req, res) => {
+    const id = Number(req.body?.id);
+    if (!Number.isInteger(id) || id < 0 || id > 65535) throw new HttpError(400, 'err.badRequest', 'id', 'id');
+    // a rule waits for this event: leaving it out would silence the rule
+    const rules = rulesFor(id);
+    if (rules.length) throw new HttpError(400, 'err.noiseRule', rules.join(', '));
+    const have = parseEventIds(String(settings.get('events.winDeny') || '')) || [];
+    const list = have.some(([a, b]) => id >= a && id <= b) ? have : [...have, [id, id]].sort((a, b) => a[0] - b[0]);
+    if (list.length > 200) throw new HttpError(400, 'err.ruleEventIds', undefined, 'winDeny');
+    settings.set('events.winDeny', list.map(([x, y]) => (x === y ? `${x}` : `${x}-${y}`)).join(', '));
+    ctx.events.apply();
+    audit(req, 'events.settings', `Windows event ${id} no longer kept`);
+    res.json({ winDeny: settings.get('events.winDeny') });
+  });
   r.get('/events/senders', editor, unscoped, (req, res) => res.json({ status: ctx.events.status(), settings: eventSettings(), openEvents: ctx.eventRules.openCount(), senders: ctx.events.senders({ q: String(req.query?.q ?? '') }) }));
   r.put('/events/settings', admin, (req, res) => {
     const b = req.body || {};

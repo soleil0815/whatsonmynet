@@ -799,6 +799,50 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     return deleted;
   }
 
+  /**
+   * What fills the file (Messages → What takes the space?): Windows event ids and senders over the last days, each with
+   * its share, how much a day and roughly how much space over the days kept - to find what need not be collected at all.
+   * From the counts; an example and the senders of an event from its newest messages (through the event index).
+   */
+  function noise({ days = 7, top = 30 } = {}) {
+    const d = [1, 7, 30].includes(Number(days)) ? Number(days) : 7;
+    const sinceMs = Date.now() - d * 86400000;
+    const perSender = [...countSince(sinceMs).values()];
+    const total = perSender.reduce((a, r) => a + r.n, 0);
+    const hour = Math.ceil(sinceMs / 3600000);
+    const ids = new Map(db.prepare('SELECT event_id, SUM(n) n FROM events_hour_id WHERE hour >= ? GROUP BY event_id').all(hour).map((r) => [r.event_id, r.n]));
+    for (const p of notCounted(new Date(sinceMs).toISOString(), new Date(hour * 3600000).toISOString(), FAR, FAR)) {
+      for (const r of db.prepare(`SELECT event_id, COUNT(*) n FROM ${p.src} WHERE ${p.sql} AND event_id IS NOT NULL GROUP BY event_id`).all(...p.args)) ids.set(r.event_id, (ids.get(r.event_id) || 0) + r.n);
+    }
+    // space: what a message takes on average, weighted by how long its text is (a 4625 is ten times a switch line)
+    const st = storage();
+    const perRow = st.total ? st.used / st.total : 0;
+    const LEN = "length(COALESCE(text,'')) + length(COALESCE(app,'')) + length(COALESCE(channel,'')) + length(COALESCE(account,'')) + 200";
+    const avgAll = db.prepare(`SELECT AVG(${LEN}) FROM (SELECT * FROM events_in ORDER BY id DESC LIMIT 2000)`).pluck().get() || 1;
+    const keepDays = st.keepDays;
+    const names = new Map(db.prepare('SELECT source_ip, host FROM event_senders').all().map((r) => [r.source_ip, r.host]));
+    const newest = db.prepare(`SELECT source_ip, host, app, channel, severity, text, ${LEN} len FROM events_in WHERE event_id = ? ORDER BY id DESC LIMIT 500`);
+    const events = [...ids].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, top).map(([id, n]) => {
+      const rows = newest.all(id);
+      const ex = rows[0] || {};
+      const who = new Map();
+      for (const r of rows) { const k = r.host || names.get(r.source_ip) || r.source_ip; who.set(k, (who.get(k) || 0) + 1); }
+      const avg = rows.length ? rows.reduce((a, r) => a + r.len, 0) / rows.length : avgAll;
+      const perDay = n / d;
+      return { id, n, perDay: Math.round(perDay), share: total ? Math.round((n / total) * 1000) / 10 : 0,
+        bytes: Math.round(perDay * keepDays * perRow * (avg / avgAll)),
+        worst: rows.length ? Math.min(...rows.map((r) => r.severity)) : null,
+        senders: [...who].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name), moreSenders: Math.max(0, who.size - 3),
+        example: { host: ex.host || names.get(ex.source_ip) || ex.source_ip || '', app: ex.app || '', channel: ex.channel || '', text: String(ex.text || '').slice(0, 300) } };
+    });
+    const filters = new Map(db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((r) => [r.source_ip, r.min_severity]));
+    const senders = perSender.filter((r) => r.n > 0).sort((a, b) => b.n - a.n).slice(0, 15).map((r) => ({
+      source_ip: r.source_ip, name: names.get(r.source_ip) || '', filter: filters.has(r.source_ip) ? filters.get(r.source_ip) : null, n: r.n, perDay: Math.round(r.n / d),
+      share: total ? Math.round((r.n / total) * 1000) / 10 : 0, info: r.n ? Math.round(((r.n - r.warn) / r.n) * 100) : 0,
+      bytes: Math.round((r.n / d) * keepDays * perRow) }));
+    return { days: d, total, perDay: Math.round(total / d), keepDays, used: st.used, events, senders };
+  }
+
   // How the space goes: for the page (cached a minute - counting a few million rows is not free; once new messages
   // came in, after 15 seconds - the page must not say "0 stored" next to a list of them)
   function storage() {
@@ -848,7 +892,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
         .run(a, Math.max(-1, Math.min(7, Number(min))), new Date().toISOString(), String(by).slice(0, 120));
       sevFilter = null; sendersCache = null;
     },
-    reloadTls, indexBatch, countBatch, indexPump, indexStatus,
+    reloadTls, indexBatch, countBatch, indexPump, indexStatus, noise,
     status: () => ({ searchIndex: indexStatus(), counts: countStatus(), traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, filtered, total: storage().total,
       last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null, storage: storage() }),
     storage,
