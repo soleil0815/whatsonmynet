@@ -37,13 +37,16 @@ export const TEXT_MAX = 4000;
 const clip = (s, n) => String(s ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // ---------------------------------------------------------------------------------------------- syslog
-// Windows events (NXLog, im_msvistalog): the event id, log (channel), source and account are kept in fields of their
-// own, so a rule can ask for "Defender, event 1116" instead of searching text. Two shapes are understood:
-//   JSON   - "Exec $Message = to_json(); to_syslog_ietf();" (or to_json() alone): all fields of the event
+// Windows events (NXLog, im_msvistalog; Fluent Bit, winevtlog): the event id, log (channel), source and account are
+// kept in fields of their own, so a rule can ask for "Defender, event 1116" instead of searching text. Understood:
+//   JSON   - NXLog "Exec $Message = to_json(); to_syslog_ietf();" (or to_json() alone), Fluent Bit "Format json_lines":
+//            all fields of the event
 //   a line - NXLog without Exec: "2026-11-15 10:00:00 PC-01 WARNING 1116 Microsoft Defender Antivirus has detected …"
 //   readable - the config of the manual: to_syslog_bsd() with the message "[1116] [Microsoft-Windows-Windows Defender/
 //            Operational] Microsoft Defender Antivirus has detected …" (the source is the syslog tag)
 const WIN_SEVERITY = { CRITICAL: 2, ERROR: 3, WARNING: 4, AUDIT_FAILURE: 4, INFO: 6, AUDIT_SUCCESS: 6, DEBUG: 7 };
+// the level of an event as a number (Fluent Bit): 1 critical, 2 error, 3 warning, 4 information, 5 verbose (0 = always)
+const WIN_LEVEL = { 0: 6, 1: 2, 2: 3, 3: 4, 4: 6, 5: 7 };
 const NX_LINE = /^(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d)\s+(\S+)\s+(INFO|WARNING|ERROR|CRITICAL|DEBUG|AUDIT_SUCCESS|AUDIT_FAILURE)\s+(\d{1,6})\s+([\s\S]*)$/;
 
 /** Windows fields of a message text, or null → { eventId, channel, account, app, host, severity, text } */
@@ -57,7 +60,11 @@ export function windowsFields(raw) {
     if (!Number.isInteger(id) || id < 0 || id > 999999) return null;
     // a failed audit (wrong password, access denied) is a warning even where the log calls it "INFO"
     const type = String(j.EventType || '').toUpperCase();
-    const sev = type === 'AUDIT_FAILURE' ? 4 : WIN_SEVERITY[String(j.Severity || '').toUpperCase()] ?? WIN_SEVERITY[type];
+    // Fluent Bit (winevtlog) sends the level as a number and the audit result only in the keywords (bit 52 = failure)
+    let failed = type === 'AUDIT_FAILURE';
+    if (!failed && /^0x[0-9a-f]{1,16}$/i.test(String(j.Keywords || ''))) failed = (BigInt(j.Keywords) & 0x10000000000000n) !== 0n;
+    const level = Number.isInteger(j.Level) ? WIN_LEVEL[j.Level] : undefined;
+    const sev = failed ? 4 : WIN_SEVERITY[String(j.Severity || '').toUpperCase()] ?? WIN_SEVERITY[type] ?? level;
     const user = j.TargetUserName && /^(4740|4767|4625|4720|4722|4725|4726|4728|4732|4756)$/.test(String(id)) ? j.TargetUserName : j.AccountName;
     const dom = j.TargetUserName && user === j.TargetUserName ? j.TargetDomainName : j.Domain;
     return { eventId: id, channel: clip(j.Channel, 120), account: clip(user ? `${dom ? `${dom}\\` : ''}${user}` : '', 120),

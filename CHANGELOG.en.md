@@ -6,6 +6,11 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Manual: a complete NXLog configuration as example that sends source and log along (so leaving out like 1@Ntfs applies); Fluent Bit as a second free agent with a ready configuration, checked on a real Windows Server; notes on Winlogbeat and Windows Event Forwarding
+- Messages: Windows events from Fluent Bit (JSON) are recognised with their severity - the level as a number and "audit failure" from the keywords
+
+## 0.42.0 - 2026-11-17
+
 - Windows script: when WhatsOnMyNet refused a report (e.g. key no longer valid) or could not be reached, the script wrote a warning 4100 to the PowerShell log on every run - fixed. The answer is now in womn-host-send.json next to the script, the scheduled task ends with result 2. Tested on real Windows (Server 2022 and 2025). The same goes for the Hyper-V script
 - Windows scripts with a version number: in the first line, in the registry under HKLM\SOFTWARE\WhatsOnMyNet (HostScript or HyperVScript) to filter on in software distribution, and in the report - the device page marks machines with an older script as "outdated". The number only changes when the script changes. For this, roll out the script once more
 - Storage pools: ZFS and Ceph from Proxmox (state, failed disks/OSDs, usage, last scrub), ZFS and software RAID (mdadm) in the Linux script, Storage Spaces in the Windows script - with sensors for state, usage, days since the scrub and failed members
