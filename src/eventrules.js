@@ -44,6 +44,39 @@ export function parseEventIds(text) {
   return out;
 }
 
+/**
+ * The list "Windows events: never take these ids": numbers and ranges as before ("4624, 4634, 100-110"), and a number
+ * for one source only ("1@Ntfs", "7036@Service Control Manager") - the same number means different things to
+ * different sources (1 of Sysmon is a process start). Entries are separated by commas, semicolons or lines; a plain
+ * number may also stand after a space. → { ranges: [[a, b]], pairs: [{ id, src }] } or null when an entry is not valid
+ */
+export function parseDenyList(text) {
+  const ranges = []; const pairs = [];
+  for (const chunk of String(text ?? '').split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean)) {
+    const at = /^(\d{1,6})\s*@\s*(\S(?:[^@]{0,78}\S)?)$/.exec(chunk);
+    if (at) { pairs.push({ id: Number(at[1]), src: at[2].replace(/\s+/g, ' ') }); continue; }
+    if (chunk.includes('@')) return null;
+    const r = parseEventIds(chunk);
+    if (!r) return null;
+    ranges.push(...r);
+  }
+  return { ranges, pairs };
+}
+/** The list written back: numbers and ranges first (in the order given), then the number@source entries, each once */
+export function formatDenyList({ ranges = [], pairs = [] }) {
+  const seen = new Set();
+  const out = ranges.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`));
+  for (const p of pairs) { const k = `${p.id}@${p.src.toLowerCase()}`; if (!seen.has(k)) { seen.add(k); out.push(`${p.id}@${p.src}`); } }
+  return [...new Set(out)].join(', ');
+}
+/** Does the list leave out this event? A source entry needs the source of the message (as a rule: "contains") */
+export function denies(list, id, app) {
+  if (!list || !Number.isInteger(id)) return false;
+  if (list.ranges.some(([a, b]) => id >= a && id <= b)) return true;
+  const a = String(app || '').toLowerCase();
+  return !!a && list.pairs.some((p) => p.id === id && a.includes(p.src.toLowerCase()));
+}
+
 /** Is [a, b] fully inside the ranges? */
 export function covered(a, b, list) {
   let at = a;
@@ -166,7 +199,8 @@ export function createEventRules({ db, channels, settings = null, now = () => ne
   function blockedIds(eventIds) {
     if (!eventIds || !settings) return [];
     const allow = parseEventIds(String(settings.get('events.winAllow') || '')) || [];
-    const deny = parseEventIds(String(settings.get('events.winDeny') || '')) || [];
+    // only plain numbers block a rule - a number left out for one source leaves the others to the rule
+    const deny = parseDenyList(String(settings.get('events.winDeny') || ''))?.ranges || [];
     return (parseEventIds(eventIds) || []).filter(([a, b]) => (allow.length && !covered(a, b, allow)) || overlaps(a, b, deny))
       .map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`));
   }

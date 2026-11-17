@@ -12,6 +12,8 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 - New: TrueNAS (25.04 or newer, WebSocket API, API key of a user with "Read-Only Administrator") - pools, alerts of TrueNAS, replications; and Ceph without Proxmox through the Ceph dashboard (user with role "read-only")
 - Diagnostic package: storage pools, TrueNAS alerts and replications, and the version of the Windows script per machine (anonymised)
 - Scanning only on request: on a new installation the nightly scan is off - WhatsOnMyNet scans nothing on its own. The page "Scan network" says so and offers administrators "Switch the nightly scan on"; switching it on or off is logged. Existing installations keep their setting
+- Messages: leaving out per source - "1@Ntfs" no longer takes 1 of NTFS, but still 1 of Sysmon. "What takes the space?" shows a number of several sources in rows of their own, "Do not keep" takes the source along
+- Copy for AI: events already left out are not asked again; the source is given per event, and the AI names numbers for one source as ID@source
 
 ## 0.41.0 - 2026-11-17
 

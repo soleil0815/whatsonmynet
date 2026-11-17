@@ -12,6 +12,8 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 - Neu: TrueNAS (ab 25.04, WebSocket-API, API-Schlüssel eines Benutzers mit „Read-Only Administrator“) - Pools, Warnungen von TrueNAS, Replikationen; und Ceph ohne Proxmox über das Ceph-Dashboard (Benutzer mit Rolle „read-only“)
 - Diagnosepaket: Speicherpools, TrueNAS-Warnungen und Replikationen sowie die Version des Windows-Skripts je Rechner (anonymisiert)
 - Scan nur auf Wunsch: Bei einer neuen Installation ist der nächtliche Scan aus - WhatsOnMyNet scannt nichts von sich aus. Die Seite „Netzwerk scannen“ sagt das und bietet Administratoren „Nächtlichen Scan einschalten“ an; Ein- und Ausschalten steht im Protokoll. Bestehende Installationen behalten ihre Einstellung
+- Meldungen: Ausschließen je Quelle - „1@Ntfs“ nimmt die 1 von NTFS nicht mehr an, die 1 von Sysmon schon. „Was belegt den Platz?“ zeigt eine Nummer mehrerer Quellen in eigenen Zeilen, „Nicht speichern“ nimmt die Quelle mit
+- Für KI kopieren: schon ausgeschlossene Ereignisse werden nicht noch einmal gefragt; die Quelle steht je Ereignis dabei, und die KI nennt Nummern für eine Quelle als ID@Quelle
 
 ## 0.41.0 - 2026-11-17
 
