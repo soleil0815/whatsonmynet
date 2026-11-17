@@ -399,9 +399,11 @@ export async function renderEvents(main) {
     // the messages of one event: all messages, searched for its number, over the period looked at
     const show = (id) => { changed = false; m.close(); view = 'all'; source = null; remember('ev.view', 'all'); q.value = id; part = false;
       history.replaceState(null, '', '/events'); setRange(days === 1 ? '24h' : days === 30 ? '30d' : '7d'); };
+    // with its source when it is known: only this number of this source, the same number of another one stays
+    const label = (e) => (e.app ? `${e.id} · ${e.app.replace(/^Microsoft-Windows-/, '')}` : String(e.id));
     async function deny(e) {
-      if (e.keep && !confirm(t('ev.noise.keepAsk', { id: e.id }))) return;
-      try { await post('/events/noise/deny', { id: e.id }); toast(t('ev.noise.denied', { id: e.id })); changed = true; await fetchIt(); } catch (ex) { fail(ex); }
+      if (e.keep && !confirm(t('ev.noise.keepAsk', { id: label(e) }))) return;
+      try { await post('/events/noise/deny', { id: e.id, src: e.app || '' }); toast(t('ev.noise.denied', { id: label(e) })); changed = true; await fetchIt(); } catch (ex) { fail(ex); }
     }
     function drawIt() {
       if (!data.total) { mount(box, h('p', { class: 'muted' }, t('ev.noise.none'))); return; }
@@ -417,17 +419,17 @@ export async function renderEvents(main) {
           h('thead', {}, h('tr', {}, h('th', {}, t('ev.noise.event')), h('th', { class: 'num' }, t('ev.noise.perDay')), h('th', {}, t('ev.noise.share')),
             h('th', { class: 'num', title: t('ev.noise.spaceHint', { keep: data.keepDays }) }, t('ev.noise.space', { keep: data.keepDays })), h('th', {}))),
           h('tbody', {}, data.events.map((e) => h('tr', {},
-            h('td', {}, h('strong', {}, String(e.id)), ' ', h('span', { class: 'muted small' }, String(e.example.app || e.example.channel || '').replace(/^Microsoft-Windows-/, '')),
+            h('td', {}, h('strong', {}, String(e.id)), ' ', h('span', { class: 'muted small', title: e.app || e.example.channel || '' }, String(e.app || e.example.channel || t('ev.noise.noSource')).replace(/^Microsoft-Windows-/, '')),
               h('div', { class: 'sub' }, [e.senders.join(', '), e.moreSenders ? t('ev.noise.more', { n: e.moreSenders }) : '', sevText(e.worst)].filter(Boolean).join(' · ')),
               e.example.text ? h('div', { class: 'sub ev-noise-text', title: e.example.text }, e.example.text.slice(0, 160)) : null,
               h('div', { class: 'row', style: { gap: '4px', flexWrap: 'wrap', marginTop: '4px' } }, hints(e))),
-            h('td', { class: 'num nowrap' }, perDay(e)),
+            h('td', { class: 'num nowrap', title: e.estimated ? t('ev.noise.estimated') : '' }, e.estimated ? '≈ ' : '', perDay(e)),
             h('td', { class: 'nowrap' }, bar(e.share), ` ${e.share.toLocaleString(getLang())} %`),
             h('td', { class: 'num nowrap' }, `≈ ${gb(e.bytes)}`),
             h('td', { class: 'min' }, h('div', { class: 'ev-noise-act' },
               btn(t('ev.noise.show'), { class: 'btn btn-sm btn-ghost', onclick: () => show(String(e.id)) }),
               admin && !isReadOnly() && !e.denied ? btn(t('ev.noise.deny'), { class: 'btn btn-sm', disabled: e.rules.length > 0,
-                title: e.rules.length ? t('ev.noise.ruleBlocks', { list: e.rules.join(', ') }) : t('ev.noise.denyHint'), onclick: () => deny(e) }) : null)))))))
+                title: e.rules.length ? t('ev.noise.ruleBlocks', { list: e.rules.join(', ') }) : e.app ? t('ev.noise.denyHintSrc', { what: label(e) }) : t('ev.noise.denyHint'), onclick: () => deny(e) }) : null)))))))
           : null,
         data.senders.length ? h('div', {}, h('h3', { style: { margin: '8px 0 4px' } }, t('ev.noise.senders')),
           h('p', { class: 'muted small', style: { margin: '0 0 6px' } }, t('ev.noise.sendersLead')),
@@ -468,7 +470,15 @@ export async function renderEvents(main) {
   function settingsDialog(cfg) {
     const traps = h('input', { type: 'checkbox', name: 'traps', checked: cfg.traps });
     const syslog = h('input', { type: 'checkbox', name: 'syslog', checked: cfg.syslog });
-    const winDeny = h('textarea', { name: 'winDeny', rows: 2, class: 'mono', placeholder: '4624, 4634, 5858', autocomplete: 'off', spellcheck: 'false', style: { width: '100%' } }, cfg.winDeny || '');
+    const winDeny = h('textarea', { name: 'winDeny', rows: 3, class: 'mono', placeholder: '4624, 4634, 5858, 1@Ntfs', autocomplete: 'off', spellcheck: 'false', style: { width: '100%' } }, cfg.winDeny || '');
+    // entries as the list understands them: "1@Ntfs" is number 1 of the source Ntfs only - shown readable below the field
+    const entries = (v) => v.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean).flatMap((x) => (x.includes('@') ? [x.replace(/\s*@\s*/, '@')] : x.split(/\s+/)));
+    const withSource = h('div', { class: 'muted small', style: { width: '100%' } });
+    const showSources = () => {
+      const list = entries(winDeny.value).filter((x) => x.includes('@'));
+      mount(withSource, list.length ? `${t('ev.s.winDenyOnly')} ${list.map((x) => x.replace('@', ' · ')).join(', ')}` : '');
+    };
+    winDeny.addEventListener('input', showSources); showSources();
     const form = h('form', { class: 'form' },
       field(t('ev.s.traps', { port: cfg.trapPort }), traps, t('ev.s.trapsHint')),
       field(t('ev.s.communities'), h('textarea', { name: 'communities', rows: 2, class: 'mono', autocomplete: 'off', spellcheck: 'false',
@@ -482,9 +492,9 @@ export async function renderEvents(main) {
       field(t('ev.s.winDeny'), h('div', { class: 'row', style: { gap: '8px', alignItems: 'center', flexWrap: 'wrap' } }, winDeny,
         cfg.winNoise ? btn(t('ev.s.winNoise'), { class: 'btn btn-sm', type: 'button', title: cfg.winNoise, onclick: () => {
           // the usual noise added to what is there - nothing removed; tidied up by the server when saved
-          const have = winDeny.value.split(/[\s,;]+/).filter(Boolean);
-          winDeny.value = [...new Set([...have, ...cfg.winNoise.split(/[\s,]+/).filter(Boolean)])].join(', ');
-        } }) : null), t('ev.s.winDenyHint')),
+          winDeny.value = [...new Set([...entries(winDeny.value), ...entries(cfg.winNoise)])].join(', ');
+          showSources();
+        } }) : null, withSource), t('ev.s.winDenyHint')),
       field(t('ev.s.keep'), input('keepDays', cfg.keepDays, { type: 'number', min: 1, max: 365 }), t('ev.s.keepHint')),
       field(t('ev.s.maxGb'), input('maxGb', cfg.maxGb, { type: 'number', min: 0.1, max: 1000, step: 0.1 }), t('ev.s.maxGbHint')),
       h('div', { class: 'note', style: { margin: 0 } }, h('div', { style: { minWidth: 0 } },

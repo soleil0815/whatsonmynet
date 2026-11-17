@@ -6,7 +6,7 @@ import { BULK_MAX } from '../monitor/index.js';
 import { requireRole } from '../auth/session.js';
 import { inScope } from '../auth/scope.js';
 import { config } from '../config.js';
-import { parseEventIds } from '../eventrules.js';
+import { parseEventIds, parseDenyList, formatDenyList, denies } from '../eventrules.js';
 import { WIN_NOISE, WIN_KEEP } from '../settings.js';
 import { createMasker } from '../lib/aimask.js';
 import { logonSummary } from '../lib/winlogon.js';
@@ -233,11 +233,15 @@ export function createMonitoringApi(ctx) {
   // What takes the space: Windows events and senders by share, with what speaks for keeping them (a rule uses the
   // event, it is usually important) - and, for admins, leaving one out with a click
   const inList = (list, id) => (parseEventIds(list) || []).some(([a, b]) => id >= a && id <= b);
-  const rulesFor = (id) => ctx.eventRules.list().filter((x) => x.match?.eventIds && inList(x.match.eventIds, id)).map((x) => x.name);
+  // the rules waiting for an event (number, and source when it is left out for one source only): a rule asking for
+  // another source does not need it
+  const rulesFor = (id, src = '') => ctx.eventRules.list().filter((x) => x.match?.eventIds && inList(x.match.eventIds, id)
+    && !(src && x.match.source && !src.toLowerCase().includes(String(x.match.source).toLowerCase()))).map((x) => x.name);
+  const denyList = () => parseDenyList(String(settings.get('events.winDeny') || '')) || { ranges: [], pairs: [] };
   function noiseView(days) {
     const n = ctx.events.noise({ days });
-    const deny = String(settings.get('events.winDeny') || '');
-    return { ...n, events: n.events.map((e) => ({ ...e, rules: rulesFor(e.id), keep: inList(WIN_KEEP, e.id), usual: inList(WIN_NOISE, e.id), denied: inList(deny, e.id) })) };
+    const deny = denyList();
+    return { ...n, events: n.events.map((e) => ({ ...e, rules: rulesFor(e.id, e.app), keep: inList(WIN_KEEP, e.id), usual: inList(WIN_NOISE, e.id), denied: denies(deny, e.id, e.app) })) };
   }
   r.get('/events/noise', editor, unscoped, (req, res) => res.json(noiseView(Number(req.query?.days) || 7)));
   // the same as a question for an AI chat - names, addresses, accounts and domains replaced by placeholders
@@ -251,10 +255,14 @@ export function createMonitoringApi(ctx) {
     const sev = (x) => (x === null ? '' : x <= 3 ? (de ? ', auch Fehler' : ', errors too') : x === 4 ? (de ? ', auch Warnungen' : ', warnings too') : (de ? ', nur Info' : ', info only'));
     const lines = [de
       ? `Ich sammle mit WhatsOnMyNet (Netzwerk-Inventar und Monitoring) die Windows-Ereignisse und Syslog-Meldungen unserer Rechner und Geräte - in den letzten ${v.days === 1 ? '24 Stunden' : `${v.days} Tagen`} etwa ${num(v.perDay)} Meldungen pro Tag. Welche der folgenden Windows-Ereignisse sind für Betrieb und Sicherheit meist ohne Wert und können ausgeschlossen werden, und welche sollte ich auf jeden Fall behalten? Bitte je Ereignis-ID kurz begründen und am Ende die auszuschließenden IDs als Liste mit Komma nennen. Namen, Adressen und Konten sind durch Platzhalter ersetzt.`
-      : `With WhatsOnMyNet (network inventory and monitoring) I collect the Windows events and syslog messages of our computers and devices - over the last ${v.days === 1 ? '24 hours' : `${v.days} days`} about ${num(v.perDay)} messages a day. Which of the following Windows events are usually of no value for operations and security and can be left out, and which should I keep in any case? Please give a short reason for each event id and at the end list the ids to leave out, separated by commas. Names, addresses and accounts are replaced by placeholders.`, '',
+      : `With WhatsOnMyNet (network inventory and monitoring) I collect the Windows events and syslog messages of our computers and devices - over the last ${v.days === 1 ? '24 hours' : `${v.days} days`} about ${num(v.perDay)} messages a day. Which of the following Windows events are usually of no value for operations and security and can be left out, and which should I keep in any case? Please give a short reason for each event id and at the end list the ids to leave out, separated by commas. Names, addresses and accounts are replaced by placeholders.`,
+      // the same number means different things to different sources: then only for that source
+      de ? 'Die Quelle steht in Klammern. Bedeutet eine Nummer bei anderen Quellen etwas Wichtiges (z. B. 1 bei Sysmon, 1006 beim Defender, 101 in der Aufgabenplanung), nenne sie nur für diese Quelle als ID@Quelle, z. B. 1@Microsoft-Windows-Ntfs.'
+        : 'The source is in brackets. When a number means something important for other sources (e.g. 1 of Sysmon, 1006 of Defender, 101 of the Task Scheduler), name it for this source only as ID@source, e.g. 1@Microsoft-Windows-Ntfs.', '',
       de ? 'Windows-Ereignisse, die meisten zuerst:' : 'Windows events, most first:'];
-    for (const e of v.events) {
-      const src = [e.example.app, e.example.channel].filter(Boolean).join(de ? ', Protokoll ' : ', log ');
+    // already left out (older messages of the period): not asked again - they are in the list at the end
+    for (const e of v.events.filter((x) => !x.denied)) {
+      const src = [e.app || e.example.app, e.example.channel].filter(Boolean).join(de ? ', Protokoll ' : ', log ');
       lines.push(`- ${e.id}${src ? ` (${src})` : ''}: ${num(e.perDay)} ${de ? 'pro Tag' : 'a day'}, ${num(e.share)} %, ${de ? 'von' : 'from'} ${e.senders.length + e.moreSenders} ${de ? (e.senders.length + e.moreSenders === 1 ? 'Rechner' : 'Rechnern') : (e.senders.length + e.moreSenders === 1 ? 'computer' : 'computers')}${sev(e.worst)}${e.rules.length ? (de ? ', von einer Benachrichtigungsregel gebraucht' : ', used by a notification rule') : ''}`);
       if (e.example.text) lines.push(`  ${de ? 'Beispiel' : 'Example'}: "${mask(e.example.text).replace(/\s+/g, ' ').slice(0, 300)}"`);
     }
@@ -265,15 +273,21 @@ export function createMonitoringApi(ctx) {
   r.post('/events/noise/deny', admin, (req, res) => {
     const id = Number(req.body?.id);
     if (!Number.isInteger(id) || id < 0 || id > 65535) throw new HttpError(400, 'err.badRequest', 'id', 'id');
+    // with a source: only this number of this source (the same number of another source stays)
+    const src = String(req.body?.src ?? '').replace(/[\x00-\x1f@,;]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
     // a rule waits for this event: leaving it out would silence the rule
-    const rules = rulesFor(id);
+    const rules = rulesFor(id, src);
     if (rules.length) throw new HttpError(400, 'err.noiseRule', rules.join(', '));
-    const have = parseEventIds(String(settings.get('events.winDeny') || '')) || [];
-    const list = have.some(([a, b]) => id >= a && id <= b) ? have : [...have, [id, id]].sort((a, b) => a[0] - b[0]);
-    if (list.length > 200) throw new HttpError(400, 'err.ruleEventIds', undefined, 'winDeny');
-    settings.set('events.winDeny', list.map(([x, y]) => (x === y ? `${x}` : `${x}-${y}`)).join(', '));
-    ctx.events.apply();
-    audit(req, 'events.settings', `Windows event ${id} no longer kept`);
+    const have = denyList();
+    const inRange = have.ranges.some(([a, b]) => id >= a && id <= b);
+    const already = inRange || (src && have.pairs.some((p) => p.id === id && p.src.toLowerCase() === src.toLowerCase()));
+    if (!already) {
+      if (src) have.pairs.push({ id, src }); else have.ranges.push([id, id]);
+      if (have.ranges.length + have.pairs.length > 200) throw new HttpError(400, 'err.winDeny', undefined, 'winDeny');
+      settings.set('events.winDeny', formatDenyList(have));
+      ctx.events.apply();
+      audit(req, 'events.settings', `Windows event ${id}${src ? ` of ${src}` : ''} no longer kept`);
+    }
     res.json({ winDeny: settings.get('events.winDeny') });
   });
   r.get('/events/senders', editor, unscoped, (req, res) => res.json({ status: ctx.events.status(), settings: eventSettings(), openEvents: ctx.eventRules.openCount(), senders: ctx.events.senders({ q: String(req.query?.q ?? '') }) }));
@@ -295,12 +309,17 @@ export function createMonitoringApi(ctx) {
       if (!Number.isInteger(ms) || ms < 0 || ms > 7) throw new HttpError(400, 'err.badRequest', 'minSeverity', 'minSeverity');
       settings.set('events.minSeverity', ms);
     }
-    // Windows event ids: "1116, 4740, 865-868" - stored in the same tidy form the rules use
-    for (const [field, key] of [['winAllow', 'events.winAllow'], ['winDeny', 'events.winDeny']]) {
-      if (b[field] === undefined) continue;
-      const list = parseEventIds(String(b[field] ?? '').slice(0, 2000));
-      if (!list || list.length > 200) throw new HttpError(400, 'err.ruleEventIds', undefined, field);
-      settings.set(key, list.map(([x, y]) => (x === y ? `${x}` : `${x}-${y}`)).join(', '));
+    // Windows event ids: "1116, 4740, 865-868" - stored in the same tidy form the rules use; the list of those never
+    // taken may also name a source: "1@Ntfs"
+    if (b.winAllow !== undefined) {
+      const list = parseEventIds(String(b.winAllow ?? '').slice(0, 2000));
+      if (!list || list.length > 200) throw new HttpError(400, 'err.ruleEventIds', undefined, 'winAllow');
+      settings.set('events.winAllow', list.map(([x, y]) => (x === y ? `${x}` : `${x}-${y}`)).join(', '));
+    }
+    if (b.winDeny !== undefined) {
+      const list = parseDenyList(String(b.winDeny ?? '').slice(0, 6000));
+      if (!list || list.ranges.length + list.pairs.length > 200) throw new HttpError(400, 'err.winDeny', undefined, 'winDeny');
+      settings.set('events.winDeny', formatDenyList(list));
     }
     if (typeof b.communities === 'string' && b.communities.trim()) {
       const list = b.communities.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);

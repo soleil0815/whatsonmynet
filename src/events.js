@@ -19,7 +19,7 @@ import tls from 'node:tls';
 import snmp from 'net-snmp';
 import { log } from './lib/log.js';
 import { config } from './config.js';
-import { parseEventIds } from './eventrules.js';
+import { parseEventIds, parseDenyList, denies } from './eventrules.js';
 
 export const SEVERITIES = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'];
 const GB = 1024 ** 3;
@@ -312,11 +312,11 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const min = own ?? Math.max(0, Math.min(7, Number(settings.get('events.minSeverity') ?? 7)));
     return severity <= min;
   }
-  function idWanted(id) {
+  function idWanted(id, app) {
     if (!Number.isInteger(id)) return true;
-    if (!idFilter) idFilter = { allow: ranges('events.winAllow'), deny: ranges('events.winDeny') };
+    if (!idFilter) idFilter = { allow: ranges('events.winAllow'), deny: parseDenyList(String(settings.get('events.winDeny') || '')) || { ranges: [], pairs: [] } };
     if (idFilter.allow.length && !inRanges(idFilter.allow, id)) return false;
-    return !inRanges(idFilter.deny, id);
+    return !denies(idFilter.deny, id, app);
   }
   let stats = null; let statsAt = 0; let receivedSince = 0; // the space figures for the page (see storage)
   // one row per sender: the newest message, the computer name it gave (a name only fills in, never empties it)
@@ -352,7 +352,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     if (!allowed(addr)) return null;
     const device = deviceOf(addr);
     if (settings.get('events.onlyKnown') && !device) return null;
-    if (!idWanted(ev.eventId)) { filtered++; return null; }
+    if (!idWanted(ev.eventId, ev.app)) { filtered++; return null; }
     const sev = Math.max(0, Math.min(7, Number(ev.severity) || 0));
     if (!sevWanted(addr, sev)) { filtered++; droppedBy.set(addr, (droppedBy.get(addr) || 0) + 1); return null; }
     const row = { at: at.toISOString(), kind, source_ip: addr, device_id: device, severity: Math.max(0, Math.min(7, Number(ev.severity) || 0)), facility: ev.facility ?? null,
@@ -822,18 +822,32 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const keepDays = st.keepDays;
     const names = new Map(db.prepare('SELECT source_ip, host FROM event_senders').all().map((r) => [r.source_ip, r.host]));
     const newest = db.prepare(`SELECT source_ip, host, app, channel, severity, text, ${LEN} len FROM events_in WHERE event_id = ? ORDER BY id DESC LIMIT 500`);
-    const events = [...ids].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, top).map(([id, n]) => {
+    // One number can come from several sources (1 of Ntfs, 1 of Sysmon): such a number is split by source - counted
+    // exactly when it is not too many messages, else in the share of its newest 500 (marked as estimated)
+    const bySource = db.prepare('SELECT COALESCE(app, \'\') app, COUNT(*) n FROM events_in WHERE event_id = ? AND at >= ? GROUP BY 1');
+    const entries = [];
+    for (const [id, n] of [...ids].filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]).slice(0, top)) {
       const rows = newest.all(id);
+      const apps = new Map();
+      for (const r of rows) { const k = r.app || ''; if (!apps.has(k)) apps.set(k, []); apps.get(k).push(r); }
+      if (apps.size <= 1) { entries.push({ id, app: rows[0]?.app || '', n, rows, estimated: false }); continue; }
+      let split; let estimated = false;
+      if (n <= 300000) split = new Map(bySource.all(id, new Date(sinceMs).toISOString()).map((r) => [r.app, r.n]));
+      else { estimated = true; split = new Map([...apps].map(([k, list]) => [k, Math.round((n * list.length) / rows.length)])); }
+      // a source of the period that is not among the newest 500 has no example: it goes with the rest
+      for (const [app, m] of split) if (m > 0) entries.push({ id, app, n: m, rows: apps.get(app) || [], estimated });
+    }
+    const events = entries.sort((a, b) => b.n - a.n).slice(0, top).map(({ id, app, n, rows, estimated }) => {
       const ex = rows[0] || {};
       const who = new Map();
       for (const r of rows) { const k = r.host || names.get(r.source_ip) || r.source_ip; who.set(k, (who.get(k) || 0) + 1); }
       const avg = rows.length ? rows.reduce((a, r) => a + r.len, 0) / rows.length : avgAll;
       const perDay = n / d;
-      return { id, n, perDay: Math.round(perDay), share: total ? Math.round((n / total) * 1000) / 10 : 0,
+      return { id, app, n, estimated, perDay: Math.round(perDay), share: total ? Math.round((n / total) * 1000) / 10 : 0,
         bytes: Math.round(perDay * keepDays * perRow * (avg / avgAll)),
         worst: rows.length ? Math.min(...rows.map((r) => r.severity)) : null,
         senders: [...who].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name), moreSenders: Math.max(0, who.size - 3),
-        example: { host: ex.host || names.get(ex.source_ip) || ex.source_ip || '', app: ex.app || '', channel: ex.channel || '', text: String(ex.text || '').slice(0, 300) } };
+        example: { host: ex.host || names.get(ex.source_ip) || ex.source_ip || '', app: ex.app || app || '', channel: ex.channel || '', text: String(ex.text || '').slice(0, 300) } };
     });
     const filters = new Map(db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((r) => [r.source_ip, r.min_severity]));
     const senders = perSender.filter((r) => r.n > 0).sort((a, b) => b.n - a.n).slice(0, 15).map((r) => ({

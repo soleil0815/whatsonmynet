@@ -9,6 +9,8 @@ export const CHANGELOG = [
     'Neu: TrueNAS (ab 25.04, WebSocket-API, API-Schlüssel eines Benutzers mit „Read-Only Administrator“) - Pools, Warnungen von TrueNAS, Replikationen; und Ceph ohne Proxmox über das Ceph-Dashboard (Benutzer mit Rolle „read-only“)',
     'Diagnosepaket: Speicherpools, TrueNAS-Warnungen und Replikationen sowie die Version des Windows-Skripts je Rechner (anonymisiert)',
     'Scan nur auf Wunsch: Bei einer neuen Installation ist der nächtliche Scan aus - WhatsOnMyNet scannt nichts von sich aus. Die Seite „Netzwerk scannen“ sagt das und bietet Administratoren „Nächtlichen Scan einschalten“ an; Ein- und Ausschalten steht im Protokoll. Bestehende Installationen behalten ihre Einstellung',
+    'Meldungen: Ausschließen je Quelle - „1@Ntfs“ nimmt die 1 von NTFS nicht mehr an, die 1 von Sysmon schon. „Was belegt den Platz?“ zeigt eine Nummer mehrerer Quellen in eigenen Zeilen, „Nicht speichern“ nimmt die Quelle mit',
+    'Für KI kopieren: schon ausgeschlossene Ereignisse werden nicht noch einmal gefragt; die Quelle steht je Ereignis dabei, und die KI nennt Nummern für eine Quelle als ID@Quelle',
   ], en: [
     'Windows script: when WhatsOnMyNet refused a report (e.g. key no longer valid) or could not be reached, the script wrote a warning 4100 to the PowerShell log on every run - fixed. The answer is now in womn-host-send.json next to the script, the scheduled task ends with result 2. Tested on real Windows (Server 2022 and 2025). The same goes for the Hyper-V script',
     'Windows scripts with a version number: in the first line, in the registry under HKLM\\SOFTWARE\\WhatsOnMyNet (HostScript or HyperVScript) to filter on in software distribution, and in the report - the device page marks machines with an older script as "outdated". The number only changes when the script changes. For this, roll out the script once more',
@@ -16,6 +18,8 @@ export const CHANGELOG = [
     'New: TrueNAS (25.04 or newer, WebSocket API, API key of a user with "Read-Only Administrator") - pools, alerts of TrueNAS, replications; and Ceph without Proxmox through the Ceph dashboard (user with role "read-only")',
     'Diagnostic package: storage pools, TrueNAS alerts and replications, and the version of the Windows script per machine (anonymised)',
     'Scanning only on request: on a new installation the nightly scan is off - WhatsOnMyNet scans nothing on its own. The page "Scan network" says so and offers administrators "Switch the nightly scan on"; switching it on or off is logged. Existing installations keep their setting',
+    'Messages: leaving out per source - "1@Ntfs" no longer takes 1 of NTFS, but still 1 of Sysmon. "What takes the space?" shows a number of several sources in rows of their own, "Do not keep" takes the source along',
+    'Copy for AI: events already left out are not asked again; the source is given per event, and the AI names numbers for one source as ID@source',
   ] },
   { version: '0.41.0', date: '2026-11-17', de: [
     'Meldungen: Zeitleiste ohne Suchbegriff, Übersicht „Nach Absender“ und Seite „Platz“ sind auch bei Millionen Meldungen sofort da - sie lesen eine Zählung je Minute und Stunde statt aller Meldungen (bei 2 Millionen Meldungen etwa 10 Millisekunden statt 1 bis 2 Sekunden). Die Zahlen bleiben genau. Nach dem Update wird eine bestehende Meldungsdatei im Hintergrund nachgezählt',
