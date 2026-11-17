@@ -9,6 +9,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 - Handbuch: vollständige NXLog-Konfiguration als Beispiel, die Quelle und Protokoll mitschickt (damit greifen Ausschlüsse wie 1@Ntfs); Fluent Bit als zweiter kostenloser Agent mit fertiger Konfiguration, geprüft auf echtem Windows Server; Hinweise zu Winlogbeat und zur Windows-Ereignisweiterleitung
 - Meldungen: Windows-Ereignisse von Fluent Bit (JSON) werden mit Schwere erkannt - die Stufe als Zahl und „Überwachung fehlgeschlagen“ aus den Schlüsselwörtern
 - Windows-Skripte: Das Fenster zum Herunterladen nennt den Registry-Eintrag für Softwareverteilung und Inventar (HKLM\SOFTWARE\WhatsOnMyNet, Wert HostScript bzw. HyperVScript, aktuelle Version); das Handbuch zeigt ihn als Tabelle mit Abfrage und Erkennungsregel für Intune/SCCM
+- Windows-Ereignisse aus NXLog (lesbare Form): Quellen mit mehr als 48 Zeichen (z. B. Microsoft-Windows-TerminalServices-LocalSessionManager) und Quellen mit Leerzeichen und Prozessnummer (Microsoft-Windows-Windows Defender[3120]) wurden nicht erkannt - Nummer, Quelle und Protokoll fehlten, und die Ausschlussliste griff nicht. Behoben
 
 ## 0.42.0 - 2026-11-17
 
