@@ -114,6 +114,22 @@ test('Windows noise: a new installation leaves it out, one already in use (migra
   assert.equal(createSettings(own).get('events.winDeny'), '8004');
 });
 
+test('nightly scan: off on a new installation, one already in use (migration 38) keeps it as it was; switching it is logged', async () => {
+  assert.equal(createSettings(memoryDb()).get('lightscan.enabled'), false, 'WhatsOnMyNet scans nothing on its own');
+  const used = memoryDb();
+  used.prepare("INSERT INTO users(username,password_hash,role,created_at) VALUES('admin','x','admin','x')").run();
+  used.prepare("DELETE FROM settings WHERE key='lightscan.enabled'").run();
+  used.pragma('user_version = 37');
+  migrate(used, { quiet: true });
+  assert.equal(createSettings(used).get('lightscan.enabled'), true, 'on as before the update');
+  const off = memoryDb();
+  off.prepare("INSERT INTO users(username,password_hash,role,created_at) VALUES('admin','x','admin','x')").run();
+  off.prepare("INSERT OR REPLACE INTO settings(key, value) VALUES('lightscan.enabled', 'false')").run();
+  off.pragma('user_version = 37');
+  migrate(off, { quiet: true });
+  assert.equal(createSettings(off).get('lightscan.enabled'), false, 'switched off by hand stays off');
+});
+
 test('backups: the number set applies at once to daily copies and to each kind of special copy; one can be deleted by hand', async () => {
   const dir = fs.mkdtempSync(path.join(tmp, 'gzk-'));
   const { db, file } = makeDb(dir);

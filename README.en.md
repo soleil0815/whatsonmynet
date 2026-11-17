@@ -137,6 +137,8 @@ Then `docker compose up -d`.
 
 ## Nightly light scan and new devices (from version 0.3)
 
+**WhatsOnMyNet scans nothing on its own.** On a new installation (from 0.42) the nightly scan is **off**; an administrator switches it on under *Settings → Scan* or right on the page *Scan network* - it is written to the log. Installations from before keep their setting.
+
 Once a night (default 02:30 local time, `TZ` in `.env`) WhatsOnMyNet only looks for devices in all subnets of your locations: ARP, NetBIOS and - if allowed - ping; in routed subnets also a few TCP connection attempts (ports 443, 80, 22, 445, 3389) and the ARP table of the routers via SNMP. No port check of the devices, no web requests, so the scan stays inconspicuous.
 
 - Known devices get their new IP address automatically (the MAC address is the identity), their monitors follow - except monitors with a stored password: they are paused and need the password again (see Monitoring).

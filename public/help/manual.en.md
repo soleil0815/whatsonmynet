@@ -53,7 +53,7 @@ The MAC address is the identity of a device: if it gets a new IP, the next scan 
 
 ## Nightly light scan
 
-Every night (default 02:30) WhatsOnMyNet only looks for devices in all subnets of your locations: ARP, NetBIOS and - if allowed - ping; in routed subnets also a few TCP connection attempts (ports 443, 80, 22, 445, 3389) and the ARP table of the routers via SNMP. No port check of the devices, no web requests. Known devices get their new IP; a device showing up for the very first time is reported once. Settings, time and "Run now" are under *Settings → Scan*.
+**WhatsOnMyNet scans nothing on its own:** on a new installation the nightly scan is off. The page *Scan network* says so and offers administrators **Switch the nightly scan on** (it is written to the log); installations from before 0.42 keep their setting. Switched on, every night (default 02:30) WhatsOnMyNet only looks for devices in all subnets of your locations: ARP, NetBIOS and - if allowed - ping; in routed subnets also a few TCP connection attempts (ports 443, 80, 22, 445, 3389) and the ARP table of the routers via SNMP. No port check of the devices, no web requests. Known devices get their new IP; a device showing up for the very first time is reported once. Settings, time and "Run now" are under *Settings → Scan*.
 
 ## Monitoring
 

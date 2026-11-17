@@ -120,6 +120,8 @@ const de = {
   'loc.label': 'Bezeichnung', 'loc.addSubnet': 'Subnetz hinzufügen', 'loc.empty': 'Noch keine Standorte.', 'loc.devices': '{n} Geräte',
   'loc.deleteConfirm': 'Standort „{name}“ löschen? Die Geräte bleiben im Inventar, nur ohne Standort.', 'loc.noSubnets': 'Keine Subnetze',
   // settings
+  'scan.nightlyOff': 'Der nächtliche Scan ist aus', 'scan.nightlyOffText': 'WhatsOnMyNet scannt nichts von sich aus. Eingeschaltet sucht es jede Nacht ({time}) in den Subnetzen der Standorte nach Geräten (ARP, NetBIOS, Ping - keine Ports) und meldet Geräte, die zum ersten Mal auftauchen.',
+  'scan.nightlySwitchOn': 'Nächtlichen Scan einschalten', 'scan.nightlySettings': 'Uhrzeit und Benachrichtigung', 'scan.nightlyOn': 'Der nächtliche Scan läuft ab heute um {time}.', 'scan.nightlyAskAdmin': 'Einschalten kann ein Administrator.',
   'set.title': 'Einstellungen', 'set.general': 'Allgemein', 'set.scan': 'Scan', 'set.smtp': 'E-Mail (SMTP)', 'set.https': 'HTTPS-Zertifikat',
   'set.users': 'Benutzer', 'set.ignored': 'Ignorierte Geräte', 'set.audit': 'Protokoll', 'set.about': 'Über',
   'set.instance': 'Name dieser Installation', 'set.backupKeep': 'Sicherungen aufbewahren', 'set.backupHint': 'Gilt für die nächtlichen Sicherungen und ebenso für die Kopien vor einem Update und vor einer Wiederherstellung. Was darüber liegt, wird beim Speichern gelöscht - die ältesten zuerst. Standard: 10.',
@@ -1077,6 +1079,8 @@ const en = {
   'loc.add': 'Add location', 'loc.name': 'Name', 'loc.description': 'Description', 'loc.subnets': 'Subnets', 'loc.subnet': 'Subnet (CIDR)',
   'loc.label': 'Label', 'loc.addSubnet': 'Add subnet', 'loc.empty': 'No locations yet.', 'loc.devices': '{n} devices',
   'loc.deleteConfirm': 'Delete location “{name}”? The devices stay in the inventory without a location.', 'loc.noSubnets': 'No subnets',
+  'scan.nightlyOff': 'The nightly scan is off', 'scan.nightlyOffText': 'WhatsOnMyNet scans nothing on its own. Switched on, it looks for devices in the subnets of the locations every night ({time}) (ARP, NetBIOS, ping - no ports) and reports devices seen for the first time.',
+  'scan.nightlySwitchOn': 'Switch the nightly scan on', 'scan.nightlySettings': 'Time and notification', 'scan.nightlyOn': 'The nightly scan runs from tonight at {time}.', 'scan.nightlyAskAdmin': 'An administrator can switch it on.',
   'set.title': 'Settings', 'set.general': 'General', 'set.scan': 'Scan', 'set.smtp': 'Email (SMTP)', 'set.https': 'HTTPS certificate',
   'set.users': 'Users', 'set.ignored': 'Ignored devices', 'set.audit': 'Log', 'set.about': 'About',
   'set.instance': 'Name of this installation', 'set.backupKeep': 'Backups to keep', 'set.backupHint': 'Applies to the nightly backups and likewise to the copies before an update and before a restore. What is over the number is deleted on saving - the oldest first. Default: 10.',

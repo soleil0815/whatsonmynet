@@ -715,6 +715,9 @@ export const MIGRATIONS = [
      created_at TEXT NOT NULL
    );
    CREATE INDEX IF NOT EXISTS event_searches_user ON event_searches(user_id);`,
+  // 38: the nightly light scan is off on new installations (WhatsOnMyNet scans nothing unless an administrator says
+  // so) - one already in use keeps it as it was: its setting is written down instead of following the new default
+  `INSERT OR IGNORE INTO settings(key, value) SELECT 'lightscan.enabled', 'true' WHERE EXISTS (SELECT 1 FROM users);`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

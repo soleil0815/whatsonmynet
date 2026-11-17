@@ -1,6 +1,6 @@
 // Scan: choose targets, watch the radar, adopt or ignore what was found.
 import { h, mount, fmtDate, toast } from '../dom.js';
-import { get, post } from '../api.js';
+import { get, post, put } from '../api.js';
 import { t, getLang, reasonText } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail, updateBadge } from '../app.js';
@@ -73,6 +73,23 @@ function radarPanel(radar) {
   };
 }
 
+function nightlyNote(n) {
+  const box = h('div', { class: 'note' });
+  const admin = state.user.isAdmin;
+  mount(box, h('div', { style: { minWidth: 0, flex: 1 } },
+    h('strong', {}, t('scan.nightlyOff')),
+    h('p', { style: { margin: '4px 0 8px' } }, t('scan.nightlyOffText', { time: n.time })),
+    admin ? h('div', { class: 'actions', style: { justifyContent: 'flex-start' } },
+      h('button', { type: 'button', class: 'btn btn-sm btn-primary', onclick: async (e) => {
+        const b = e.currentTarget; // gone after the await
+        b.disabled = true;
+        try { await put('/settings/lightscan', { enabled: true }); toast(t('scan.nightlyOn', { time: n.time })); box.remove(); } catch (ex) { fail(ex); b.disabled = false; }
+      } }, t('scan.nightlySwitchOn')),
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => navigate('/settings/scan') }, t('scan.nightlySettings')))
+      : h('span', { class: 'muted small' }, t('scan.nightlyAskAdmin'))));
+  return box;
+}
+
 export async function renderScan(main, scanId) {
   if (scanId) return renderResult(main, Number(scanId));
   const [locations, net, scans] = await Promise.all([get('/locations'), get('/network'), get('/scans')]);
@@ -117,6 +134,9 @@ export async function renderScan(main, scanId) {
     h('div', { class: 'scan-layout' },
       h('div', { class: 'stack' },
         !net.hostNetwork ? h('div', { class: 'note warn' }, t('scan.noHostNet')) : null,
+        // WhatsOnMyNet scans nothing on its own: as long as the nightly scan is off, say what that means - and let an
+        // administrator switch it on here (it is logged who did)
+        net.nightly && !net.nightly.enabled ? nightlyNote(net.nightly) : null,
         // Viewers cannot start scans: explain that instead of showing a form they cannot use
         !edit ? h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, t('scan.viewOnly'))) : h('section', { class: 'panel panel-pad' },
           h('h2', { class: 'section-title' }, t('scan.locations')), targets,

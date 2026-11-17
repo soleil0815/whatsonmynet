@@ -31,8 +31,11 @@ function setup() {
   return { db, settings, sent, started, hooks, nightly, scan, result };
 }
 
-test('starts once in the window, with all subnets', () => {
+test('starts once in the window, with all subnets - only once an administrator switched it on', () => {
   const s = setup();
+  s.nightly.tick(at(2, 31));
+  assert.equal(s.started.length, 0, 'off on a new installation: nothing is scanned');
+  s.settings.set('lightscan.enabled', true);
   s.nightly.tick(at(2, 31));
   s.nightly.tick(at(2, 32));
   assert.equal(s.started.length, 1);

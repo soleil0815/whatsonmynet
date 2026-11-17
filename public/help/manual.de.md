@@ -53,7 +53,7 @@ Die MAC-Adresse ist die Identität eines Geräts: Bekommt es eine neue IP, über
 
 ## Nächtlicher Leicht-Scan
 
-Jede Nacht (Standard 02:30) sucht WhatsOnMyNet in allen Subnetzen deiner Standorte nur nach Geräten: ARP, NetBIOS und - wenn erlaubt - Ping; in gerouteten Subnetzen zusätzlich wenige TCP-Verbindungsversuche (Ports 443, 80, 22, 445, 3389) und die ARP-Tabelle der Router per SNMP. Keine Port-Prüfung der Geräte, keine Webanfragen. Bekannte Geräte bekommen ihre neue IP; ein Gerät, das zum allerersten Mal auftaucht, wird einmal gemeldet. Einstellungen, Uhrzeit und „Jetzt ausführen“ findest du unter *Einstellungen → Scan*.
+**Von sich aus scannt WhatsOnMyNet nichts:** Bei einer neuen Installation ist der nächtliche Scan aus. Die Seite *Netzwerk scannen* sagt das und bietet Administratoren **Nächtlichen Scan einschalten** an (das steht im Protokoll); Installationen von vor 0.42 behalten ihre Einstellung. Eingeschaltet sucht WhatsOnMyNet jede Nacht (Standard 02:30) in allen Subnetzen deiner Standorte nur nach Geräten: ARP, NetBIOS und - wenn erlaubt - Ping; in gerouteten Subnetzen zusätzlich wenige TCP-Verbindungsversuche (Ports 443, 80, 22, 445, 3389) und die ARP-Tabelle der Router per SNMP. Keine Port-Prüfung der Geräte, keine Webanfragen. Bekannte Geräte bekommen ihre neue IP; ein Gerät, das zum allerersten Mal auftaucht, wird einmal gemeldet. Einstellungen, Uhrzeit und „Jetzt ausführen“ findest du unter *Einstellungen → Scan*.
 
 ## Monitoring
 

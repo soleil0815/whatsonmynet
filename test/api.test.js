@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { startApp } from './helpers.js';
 
 const app = await startApp();
-const { call } = app;
+const { call, ctx } = app;
 test.after(() => app.close());
 
 const ADMIN = { username: 'testadmin', password: 'Sicher-Passwort-1', email: 'm@example.org' };
@@ -154,8 +154,14 @@ test('bulk edit and bulk delete need the editor role', async () => {
 });
 
 test('light scan and printer settings', async () => {
-  assert.equal((await call('PUT', '/api/settings/lightscan', { time: '25:00' })).status, 400);
+  // off until an administrator switches it on - the scan page is told (and says so)
+  assert.deepEqual((await call('GET', '/api/network', undefined, { who: 'editor' })).data.nightly, { enabled: false, time: '02:30' });
+  assert.equal((await call('PUT', '/api/settings/lightscan', { enabled: true }, { who: 'editor' })).status, 403, 'only administrators');
+  assert.equal((await call('PUT', '/api/settings/lightscan', { enabled: true, time: '25:00' })).status, 400);
+  assert.equal(ctx.settings.get('lightscan.enabled'), false, 'a refused change changes nothing');
   const r = await call('PUT', '/api/settings/lightscan', { enabled: true, time: '03:15', notify: false, channels: [999] });
+  assert.equal(r.data.enabled, true);
+  assert.match(ctx.db.prepare("SELECT detail FROM audit WHERE action='settings.lightscan' ORDER BY id DESC LIMIT 1").pluck().get(), /nightly scan switched on \(03:15\)/);
   assert.equal(r.data.time, '03:15');
   assert.deepEqual(r.data.channels, [], 'unknown channels are dropped');
   const p = await call('PUT', '/api/settings/printer', { interval: 1, threshold: 99 });
