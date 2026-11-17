@@ -1,9 +1,11 @@
-# WhatsOnMyNet - Windows report (read only). Sends CPU, RAM, drives, uptime and the state of the automatic services
+# WhatsOnMyNet @VERSIONTEXT@ - Windows report (read only). Sends CPU, RAM, drives, uptime and the state of the automatic services
 # every 5 minutes to WhatsOnMyNet - plus hardware (model, serial number, BIOS, CPU, memory modules, network cards),
 # physical disks with their health, pending Windows updates and restart, virus protection and firewall, critical
 # events of the last 24 hours and certificates of the machine. No agent, no open port, nothing installed: run it once as administrator (or via
 # software distribution / GPO) - it sets itself up as scheduled task under SYSTEM. Removing: womn-host-uninstall.ps1.
 # Talks only to the address below; loads nothing from anywhere.
+# The version of this script (also in the registry: HKLM\SOFTWARE\WhatsOnMyNet)
+$ScriptVersion = @VERSION@
 $ErrorActionPreference = 'Stop'
 # No progress bar: under the scheduled task there is no console window to draw it in - Windows PowerShell then
 # logs "System error" (event 4100) on every run, and web requests are faster without it
@@ -12,6 +14,7 @@ $Url = @URL@
 $Token = @TOKEN@
 @PINCHECK@
 @SETUP@
+@SEND@
 $os = Get-CimInstance Win32_OperatingSystem
 $cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
 $disks = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Where-Object { $_.Size -gt 0 } | ForEach-Object {
@@ -192,9 +195,9 @@ $body = @{
   memTotal = [int64]$os.TotalVisibleMemorySize * 1024; memUsed = ([int64]$os.TotalVisibleMemorySize - [int64]$os.FreePhysicalMemory) * 1024
   uptime = [int]((Get-Date) - $os.LastBootUpTime).TotalSeconds; disks = $disks; services = $services
   macs = @($net | ForEach-Object { $_.MACAddress } | Where-Object { $_ }); ips = @($net | ForEach-Object { $_.IPAddress } | Where-Object { $_ -match '^\d+\.' }); ups = $ups
-  hw = $hw; pdisks = $pdisks; updates = $updates; av = $av; firewall = $fw; events = $events; certs = $certs; checks = $checks
+  hw = $hw; pdisks = $pdisks; updates = $updates; av = $av; firewall = $fw; events = $events; certs = $certs; checks = $checks; script = $ScriptVersion
 } | ConvertTo-Json -Depth 6 -Compress
-Invoke-RestMethod -Method Post -Uri $Url -Headers @{ Authorization = "Bearer $Token"; 'X-WOMN-Request' = '1' } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30 | Out-Null
+Send-Report $body
 
 # After the report: look for Windows updates again when the last search is older than 6 hours (not on the first
 # call - the setup should be quick). Only searches, never installs.
@@ -211,3 +214,5 @@ if (-not $Setup -and ($null -eq $upd -or $null -eq $age -or $age -ge 6)) {
   }
   if ($found) { $found | ConvertTo-Json -Compress | Set-Content -Path $UpdFile -Encoding UTF8 }
 }
+# a refused or failed report: in the status file, and the task shows result 2 (nothing in the event log)
+if ($SendFailed) { exit 2 }

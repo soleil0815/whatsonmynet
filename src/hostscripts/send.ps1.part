@@ -1,0 +1,37 @@
+# Sending the report - without Invoke-RestMethod: in Windows PowerShell 5.1 every answer other than "OK" (key no
+# longer valid, standby answering, WhatsOnMyNet being updated) and every connection that fails is an error the engine
+# logs as event 4100 "system error" in the PowerShell log - even when caught, on every run. Here the answer is read
+# without an error: what came back goes to the status file next to the script and into the exit code of the task.
+$SendFile = Join-Path $Dir ([IO.Path]::GetFileNameWithoutExtension($Dest) + '-send.json')
+function Send-Report([string]$Json) {
+  $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
+  $code = 0; $msg = ''
+  $req = [Net.HttpWebRequest]::Create($Url)
+  $req.Method = 'POST'; $req.ContentType = 'application/json; charset=utf-8'; $req.Timeout = 30000; $req.ReadWriteTimeout = 30000
+  $req.Headers.Add('Authorization', "Bearer $Token"); $req.Headers.Add('X-WOMN-Request', '1')
+  $req.ContentLength = $bytes.Length
+  $resp = $null
+  try {
+    $s = $req.GetRequestStream()
+    try { $s.Write($bytes, 0, $bytes.Length) } finally { $s.Close() }
+    $resp = $req.GetResponse()
+  } catch {
+    $ex = $_.Exception
+    while ($ex.InnerException -and -not ($ex -is [Net.WebException])) { $ex = $ex.InnerException }
+    if ($ex -is [Net.WebException] -and $ex.Response) { $resp = $ex.Response } else { $msg = [string]$ex.Message }
+  }
+  if ($resp) {
+    $code = [int]$resp.StatusCode
+    if ($code -ge 300) {
+      try { $r = New-Object IO.StreamReader($resp.GetResponseStream(), [Text.Encoding]::UTF8); $text = $r.ReadToEnd(); $r.Close() } catch { $text = '' }
+      $msg = $text
+      try { $j = $text | ConvertFrom-Json; if ($j.error.message) { $msg = [string]$j.error.message } } catch { $msg = $text }
+    }
+    $resp.Close()
+  }
+  $ok = $code -ge 200 -and $code -lt 300
+  if ($msg.Length -gt 300) { $msg = $msg.Substring(0, 300) }
+  $state = @{ at = (Get-Date).ToUniversalTime().ToString('o'); ok = $ok; status = $code; message = $msg; version = $ScriptVersion }
+  try { $state | ConvertTo-Json -Compress | Set-Content -Path $SendFile -Encoding UTF8 } catch { $null = $_ }
+  if (-not $ok) { $script:SendFailed = $true }
+}

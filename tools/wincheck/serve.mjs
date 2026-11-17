@@ -22,7 +22,14 @@ const s = hostScript('windows', { url: `https://127.0.0.1:${port}/api/hosts/push
 fs.writeFileSync(path.join(dir, s.file), `﻿${s.text.replace(/\r?\n/g, '\r\n')}`);
 fs.writeFileSync(path.join(dir, s.uninstall.file), `﻿${s.uninstall.text.replace(/\r?\n/g, '\r\n')}`);
 const out = path.join(dir, 'reports.jsonl');
+// <work dir>/reject: answer as WhatsOnMyNet does to a key no longer valid; <work dir>/down: drop the connection
 https.createServer({ cert, key }, (req, res) => {
+  if (fs.existsSync(path.join(dir, 'down'))) { console.log('dropped a connection (down)'); req.socket.destroy(); return; }
+  if (fs.existsSync(path.join(dir, 'reject'))) {
+    req.resume();
+    req.on('end', () => { console.log('refused a report (reject)'); res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { code: 'err.unauthorized', message: 'Bitte melde dich an.' } })); });
+    return;
+  }
   let body = '';
   req.on('data', (d) => { body += d; if (body.length > 5e6) req.destroy(); });
   req.on('end', () => {

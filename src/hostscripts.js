@@ -11,6 +11,13 @@ const KINDS = {
   libvirt: { file: 'womn-libvirt.sh', ps: false, cron: 'whatsonmynet-kvm', old: ['whatsonmynet'] },
 };
 export const SCRIPT_KINDS = Object.keys(KINDS);
+// The version of each Windows script: the WhatsOnMyNet version in which it last changed - not the running version, so
+// that an update of WhatsOnMyNet does not make every machine "outdated". Written into the script (first line, registry
+// HKLM\SOFTWARE\WhatsOnMyNet) and sent with every report. test/hostscriptversion.test.js fails when a script changes
+// and its number stays.
+export const SCRIPT_VERSIONS = { windows: '0.42.0', hyperv: '0.42.0' };
+// the value under HKLM\SOFTWARE\WhatsOnMyNet (software distribution and inventory tools filter on it)
+const REG_NAMES = { windows: 'HostScript', hyperv: 'HyperVScript' };
 
 const read = (file) => fs.readFileSync(new URL(`./hostscripts/${file}`, import.meta.url), 'utf8');
 // PowerShell also takes the typographic quotes ‘ ’ ‚ ‛ as a single quote: they are doubled too
@@ -31,7 +38,10 @@ export function hostScript(kind, { url, token, pin = {} }) {
     ? read('setup.ps1.part').replace('@TASK@', () => psQuote(k.task)).replace('@FILE@', () => psQuote(k.file)).replace('@OLD@', () => psList(k.old))
     : read('setup.sh.part').replace('@FILE@', () => shQuote(k.file)).replace('@CRON@', () => shQuote(k.cron)).replace('@OLD@', () => shList(k.old));
   let text = read(k.file).replace('@SETUP@', () => setup.trimEnd());
-  if (k.ps) text = text.replace('@PINCHECK@', () => read('pin.ps1.part').trimEnd());
+  if (k.ps) {
+    text = text.replace('@PINCHECK@', () => read('pin.ps1.part').trimEnd()).replace('@SEND@', () => read('send.ps1.part').trimEnd())
+      .replace(/@VERSION@/g, () => psQuote(SCRIPT_VERSIONS[kind])).replace(/@VERSIONTEXT@/g, () => SCRIPT_VERSIONS[kind]).replace(/@REGNAME@/g, () => psQuote(REG_NAMES[kind]));
+  }
   text = k.ps
     ? text.replace('@URL@', () => psQuote(url)).replace('@TOKEN@', () => psQuote(token)).replace('@THUMB@', () => psQuote(pin.sha1 || '')).replace('@PUBKEY@', () => psQuote(pin.key || ''))
     : text.replace('@URL@', () => shQuote(url)).replace('@TOKEN@', () => shQuote(token)).replace('@PIN@', () => shQuote(pin.spki ? `sha256//${pin.spki}` : ''));
@@ -43,7 +53,14 @@ export function uninstallScript(kind) {
   const k = KINDS[kind];
   if (!k) throw new Error(`unknown script kind ${kind}`);
   const text = k.ps
-    ? read('uninstall.ps1').replace('@TASKS@', () => psList([k.task, ...k.old])).replace('@FILES@', () => psList([k.file, ...(k.extra || [])]))
+    ? read('uninstall.ps1').replace('@TASKS@', () => psList([k.task, ...k.old])).replace('@FILES@', () => psList([k.file, k.file.replace(/\.ps1$/, '-send.json'), ...(k.extra || [])]))
+      .replace(/@REGNAME@/g, () => psQuote(REG_NAMES[kind]))
     : read('uninstall.sh').replace('@FILES@', () => shList([k.file])).replace('@CRONS@', () => shList([k.cron, ...k.old]));
   return { file: uninstallName(k.file), text };
+}
+
+/** What a Windows script is made of (its file and the shared parts) - for the check that its version follows changes */
+export function scriptSource(kind) {
+  const k = KINDS[kind];
+  return k.ps ? [read(k.file), read('setup.ps1.part'), read('pin.ps1.part'), read('send.ps1.part')].join('\n') : read(k.file);
 }
