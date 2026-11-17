@@ -6,6 +6,13 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Meldungen für große Netze: Neue Meldungen werden gesammelt geschrieben - ein Vielfaches schneller (auf einem kleinen Server mit SSD über 10.000 pro Sekunde). Der Schutz vor Flut nimmt jetzt 100 statt 20 pro Sekunde je Absender und 3.000 statt 300 insgesamt (änderbar mit WOMN_MESSAGES_PER_SECOND); über TCP und TLS geht dabei nichts mehr verloren - der Absender wartet kurz, statt dass Meldungen verworfen werden. Verworfene (UDP) stehen oben auf der Seite
+- Nach Absender: seitenweise (100, dann „Weitere 100 anzeigen“), mit Schnellfiltern samt Anzahl - Fehler, Warnungen, still seit 24 Stunden, mit eigenem Filter -, Gerätetyp aus dem Inventar und Reihenfolge (neueste Meldung, meiste Meldungen, Name)
+- Was belegt den Platz?: „von … Rechnern“ ist genau gezählt, auch bei Tausenden (vorher aus den neuesten 500 Meldungen geschätzt); unter den 15 größten Absendern steht, was alle übrigen zusammen belegen, und mit Geräten im Inventar die Verteilung nach Gerätetyp
+- Lasttest: docker compose exec whatsonmynet womn-admin loadtest misst auf der eigenen Hardware, wie viele Meldungen pro Sekunde der Server schafft, und sagt, was das in Rechnern und Platz heißt (eigene Testdatei, wird danach gelöscht)
+
+## 0.42.1 - 2026-11-17
+
 - Handbuch: vollständige NXLog-Konfiguration als Beispiel, die Quelle und Protokoll mitschickt (damit greifen Ausschlüsse wie 1@Ntfs); Fluent Bit als zweiter kostenloser Agent mit fertiger Konfiguration, geprüft auf echtem Windows Server; Hinweise zu Winlogbeat und zur Windows-Ereignisweiterleitung
 - Meldungen: Windows-Ereignisse von Fluent Bit (JSON) werden mit Schwere erkannt - die Stufe als Zahl und „Überwachung fehlgeschlagen“ aus den Schlüsselwörtern
 - Windows-Skripte: Das Fenster zum Herunterladen nennt den Registry-Eintrag für Softwareverteilung und Inventar (HKLM\SOFTWARE\WhatsOnMyNet, Wert HostScript bzw. HyperVScript, aktuelle Version); das Handbuch zeigt ihn als Tabelle mit Abfrage und Erkennungsregel für Intune/SCCM

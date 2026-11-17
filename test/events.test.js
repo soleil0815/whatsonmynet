@@ -104,10 +104,14 @@ test('SNMP trap over UDP: with a known community stored, with another one not', 
   assert.equal(db.prepare("SELECT COUNT(*) n FROM events_in WHERE kind='trap'").get().n, 1, 'the trap with the wrong community is dropped');
 });
 
-test('a flood is cut: at most 20 per second from one sender', () => {
+test('a flood is cut: at most 100 per second from one sender', () => {
   const before = db.prepare('SELECT COUNT(*) n FROM events_in').get().n;
-  for (let i = 0; i < 50; i++) ctx.events.receive('syslog', '10.9.9.9', { severity: 6, text: `spam ${i}` });
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM events_in').get().n - before, 20);
+  const flooded = ctx.events.status().flooded;
+  // (all within one second - a turn of the second in between would let the rest in)
+  while (Date.now() % 1000 > 700) { /* wait for the start of a second */ }
+  for (let i = 0; i < 150; i++) ctx.events.receive('syslog', '10.9.9.9', { severity: 6, text: `spam ${i}` });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM events_in').get().n - before, 100);
+  assert.equal(ctx.events.status().flooded - flooded, 50, 'counted for the page');
 });
 
 test('event monitor: alarms on a matching message, quiet again after the hold time', async () => {

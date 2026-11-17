@@ -2,12 +2,19 @@
 //   docker compose exec whatsonmynet womn-admin list
 //   docker compose exec whatsonmynet womn-admin reset <user>     → new random password, account active, admin, 2FA off
 //   docker compose exec whatsonmynet womn-admin create <user>    → new administrator with a random password
-import { paths } from './config.js';
+//   docker compose exec whatsonmynet womn-admin loadtest         → how many messages a second this server takes
+import { paths, config } from './config.js';
 import { openDatabase, verifyKey } from './db.js';
 import { initMasterKey, randomToken } from './lib/crypto.js';
 import { createUsers } from './auth/users.js';
 
 const [cmd, name] = process.argv.slice(2);
+if (cmd === 'loadtest') {
+  // a file of its own next to the data - the database of the program is not opened
+  const { loadTest } = await import('./loadtest.js');
+  await loadTest({ dataDir: config.dataDir });
+  process.exit(0);
+}
 initMasterKey();
 const db = openDatabase(paths.db);
 verifyKey(db);
@@ -32,7 +39,7 @@ try {
     users.create({ username: name, password: pw, role: 'admin' });
     out(`Administrator ${name} created. Password: ${pw}`);
   } else {
-    out('Usage: womn-admin list | reset <user> | create <user>');
+    out('Usage: womn-admin list | reset <user> | create <user> | loadtest');
     process.exit(2);
   }
 } catch (e) {

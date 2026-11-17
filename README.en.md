@@ -277,6 +277,7 @@ Under *Monitoring → Reports* WhatsOnMyNet sends reports by e-mail at set times
   | Large: 100 - 500 PCs, 10 - 20 servers, 2 - 4 DCs | 150,000 - 500,000 | 9 - 30 GB | 40 GB, filter noise |
 
   For 90 days, three times as much. Values per sender and how to go about it are in the manual (*How much space do the messages need?*).
+- **For large networks:** messages are written in batches (measured on a small server with an SSD: more than 10,000 a second). Over TCP/TLS nothing is lost in a flood - the sender waits a moment. *By sender* comes a page at a time, with quick filters (errors, warnings, silent for 24 hours, a filter of its own), device type and order; *What takes the space?* counts "from how many computers" exactly and shows what all other senders take together. What your server can do: `docker compose exec whatsonmynet womn-admin loadtest`.
 
 ![Event rules](public/help/img/eventrules-en.png)
 
@@ -330,6 +331,7 @@ Local accounts switch on two-factor sign-in under *My account*: scan the QR code
 docker compose exec whatsonmynet womn-admin list
 docker compose exec whatsonmynet womn-admin reset <user>    # new random password, administrator again, 2FA off
 docker compose exec whatsonmynet womn-admin create <user>   # new administrator
+docker compose exec whatsonmynet womn-admin loadtest        # how many messages a second the server takes
 ```
 
 ## Updates and backup

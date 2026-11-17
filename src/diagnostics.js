@@ -343,6 +343,10 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       out.receivers = Object.fromEntries(['traps', 'syslog', 'syslogTcp', 'syslogTls'].map((k) => [k, s[k] ? { on: !!s[k].on, port: s[k].port, error: an.anon(s[k].error || ''), connections: s[k].connections ?? null } : null]));
       out.skipped_too_long = s.skipped || 0;
       out.filtered = s.filtered || 0;
+      // flood protection since the start: dropped (UDP, traps) / held back a moment (TCP, TLS); the limit in all
+      out.flooded = s.flooded || 0;
+      out.held_back = s.heldBack || 0;
+      out.per_second = s.perSecond ?? null;
       out.keep_for_all = Number(settings.get('events.minSeverity') ?? 7);
       // Windows event ids left out / only taken (numbers only - they say nothing about the network)
       out.win_deny = String(settings.get('events.winDeny') || '');

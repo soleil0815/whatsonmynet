@@ -277,6 +277,7 @@ Unter *Überwachung → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Beric
   | Groß: 100 - 500 PCs, 10 - 20 Server, 2 - 4 DCs | 150.000 - 500.000 | 9 - 30 GB | 40 GB, Rauschen filtern |
 
   Für 90 Tage das Dreifache. Werte je Absender und das Vorgehen stehen im Handbuch (*Wie viel Platz brauchen die Meldungen?*).
+- **Für große Netze:** Meldungen werden gesammelt geschrieben (auf einem kleinen Server mit SSD gemessen über 10.000 pro Sekunde). Über TCP/TLS geht bei einer Flut nichts verloren - der Absender wartet kurz. *Nach Absender* kommt seitenweise, mit Schnellfiltern (Fehler, Warnungen, still seit 24 Stunden, eigener Filter), Gerätetyp und Reihenfolge; *Was belegt den Platz?* zählt „von wie vielen Rechnern“ genau und zeigt, was alle übrigen Absender zusammen belegen. Was dein Server schafft, misst `docker compose exec whatsonmynet womn-admin loadtest`.
 
 ![Ereignisregeln](public/help/img/eventrules-de.png)
 
@@ -330,6 +331,7 @@ Lokale Konten schalten unter *Mein Konto* die Zwei-Faktor-Anmeldung ein: QR-Code
 docker compose exec whatsonmynet womn-admin list
 docker compose exec whatsonmynet womn-admin reset <benutzer>    # neues Zufallspasswort, wieder Administrator, 2FA aus
 docker compose exec whatsonmynet womn-admin create <benutzer>   # neuer Administrator
+docker compose exec whatsonmynet womn-admin loadtest            # wie viele Meldungen pro Sekunde der Server schafft
 ```
 
 ## Updates und Sicherung

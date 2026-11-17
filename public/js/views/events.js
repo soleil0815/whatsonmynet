@@ -64,6 +64,11 @@ export async function renderEvents(main) {
   const fromUrl = new URLSearchParams(location.search).get('from');
   if (fromUrl) source = { ip: fromUrl, label: fromUrl };
   let senders = [];
+  // the overview by sender, a page at a time: quick filter, type of device, order; how many there are
+  const senderOpt = { show: '', type: '', sort: 'last' };
+  try { const o = localStorage.getItem('ev.senderSort'); if (['last', 'day', 'name'].includes(o)) senderOpt.sort = o; } catch { /* default */ }
+  let senderInfo = { total: 0, all: 0, counts: {}, types: [] };
+  const SENDER_PAGE = 100;
   // the time range: a preset (remembered) or a range of one's own; zooming in keeps the way back
   let range = '';
   try { range = RANGES.some(([v]) => v && v !== 'custom' && v === localStorage.getItem('ev.range')) ? localStorage.getItem('ev.range') : ''; } catch { /* default */ }
@@ -123,8 +128,11 @@ export async function renderEvents(main) {
     }
     if (view === 'senders' && !source) {
       try {
-        const r = await get(`/events/senders?${new URLSearchParams({ q: q.value.trim() })}`);
-        info = r; senders = r.senders;
+        // "more" adds the next page; a refresh keeps as many rows as are shown (up to 500)
+        const limit = append ? SENDER_PAGE : Math.min(500, Math.max(SENDER_PAGE, senders.length));
+        const r = await get(`/events/senders?${new URLSearchParams({ q: q.value.trim(), ...senderOpt, offset: String(append ? senders.length : 0), limit: String(limit) })}`);
+        info = r; senders = append ? [...senders, ...r.senders] : r.senders;
+        senderInfo = { total: r.total ?? r.senders.length, all: r.all ?? r.senders.length, counts: r.counts || {}, types: r.types || [] };
         if (!body.isConnected) return;
         draw(false);
       } catch (e) { fail(e); }
@@ -163,6 +171,7 @@ export async function renderEvents(main) {
         h('span', { class: 'muted small' }, t('ev.total', { n: s.total })),
         s.searchIndex?.building ? h('span', { class: 'muted small', title: t('ev.indexHint') }, t('ev.indexBuilding', { pct: Math.floor(s.searchIndex.share * 100) })) : null,
         s.filtered ? h('span', { class: 'muted small', title: t('ev.filteredHint') }, t('ev.filtered', { n: s.filtered.toLocaleString(getLang()) })) : null,
+        s.flooded ? h('span', { class: 'small warn-text', title: t('ev.floodedHint', { max: (s.perSecond || 3000).toLocaleString(getLang()) }) }, t('ev.flooded', { n: s.flooded.toLocaleString(getLang()) })) : null,
         s.storage ? h('span', { class: 'muted small' }, t(s.storage.short ? (s.storage.daysFit < 1 ? 'ev.space0' : 'ev.space') : 'ev.spaceOk', { used: gb(s.storage.used), limit: gb(s.storage.cap),
           day: s.storage.perDay.toLocaleString(getLang()), days: s.storage.daysFit, keep: s.storage.keepDays })) : null,
         errs.map((e) => h('span', { class: 'small bad-text' }, e))));
@@ -204,7 +213,7 @@ export async function renderEvents(main) {
       return;
     }
     q.hidden = false; q.parentElement.hidden = false;
-    mount(chips, bySender ? null : [chip('', t('all')), chip('trap', 'Traps'), chip('syslog', 'Syslog')]);
+    mount(chips, bySender ? senderControls() : [chip('', t('all')), chip('trap', 'Traps'), chip('syslog', 'Syslog')]);
     sevSel.hidden = bySender; savedMenu.hidden = false;
     // the overview by sender counts the last 24 hours; the range is for the messages themselves
     rangeSel.hidden = bySender; customBox.hidden = bySender || range !== 'custom';
@@ -231,8 +240,11 @@ export async function renderEvents(main) {
             s.warn - s.err > 0 ? h('div', {}, h('span', { class: 'badge badge-warn' }, t(s.warn - s.err === 1 ? 'ev.warnCount1' : 'ev.warnCount', { n: s.warn - s.err }))) : null),
           h('td', { class: 'min nowrap' }, btn(t('ev.showMessages'), { class: 'btn btn-sm btn-ghost', onclick: () => pick(s) }, 'inventory'),
             admin && !isReadOnly() ? btn(t('ev.filter'), { class: 'btn btn-sm btn-ghost', title: t('ev.filterHint'), onclick: () => senderFilter(s) }, 'settings') : null)))))))
-        : h('div', { class: 'panel panel-pad muted' }, off ? t('ev.noneOff') : q.value ? t('ev.noMatch') : t('ev.none')));
-      mount(more, null);
+        : h('div', { class: 'panel panel-pad muted' }, off ? t('ev.noneOff') : q.value || senderOpt.show || senderOpt.type ? t('ev.noSender') : t('ev.none')));
+      const n = (x) => x.toLocaleString(getLang());
+      mount(more, senderInfo.total > SENDER_PAGE || senders.length < senderInfo.total ? [
+        h('span', { class: 'muted small' }, t('ev.sendersShown', { n: n(senders.length), total: n(senderInfo.total) })),
+        senders.length < senderInfo.total ? btn(t('ev.sendersMore', { n: n(Math.min(SENDER_PAGE, senderInfo.total - senders.length)) }), { class: 'btn btn-sm', onclick: () => load(true) }) : null] : null);
       lockForEditing(body);
       return;
     }
@@ -385,6 +397,26 @@ export async function renderEvents(main) {
       try { await put('/events/senders/filter', { source: s.source_ip, min: sel.value === '' ? null : Number(sel.value) }); m.close(); toast(t('saved')); load(); } catch (e) { fail(e); }
     }, actions: [btn(t('cancel'), { onclick: () => m.close() }), h('button', { class: 'btn btn-primary', type: 'submit' }, t('save'))] });
   }
+  /** Quick filters, type of device and order above the overview by sender (with how many each has) */
+  function senderControls() {
+    const c = senderInfo.counts || {};
+    const set = (k, v) => { senderOpt[k] = v; if (k === 'sort') remember('ev.senderSort', v); senders = []; load(); };
+    const fc = (key, label, n) => h('button', { type: 'button', class: `fchip${senderOpt.show === key ? ' on' : ''}`, 'aria-pressed': String(senderOpt.show === key),
+      onclick: () => set('show', key) }, label, n !== undefined ? h('span', { class: 'chip-n' }, n.toLocaleString(getLang())) : null);
+    const typeName = (k) => { if (k === '-') return t('ev.notInInventory'); const l = t(`type.${k}`); return l === `type.${k}` ? k : l; };
+    const typeSel = h('select', { 'aria-label': t('ev.senderType'), onchange: (e) => set('type', e.currentTarget.value) },
+      h('option', { value: '' }, t('ev.senderTypeAll')),
+      // a type picked that has no sender left (search) stays in the list - else the select would show another one
+      [...senderInfo.types, ...(senderOpt.type && !senderInfo.types.some((x) => x.type === senderOpt.type) ? [{ type: senderOpt.type, n: 0 }] : [])]
+        .map((x) => h('option', { value: x.type }, `${typeName(x.type)} (${x.n.toLocaleString(getLang())})`)));
+    typeSel.value = senderOpt.type;
+    const sortSel = h('select', { 'aria-label': t('ev.senderSort'), onchange: (e) => set('sort', e.currentTarget.value) },
+      [['last', t('ev.sort.last')], ['day', t('ev.sort.day')], ['name', t('ev.sort.name')]].map(([v, l]) => h('option', { value: v }, l)));
+    sortSel.value = senderOpt.sort;
+    return [fc('', t('all'), c.all), fc('err', t('ev.show.err'), c.err), fc('warn', t('ev.show.warn'), c.warn), fc('silent', t('ev.show.silent'), c.silent), fc('filter', t('ev.show.filter'), c.filter),
+      senderInfo.types.length > 1 || senderOpt.type ? typeSel : null, sortSel];
+  }
+
   // What takes the space: the Windows events and senders with the biggest share - to see what need not be collected.
   // With what speaks for keeping one (a rule needs it, usually important) and, for admins, leaving it out with a click.
   function noiseDialog() {
@@ -420,7 +452,7 @@ export async function renderEvents(main) {
             h('th', { class: 'num', title: t('ev.noise.spaceHint', { keep: data.keepDays }) }, t('ev.noise.space', { keep: data.keepDays })), h('th', {}))),
           h('tbody', {}, data.events.map((e) => h('tr', {},
             h('td', {}, h('strong', {}, String(e.id)), ' ', h('span', { class: 'muted small', title: e.app || e.example.channel || '' }, String(e.app || e.example.channel || t('ev.noise.noSource')).replace(/^Microsoft-Windows-/, '')),
-              h('div', { class: 'sub' }, [e.senders.join(', '), e.moreSenders ? t('ev.noise.more', { n: e.moreSenders }) : '', sevText(e.worst)].filter(Boolean).join(' · ')),
+              h('div', { class: 'sub' }, [e.computers > 3 ? t('ev.noise.computers', { n: n(e.computers) }) : '', e.senders.join(', '), e.moreSenders ? t('ev.noise.more', { n: n(e.moreSenders) }) : '', sevText(e.worst)].filter(Boolean).join(' · ')),
               e.example.text ? h('div', { class: 'sub ev-noise-text', title: e.example.text }, e.example.text.slice(0, 160)) : null,
               h('div', { class: 'row', style: { gap: '4px', flexWrap: 'wrap', marginTop: '4px' } }, hints(e))),
             h('td', { class: 'num nowrap', title: e.estimated ? t('ev.noise.estimated') : '' }, e.estimated ? '≈ ' : '', perDay(e)),
@@ -431,6 +463,17 @@ export async function renderEvents(main) {
               admin && !isReadOnly() && !e.denied ? btn(t('ev.noise.deny'), { class: 'btn btn-sm', disabled: e.rules.length > 0,
                 title: e.rules.length ? t('ev.noise.ruleBlocks', { list: e.rules.join(', ') }) : e.app ? t('ev.noise.denyHintSrc', { what: label(e) }) : t('ev.noise.denyHint'), onclick: () => deny(e) }) : null)))))))
           : null,
+        // by type of device: clients, servers, NAS … (worth it only with more than one type)
+        data.groups?.length > 1 ? h('div', {}, h('h3', { style: { margin: '8px 0 4px' } }, t('ev.noise.groups')),
+          h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-noise' },
+            h('thead', {}, h('tr', {}, h('th', {}, t('ev.senderType')), h('th', { class: 'num' }, t('ev.noise.senderN')), h('th', { class: 'num' }, t('ev.noise.perDay')), h('th', {}, t('ev.noise.share')),
+              h('th', { class: 'num' }, t('ev.noise.space', { keep: data.keepDays })))),
+            h('tbody', {}, data.groups.map((x) => h('tr', {},
+              h('td', {}, x.type === '-' ? t('ev.notInInventory') : (t(`type.${x.type}`) === `type.${x.type}` ? x.type : t(`type.${x.type}`))),
+              h('td', { class: 'num nowrap' }, n(x.senders)),
+              h('td', { class: 'num nowrap' }, perDay(x)),
+              h('td', { class: 'nowrap' }, bar(x.share), ` ${x.share.toLocaleString(getLang())} %`),
+              h('td', { class: 'num nowrap' }, `≈ ${gb(x.bytes)}`))))))) : null,
         data.senders.length ? h('div', {}, h('h3', { style: { margin: '8px 0 4px' } }, t('ev.noise.senders')),
           h('p', { class: 'muted small', style: { margin: '0 0 6px' } }, t('ev.noise.sendersLead')),
           h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-noise' },
@@ -442,7 +485,15 @@ export async function renderEvents(main) {
               h('td', { class: 'nowrap' }, bar(x.share), ` ${x.share.toLocaleString(getLang())} %`),
               h('td', { class: 'num nowrap' }, `${x.info} %`),
               h('td', { class: 'num nowrap' }, `≈ ${gb(x.bytes)}`),
-              h('td', { class: 'min nowrap' }, admin && !isReadOnly() ? btn(t('ev.filter'), { class: 'btn btn-sm', onclick: () => senderFilter({ source_ip: x.source_ip, host: x.name, filter: x.filter }) }) : null))))))) : null,
+              h('td', { class: 'min nowrap' }, admin && !isReadOnly() ? btn(t('ev.filter'), { class: 'btn btn-sm', onclick: () => senderFilter({ source_ip: x.source_ip, host: x.name, filter: x.filter }) }) : null))),
+              // all the others together: with thousands of computers most of the space can be there
+              data.rest ? h('tr', { class: 'muted' },
+                h('td', {}, t('ev.noise.rest', { n: n(data.rest.senders) })),
+                h('td', { class: 'num nowrap' }, perDay(data.rest)),
+                h('td', { class: 'nowrap' }, bar(data.rest.share), ` ${data.rest.share.toLocaleString(getLang())} %`),
+                h('td', {}),
+                h('td', { class: 'num nowrap' }, `≈ ${gb(data.rest.bytes)}`),
+                h('td', {})) : null)))) : null,
         h('p', { class: 'muted small', style: { margin: 0 } }, t('ev.noise.foot')));
     }
     async function fetchIt() {
@@ -512,7 +563,7 @@ export async function renderEvents(main) {
   }
 
   let timer = null;
-  q.addEventListener('input', () => { part = false; clearTimeout(timer); timer = setTimeout(() => load(), 300); });
+  q.addEventListener('input', () => { part = false; clearTimeout(timer); timer = setTimeout(() => { senders = []; load(); }, 300); });
   sevSel.addEventListener('change', () => { maxSeverity = Number(sevSel.value); load(); });
   rangeSel.addEventListener('change', () => {
     // a range of one's own starts with what was shown: the last 24 hours, or the preset just chosen

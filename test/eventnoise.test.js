@@ -156,3 +156,64 @@ test('the settings take the list with sources; a wrong entry names the field', a
   assert.ok(ctx.events.receive('syslog', '10.0.10.14', { severity: 6, text: 'started', eventId: 7036, app: 'Service Control Manager' }) === null);
   assert.ok(ctx.events.receive('syslog', '10.0.10.14', { severity: 6, text: 'other', eventId: 7036, app: 'Something Else' }));
 });
+
+test('many computers: how many sent an event is exact (not the newest 500), the rest of the senders, by type of device', async () => {
+  db.prepare("INSERT INTO devices(name, ip, type, first_seen, last_seen, created_at, updated_at) VALUES('dc01', '10.0.20.1', 'server', ?, ?, ?, ?)").run(ago(0), ago(0), ago(0), ago(0));
+  const dc = db.prepare("SELECT id FROM devices WHERE ip='10.0.20.1'").pluck().get();
+  db.transaction(() => {
+    // 1200 clients each with one 10016 now and then, a domain controller with many
+    for (let i = 0; i < 1200; i++) ins.run(ago(30 + (i % 600)), `10.1.${i >> 8}.${i & 255}`, 6, `PC-${String(i).padStart(4, '0')}`, 'Microsoft-Windows-DistributedCOM', 'System', 'DCOM-Berechtigung', 10016);
+    for (let i = 0; i < 900; i++) ins.run(ago(10 + (i % 300)), '10.0.20.1', 6, 'dc01', 'Microsoft-Windows-DistributedCOM', 'System', 'DCOM-Berechtigung', 10016);
+  })();
+  db.prepare("UPDATE events_in SET device_id = ? WHERE source_ip = '10.0.20.1'").run(dc);
+  db.exec("INSERT OR REPLACE INTO event_senders(source_ip, device_id, host, first_at, last_at, last_id) SELECT source_ip, MAX(device_id), MAX(host), MIN(at), MAX(at), MAX(id) FROM events_in GROUP BY source_ip");
+  while (ctx.events.countBatch() > 0);
+  // and a few newer than the counts: counted from the messages
+  for (let i = 0; i < 3; i++) ins.run(ago(1), `10.2.0.${i}`, 6, `PC-9${i}`, 'Microsoft-Windows-DistributedCOM', 'System', 'DCOM-Berechtigung', 10016);
+  const d = (await call('GET', '/api/events/noise?days=7', undefined, { who: 'editor' })).data;
+  const dcom = d.events.find((e) => e.id === 10016);
+  assert.equal(dcom.computers, 1204, '1200 clients, the DC and 3 newer ones');
+  assert.equal(dcom.senders.length + dcom.moreSenders, 1204);
+  assert.ok(d.senderCount > 15);
+  assert.equal(d.senders.length, 15);
+  assert.equal(d.rest.senders, d.senderCount - 15);
+  assert.equal(d.senders.reduce((a, x) => a + x.n, 0) + d.rest.n, d.total, 'the 15 and the rest are all');
+  const server = d.groups.find((x) => x.type === 'server');
+  assert.deepEqual([server.senders, server.n], [1, 900]);
+  assert.equal(d.groups.reduce((a, x) => a + x.n, 0), d.total);
+  assert.equal(d.groups.find((x) => x.type === '-').senders, d.senderCount - 1, 'the rest is not in the inventory');
+  // the text for the AI chat names the number of computers
+  const txt = (await call('GET', '/api/events/noise/text?days=7&lang=de', undefined, { who: 'editor' })).data;
+  assert.match(JSON.stringify(txt), /von 1204 Rechnern/);
+});
+
+test('by sender a page at a time: quick filters, type of device, order, the next page', async () => {
+  db.prepare("INSERT INTO events_in(at,kind,source_ip,severity,host,app,channel,text,event_id) VALUES(?, 'syslog', '10.1.0.7', 3, 'PC-0007', 'Disk', 'System', 'Fehler', 7)").run(ago(1));
+  db.exec("UPDATE event_senders SET last_id = (SELECT MAX(id) FROM events_in WHERE source_ip = '10.1.0.7'), last_at = (SELECT MAX(at) FROM events_in WHERE source_ip = '10.1.0.7') WHERE source_ip = '10.1.0.7'");
+  // one that has been quiet for two days
+  const old = ins.run(ago(2900), '10.3.0.1', 6, 'PC-ALT', 'x', '', 'alt', null).lastInsertRowid;
+  db.prepare("INSERT INTO event_senders(source_ip, host, first_at, last_at, last_id) VALUES('10.3.0.1', 'PC-ALT', ?, ?, ?)").run(ago(2900), ago(2900), old);
+  ctx.events.setSenderFilter('10.0.20.1', 4, 'testadmin');
+  const get = async (q) => (await call('GET', `/api/events/senders?${new URLSearchParams(q)}`, undefined, { who: 'editor' })).data;
+  const first = await get({});
+  assert.equal(first.senders.length, 100);
+  assert.equal(first.total, first.all);
+  assert.ok(first.all > 1200);
+  assert.ok(first.senders[0].last_text !== undefined, 'the page has the newest message of each');
+  const next = await get({ offset: 100 });
+  assert.equal(next.offset, 100);
+  assert.equal(new Set([...first.senders, ...next.senders].map((x) => x.source_ip)).size, 200, 'no sender twice');
+  assert.deepEqual((await get({ show: 'err' })).senders.map((x) => x.source_ip), ['10.1.0.7']);
+  assert.deepEqual((await get({ show: 'silent' })).senders.map((x) => x.source_ip), ['10.3.0.1']);
+  assert.deepEqual((await get({ show: 'filter' })).senders.map((x) => [x.source_ip, x.filter]), [['10.0.20.1', 4]]);
+  const counts = first.counts;
+  assert.deepEqual([counts.err, counts.silent, counts.filter], [1, 1, 1]);
+  assert.deepEqual((await get({ type: 'server' })).senders.map((x) => x.device_name), ['dc01']);
+  assert.ok(first.types.some((x) => x.type === 'server' && x.n === 1));
+  const busiest = await get({ sort: 'day', limit: 1 });
+  assert.equal(busiest.senders[0].source_ip, '10.0.20.1');
+  const named = await get({ sort: 'name', limit: 3, q: 'pc-000' });
+  assert.deepEqual(named.senders.map((x) => x.host), ['PC-0000', 'PC-0001', 'PC-0002']);
+  // nonsense is ignored, never an error
+  assert.equal((await call('GET', '/api/events/senders?show=x&sort=y&offset=-5&limit=99999', undefined, { who: 'editor' })).status, 200);
+});
