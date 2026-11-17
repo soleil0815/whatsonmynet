@@ -95,6 +95,15 @@ $pdisks = @(Try-Get { Get-Cim $StorageNs 'MSFT_PhysicalDisk' | ForEach-Object {
     size = [int64]$_.Size; health = (Get-EnumName $HealthNames $_.HealthStatus)
     temp = $(if ($r) { $r.Temperature }); wear = $(if ($r) { $r.Wear }); hours = $(if ($r) { $r.PowerOnHours })
     readErrors = $(if ($r) { $r.ReadErrorsUncorrected }); writeErrors = $(if ($r) { $r.WriteErrorsUncorrected }) } } })
+# Storage Spaces: the pools (not the primordial one every disk sits in), their virtual disks and the disks in them that
+# are not healthy - through the WMI classes and what is linked to them, not the Storage module (see above)
+$spaces = @(Try-Get {
+  foreach ($p in @(Get-Cim $StorageNs 'MSFT_StoragePool' | Where-Object { -not $_.IsPrimordial })) {
+    $vds = @(Get-CimAssociatedInstance -InputObject $p -ResultClassName MSFT_VirtualDisk | ForEach-Object { @{ name = [string]$_.FriendlyName; health = $_.HealthStatus } })
+    $bad = @(Get-CimAssociatedInstance -InputObject $p -ResultClassName MSFT_PhysicalDisk | Where-Object { [int]$_.HealthStatus -ne 0 }).Count
+    @{ name = [string]$p.FriendlyName; health = $p.HealthStatus; size = [int64]$p.Size; alloc = [int64]$p.AllocatedSize; vdisks = $vds; badDisks = $bad }
+  }
+})
 
 # Windows updates: the search takes a while, so it runs after the report at most every 6 hours; the report sends
 # the last result. A pending restart is read every time (registry, quick).
@@ -195,7 +204,7 @@ $body = @{
   memTotal = [int64]$os.TotalVisibleMemorySize * 1024; memUsed = ([int64]$os.TotalVisibleMemorySize - [int64]$os.FreePhysicalMemory) * 1024
   uptime = [int]((Get-Date) - $os.LastBootUpTime).TotalSeconds; disks = $disks; services = $services
   macs = @($net | ForEach-Object { $_.MACAddress } | Where-Object { $_ }); ips = @($net | ForEach-Object { $_.IPAddress } | Where-Object { $_ -match '^\d+\.' }); ups = $ups
-  hw = $hw; pdisks = $pdisks; updates = $updates; av = $av; firewall = $fw; events = $events; certs = $certs; checks = $checks; script = $ScriptVersion
+  hw = $hw; pdisks = $pdisks; updates = $updates; av = $av; firewall = $fw; events = $events; certs = $certs; checks = $checks; spaces = $spaces; script = $ScriptVersion
 } | ConvertTo-Json -Depth 6 -Compress
 Send-Report $body
 

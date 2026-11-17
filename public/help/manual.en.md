@@ -64,7 +64,7 @@ Every night (default 02:30) WhatsOnMyNet only looks for devices in all subnets o
 - **Printer:** every toner cartridge and faults
 - **NAS:** volumes, RAID, health (system, fans, power supply) and temperature
 - **UPS:** mains/battery, charge and runtime
-- **Windows and Linux machines with the script:** online, CPU, RAM, system drive, highest temperature and failed services
+- **Windows and Linux machines with the script:** online, CPU, RAM, system drive, highest temperature, failed services and the state of the storage pools (ZFS, RAID, Storage Spaces)
 - **Hosts under Virtualization:** nodes, storage and backups; for Backup Server datastores and tasks; for controllers the devices; for servers with a management chip the health
 
 This applies to devices and hosts added from now on, and once each: if you delete one of these sensors, it does not come back. Switch it off under *Settings → Notifications → Watch new devices by themselves*.
@@ -547,6 +547,18 @@ From version 12 on WhatsOnMyNet reads through the REST API (port 9419) the **job
 2. Enter the address with port (e.g. `https://vbr01.company.local:9419`), **Fetch certificate** and confirm the fingerprint, user and password.
 
 Sensors: *Veeam job …* (alarm on **error or warning** in the last run; disabled jobs stay quiet), *Last run …* (alarm when a scheduled job has not run for more than 26 hours), *Repository …* (from 85 % full) and *Veeam jobs with error or warning* (all together).
+
+## Storage pools: ZFS, Ceph, software RAID, Storage Spaces, TrueNAS
+
+What is more than a disk, WhatsOnMyNet shows the same way everywhere: **state** (ONLINE, DEGRADED, HEALTH_WARN …) with the reason, **usage**, **failed members** (disks, OSDs) and for ZFS the **last scrub** with the errors it found. Read only.
+
+- **Proxmox VE:** the ZFS pools of every node and - if there is one - the Ceph cluster, through the same connection and token (privilege `Sys.Audit`). Hosts added from now on get sensors for the state right away.
+- **Linux machines with the script:** ZFS pools (`zpool`, root not needed) and software RAID (`/proc/mdstat`: degraded, failed disk, resync).
+- **Windows machines with the script:** Storage Spaces - pools, their virtual disks and disks that are not healthy.
+- **TrueNAS** (25.04 or newer): *Monitoring → Virtualization* → **Add host** → *TrueNAS*. Create a user of its own with the role **Read-Only Administrator**, create an **API key** for it, enter the address and confirm the certificate. WhatsOnMyNet reads the pools, the open **alerts** of TrueNAS and the **replications** - through the WebSocket API (the old REST API is gone from TrueNAS 26).
+- **Ceph without Proxmox:** *Add host* → *Ceph*, through the Ceph dashboard (mostly port 8443) with a dashboard user of the role **read-only**: health with the messages of Ceph, OSDs, usage, PGs.
+
+Sensors: *State …* (alarm as soon as a pool is not fine - also when the last scrub found errors), *Usage …* (ZFS from 80 %, as ZFS gets slow above it; Ceph from 75 %), *Days since the last scrub …* (from 35 days) and *Failed disks/OSDs …*. For TrueNAS also *Open/Critical alerts* and *Replication …* (alarm on an error).
 
 ## Microsoft 365
 

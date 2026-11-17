@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { HttpError, line } from './lib/http.js';
 import { normalizeMac } from './lib/net.js';
 import { hostScript, SCRIPT_VERSIONS } from './hostscripts.js';
+import { zfsFromScript, mdFromMdstat, spacesFromScript } from './pools.js';
 import { fillDevice } from './devicefill.js';
 import { cleanUps } from './scan/ups.js';
 import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts, cleanTemps, cleanChecks } from './hostfacts.js';
@@ -54,10 +55,16 @@ export function cleanReport(body) {
     temps: cleanTemps(b.temps),
     // own checks from the checks folder of the machine (scripts from version 0.27 on)
     checks: cleanChecks(b.checks),
+    // ZFS pools and software RAID (Linux script), Storage Spaces (Windows script) - from 0.42 on
+    pools: [...zfsFromScript(typeof b.zfs?.list === 'string' ? b.zfs.list.slice(0, 20000) : '', zfsStatus(b.zfs?.status)),
+      ...mdFromMdstat(typeof b.mdstat === 'string' ? b.mdstat.slice(0, 20000) : ''), ...spacesFromScript(b.spaces)].slice(0, 64),
     // version of the Windows script (from 0.42 on; older ones send none)
     script: /^\d{1,4}\.\d{1,4}\.\d{1,6}$/.test(String(b.script ?? '')) ? String(b.script) : null,
   };
 }
+
+/** zpool status per pool as the script sends it: { name: text } (at most 32, each cut at 20 000 characters) */
+const zfsStatus = (o) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).slice(0, 32).map(([k, v]) => [String(k).slice(0, 120), String(v ?? '').slice(0, 20000)]));
 
 /** Is version a older than b (1.2.3)? */
 const older = (a, b) => { const x = String(a).split('.').map(Number); const y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); return false; };

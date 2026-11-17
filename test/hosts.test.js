@@ -155,6 +155,10 @@ test('Linux script: POSIX sh, sets itself up in cron, reports what the server ac
   w('journalctl', `case "$*" in *"-o json"*) printf '%s\\n' '{"PRIORITY":"2","SYSLOG_IDENTIFIER":"kernel","MESSAGE":"EXT4-fs error (device sdb1): bad block","__REALTIME_TIMESTAMP":"1763038800000000"}' '{"PRIORITY":"3","SYSLOG_IDENTIFIER":"sshd","MESSAGE":[1,2]}' ;;
     *"0..2"*) echo one ;; *"3..3"*) printf 'a\\nb\\nc\\n' ;; esac`);
   w('firewall-cmd', 'echo running');
+  // ZFS: one healthy pool, one with a disk gone (zpool status as OpenZFS 2.x writes it, with tabs)
+  w('zpool', `case "$*" in list*) printf 'tank\\tONLINE\\t3985729650688\\t1992864825344\\nbackup\\tDEGRADED\\t1000000000000\\t850000000000\\n' ;;
+    *tank) printf '  pool: tank\\n state: ONLINE\\n  scan: scrub repaired 0B in 00:41:12 with 0 errors on Sun Nov  9 00:41:13 2025\\nconfig:\\n\\n\\tNAME        STATE     READ WRITE CKSUM\\n\\ttank        ONLINE       0     0     0\\n\\t  mirror-0  ONLINE       0     0     0\\n\\t    sda     ONLINE       0     0     0\\n\\t    sdb     ONLINE       0     0     0\\n\\nerrors: No known data errors\\n' ;;
+    *backup) printf '  pool: backup\\n state: DEGRADED\\nstatus: One or more devices could not be used.\\n  scan: none requested\\nconfig:\\n\\n\\tNAME        STATE     READ WRITE CKSUM\\n\\tbackup      DEGRADED     0     0     0\\n\\t  raidz1-0  DEGRADED     0     0     0\\n\\t    sdc     ONLINE       0     0     0\\n\\t    sdd     UNAVAIL      0     0     0  cannot open\\n\\nerrors: No known data errors\\n' ;; esac`);
   execFileSync('sh', [dest, '--run'], { env, timeout: 15000 });
   let x = cleanReport(JSON.parse(fs.readFileSync(path.join(dir, 'body'), 'utf8')));
   assert.deepEqual(x.pdisks.map((d) => [d.name, d.model, d.serial, d.media, d.size, d.health]), [
@@ -162,6 +166,10 @@ test('Linux script: POSIX sh, sets itself up in cron, reports what the server ac
   assert.deepEqual([x.events.critical, x.events.errors, x.events.items.length, x.events.items[0].source, x.events.items[0].level, x.events.items[0].at], [1, 3, 2, 'kernel', 'critical', '2025-11-13T13:00:00.000Z']);
   assert.equal(x.events.items[1].message, '', 'binary journal message left out');
   assert.deepEqual(x.firewall, { name: 'firewalld', state: 'on', profiles: null });
+  const zfs = x.pools.filter((p) => p.kind === 'zfs');
+  assert.deepEqual(zfs.map((p) => [p.name, p.state, p.good, p.pct, p.down, p.scrubErrors]), [['tank', 'ONLINE', true, 50, 0, 0], ['backup', 'DEGRADED', false, 85, 1, null]]);
+  assert.equal(zfs[0].scrubAt.slice(0, 10), '2025-11-09');
+  assert.match(zfs[1].text, /DEGRADED · sdd UNAVAIL/);
   assert.ok(x.hw && x.hw.threads > 0 && x.hw.cores > 0, 'CPU from /proc/cpuinfo');
   // The search ran after the first report of cron; later reports have it
   assert.deepEqual([x.updates.pending, x.updates.security, x.updates.reboot], [2, 1, false]);
@@ -209,6 +217,8 @@ test('Windows script: reports hardware, disks, updates, protection, events and c
   assert.deepEqual([r.events.critical, r.events.errors, r.events.items[0].source, r.events.items[0].id, r.events.items[0].message],
     [1, 1, 'Microsoft-Windows-Kernel-Power', 41, 'The system has rebooted without cleanly shutting down first.']);
   assert.deepEqual(r.certs.map((c) => [c.subject, c.thumb]), [['CN=rdg.firma.de', 'A1B2C3']], 'long expired ones are left out');
+  // Storage Spaces: the primordial pool left out; the pool with its mirror and the disk that is not healthy
+  assert.deepEqual(r.pools.map((p) => [p.kind, p.name, p.state, p.good, p.pct, p.down, p.text]), [['spaces', 'Daten', 'warning', false, 75, 1, 'warning · Spiegel warning · 1 disk(s) not healthy']]);
   // The update search ran after the report (not during setup): the next report has its result
   assert.ok(fs.existsSync(path.join(home, 'womn-updates.json')));
   r = run();

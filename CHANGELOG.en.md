@@ -8,6 +8,9 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 - Windows script: when WhatsOnMyNet refused a report (e.g. key no longer valid) or could not be reached, the script wrote a warning 4100 to the PowerShell log on every run - fixed. The answer is now in womn-host-send.json next to the script, the scheduled task ends with result 2. Tested on real Windows (Server 2022 and 2025). The same goes for the Hyper-V script
 - Windows scripts with a version number: in the first line, in the registry under HKLM\SOFTWARE\WhatsOnMyNet (HostScript or HyperVScript) to filter on in software distribution, and in the report - the device page marks machines with an older script as "outdated". The number only changes when the script changes. For this, roll out the script once more
+- Storage pools: ZFS and Ceph from Proxmox (state, failed disks/OSDs, usage, last scrub), ZFS and software RAID (mdadm) in the Linux script, Storage Spaces in the Windows script - with sensors for state, usage, days since the scrub and failed members
+- New: TrueNAS (25.04 or newer, WebSocket API, API key of a user with "Read-Only Administrator") - pools, alerts of TrueNAS, replications; and Ceph without Proxmox through the Ceph dashboard (user with role "read-only")
+- Diagnostic package: storage pools, TrueNAS alerts and replications, and the version of the Windows script per machine (anonymised)
 
 ## 0.41.0 - 2026-11-17
 

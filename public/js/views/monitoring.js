@@ -20,9 +20,9 @@ export function monitorDot(status) {
 }
 
 // Monitors that measure a value (not a response time): device sensors, SNMP values and Proxmox values
-const PX_STATE = ['nodeOnline', 'guestRunning', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume', 'cloudCheck', 'dbState', 'jobResult', 'm365Service', 'm365Sku'];
+const PX_STATE = ['nodeOnline', 'guestRunning', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume', 'cloudCheck', 'dbState', 'jobResult', 'm365Service', 'm365Sku', 'pool', 'replication'];
 const PX_UNIT = { rfTemp: ' °C', rfDriveLife: ' %', rfWatts: ' W', nodeCpu: ' %', nodeMem: ' %', nodeTemp: ' °C', storage: ' %', datastore: ' %', backupAge: ' h', groupAge: ' h',
-  cloudCpu: ' %', dbCpu: ' %', dbStorage: ' %', repoUsed: ' %', jobAge: ' h' };
+  cloudCpu: ' %', dbCpu: ' %', dbStorage: ' %', repoUsed: ' %', jobAge: ' h', poolUsed: ' %', poolScrub: ' d' };
 // (a message monitor has no response time either: its chart shows when it alarmed)
 export const isValueType = (m) => m.type === 'sensor' || m.type === 'snmp' || m.type === 'event' || (m.type === 'proxmox' && !PX_STATE.includes(m.options?.metric));
 const unitOf = (m) => (m.type === 'proxmox' ? PX_UNIT[m.options?.metric] || '' : m.options?.unit ? ` ${m.options.unit}` : '');
@@ -119,7 +119,7 @@ export function pxLabel(x) {
 const METRIC_GROUP = {
   hostOnline: 'machine', hostCpu: 'machine', hostMem: 'machine', hostDisk: 'drives', servicesFailed: 'services', service: 'services',
   hostTempMax: 'temps', hostTemp: 'temps', temp: 'temps', diskTemp: 'temps', rfTemp: 'temps',
-  hostPdHealth: 'disks', hostPdTemp: 'disks', hostPdWear: 'disks', disk: 'disks', raid: 'disks', volume: 'disks', health: 'machine',
+  hostPdHealth: 'disks', hostPdTemp: 'disks', hostPdWear: 'disks', hostPool: 'disks', hostPoolUsed: 'drives', hostPoolScrub: 'disks', hostPoolDown: 'disks', disk: 'disks', raid: 'disks', volume: 'disks', health: 'machine',
   hostUpdates: 'care', hostUpdatesSec: 'care', hostReboot: 'care', hostAv: 'care', hostFirewall: 'care', hostEvCritical: 'care', hostEvErrors: 'care', hostCert: 'care',
   upsPower: 'ups', upsCharge: 'ups', upsRuntime: 'ups', upsLoad: 'ups', supply: 'printer', pages: 'printer', printerErrors: 'printer', port: 'ports', portErrors: 'ports', portLoad: 'ports', localCheck: 'checks',
   // hypervisor and controller values
@@ -129,7 +129,7 @@ const METRIC_GROUP = {
   netOnline: 'network', netClients: 'network', netCpu: 'network', netMem: 'network', clientsTotal: 'network', netUpdates: 'network',
   cloudCheck: 'guests', cloudCpu: 'guests', dbState: 'databases', dbCpu: 'databases', dbStorage: 'databases', lbUnhealthy: 'network',
   cloudAlarms: 'cloud', cloudResources: 'cloud', costMonth: 'cloud',
-  jobResult: 'backup', jobAge: 'backup', jobsFailed: 'backup', repoUsed: 'drives', m365Service: 'cloud', m365Issues: 'cloud', m365Sku: 'cloud', m365Free: 'cloud',
+  jobResult: 'backup', jobAge: 'backup', jobsFailed: 'backup', repoUsed: 'drives', pool: 'disks', poolUsed: 'drives', poolScrub: 'disks', poolDown: 'disks', nasAlerts: 'care', nasAlertsCrit: 'care', replication: 'backup', m365Service: 'cloud', m365Issues: 'cloud', m365Sku: 'cloud', m365Free: 'cloud',
 };
 const GROUP_ORDER = ['checks', 'cloud', 'machine', 'temps', 'drives', 'disks', 'services', 'care', 'guests', 'databases', 'backup', 'hardware', 'network', 'ups', 'printer', 'ports', 'other'];
 const groupRank = (x) => { const i = GROUP_ORDER.indexOf(METRIC_GROUP[x.metric] || 'other'); return i < 0 ? GROUP_ORDER.length : i; };
