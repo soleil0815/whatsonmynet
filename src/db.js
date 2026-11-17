@@ -814,6 +814,39 @@ const EVENTS_SCHEMA = [
      INSERT INTO events_fts(rowid, text, app, host, channel, account, source_ip) VALUES (new.id, new.text, new.app, new.host, new.channel, new.account, new.source_ip);
    END;
    CREATE INDEX IF NOT EXISTS ev.events_in_event ON events_in(event_id) WHERE event_id IS NOT NULL;`,
+  // 5: counts kept as they come, so that what counts everything does not read every message - the timeline without a
+  // search, the overview by sender, the space and who fills it. Per minute: sender, kind and severity; per hour: the
+  // Windows event id. Filled in batches in the background like the search index ("counted" = the highest id in them;
+  // a file from before is counted bit by bit, what is above is counted from the messages themselves). A message that
+  // goes is taken off again.
+  `CREATE TABLE IF NOT EXISTS ev.events_minute (minute INTEGER NOT NULL, source_ip TEXT NOT NULL, kind TEXT NOT NULL, severity INTEGER NOT NULL,
+     n INTEGER NOT NULL, PRIMARY KEY (minute, source_ip, kind, severity)) WITHOUT ROWID;
+   CREATE TABLE IF NOT EXISTS ev.events_hour (hour INTEGER NOT NULL, source_ip TEXT NOT NULL, kind TEXT NOT NULL, severity INTEGER NOT NULL,
+     n INTEGER NOT NULL, PRIMARY KEY (hour, source_ip, kind, severity)) WITHOUT ROWID;
+   CREATE TABLE IF NOT EXISTS ev.events_hour_id (hour INTEGER NOT NULL, event_id INTEGER NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (hour, event_id)) WITHOUT ROWID;
+   INSERT OR REPLACE INTO ev.events_fts_state(k, v) VALUES ('counted', COALESCE((SELECT MIN(id) FROM ev.events_in), 1) - 1);
+   CREATE TRIGGER IF NOT EXISTS ev.events_counts_gone AFTER DELETE ON events_in BEGIN
+     UPDATE events_minute SET n = n - 1 WHERE minute = CAST(strftime('%s', old.at) AS INTEGER) / 60 AND source_ip = old.source_ip AND kind = old.kind
+       AND severity = old.severity AND old.id <= (SELECT v FROM events_fts_state WHERE k = 'counted');
+     UPDATE events_hour SET n = n - 1 WHERE hour = CAST(strftime('%s', old.at) AS INTEGER) / 3600 AND source_ip = old.source_ip AND kind = old.kind
+       AND severity = old.severity AND old.id <= (SELECT v FROM events_fts_state WHERE k = 'counted');
+     UPDATE events_hour_id SET n = n - 1 WHERE old.event_id IS NOT NULL AND hour = CAST(strftime('%s', old.at) AS INTEGER) / 3600 AND event_id = old.event_id
+       AND old.id <= (SELECT v FROM events_fts_state WHERE k = 'counted');
+     UPDATE events_fts_state SET v = COALESCE((SELECT MAX(id) FROM events_in), 0)
+       WHERE k = 'counted' AND v > COALESCE((SELECT MAX(id) FROM events_in), 0);
+   END;
+   CREATE TRIGGER IF NOT EXISTS ev.events_counts_changed AFTER UPDATE OF at, source_ip, kind, severity, event_id ON events_in
+     WHEN old.id <= (SELECT v FROM events_fts_state WHERE k = 'counted') BEGIN
+     UPDATE events_minute SET n = n - 1 WHERE minute = CAST(strftime('%s', old.at) AS INTEGER) / 60 AND source_ip = old.source_ip AND kind = old.kind AND severity = old.severity;
+     UPDATE events_hour SET n = n - 1 WHERE hour = CAST(strftime('%s', old.at) AS INTEGER) / 3600 AND source_ip = old.source_ip AND kind = old.kind AND severity = old.severity;
+     UPDATE events_hour_id SET n = n - 1 WHERE old.event_id IS NOT NULL AND hour = CAST(strftime('%s', old.at) AS INTEGER) / 3600 AND event_id = old.event_id;
+     INSERT INTO events_minute(minute, source_ip, kind, severity, n) VALUES (CAST(strftime('%s', new.at) AS INTEGER) / 60, new.source_ip, new.kind, new.severity, 1)
+       ON CONFLICT(minute, source_ip, kind, severity) DO UPDATE SET n = n + 1;
+     INSERT INTO events_hour(hour, source_ip, kind, severity, n) VALUES (CAST(strftime('%s', new.at) AS INTEGER) / 3600, new.source_ip, new.kind, new.severity, 1)
+       ON CONFLICT(hour, source_ip, kind, severity) DO UPDATE SET n = n + 1;
+     INSERT INTO events_hour_id(hour, event_id, n) SELECT CAST(strftime('%s', new.at) AS INTEGER) / 3600, new.event_id, 1 WHERE new.event_id IS NOT NULL
+       ON CONFLICT(hour, event_id) DO UPDATE SET n = n + 1;
+   END;`,
 ];
 export const eventsFile = (dbFile) => (dbFile === ':memory:' ? ':memory:' : path.join(path.dirname(dbFile), 'events.sqlite'));
 

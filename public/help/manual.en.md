@@ -232,6 +232,8 @@ After the update to 0.39 WhatsOnMyNet builds the index for the messages already 
 
 The browser remembers the preset chosen (e.g. *Last 24 hours*); a custom range only holds while the page is open. The *By sender* overview still counts the last 24 hours.
 
+**Fast with millions of messages too:** for the timeline without a search term, the figures in *By sender* and the space details WhatsOnMyNet keeps counts per minute and hour (sender, kind, severity, Windows event id) - so it does not read every message each time. New messages go into the counts every few seconds and are counted directly until then; the figures are always exact. The counts take only a few per cent of the messages file. After the update to 0.41 an existing file is counted once in the background (a few seconds per million messages). Old messages are removed in pieces of 10,000, so that a big day does not hold up the receiving.
+
 ### Event rules: chosen messages by mail or to the ticket system
 
 Under *Messages → Event rules* you set which messages go where - **apart from the monitors**: a rule only sends to the recipients ticked in it, never to the default recipients. So "virus found" lands in the mailbox of the ticket system and not on the phone.

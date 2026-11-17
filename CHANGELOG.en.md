@@ -6,6 +6,11 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Messages: the timeline without a search term, the overview "By sender" and the space page are there at once with millions of messages too - they read counts per minute and hour instead of every message (with 2 million messages about 10 milliseconds instead of 1 to 2 seconds). The figures stay exact. After the update an existing messages file is counted in the background
+- Messages: old messages go in pieces instead of all at once - a big day to remove no longer holds up the receiving
+
+## 0.40.0 - 2026-11-17
+
 - Messages: saved searches - under "Saved" keep search term, severity, kind and time range under a name and set them again with one click, for yourself or visible to everyone
 - Windows script on Windows Server: it asked the Security Center, which only client Windows have (with another virus protection the Defender part is missing too) - the caught error still landed in the PowerShell log as warning 4100 "Invalid namespace" on every run. Now the script looks first whether the part is there. The automatic test now runs on Windows Server 2022 and 2025 and checks missing parts too
 

@@ -261,6 +261,7 @@ Unter *Überwachung → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Beric
 - **Zeitraum und Zeitleiste** (wie in Splunk oder Wazuh): letzte 15 Minuten bis 30 Tage oder ein eigener Zeitraum; über der Liste zählt eine Zeitleiste die Treffer je Zeitabschnitt (Fehler, Warnungen, Rest). Nach einem Ereignis suchen, dann einen Balken anklicken oder über mehrere ziehen - Liste und Zeitleiste grenzen sich darauf ein. Ein Klick auf die Uhrzeit einer Meldung zeigt die 5 Minuten davor und danach.
 - **Schnelle Suche auch in vielen GB:** ein Suchindex findet ganze Wörter und Wortanfänge, mehrere Begriffe zugleich (`PC-0001 4104 svc-pocketknife`), feste Wortfolgen in Anführungszeichen und `-wort` zum Ausschließen in Sekundenbruchteilen, auch über 30 oder 90 Tage; Teile mitten im Wort auf Wunsch. **Suchen speichern** (für sich oder für alle) - ein Klick statt erneut tippen.
 - Die Meldungen liegen in einer **eigenen Datei** (`data/events.sqlite`): 30 Tage in höchstens 2 GB, bei knappem Datenträger bleiben mindestens 10 % frei. Die Seite zeigt, wie lange der Platz reicht und wer die meisten Meldungen schickt.
+- **Zeitleiste und Übersicht sofort da**, auch bei Millionen Meldungen: eine Zählung je Minute und Stunde ersetzt das Durchlesen aller Meldungen - die Zahlen bleiben genau, alte Meldungen gehen in Stücken, ohne den Empfang aufzuhalten.
 - **Platz planen:** gerechnet rund 2 KB je Meldung, samt Suchindex - *Platz ≈ Meldungen pro Tag × Tage × 2 KB*. Grob für 30 Tage:
 
   | Umgebung | Meldungen pro Tag | Platz für 30 Tage | Einstellung |

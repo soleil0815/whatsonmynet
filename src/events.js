@@ -25,6 +25,10 @@ export const SEVERITIES = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice',
 const GB = 1024 ** 3;
 export const MAX_GB_DEFAULT = 2;
 const PRUNE_MS = 10 * 60 * 1000;
+// messages removed at a time (each also leaves the search index and the counts)
+const PRUNE_PIECE = 10000;
+// later than any message (for an open end)
+const FAR = '9999-12-31T23:59:59.999Z';
 const STATS_MS = 60 * 1000;
 const STATS_FRESH_MS = 15 * 1000;
 const PER_SENDER = 20;
@@ -494,20 +498,46 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     db.transaction(() => { ftsAdd.run(done, to); ftsSet.run(to); })();
     return top - to;
   }
+  // Counts per minute (sender, kind, severity) and per hour (Windows event id): see db.js, schema 5. Filled like the
+  // index; whatever is above "counted" is counted from the messages themselves.
+  const COUNT_BATCH = 20000;
+  const countedQ = db.prepare("SELECT v FROM events_fts_state WHERE k = 'counted'").pluck();
+  const counted = () => countedQ.get() ?? 0;
+  const countAddMin = db.prepare(`INSERT INTO events_minute(minute, source_ip, kind, severity, n)
+    SELECT CAST(strftime('%s', at) AS INTEGER) / 60, source_ip, kind, severity, COUNT(*) FROM events_in WHERE id > ? AND id <= ? GROUP BY 1, 2, 3, 4
+    ON CONFLICT(minute, source_ip, kind, severity) DO UPDATE SET n = n + excluded.n`);
+  const countAddHours = db.prepare(`INSERT INTO events_hour(hour, source_ip, kind, severity, n)
+    SELECT CAST(strftime('%s', at) AS INTEGER) / 3600, source_ip, kind, severity, COUNT(*) FROM events_in WHERE id > ? AND id <= ? GROUP BY 1, 2, 3, 4
+    ON CONFLICT(hour, source_ip, kind, severity) DO UPDATE SET n = n + excluded.n`);
+  const countAddHour = db.prepare(`INSERT INTO events_hour_id(hour, event_id, n)
+    SELECT CAST(strftime('%s', at) AS INTEGER) / 3600, event_id, COUNT(*) FROM events_in WHERE id > ? AND id <= ? AND event_id IS NOT NULL GROUP BY 1, 2
+    ON CONFLICT(hour, event_id) DO UPDATE SET n = n + excluded.n`);
+  const countSet = db.prepare("UPDATE events_fts_state SET v = ? WHERE k = 'counted'");
+  /** One batch into the counts; how many ids are left above them */
+  function countBatch(max = COUNT_BATCH) {
+    const done = counted(); const top = ftsTop.get() || 0;
+    if (top <= done) return 0;
+    const to = Math.min(top, done + max);
+    db.transaction(() => { countAddMin.run(done, to); countAddHours.run(done, to); countAddHour.run(done, to); countSet.run(to); })();
+    return top - to;
+  }
   let ftsTimer = null; let ftsRunning = false; let ftsStart = null;
   /** Batches until the index has caught up - between them the receivers get their turn */
   function indexPump() {
     if (ftsRunning) return;
     ftsRunning = true;
     const step = () => {
-      let left = 0;
+      let left = 0; let counts = 0;
       try { left = indexBatch(); } catch (e) { log.warn(`Messages: search index: ${e.message}`); left = 0; }
-      if (left > 0) { if (left > 50000 && !ftsStart) { ftsStart = { at: Date.now(), done: ftsDone() }; log.info('Messages: building the search index in the background'); } setImmediate(step); return; }
+      try { counts = countBatch(); } catch (e) { log.warn(`Messages: counts: ${e.message}`); }
+      if (left > 0 || counts > 0) { if (left > 50000 && !ftsStart) { ftsStart = { at: Date.now(), done: ftsDone() }; log.info('Messages: building the search index in the background'); } setImmediate(step); return; }
       if (ftsStart) { log.info(`Messages: search index ready (${Math.round((Date.now() - ftsStart.at) / 1000)} s)`); ftsStart = null; }
       ftsRunning = false;
     };
     step();
   }
+  /** How far the counts are: messages not in them yet (normally a few seconds' worth) */
+  const countStatus = () => ({ behind: Math.max(0, (ftsTop.get() || 0) - counted()) });
   /** How far the index is: share of the messages in it (by id) */
   function indexStatus() {
     const done = ftsDone(); const top = ftsTop.get() || 0;
@@ -620,14 +650,44 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     // bars start on a round time (local midnight does not matter here: the browser labels them in its own time)
     const t0 = Math.floor(start / 1000 / step) * step;
     const n = Math.ceil((end / 1000 - t0) / step);
-    const { where, args } = filterSql({ ...filter, from: new Date(start).toISOString(), to: new Date(end).toISOString() });
-    const rows = db.prepare(`SELECT CAST((CAST(strftime('%s', e.at) AS INTEGER) - ?) / ? AS INTEGER) b, SUM(e.severity <= 3) err, SUM(e.severity = 4) warn, COUNT(*) n
-      FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where} GROUP BY b`).all(t0, step, ...args);
+    const range = { from: new Date(start).toISOString(), to: new Date(end).toISOString() };
+    let rows;
+    if (!String(filter.q || '').trim() && !filter.device) {
+      // without a search: the minutes from the counts, only the cut minutes at both ends and what is newer than the
+      // counts from the messages - the same numbers, without reading millions of them
+      const lo = Math.ceil(start / 60000); const hi = Math.floor(end / 60000);
+      const w = ['severity <= ?']; const a = [Math.max(0, Math.min(7, Number(filter.maxSeverity ?? 7)))];
+      if (filter.kind === 'trap' || filter.kind === 'syslog') { w.push('kind = ?'); a.push(filter.kind); }
+      if (filter.source) { w.push('source_ip = ?'); a.push(String(filter.source).slice(0, 64)); }
+      const counts = (table, col, secs, from, to) => (to > from ? db.prepare(`SELECT CAST((${col} * ${secs} - ?) / ? AS INTEGER) b,
+        SUM(CASE WHEN severity <= 3 THEN n ELSE 0 END) err, SUM(CASE WHEN severity = 4 THEN n ELSE 0 END) warn, SUM(n) n
+        FROM ${table} WHERE ${col} >= ? AND ${col} < ? AND ${w.join(' AND ')} GROUP BY b`).all(t0, step, from, to, ...a) : []);
+      // bars of whole hours (or days, weeks): whole hours from the hour counts, the minutes around them
+      const loH = Math.ceil(lo / 60); const hiH = Math.floor(hi / 60);
+      if (step % 3600 === 0 && hiH > loH) rows = [...counts('events_hour', 'hour', 3600, loH, hiH), ...counts('events_minute', 'minute', 60, lo, loH * 60), ...counts('events_minute', 'minute', 60, hiH * 60, hi)];
+      else rows = counts('events_minute', 'minute', 60, lo, hi);
+      // each part below has its own time range (a second one would keep the time index from using the narrow one)
+      const { where, args } = filterSql({ ...filter, from: null, to: null });
+      if (hi > lo) {
+        for (const p of notCounted(range.from, new Date(lo * 60000).toISOString(), new Date(hi * 60000).toISOString(), range.to)) {
+          rows.push(...db.prepare(`SELECT CAST((CAST(strftime('%s', e.at) AS INTEGER) - ?) / ? AS INTEGER) b, SUM(e.severity <= 3) err, SUM(e.severity = 4) warn, COUNT(*) n
+            FROM ${p.src} WHERE ${where} AND ${p.sql} GROUP BY b`).all(t0, step, ...args, ...p.args));
+        }
+      } else {
+        // all within one minute: from the messages
+        rows.push(...db.prepare(`SELECT CAST((CAST(strftime('%s', e.at) AS INTEGER) - ?) / ? AS INTEGER) b, SUM(e.severity <= 3) err, SUM(e.severity = 4) warn, COUNT(*) n
+          FROM events_in e WHERE ${where} AND e.at >= ? AND e.at < ? GROUP BY b`).all(t0, step, ...args, range.from, range.to));
+      }
+    } else {
+      const { where, args } = filterSql({ ...filter, ...range });
+      rows = db.prepare(`SELECT CAST((CAST(strftime('%s', e.at) AS INTEGER) - ?) / ? AS INTEGER) b, SUM(e.severity <= 3) err, SUM(e.severity = 4) warn, COUNT(*) n
+        FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where} GROUP BY b`).all(t0, step, ...args);
+    }
     const buckets = Array.from({ length: n }, (_, i) => ({ at: new Date((t0 + i * step) * 1000).toISOString(), err: 0, warn: 0, other: 0 }));
     let total = 0;
     for (const r of rows) {
       const b = buckets[r.b]; if (!b) continue;
-      b.err = r.err; b.warn = r.warn; b.other = r.n - r.err - r.warn; total += r.n;
+      b.err += r.err; b.warn += r.warn; b.other += r.n - r.err - r.warn; total += r.n;
     }
     return { from: new Date(start).toISOString(), to: new Date(end).toISOString(), step, total, buckets };
   }
@@ -636,12 +696,32 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
    * The overview by sender: one row per address with its device or computer name, the newest message and what came in
    * the last 24 hours (how many, how many warnings and errors). The newest first; q filters names and addresses.
    */
+  /** The messages the counts do not cover yet within [from, to), plus the cut pieces [from, lo) and [hi, to) at the
+   * edges: one condition each, so that each part is found through its own index (id or time), never by reading a day */
+  function notCounted(fromIso, loIso, hiIso, toIso) {
+    // the newest by their id (no index: the time index would read the whole range), the edges by their time
+    const parts = [{ src: 'events_in e NOT INDEXED', sql: 'e.id > ? AND e.at >= ? AND e.at < ?', args: [counted(), loIso, hiIso] }];
+    if (fromIso < loIso) parts.push({ src: 'events_in e INDEXED BY events_in_at', sql: 'e.at >= ? AND e.at < ?', args: [fromIso, loIso] });
+    if (hiIso < toIso) parts.push({ src: 'events_in e INDEXED BY events_in_at', sql: 'e.at >= ? AND e.at < ?', args: [hiIso, toIso] });
+    return parts;
+  }
+  /** Messages since a time per sender (n, warnings, errors) - from the counts, the cut minute and the newest from the messages */
+  function countSince(sinceMs) {
+    const m = Math.ceil(sinceMs / 60000);
+    const out = new Map();
+    const add = (r) => { const x = out.get(r.source_ip) || { source_ip: r.source_ip, n: 0, warn: 0, err: 0 }; x.n += r.n; x.warn += r.warn; x.err += r.err; out.set(r.source_ip, x); };
+    db.prepare(`SELECT source_ip, SUM(n) n, SUM(CASE WHEN severity <= 4 THEN n ELSE 0 END) warn, SUM(CASE WHEN severity <= 3 THEN n ELSE 0 END) err
+      FROM events_minute WHERE minute >= ? GROUP BY source_ip`).all(m).forEach(add);
+    for (const p of notCounted(new Date(sinceMs).toISOString(), new Date(m * 60000).toISOString(), FAR, FAR)) {
+      db.prepare(`SELECT source_ip, COUNT(*) n, SUM(severity <= 4) warn, SUM(severity <= 3) err FROM ${p.src} WHERE ${p.sql} GROUP BY source_ip`).all(...p.args).forEach(add);
+    }
+    return out;
+  }
   let sendersCache = null; let sendersAt = 0;
   function senders({ q = '', fresh = false } = {}) {
     // counted again at most every 5 seconds while messages come in (the 24 hours are not free on a busy network)
     if (fresh || !sendersCache || Date.now() - sendersAt > (receivedSince ? 5000 : STATS_MS)) {
-      const since = new Date(Date.now() - 86400000).toISOString();
-      const day = new Map(db.prepare('SELECT source_ip, COUNT(*) n, SUM(severity <= 4) warn, SUM(severity <= 3) err FROM events_in WHERE at >= ? GROUP BY source_ip').all(since).map((r) => [r.source_ip, r]));
+      const day = countSince(Date.now() - 86400000);
       sendersCache = db.prepare(`SELECT s.source_ip, s.device_id, s.host, s.first_at, s.last_at, d.name device_name, d.type device_type,
           e.severity last_severity, e.app last_app, e.event_id last_event_id, e.text last_text
         FROM event_senders s LEFT JOIN devices d ON d.id = s.device_id LEFT JOIN events_in e ON e.id = s.last_id ORDER BY s.last_at DESC`).all()
@@ -681,9 +761,17 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
 
   /** Old messages out: older than the days set, then the oldest until the file fits its limit. Returns rows deleted. */
   function prune() {
-    let deleted = 0;
+    let deleted = 0; let more = false;
     const days = Math.max(1, Math.min(365, Number(settings.get('events.keepDays')) || 30));
-    deleted += db.prepare('DELETE FROM events_in WHERE at < ?').run(new Date(Date.now() - days * 86400000).toISOString()).changes;
+    // in pieces: a whole busy day at once would hold up the receiving for long (every message also leaves the index and
+    // the counts); what is left goes in the next round, a few seconds later
+    const old = new Date(Date.now() - days * 86400000).toISOString();
+    const gone = db.prepare('DELETE FROM events_in WHERE id IN (SELECT id FROM events_in WHERE at < ? ORDER BY id LIMIT ?)');
+    for (let round = 0; round < 10; round++) {
+      const c = gone.run(old, PRUNE_PIECE).changes; deleted += c;
+      if (c < PRUNE_PIECE) break;
+      if (round === 9) { more = true; }
+    }
     for (let round = 0; round < 20; round++) {
       const used = usedBytes();
       const { cap } = limits(used);
@@ -695,12 +783,19 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       deleted += db.prepare('DELETE FROM events_in WHERE id IN (SELECT id FROM events_in ORDER BY id LIMIT ?)').run(rows).changes;
     }
     if (deleted) {
+      // counts that went down to nothing (before the oldest message left)
+      const first = db.prepare('SELECT at FROM events_in ORDER BY id LIMIT 1').pluck().get();
+      const firstMs = first ? Date.parse(first) : Date.now();
+      db.prepare('DELETE FROM events_minute WHERE minute < ? AND n <= 0').run(Math.floor(firstMs / 60000) + 1);
+      db.prepare('DELETE FROM events_hour WHERE hour < ? AND n <= 0').run(Math.floor(firstMs / 3600000) + 1);
+      db.prepare('DELETE FROM events_hour_id WHERE hour < ? AND n <= 0').run(Math.floor(firstMs / 3600000) + 1);
       // a sender whose messages are all gone leaves the overview too
       db.prepare('DELETE FROM event_senders WHERE last_id < COALESCE((SELECT MIN(id) FROM events_in), 9e18)').run();
       try { db.pragma('ev.incremental_vacuum'); } catch { /* an older file without auto-vacuum keeps its pages for reuse */ }
       stats = null;
       log.info(`Messages: ${deleted} old message(s) removed`);
     }
+    if (more && !pruneSoon) { pruneSoon = setTimeout(() => { pruneSoon = null; try { prune(); } catch (e) { log.warn(`Messages cleanup failed: ${e.message}`); } }, 2000); pruneSoon.unref?.(); }
     return deleted;
   }
 
@@ -713,23 +808,34 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     receivedSince = 0;
     const used = usedBytes();
     const lim = limits(used);
-    const total = db.prepare('SELECT COUNT(*) n FROM events_in').get().n;
-    const since = new Date(Date.now() - 86400000).toISOString();
-    const day = db.prepare('SELECT COUNT(*) n FROM events_in WHERE at >= ?').get(since).n;
+    const done = counted();
+    const total = (db.prepare('SELECT SUM(n) FROM events_hour').pluck().get() || 0) + db.prepare('SELECT COUNT(*) FROM events_in WHERE id > ?').pluck().get(done);
+    const sinceMs = Date.now() - 86400000;
+    const perSender = [...countSince(sinceMs).values()];
+    const day = perSender.reduce((a, r) => a + r.n, 0);
     const oldest = db.prepare('SELECT at FROM events_in ORDER BY id LIMIT 1').get()?.at || null;
     const perRow = total ? used / total : 900;
     const perDay = day * perRow;
     const keepDays = Math.max(1, Math.min(365, Number(settings.get('events.keepDays')) || 30));
     const daysFit = perDay > 0 ? Math.floor(lim.cap / perDay) : null;
     // who fills it: the biggest senders and Windows events of the last day (with their share)
-    const top = (sql) => (day ? db.prepare(sql).all(since).map((r) => ({ name: String(r.name ?? ''), share: Math.round((r.n / day) * 100) })).filter((r) => r.share >= 10) : []);
+    const share = (list) => (day ? list.sort((a, b) => b.n - a.n).slice(0, 3).map((r) => ({ name: String(r.name ?? ''), share: Math.round((r.n / day) * 100) })).filter((r) => r.share >= 10) : []);
+    // senders by their computer name (as the messages give it); event ids by the hour, the cut hour from the messages
+    const names = new Map(db.prepare("SELECT source_ip, host FROM event_senders").all().map((r) => [r.source_ip, r.host]));
+    const bySender = new Map();
+    for (const r of perSender) { const name = names.get(r.source_ip) || r.source_ip; bySender.set(name, (bySender.get(name) || 0) + r.n); }
+    const hour = Math.ceil(sinceMs / 3600000);
+    const ids = new Map(db.prepare('SELECT event_id, SUM(n) n FROM events_hour_id WHERE hour >= ? GROUP BY event_id').all(hour).map((r) => [r.event_id, r.n]));
+    for (const p of notCounted(new Date(sinceMs).toISOString(), new Date(hour * 3600000).toISOString(), FAR, FAR)) {
+      for (const r of db.prepare(`SELECT event_id, COUNT(*) n FROM ${p.src} WHERE ${p.sql} AND event_id IS NOT NULL GROUP BY event_id`).all(...p.args)) ids.set(r.event_id, (ids.get(r.event_id) || 0) + r.n);
+    }
     stats = { used, limit: lim.want, cap: lim.cap, diskShort: lim.diskShort, total, perDay: day, oldest, keepDays, daysFit, short: daysFit !== null && daysFit < keepDays,
-      topSenders: top("SELECT COALESCE(NULLIF(host,''), source_ip) name, COUNT(*) n FROM events_in WHERE at >= ? GROUP BY name ORDER BY n DESC LIMIT 3"),
-      topEvents: top('SELECT event_id name, COUNT(*) n FROM events_in WHERE at >= ? AND event_id IS NOT NULL GROUP BY event_id ORDER BY n DESC LIMIT 3') };
+      topSenders: share([...bySender].map(([name, n]) => ({ name, n }))),
+      topEvents: share([...ids].map(([name, n]) => ({ name, n }))) };
     statsAt = Date.now();
     return stats;
   }
-  let pruneTimer = null;
+  let pruneTimer = null; let pruneSoon = null;
 
   return {
     receive, list, histogram, senders, prune, apply, communities,
@@ -742,8 +848,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
         .run(a, Math.max(-1, Math.min(7, Number(min))), new Date().toISOString(), String(by).slice(0, 120));
       sevFilter = null; sendersCache = null;
     },
-    reloadTls, indexBatch, indexPump, indexStatus,
-    status: () => ({ searchIndex: indexStatus(), traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, filtered, total: storage().total,
+    reloadTls, indexBatch, countBatch, indexPump, indexStatus,
+    status: () => ({ searchIndex: indexStatus(), counts: countStatus(), traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, filtered, total: storage().total,
       last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null, storage: storage() }),
     storage,
     /** Receivers as set, and the cleanup every 10 minutes (the limit holds between the daily rounds too) */
@@ -752,7 +858,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       if (!pruneTimer) { pruneTimer = setInterval(() => { try { prune(); } catch (e) { log.warn(`Messages cleanup failed: ${e.message}`); } }, PRUNE_MS); pruneTimer.unref(); }
       if (!ftsTimer) { ftsTimer = setInterval(indexPump, FTS_MS); ftsTimer.unref(); setImmediate(indexPump); }
     },
-    stop() { clearInterval(pruneTimer); pruneTimer = null; clearInterval(ftsTimer); ftsTimer = null; stopAll(); },
+    stop() { clearInterval(pruneTimer); pruneTimer = null; clearTimeout(pruneSoon); pruneSoon = null; clearInterval(ftsTimer); ftsTimer = null; stopAll(); },
   };
 }
 

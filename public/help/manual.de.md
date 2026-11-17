@@ -232,6 +232,8 @@ Nach dem Update auf 0.39 baut WhatsOnMyNet den Index für die schon gespeicherte
 
 Die gewählte Vorgabe (z. B. *Letzte 24 Stunden*) merkt sich der Browser; ein eigener Zeitraum gilt nur, solange die Seite offen ist. Die Übersicht *Nach Absender* zählt weiter die letzten 24 Stunden.
 
+**Auch bei Millionen Meldungen schnell:** Für die Zeitleiste ohne Suchbegriff, die Zahlen in *Nach Absender* und die Angaben zum Platz führt WhatsOnMyNet eine Zählung je Minute und Stunde (Absender, Art, Schwere, Windows-Ereignis-ID) - sie liest also nicht jedes Mal alle Meldungen. Neue Meldungen kommen alle paar Sekunden in die Zählung und werden bis dahin direkt mitgezählt; die Zahlen sind immer genau. Die Zählung braucht nur wenige Prozent der Meldungsdatei. Nach dem Update auf 0.41 wird eine bestehende Datei einmal im Hintergrund nachgezählt (einige Sekunden je Million Meldungen). Alte Meldungen werden in Stücken zu 10 000 gelöscht, damit ein großer Tag den Empfang nicht aufhält.
+
 ### Ereignisregeln: ausgewählte Meldungen per Mail oder ans Ticketsystem
 
 Unter *Meldungen → Ereignisregeln* legst du fest, welche Meldungen wohin gehen - **getrennt von den Monitoren**: Eine Regel schickt nur an die Empfänger, die bei ihr angehakt sind, nie an die Standard-Empfänger. So landet „Virus gefunden“ im Postfach des Ticketsystems und nicht auf dem Handy.
