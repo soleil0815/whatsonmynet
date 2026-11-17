@@ -7,6 +7,7 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 ## Next version (not released yet)
 
 - Messages: the timeline without a search term, the overview "By sender" and the space page are there at once with millions of messages too - they read counts per minute and hour instead of every message (with 2 million messages about 10 milliseconds instead of 1 to 2 seconds). The figures stay exact. After the update an existing messages file is counted in the background
+- Messages: "What takes the space?" shows which Windows events and senders send the most messages - with share, amount a day, estimated space, an example and hints (a rule needs it, usually important, usual noise). Admins leave an event out with one click; not one a rule needs. "Copy for AI" turns it into a question for an AI chat, with placeholders instead of names, addresses and accounts
 - Messages: old messages go in pieces instead of all at once - a big day to remove no longer holds up the receiving
 
 ## 0.40.0 - 2026-11-17

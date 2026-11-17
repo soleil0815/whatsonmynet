@@ -335,6 +335,9 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       out.skipped_too_long = s.skipped || 0;
       out.filtered = s.filtered || 0;
       out.keep_for_all = Number(settings.get('events.minSeverity') ?? 7);
+      // Windows event ids left out / only taken (numbers only - they say nothing about the network)
+      out.win_deny = String(settings.get('events.winDeny') || '');
+      out.win_allow = String(settings.get('events.winAllow') || '');
       out.sender_filters = db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((f) => ({ sender: an.anon(f.source_ip), min_severity: f.min_severity }));
       out.storage = { used: st.used, limit: st.limit, cap: st.cap, disk_short: !!st.diskShort, total: st.total, per_day: st.perDay, oldest: st.oldest, keep_days: st.keepDays,
         days_fit: st.daysFit, short: !!st.short, top_senders: (st.topSenders || []).map((x) => ({ name: an.anon(x.name), share: x.share })), top_events: st.topEvents || [] };

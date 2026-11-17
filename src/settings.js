@@ -5,6 +5,9 @@ import { encrypt, decrypt } from './lib/crypto.js';
 // Receiving settings → never take). Logon/logoff and special logon, process start/end, object access, token and group
 // enumeration, firewall (WFP) connections, credential manager reads, service state, DCOM 10016, software protection,
 // user profile service, uptime, WMI 5858. Not in it: 8004 - also AppLocker "blocked" (ready-made rule); 4625, 4740 & co.
+// Windows events that are usually worth keeping (security, crashes, restarts) - the overview "What takes the space?"
+// says so before one of them is left out
+export const WIN_KEEP = '41, 104, 1074, 1076, 1102, 1116, 1117, 4104, 4625, 4648, 4697, 4698, 4719, 4720, 4722, 4723, 4724, 4725, 4726, 4728, 4732, 4735, 4738, 4740, 4756, 4767, 4771, 4776, 6005, 6006, 6008, 7034, 7045';
 export const WIN_NOISE = '1531, 1532, 4624, 4634, 4647, 4656, 4658, 4663, 4672, 4688, 4689, 4690, 4703, 4798, 4799, 5156, 5158, 5379, 5858, 6013, 7036, 10016, 16384, 16394';
 
 export const DEFAULTS = {

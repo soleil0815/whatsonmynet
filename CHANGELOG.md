@@ -7,6 +7,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 ## Nächste Version (noch nicht veröffentlicht)
 
 - Meldungen: Zeitleiste ohne Suchbegriff, Übersicht „Nach Absender“ und Seite „Platz“ sind auch bei Millionen Meldungen sofort da - sie lesen eine Zählung je Minute und Stunde statt aller Meldungen (bei 2 Millionen Meldungen etwa 10 Millisekunden statt 1 bis 2 Sekunden). Die Zahlen bleiben genau. Nach dem Update wird eine bestehende Meldungsdatei im Hintergrund nachgezählt
+- Meldungen: „Was belegt den Platz?“ zeigt, welche Windows-Ereignisse und Absender die meisten Meldungen schicken - mit Anteil, Menge pro Tag, geschätztem Platz, Beispiel und Hinweisen (eine Regel braucht es, meist wichtig, übliches Rauschen). Administratoren schließen ein Ereignis mit einem Klick aus; eins, das eine Regel braucht, nicht. „Für KI kopieren“ macht daraus eine Frage an einen KI-Chat, mit Platzhaltern statt Namen, Adressen und Konten
 - Meldungen: Alte Meldungen gehen in Stücken statt mit einem Mal - ein großer Tag zum Löschen hält den Empfang nicht mehr auf
 
 ## 0.40.0 - 2026-11-17
