@@ -6,6 +6,11 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Handbuch: vollständige NXLog-Konfiguration als Beispiel, die Quelle und Protokoll mitschickt (damit greifen Ausschlüsse wie 1@Ntfs); Fluent Bit als zweiter kostenloser Agent mit fertiger Konfiguration, geprüft auf echtem Windows Server; Hinweise zu Winlogbeat und zur Windows-Ereignisweiterleitung
+- Meldungen: Windows-Ereignisse von Fluent Bit (JSON) werden mit Schwere erkannt - die Stufe als Zahl und „Überwachung fehlgeschlagen“ aus den Schlüsselwörtern
+
+## 0.42.0 - 2026-11-17
+
 - Windows-Skript: Weist WhatsOnMyNet einen Bericht ab (z. B. Schlüssel nicht mehr gültig) oder ist nicht erreichbar, schrieb das Skript bei jedem Lauf eine Warnung 4100 ins PowerShell-Protokoll - behoben. Die Antwort steht jetzt in womn-host-send.json neben dem Skript, die geplante Aufgabe endet mit Ergebnis 2. Getestet auf echtem Windows (Server 2022 und 2025). Das gilt auch für das Hyper-V-Skript
 - Windows-Skripte mit Versionsnummer: in der ersten Zeile, in der Registry unter HKLM\SOFTWARE\WhatsOnMyNet (HostScript bzw. HyperVScript) zum Filtern in der Softwareverteilung, und im Bericht - die Geräteseite markiert Rechner mit einem älteren Skript als „veraltet“. Die Nummer ändert sich nur, wenn sich das Skript ändert. Dafür das Skript einmal neu verteilen
 - Speicherpools: ZFS und Ceph aus Proxmox (Zustand, ausgefallene Platten/OSDs, Belegung, letzter Scrub), ZFS und Software-RAID (mdadm) im Linux-Skript, Storage Spaces im Windows-Skript - mit Sensoren für Zustand, Belegung, Tage seit dem Scrub und ausgefallene Mitglieder

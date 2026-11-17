@@ -3,6 +3,13 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Handbuch: vollständige NXLog-Konfiguration als Beispiel, die Quelle und Protokoll mitschickt (damit greifen Ausschlüsse wie 1@Ntfs); Fluent Bit als zweiter kostenloser Agent mit fertiger Konfiguration, geprüft auf echtem Windows Server; Hinweise zu Winlogbeat und zur Windows-Ereignisweiterleitung',
+    'Meldungen: Windows-Ereignisse von Fluent Bit (JSON) werden mit Schwere erkannt - die Stufe als Zahl und „Überwachung fehlgeschlagen“ aus den Schlüsselwörtern',
+  ], en: [
+    'Manual: a complete NXLog configuration as example that sends source and log along (so leaving out like 1@Ntfs applies); Fluent Bit as a second free agent with a ready configuration, checked on a real Windows Server; notes on Winlogbeat and Windows Event Forwarding',
+    'Messages: Windows events from Fluent Bit (JSON) are recognised with their severity - the level as a number and "audit failure" from the keywords',
+  ] },
+  { version: '0.42.0', date: '2026-11-17', de: [
     'Windows-Skript: Weist WhatsOnMyNet einen Bericht ab (z. B. Schlüssel nicht mehr gültig) oder ist nicht erreichbar, schrieb das Skript bei jedem Lauf eine Warnung 4100 ins PowerShell-Protokoll - behoben. Die Antwort steht jetzt in womn-host-send.json neben dem Skript, die geplante Aufgabe endet mit Ergebnis 2. Getestet auf echtem Windows (Server 2022 und 2025). Das gilt auch für das Hyper-V-Skript',
     'Windows-Skripte mit Versionsnummer: in der ersten Zeile, in der Registry unter HKLM\\SOFTWARE\\WhatsOnMyNet (HostScript bzw. HyperVScript) zum Filtern in der Softwareverteilung, und im Bericht - die Geräteseite markiert Rechner mit einem älteren Skript als „veraltet“. Die Nummer ändert sich nur, wenn sich das Skript ändert. Dafür das Skript einmal neu verteilen',
     'Speicherpools: ZFS und Ceph aus Proxmox (Zustand, ausgefallene Platten/OSDs, Belegung, letzter Scrub), ZFS und Software-RAID (mdadm) im Linux-Skript, Storage Spaces im Windows-Skript - mit Sensoren für Zustand, Belegung, Tage seit dem Scrub und ausgefallene Mitglieder',

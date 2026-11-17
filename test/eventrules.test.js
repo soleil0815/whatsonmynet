@@ -24,6 +24,16 @@ test('Windows events: readable bracket format, JSON, NXLog line - and plain sysl
   assert.deepEqual([l.host, l.eventId, l.severity, l.text], ['PC-0001', 865, 4, 'Der Zugriff auf C:\\Users\\max\\x.exe wurde eingeschränkt.']);
   assert.deepEqual(parseSyslog('<13>Oct 11 22:14:15 fs01 smartd[512]: Device /dev/sda [SAT], 8 Currently unreadable sectors'),
     { severity: 5, facility: 1, host: 'fs01', app: 'smartd', text: 'Device /dev/sda [SAT], 8 Currently unreadable sectors' });
+  // Fluent Bit (winevtlog, "Format json_lines" over TCP): no syslog head, the level as a number, the audit result in
+  // the keywords
+  const fb = (x) => JSON.stringify({ date: 1763200800.123, ProviderName: 'Microsoft-Windows-Security-Auditing', ProviderGuid: '{54849625-5478-4994-A5BA-3E3B0328C30D}',
+    Qualifiers: '', EventID: 4625, Version: 0, Level: 0, Task: 12544, Opcode: 0, Keywords: '0x8010000000000000', TimeCreated: '2026-11-15 10:00:00 +0100', EventRecordID: 99,
+    Channel: 'Security', Computer: 'PC-0001.firma.local', Message: 'Fehler beim Anmelden eines Kontos.\r\n\r\nKontoname: max', ...x });
+  const f = parseSyslog(fb({}));
+  assert.deepEqual([f.host, f.app, f.eventId, f.channel, f.severity, f.text], ['PC-0001.firma.local', 'Microsoft-Windows-Security-Auditing', 4625, 'Security', 4, 'Fehler beim Anmelden eines Kontos. Kontoname: max']);
+  assert.equal(parseSyslog(fb({ EventID: 4624, Keywords: '0x8020000000000000' })).severity, 6, 'audit success');
+  assert.deepEqual([2, 3, 4, 5].map((lv) => parseSyslog(fb({ ProviderName: 'Service Control Manager', EventID: 7031, Level: lv, Keywords: '0x8080000000000000', Channel: 'System' })).severity), [3, 4, 6, 7]);
+  assert.equal(parseSyslog(fb({ Level: 1, Keywords: '0x80000000000000' })).severity, 2, 'critical');
   assert.equal(windowsFields('{"no":"event id"}'), null);
   assert.equal(windowsFields('{broken'), null);
   assert.equal(windowsFields('[12] not a log'), null);

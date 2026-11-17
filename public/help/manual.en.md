@@ -173,23 +173,64 @@ Event rules can do more than "a mail at every match":
 - **Failed logons (4625)** count by default without the computer's own service logons (*logon type 5*) and without "no logon server reachable" (*0xC000005E* - e.g. a laptop starting up before its VPN is up): neither is an attack. What is left are wrong passwords and unknown users over the network, at the device or by remote desktop. A rule made that way by an older version gets the exceptions with the update; one changed by hand stays as it is.
 - **Summary for sign-in events:** for 4625, 4740, 4771 and 4776 the notification and the message list show what it is about instead of the start of the text - e.g. "account FIRMA\\m.muster · network (3) · wrong password (0xC000006A) · from 10.0.10.23". Message texts are kept up to 4000 characters; the list shows long texts shortened, *whole text* opens the rest.
 
-### Windows events (NXLog)
+### Windows events (NXLog, Fluent Bit)
 
-With [NXLog](https://nxlog.co) Windows servers and clients send their event log by syslog. WhatsOnMyNet recognises the **event id**, **log**, **source** and **account** in it and shows them below the text of the message - as in the event viewer. An ordinary NXLog configuration is enough; only the output points to WhatsOnMyNet and TCP port 1514 (switch on *Syslog over TCP*):
+Windows servers and clients send their event log by syslog to WhatsOnMyNet with a small free agent. WhatsOnMyNet recognises the **event id**, **log**, **source** and **account** in it and shows them below the text of the message - as in the event viewer. Under *Messages → Receiving settings* switch on **Syslog over TCP** (port 1514); in the agents only the address of WhatsOnMyNet is entered (here `womn.firma.local`).
+
+**NXLog** ([NXLog Community Edition](https://nxlog.co), free, runs as a service). A complete `C:\Program Files\nxlog\conf\nxlog.conf` as it runs in production:
 
 ```
+Panic Soft
+#NoFreeOnExit TRUE
+
+define ROOT     C:\Program Files\nxlog
+define CERTDIR  %ROOT%\cert
+define CONFDIR  %ROOT%\conf\nxlog.d
+define LOGDIR   %ROOT%\data
+
+include %CONFDIR%\\*.conf
+define LOGFILE  %LOGDIR%\nxlog.log
+LogFile %LOGFILE%
+
+Moduledir %ROOT%\modules
+CacheDir  %ROOT%\data
+Pidfile   %ROOT%\data\nxlog.pid
+SpoolDir  %ROOT%\data
+
+<Extension _syslog>
+    Module xm_syslog
+</Extension>
+
+<Extension _fileop>
+    Module xm_fileop
+    # NXLog's own log: at most 8 files of 5 MB
+    <Schedule>
+        Every 1 hour
+        Exec if (file_exists('%LOGFILE%') and (file_size('%LOGFILE%') >= 5M)) file_cycle('%LOGFILE%', 8);
+    </Schedule>
+    <Schedule>
+        When @weekly
+        Exec if file_exists('%LOGFILE%') file_cycle('%LOGFILE%', 8);
+    </Schedule>
+</Extension>
+
 <Input in>
     Module im_msvistalog
 </Input>
 
 <Output out>
     Module om_tcp
-    Host   womn.example.local
+    Host   womn.firma.local
     Port   1514
     # Windows writes many messages over several lines - over TCP every line would
-    # become a message of its own. This way each message arrives in one piece.
-    Exec   $raw_event = replace($raw_event, "\r\n", " ");
-    Exec   $raw_event = replace($raw_event, "\n", " ");
+    # become a message of its own. Line breaks become spaces: one message, complete.
+    Exec   $Message = replace($Message, "\r\n", " ");
+    Exec   $Message = replace($Message, "\n", " ");
+    # Number and log in front of the text, the source (e.g. Microsoft-Windows-Ntfs)
+    # goes as syslog tag - so WhatsOnMyNet can tell "1 of Ntfs" from "1 of Sysmon"
+    Exec   if not defined $Channel $Channel = "";
+    Exec   $Message = "[" + string($EventID) + "] [" + $Channel + "] " + $Message;
+    Exec   to_syslog_bsd();
 </Output>
 
 <Route r1>
@@ -197,17 +238,37 @@ With [NXLog](https://nxlog.co) Windows servers and clients send their event log 
 </Route>
 ```
 
-Without `Exec` in the output NXLog sends time, computer, level, event id and text - source and log are missing then; rules recognise Windows events by their id then. To send them too, add to the output (the message stays readable):
+Then restart the service (`Restart-Service nxlog`). Under *Messages* each new message shows e.g. "Event 101 · Microsoft-Windows-Kernel-Cache/Operational · Microsoft-Windows-Kernel-Cache". Without the three `Exec` lines from `$Channel` on, NXLog only sends time, computer, level, id and text: rules then recognise the events by their id only, and leaving out for one source (`1@Ntfs`) does not apply. `Exec $Message = to_json(); to_syslog_ietf();` (all fields as JSON) is understood too, but makes the messages much longer.
+
+**Fluent Bit** ([fluentbit.io](https://fluentbit.io), free, Apache licence, runs as a service) works just as well. `fluent-bit.conf`:
 
 ```
-    Exec   $Message = replace($Message, "\r\n", " ");
-    Exec   $Message = replace($Message, "\n", " ");
-    Exec   if not defined $Channel $Channel = "";
-    Exec   $Message = "[" + string($EventID) + "] [" + $Channel + "] " + $Message;
-    Exec   to_syslog_bsd();
+[SERVICE]
+    Flush        5
+    Log_Level    warn
+
+[INPUT]
+    Name                 winevtlog
+    Channels             System,Application,Security
+    Interval_Sec         1
+    # remembers where it was - after a restart nothing is sent twice
+    DB                   C:\ProgramData\fluent-bit\winevtlog.sqlite
+    # only the readable text, not every field twice (keeps messages short)
+    String_Inserts       false
+
+[OUTPUT]
+    Name                 tcp
+    Match                *
+    Host                 womn.firma.local
+    Port                 1514
+    Format               json_lines
 ```
 
-`Exec $Message = to_json(); to_syslog_ietf();` (all fields as JSON) is understood too. The search finds an event id when only the number is entered. Umlauts in the code page of Windows (e.g. "NT-AUTORITÄT") are read right, also mixed with UTF-8 in the same line.
+Fluent Bit sends every event as a JSON line; WhatsOnMyNet reads id, source, log, computer and severity from it (also "audit failure" as a warning). Create the folder `C:\ProgramData\fluent-bit` first. This configuration is checked with Fluent Bit on a real Windows Server with every change to WhatsOnMyNet.
+
+**Other agents:** Winlogbeat (Elastic) cannot send by syslog directly, only through another service (Logstash) - so it does not suit WhatsOnMyNet. If you do not want to roll out NXLog or Fluent Bit to every computer, use the **event forwarding** built into Windows (Windows Event Forwarding, by group policy): the computers send their events to a collector, and only there the agent runs. The sender is the collector then; the real computer is in every message as computer name.
+
+The search finds an event id when only the number is entered. Umlauts in the code page of Windows (e.g. "NT-AUTORITÄT") are read right, also mixed with UTF-8 in the same line.
 
 **What is kept:** under *Receiving settings* one limit applies to all senders, e.g. "warning and worse"; in the view *By sender* every sender gets its own limit with **Filter** - everything (an important server), error and worse (a chatty switch) or nothing (muted). A muted sender stays in the list with the number of dropped messages, so it can be found again. What is not kept fires no rule and no monitor either.
 
