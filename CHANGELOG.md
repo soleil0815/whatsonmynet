@@ -6,6 +6,11 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Windows-Skript: Weist WhatsOnMyNet einen Bericht ab (z. B. Schlüssel nicht mehr gültig) oder ist nicht erreichbar, schrieb das Skript bei jedem Lauf eine Warnung 4100 ins PowerShell-Protokoll - behoben. Die Antwort steht jetzt in womn-host-send.json neben dem Skript, die geplante Aufgabe endet mit Ergebnis 2. Getestet auf echtem Windows (Server 2022 und 2025). Das gilt auch für das Hyper-V-Skript
+- Windows-Skripte mit Versionsnummer: in der ersten Zeile, in der Registry unter HKLM\SOFTWARE\WhatsOnMyNet (HostScript bzw. HyperVScript) zum Filtern in der Softwareverteilung, und im Bericht - die Geräteseite markiert Rechner mit einem älteren Skript als „veraltet“. Die Nummer ändert sich nur, wenn sich das Skript ändert. Dafür das Skript einmal neu verteilen
+
+## 0.41.0 - 2026-11-17
+
 - Meldungen: Zeitleiste ohne Suchbegriff, Übersicht „Nach Absender“ und Seite „Platz“ sind auch bei Millionen Meldungen sofort da - sie lesen eine Zählung je Minute und Stunde statt aller Meldungen (bei 2 Millionen Meldungen etwa 10 Millisekunden statt 1 bis 2 Sekunden). Die Zahlen bleiben genau. Nach dem Update wird eine bestehende Meldungsdatei im Hintergrund nachgezählt
 - Meldungen: „Was belegt den Platz?“ zeigt, welche Windows-Ereignisse und Absender die meisten Meldungen schicken - mit Anteil, Menge pro Tag, geschätztem Platz, Beispiel und Hinweisen (eine Regel braucht es, meist wichtig, übliches Rauschen). Administratoren schließen ein Ereignis mit einem Klick aus; eins, das eine Regel braucht, nicht. „Für KI kopieren“ macht daraus eine Frage an einen KI-Chat, mit Platzhaltern statt Namen, Adressen und Konten
 - Meldungen: Alte Meldungen gehen in Stücken statt mit einem Mal - ein großer Tag zum Löschen hält den Empfang nicht mehr auf

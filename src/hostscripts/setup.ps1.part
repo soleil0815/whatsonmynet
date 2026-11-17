@@ -44,5 +44,9 @@ if ($Setup) {
   if ($LASTEXITCODE -ne 0) { throw 'WhatsOnMyNet: the scheduled task could not be created - please run as administrator.' }
   # The setup of version 0.6.0 used another task name - remove it, so the host does not report twice
   foreach ($old in @OLD@) { & schtasks.exe /Query /TN $old *> $null; if ($LASTEXITCODE -eq 0) { & schtasks.exe /Delete /F /TN $old | Out-Null } }
-  Write-Output "WhatsOnMyNet: set up ($Dest, task $Task every 5 minutes)."
+  # The version for software distribution and inventory tools: HKLM\SOFTWARE\WhatsOnMyNet (one value per script)
+  $RegKey = 'HKLM:\SOFTWARE\WhatsOnMyNet'
+  try { if (-not (Test-Path -LiteralPath $RegKey)) { New-Item -Path $RegKey -Force | Out-Null } } catch { $null = $_ }
+  try { Set-ItemProperty -LiteralPath $RegKey -Name @REGNAME@ -Value $ScriptVersion } catch { $null = $_ }
+  Write-Output "WhatsOnMyNet: set up ($Dest, task $Task every 5 minutes, version $ScriptVersion)."
 }

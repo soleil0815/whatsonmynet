@@ -8,4 +8,11 @@ foreach ($task in @TASKS@) {
 $Dir = Join-Path $env:ProgramData 'WhatsOnMyNet'
 foreach ($file in @FILES@) { Remove-Item -Force -ErrorAction SilentlyContinue -Path (Join-Path $Dir $file) }
 if ((Test-Path $Dir) -and -not (Get-ChildItem -Force $Dir)) { Remove-Item -Force $Dir }
+# the version noted for software distribution - the key goes when nothing else is in it
+$RegKey = 'HKLM:\SOFTWARE\WhatsOnMyNet'
+if (Test-Path -LiteralPath $RegKey) {
+  $item = Get-Item -LiteralPath $RegKey
+  if ($item.Property -contains @REGNAME@) { Remove-ItemProperty -LiteralPath $RegKey -Name @REGNAME@ }
+  if (-not (Get-Item -LiteralPath $RegKey).Property -and -not (Get-ChildItem -LiteralPath $RegKey)) { Remove-Item -LiteralPath $RegKey -Force }
+}
 Write-Output 'WhatsOnMyNet: removed.'

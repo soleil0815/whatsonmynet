@@ -298,7 +298,7 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
         auto_watch: parse(d.auto_watch, null), auto_fields: Object.keys(parse(d.auto_fields)), monitors: mons.get(d.id) || 0, source: sourceOf(db, d.id),
         snmp: s ? { kind: s.kind, at: s.at, ok: !!s.ok, error: an.anon(s.error), data: shape(parse(s.data)), alerts: Object.keys(parse(s.alerts)).length } : null,
         printer: p ? { at: p.at, ok: !!p.ok, error: an.anon(p.error), data: shape(parse(p.data)) } : null,
-        script: r ? { at: r.at, data: shape(parse(r.data)) } : null,
+        script: r ? { at: r.at, version: parse(r.data).script || null, data: shape(parse(r.data)) } : null,
         values: vals };
     });
   }

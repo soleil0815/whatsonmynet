@@ -7,7 +7,7 @@
 import crypto from 'node:crypto';
 import { HttpError, line } from './lib/http.js';
 import { normalizeMac } from './lib/net.js';
-import { hostScript } from './hostscripts.js';
+import { hostScript, SCRIPT_VERSIONS } from './hostscripts.js';
 import { fillDevice } from './devicefill.js';
 import { cleanUps } from './scan/ups.js';
 import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts, cleanTemps, cleanChecks } from './hostfacts.js';
@@ -54,8 +54,13 @@ export function cleanReport(body) {
     temps: cleanTemps(b.temps),
     // own checks from the checks folder of the machine (scripts from version 0.27 on)
     checks: cleanChecks(b.checks),
+    // version of the Windows script (from 0.42 on; older ones send none)
+    script: /^\d{1,4}\.\d{1,4}\.\d{1,6}$/.test(String(b.script ?? '')) ? String(b.script) : null,
   };
 }
+
+/** Is version a older than b (1.2.3)? */
+const older = (a, b) => { const x = String(a).split('.').map(Number); const y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); return false; };
 
 /** Address of this server for the scripts: only scheme, host and port - it is written into a script */
 export function serverBase(server) {
@@ -156,7 +161,11 @@ export function createHosts({ db }) {
   function report(deviceId) {
     const row = db.prepare('SELECT at, data FROM host_reports WHERE device_id=?').get(deviceId);
     if (!row) return null;
-    return { ...parse(row.data, {}), at: row.at, stale: Date.now() - Date.parse(row.at) > STALE_MIN * 60 * 1000 };
+    const data = parse(row.data, {});
+    // a Windows script older than the one WhatsOnMyNet hands out now (none sent: before 0.42)
+    const windows = /windows/i.test(String(data.os || ''));
+    const scriptOld = windows ? !data.script || older(data.script, SCRIPT_VERSIONS.windows) : false;
+    return { ...data, at: row.at, stale: Date.now() - Date.parse(row.at) > STALE_MIN * 60 * 1000, scriptOld, scriptNow: windows ? SCRIPT_VERSIONS.windows : null };
   }
 
   return {

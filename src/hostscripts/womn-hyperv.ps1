@@ -1,6 +1,8 @@
-# WhatsOnMyNet - Hyper-V host report (read only). Sends host load, volumes and VMs every 5 minutes.
+# WhatsOnMyNet @VERSIONTEXT@ - Hyper-V host report (read only). Sends host load, volumes and VMs every 5 minutes.
 # Run it once as administrator (or via software distribution): it sets itself up as scheduled task under SYSTEM.
 # Reads with Get-VM / CIM only, changes nothing. Removing: womn-hyperv-uninstall.ps1.
+# The version of this script (also in the registry: HKLM\SOFTWARE\WhatsOnMyNet)
+$ScriptVersion = @VERSION@
 $ErrorActionPreference = 'Stop'
 # No progress bar: under the scheduled task there is no console window to draw it in - Windows PowerShell then
 # logs "System error" (event 4100) on every run, and web requests are faster without it
@@ -9,6 +11,7 @@ $Url = @URL@
 $Token = @TOKEN@
 @PINCHECK@
 @SETUP@
+@SEND@
 $name = $env:COMPUTERNAME
 $os = Get-CimInstance Win32_OperatingSystem
 $cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
@@ -25,5 +28,7 @@ if (Get-Command Get-ClusterSharedVolume -ErrorAction SilentlyContinue) {
   try { foreach ($v in Get-ClusterSharedVolume) { $p = $v.SharedVolumeInfo.Partition
     $storages += @{ name = $v.Name; node = ''; used = [int64]$p.UsedSpace; total = [int64]$p.Size } } } catch { }
 }
-$body = @{ nodes = @($node); guests = $guests; storages = $storages } | ConvertTo-Json -Depth 4 -Compress
-Invoke-RestMethod -Method Post -Uri $Url -Headers @{ Authorization = "Bearer $Token"; 'X-WOMN-Request' = '1' } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30 | Out-Null
+$body = @{ nodes = @($node); guests = $guests; storages = $storages; script = $ScriptVersion } | ConvertTo-Json -Depth 4 -Compress
+Send-Report $body
+# a refused or failed report: in the status file, and the task shows result 2 (nothing in the event log)
+if ($SendFailed) { exit 2 }

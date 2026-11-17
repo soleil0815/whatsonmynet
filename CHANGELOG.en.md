@@ -6,6 +6,11 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Windows script: when WhatsOnMyNet refused a report (e.g. key no longer valid) or could not be reached, the script wrote a warning 4100 to the PowerShell log on every run - fixed. The answer is now in womn-host-send.json next to the script, the scheduled task ends with result 2. Tested on real Windows (Server 2022 and 2025). The same goes for the Hyper-V script
+- Windows scripts with a version number: in the first line, in the registry under HKLM\SOFTWARE\WhatsOnMyNet (HostScript or HyperVScript) to filter on in software distribution, and in the report - the device page marks machines with an older script as "outdated". The number only changes when the script changes. For this, roll out the script once more
+
+## 0.41.0 - 2026-11-17
+
 - Messages: the timeline without a search term, the overview "By sender" and the space page are there at once with millions of messages too - they read counts per minute and hour instead of every message (with 2 million messages about 10 milliseconds instead of 1 to 2 seconds). The figures stay exact. After the update an existing messages file is counted in the background
 - Messages: "What takes the space?" shows which Windows events and senders send the most messages - with share, amount a day, estimated space, an example and hints (a rule needs it, usually important, usual noise). Admins leave an event out with one click; not one a rule needs. "Copy for AI" turns it into a question for an AI chat, with placeholders instead of names, addresses and accounts
 - Messages: old messages go in pieces instead of all at once - a big day to remove no longer holds up the receiving

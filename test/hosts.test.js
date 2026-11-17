@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 import { keyPin } from '../src/tls.js';
 import { memoryDb, tmp, startApp } from './helpers.js';
 import { createHosts, cleanReport } from '../src/hosts.js';
-import { hostScript, uninstallScript } from '../src/hostscripts.js';
+import { hostScript, uninstallScript, SCRIPT_VERSIONS } from '../src/hostscripts.js';
 import { metricsFor, sensorCheck } from '../src/monitor/sensors.js';
 import { cleanPdisks, cleanHw } from '../src/hostfacts.js';
 import { createInventory } from '../src/inventory.js';
@@ -213,7 +213,10 @@ test('Windows script: reports hardware, disks, updates, protection, events and c
   assert.ok(fs.existsSync(path.join(home, 'womn-updates.json')));
   r = run();
   assert.deepEqual([r.updates.pending, r.updates.security, r.updates.lastInstalled], [3, 2, '2026-11-01T03:00:00.000Z']);
-  assert.ok(uninstallScript('windows').text.includes("@('womn-host.ps1', 'womn-updates.json')"), 'uninstall removes the update status too');
+  assert.ok(uninstallScript('windows').text.includes("@('womn-host.ps1', 'womn-host-send.json', 'womn-updates.json')"), 'uninstall removes the update and send status too');
+  // the version of the script goes with the report (WhatsOnMyNet shows machines with an older script)
+  assert.equal(JSON.parse(fs.readFileSync(body, 'utf8')).script, SCRIPT_VERSIONS.windows);
+  assert.equal(r.script, SCRIPT_VERSIONS.windows);
 });
 
 test('Windows setup replaces an older read-only copy and leaves the new one writable (update was "access denied")', { skip: !pwsh && 'pwsh missing' }, () => {
@@ -234,6 +237,9 @@ test('Windows setup replaces an older read-only copy and leaves the new one writ
   const out = execFileSync(pwsh, ['-NoProfile', '-NonInteractive', '-File', path.resolve('test/fixtures/winmock.ps1'), '-Script', src],
     { env: { ...process.env, ProgramData: dir, WOMN_BODY: path.join(dir, 'body.json'), WOMN_CALLS: calls, COMPUTERNAME: 'SRV-DC01' }, timeout: 60000 }).toString();
   assert.match(out, /WhatsOnMyNet: set up/);
+  // the version for software distribution and inventory tools, in the registry
+  assert.ok(fs.readFileSync(calls, 'utf8').includes(`reg HKLM:\\SOFTWARE\\WhatsOnMyNet HostScript ${SCRIPT_VERSIONS.windows}`), 'version in the registry');
+  assert.equal(s.text.split('\n')[0].slice(0, 21), `# WhatsOnMyNet ${SCRIPT_VERSIONS.windows}`);
   assert.equal(fs.readFileSync(dest, 'utf8'), s.text, 'the old copy is replaced');
   assert.ok(fs.statSync(dest).mode & 0o200, 'the copy is not left read-only - the next update can replace it');
   const log = fs.readFileSync(calls, 'utf8').split('\n').filter(Boolean);
@@ -274,7 +280,7 @@ test('Windows scripts contain nothing PowerShell logs as suspicious (warning 410
   for (const kind of ['windows', 'hyperv']) {
     const t = hostScript(kind, { url: 'u', token: 't', pin }).text;
     const at = t.indexOf("$ProgressPreference = 'SilentlyContinue'");
-    assert.ok(at > 0 && at < t.indexOf('Invoke-RestMethod'), `${kind}: progress bar off before the first web request`);
+    assert.ok(at > 0 && at < t.indexOf('Send-Report $body'), `${kind}: progress bar off before the first web request`);
   }
   // and no Select-Object -First: stopping the command before it is logged as "System error" (4100) on every run
   for (const kind of ['windows', 'hyperv']) {
@@ -321,7 +327,7 @@ test('Windows scripts: set up / remove the scheduled task, also the one of versi
   const h = hostScript('hyperv', { url: 'https://w/api/proxmox/1/push', token: 't' });
   assert.ok(h.text.includes("$Task = 'WhatsOnMyNet-HyperV'") && h.text.includes("foreach ($old in @('WhatsOnMyNet'))"));
   const u = uninstallScript('hyperv').text;
-  assert.ok(u.includes("foreach ($task in @('WhatsOnMyNet-HyperV', 'WhatsOnMyNet'))") && u.includes("@('womn-hyperv.ps1')"));
+  assert.ok(u.includes("foreach ($task in @('WhatsOnMyNet-HyperV', 'WhatsOnMyNet'))") && u.includes("@('womn-hyperv.ps1', 'womn-hyperv-send.json')") && u.includes("-Name 'HyperVScript'"));
   assert.ok(uninstallScript('libvirt').text.includes("for c in 'whatsonmynet-kvm' 'whatsonmynet'; do"));
   assert.ok(!/@[A-Z]+@/.test(hostScript('windows', { url: 'u', token: 't' }).text), 'no placeholder left');
   assert.throws(() => hostScript('beos', {}), /unknown/);
@@ -363,4 +369,45 @@ test('disk health from smartctl, sensors on disks, updates, protection, events a
   assert.equal(check('hostCert', 'AB12', { op: 'le', threshold: 21 }).ok, false);
   assert.equal(check('hostCert', 'AB12', { op: 'le', threshold: 7 }).ok, true);
   assert.equal(check('hostUpdatesSec', '', { op: 'gt', threshold: 0 }).ok, false);
+});
+
+// Sending without Invoke-RestMethod: a refused report (key renewed, standby) or no connection must not be an error
+// Windows PowerShell logs as 4100 - the answer goes to the status file next to the script and into the exit code
+test('Windows scripts: a refused or failed report goes to the status file, not into an error', { skip: !pwsh && 'pwsh missing' }, async () => {
+  const { execFile } = await import('node:child_process');
+  const http = await import('node:http');
+  const dir = fs.mkdtempSync(path.join(tmp, 'winsend-'));
+  let answer = 200; let got = null;
+  const srv = http.createServer((req, res) => {
+    let b = ''; req.on('data', (d) => { b += d; });
+    req.on('end', () => {
+      got = { auth: req.headers.authorization, xr: req.headers['x-womn-request'], type: req.headers['content-type'], body: b };
+      res.writeHead(answer, { 'Content-Type': 'application/json' });
+      res.end(answer === 200 ? '{"ok":true}' : JSON.stringify({ error: { code: 'err.unauthorized', message: 'Bitte melde dich an.' } }));
+    });
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const part = fs.readFileSync('src/hostscripts/send.ps1.part', 'utf8');
+  const run = (url) => {
+    const f = path.join(dir, 'send.ps1');
+    fs.writeFileSync(f, `$ErrorActionPreference = 'Stop'\n$Url = '${url}'\n$Token = 'tok-123'\n$ScriptVersion = '0.42.0'\n$Dir = '${dir}'\n$Dest = Join-Path $Dir 'womn-host.ps1'\n${part}\nSend-Report '{"hostname":"PC-0001","text":"Grüße"}'\nif ($SendFailed) { exit 2 }\n`);
+    return new Promise((resolve) => execFile(pwsh, ['-NoProfile', '-NonInteractive', '-File', f], { timeout: 60000 }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stderr: String(stderr) })));
+  };
+  const state = () => JSON.parse(fs.readFileSync(path.join(dir, 'womn-host-send.json'), 'utf8').replace(/^﻿/, ''));
+  try {
+    const url = `http://127.0.0.1:${srv.address().port}/api/hosts/push`;
+    let r = await run(url);
+    assert.deepEqual([r.code, r.stderr], [0, '']);
+    assert.deepEqual([got.auth, got.xr, got.type, JSON.parse(got.body).text], ['Bearer tok-123', '1', 'application/json; charset=utf-8', 'Grüße']);
+    assert.deepEqual([state().ok, state().status, state().version], [true, 200, '0.42.0']);
+    answer = 401;
+    r = await run(url);
+    assert.deepEqual([r.code, r.stderr], [2, ''], 'no error, exit code 2');
+    assert.deepEqual([state().ok, state().status, state().message], [false, 401, 'Bitte melde dich an.']);
+    // nobody listening
+    r = await run('http://127.0.0.1:9/api/hosts/push');
+    assert.deepEqual([r.code, r.stderr], [2, '']);
+    assert.deepEqual([state().ok, state().status], [false, 0]);
+    assert.ok(state().message.length > 0);
+  } finally { srv.close(); }
 });
