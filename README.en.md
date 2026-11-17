@@ -265,7 +265,7 @@ Under *Monitoring → Reports* WhatsOnMyNet sends reports by e-mail at set times
 - The messages are in a **file of their own** (`data/events.sqlite`): 30 days in at most 2 GB, with a short disk at least 10 % stay free. The page shows how long the space lasts and who sends the most.
 - **What takes the space?** shows which Windows events and senders fill the storage - with hints on what to keep, leaving out with a click (also for one source only, e.g. `1@Ntfs`) and an anonymised question to paste into the AI chat of your choice.
 - **Storage pools watched:** ZFS and Ceph (Proxmox), ZFS and mdadm (Linux script), Storage Spaces (Windows script), **TrueNAS** and **Ceph** through their APIs - alarm when a pool degrades, a disk fails or the scrub is overdue.
-- **Windows script with a version number** (registry `HKLM\SOFTWARE\WhatsOnMyNet`) to filter on in software distribution; the device page marks outdated scripts. A refused report lands in a status file instead of a warning 4100 in the event log.
+- **Windows script with a version number** (registry `HKLM\SOFTWARE\WhatsOnMyNet`, value `HostScript` or `HyperVScript`) to filter on in software distribution; the device page marks outdated scripts. A refused report lands in a status file instead of a warning 4100 in the event log.
 - **Timeline and overview at once**, with millions of messages too: counts per minute and hour replace reading every message - the figures stay exact, old messages go in pieces without holding up the receiving.
 - **Planning space:** reckon about 2 KB per message, search index included - *space ≈ messages per day × days × 2 KB*. Roughly for 30 days:
 

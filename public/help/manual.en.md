@@ -670,6 +670,24 @@ The script installs nothing, loads nothing, opens no port and needs no account -
 
 **Script block logging (event 4104):** the Windows script reads network cards, disks, Defender and firewall straight from WMI and loads no PowerShell modules for it. With script block logging on, a run therefore leaves only a few entries of level *Verbose* with the path `C:\ProgramData\WhatsOnMyNet\womn-host.ps1` - no warnings. The script also contains none of the words PowerShell rates as suspicious (such as embedded C# code with `Add-Type`, or `Bypass`): it checks the pinned certificate in PowerShell itself, the scheduled task runs under *RemoteSigned* and without progress bar. No "System error" (event 4100) either: the script takes the first entries of a list by index instead of `Select-Object -First`, which Windows PowerShell logs as system error when it stops the query. Older scripts caused warnings 4104 on every run - before 0.33 some 70 without a path, up to 0.33.2 one with the path of the script; *New script* makes them go away.
 
+**For software distribution and inventory:** which script version runs on a computer is in the registry - so every inventory or distribution tool finds it (PDQ Inventory, Intune, SCCM/MECM, own solutions):
+
+| | Windows script | Hyper-V script |
+|---|---|---|
+| Key | `HKEY_LOCAL_MACHINE\SOFTWARE\WhatsOnMyNet` | `HKEY_LOCAL_MACHINE\SOFTWARE\WhatsOnMyNet` |
+| Value | `HostScript` | `HyperVScript` |
+| Type | string (REG_SZ) | string (REG_SZ) |
+| Data | version, e.g. `0.42.0` | version, e.g. `0.42.0` |
+
+The value is written when the script is set up (the first run as administrator); the uninstall script removes it again - the key only when nothing else is left in it. If the value is missing or the version is lower than the one WhatsOnMyNet hands out now (shown in the window where the script is downloaded), an older script runs there: roll it out once more. Computers with a script from before 0.42 do not have the value yet. To query by hand:
+
+```
+reg query "HKLM\SOFTWARE\WhatsOnMyNet" /v HostScript
+(Get-ItemProperty 'HKLM:\SOFTWARE\WhatsOnMyNet' -ErrorAction SilentlyContinue).HostScript
+```
+
+As detection rule (Intune, SCCM): registry, key and value as above, comparison *version greater than or equal to* the current script version.
+
 **Version and refused reports:** every Windows script carries a version number: in the first line, in the registry under `HKLM\SOFTWARE\WhatsOnMyNet` (value `HostScript`, `HyperVScript` for the Hyper-V script) and in the report. The device page shows it under *System* and marks an older script as *outdated*; in software distribution, filter on the registry value. The number only changes when the script itself changes - not with every update of WhatsOnMyNet. When WhatsOnMyNet refuses a report (key no longer valid, device deleted) or cannot be reached, the answer is in `C:\ProgramData\WhatsOnMyNet\womn-host-send.json` (time, status, message) and the scheduled task ends with result 2 - with no entry in the PowerShell log. Scripts before 0.42 wrote a warning 4100 for it on every run.
 
 **Removing again:** every script comes with an **uninstall script** (in the script dialog under *Remove again* and under *Settings → Machine scripts*). It removes the scheduled task or cron entry and the script - run or distribute it the same way. Afterwards the machine is as before. Deleting or recreating a script under *Settings → Machine scripts* locks the old key.

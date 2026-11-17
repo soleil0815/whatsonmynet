@@ -858,7 +858,7 @@ async function showScript(x, reload) {
   if (x.has_secret && !await confirmDialog(t('virt.newScript'), t('virt.newScriptConfirm'), t('virt.newScript'), t('cancel'))) return;
   let r;
   try { r = await post(`/proxmox/${x.id}/token`, { server: location.origin }); } catch (ex) { fail(ex); return; }
-  scriptDialog(`${t('virt.scriptTitle')}: ${x.name}`, { script: { file: r.file, text: r.text }, uninstall: r.uninstall }, { where: x.kind, onClose: reload });
+  scriptDialog(`${t('virt.scriptTitle')}: ${x.name}`, { script: { file: r.file, text: r.text, registry: r.registry }, uninstall: r.uninstall }, { where: x.kind, onClose: reload });
 }
 
 async function proxmox(body, _s, reload, scope = 'virt') {

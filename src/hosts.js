@@ -93,7 +93,7 @@ export function createHosts({ db }) {
     const token = crypto.randomBytes(32).toString('base64url');
     db.prepare('UPDATE host_tokens SET token_hash=? WHERE id=?').run(sha(token), id);
     const s = hostScript(t.os, { url: `${server.replace(/\/+$/, '')}/api/hosts/push`, token, pin });
-    return { ...shapeToken(tokenRow(id)), token, script: { file: s.file, text: s.text }, uninstall: s.uninstall };
+    return { ...shapeToken(tokenRow(id)), token, script: { file: s.file, text: s.text, registry: s.registry }, uninstall: s.uninstall };
   }
 
   function create(input, opts) {

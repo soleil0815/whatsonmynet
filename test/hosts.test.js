@@ -250,6 +250,10 @@ test('Windows setup replaces an older read-only copy and leaves the new one writ
   // the version for software distribution and inventory tools, in the registry
   assert.ok(fs.readFileSync(calls, 'utf8').includes(`reg HKLM:\\SOFTWARE\\WhatsOnMyNet HostScript ${SCRIPT_VERSIONS.windows}`), 'version in the registry');
   assert.equal(s.text.split('\n')[0].slice(0, 21), `# WhatsOnMyNet ${SCRIPT_VERSIONS.windows}`);
+  // the download window names the registry entry, for software inventories
+  assert.deepEqual(s.registry, { key: 'HKLM\\SOFTWARE\\WhatsOnMyNet', value: 'HostScript', version: SCRIPT_VERSIONS.windows });
+  assert.equal(hostScript('hyperv', { url: 'u', token: 't' }).registry.value, 'HyperVScript');
+  assert.equal(hostScript('linux', { url: 'u', token: 't' }).registry, null);
   assert.equal(fs.readFileSync(dest, 'utf8'), s.text, 'the old copy is replaced');
   assert.ok(fs.statSync(dest).mode & 0o200, 'the copy is not left read-only - the next update can replace it');
   const log = fs.readFileSync(calls, 'utf8').split('\n').filter(Boolean);
