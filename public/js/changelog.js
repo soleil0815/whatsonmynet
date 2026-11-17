@@ -3,6 +3,13 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Meldungen: Zeitleiste ohne Suchbegriff, Übersicht „Nach Absender“ und Seite „Platz“ sind auch bei Millionen Meldungen sofort da - sie lesen eine Zählung je Minute und Stunde statt aller Meldungen (bei 2 Millionen Meldungen etwa 10 Millisekunden statt 1 bis 2 Sekunden). Die Zahlen bleiben genau. Nach dem Update wird eine bestehende Meldungsdatei im Hintergrund nachgezählt',
+    'Meldungen: Alte Meldungen gehen in Stücken statt mit einem Mal - ein großer Tag zum Löschen hält den Empfang nicht mehr auf',
+  ], en: [
+    'Messages: the timeline without a search term, the overview "By sender" and the space page are there at once with millions of messages too - they read counts per minute and hour instead of every message (with 2 million messages about 10 milliseconds instead of 1 to 2 seconds). The figures stay exact. After the update an existing messages file is counted in the background',
+    'Messages: old messages go in pieces instead of all at once - a big day to remove no longer holds up the receiving',
+  ] },
+  { version: '0.40.0', date: '2026-11-17', de: [
     'Meldungen: Suchen speichern - unter „Gespeichert“ Suchbegriff, Schwere, Art und Zeitraum unter einem Namen ablegen und mit einem Klick wieder einstellen, für sich oder für alle sichtbar',
     'Windows-Skript auf Windows Server: Es fragte das Sicherheitscenter ab, das es nur auf Client-Windows gibt (bei anderem Virenschutz fehlt auch der Defender-Bereich) - der abgefangene Fehler landete trotzdem bei jedem Lauf als Warnung 4100 „Ungültiger Namespace“ im PowerShell-Protokoll. Jetzt schaut das Skript erst nach, ob es den Bereich gibt. Der automatische Test läuft jetzt auf Windows Server 2022 und 2025 und prüft auch fehlende Bereiche',
   ], en: [
