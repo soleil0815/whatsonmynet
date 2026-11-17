@@ -137,6 +137,8 @@ Danach `docker compose up -d`.
 
 ## Nächtlicher Leicht-Scan und neue Geräte (ab Version 0.3)
 
+**WhatsOnMyNet scannt nichts von sich aus.** Bei einer neuen Installation (ab 0.42) ist der nächtliche Scan **aus**; ein Administrator schaltet ihn unter *Einstellungen → Scan* oder direkt auf der Seite *Netzwerk scannen* ein - das steht im Protokoll. Installationen von vorher behalten ihre Einstellung.
+
 Einmal pro Nacht (Standard 02:30 Uhr Ortszeit, `TZ` in der `.env`) sucht WhatsOnMyNet in allen Subnetzen deiner Standorte nur nach Geräten: ARP, NetBIOS und - wenn erlaubt - Ping; in gerouteten Subnetzen zusätzlich wenige TCP-Verbindungsversuche (Ports 443, 80, 22, 445, 3389) und die ARP-Tabelle der Router per SNMP. Keine Port-Prüfung der Geräte, keine Webanfragen. So bleibt der Scan unauffällig.
 
 - Bekannte Geräte bekommen ihre neue IP-Adresse automatisch (die MAC-Adresse ist die Identität), ihre Monitore ziehen mit - außer Monitore mit gespeichertem Passwort: Sie werden pausiert und brauchen das Passwort neu (siehe Monitoring).

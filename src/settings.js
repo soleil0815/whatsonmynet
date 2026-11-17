@@ -21,7 +21,9 @@ export const DEFAULTS = {
   'scan.keepScans': 20,           // how many scans are kept
   'scan.routerArp': true,         // routed subnets: MAC addresses from the ARP table of routers/firewalls (SNMP)
   // Nightly light scan: only finds devices (ARP/ping/NetBIOS), takes over new IPs, reports unknown devices
-  'lightscan.enabled': true,
+  // off on a new installation: WhatsOnMyNet scans nothing on its own - an administrator switches it on (installations
+  // from before 0.42 keep what they had, see migration 38)
+  'lightscan.enabled': false,
   'lightscan.time': '02:30',      // local time (TZ), runs within 4 hours after it
   'lightscan.notify': true,       // report devices seen for the first time
   'lightscan.channels': [],       // empty = default channels

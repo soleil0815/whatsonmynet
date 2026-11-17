@@ -244,6 +244,8 @@ export function createApi(ctx) {
       pingAvailable: await pingAvailable(),
       // Without host networking Docker only shows its own bridge - then MAC addresses cannot be seen
       hostNetwork: ifaces.some((i) => !i.virtual),
+      // the nightly scan: off until an administrator switches it on - the scan page says so
+      nightly: { enabled: !!settings.get('lightscan.enabled'), time: settings.get('lightscan.time') },
       suggestions: [...new Set(ifaces.filter((i) => !i.virtual && i.prefix >= 20).map((i) => i.cidr))],
     });
   });
@@ -643,14 +645,14 @@ export function createApi(ctx) {
     .filter((x) => db.prepare('SELECT 1 FROM channels WHERE id=?').get(x)).slice(0, 20);
   r.put('/settings/lightscan', admin, (req, res) => {
     const b = req.body;
+    if ('time' in b && !validTime(b.time)) throw new HttpError(400, 'err.time');
+    const was = !!settings.get('lightscan.enabled');
     if ('enabled' in b) settings.set('lightscan.enabled', !!b.enabled);
-    if ('time' in b) {
-      if (!validTime(b.time)) throw new HttpError(400, 'err.time');
-      settings.set('lightscan.time', b.time);
-    }
+    if ('time' in b) settings.set('lightscan.time', b.time);
     if ('notify' in b) settings.set('lightscan.notify', !!b.notify);
     if ('channels' in b) settings.set('lightscan.channels', channelIds(b.channels));
-    audit(req, 'settings.lightscan');
+    const now = !!settings.get('lightscan.enabled');
+    audit(req, 'settings.lightscan', was === now ? '' : now ? `nightly scan switched on (${settings.get('lightscan.time')})` : 'nightly scan switched off');
     res.json({ ...settings.publicGroup('lightscan'), last: ctx.nightly.lastLight() });
   });
   r.put('/settings/printer', admin, (req, res) => {

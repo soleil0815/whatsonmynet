@@ -11,6 +11,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 - Speicherpools: ZFS und Ceph aus Proxmox (Zustand, ausgefallene Platten/OSDs, Belegung, letzter Scrub), ZFS und Software-RAID (mdadm) im Linux-Skript, Storage Spaces im Windows-Skript - mit Sensoren für Zustand, Belegung, Tage seit dem Scrub und ausgefallene Mitglieder
 - Neu: TrueNAS (ab 25.04, WebSocket-API, API-Schlüssel eines Benutzers mit „Read-Only Administrator“) - Pools, Warnungen von TrueNAS, Replikationen; und Ceph ohne Proxmox über das Ceph-Dashboard (Benutzer mit Rolle „read-only“)
 - Diagnosepaket: Speicherpools, TrueNAS-Warnungen und Replikationen sowie die Version des Windows-Skripts je Rechner (anonymisiert)
+- Scan nur auf Wunsch: Bei einer neuen Installation ist der nächtliche Scan aus - WhatsOnMyNet scannt nichts von sich aus. Die Seite „Netzwerk scannen“ sagt das und bietet Administratoren „Nächtlichen Scan einschalten“ an; Ein- und Ausschalten steht im Protokoll. Bestehende Installationen behalten ihre Einstellung
 
 ## 0.41.0 - 2026-11-17
 
