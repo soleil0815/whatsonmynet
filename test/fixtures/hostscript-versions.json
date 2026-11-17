@@ -1,7 +1,7 @@
 {
   "windows": {
     "version": "0.42.0",
-    "sha256": "6e3ba804854adac15869205d7430ccc1f9614d3741eb2abf536e5144ff88370a"
+    "sha256": "997a9964c725328a0d7c65c7f7512dcfc60b7ee57795f1610370741e185bef66"
   },
   "hyperv": {
     "version": "0.42.0",

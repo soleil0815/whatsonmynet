@@ -8,6 +8,9 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 - Windows-Skript: Weist WhatsOnMyNet einen Bericht ab (z. B. Schlüssel nicht mehr gültig) oder ist nicht erreichbar, schrieb das Skript bei jedem Lauf eine Warnung 4100 ins PowerShell-Protokoll - behoben. Die Antwort steht jetzt in womn-host-send.json neben dem Skript, die geplante Aufgabe endet mit Ergebnis 2. Getestet auf echtem Windows (Server 2022 und 2025). Das gilt auch für das Hyper-V-Skript
 - Windows-Skripte mit Versionsnummer: in der ersten Zeile, in der Registry unter HKLM\SOFTWARE\WhatsOnMyNet (HostScript bzw. HyperVScript) zum Filtern in der Softwareverteilung, und im Bericht - die Geräteseite markiert Rechner mit einem älteren Skript als „veraltet“. Die Nummer ändert sich nur, wenn sich das Skript ändert. Dafür das Skript einmal neu verteilen
+- Speicherpools: ZFS und Ceph aus Proxmox (Zustand, ausgefallene Platten/OSDs, Belegung, letzter Scrub), ZFS und Software-RAID (mdadm) im Linux-Skript, Storage Spaces im Windows-Skript - mit Sensoren für Zustand, Belegung, Tage seit dem Scrub und ausgefallene Mitglieder
+- Neu: TrueNAS (ab 25.04, WebSocket-API, API-Schlüssel eines Benutzers mit „Read-Only Administrator“) - Pools, Warnungen von TrueNAS, Replikationen; und Ceph ohne Proxmox über das Ceph-Dashboard (Benutzer mit Rolle „read-only“)
+- Diagnosepaket: Speicherpools, TrueNAS-Warnungen und Replikationen sowie die Version des Windows-Skripts je Rechner (anonymisiert)
 
 ## 0.41.0 - 2026-11-17
 

@@ -18,11 +18,14 @@ import { readRedfish, redfishMetrics, labelSerial } from './redfish.js';
 import { READERS, API_KINDS, PUSH_KINDS, newPushToken, pushTokenOk, cleanPush, mergePush, markStale, pushScript } from './virt.js';
 import { CLOUD_KINDS, CLOUD_READERS, cloudMetrics, cleanCloud } from './cloud.js';
 import { readVeeam, veeamMetrics } from './veeam.js';
+import { zfsFromPve, cephPool, poolMetrics } from './pools.js';
+import { readTrueNas, truenasMetrics } from './truenas.js';
+import { readCeph, cephMetrics } from './ceph.js';
 
 /** Every kind of host on the page: Proxmox, hypervisors asked through their API, hypervisors that send on their own */
-export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS, ...NET_KINDS, 'redfish', ...CLOUD_KINDS, 'veeam'];
+export const HOST_KINDS = ['pve', 'pbs', ...API_KINDS, ...PUSH_KINDS, ...NET_KINDS, 'redfish', ...CLOUD_KINDS, 'veeam', 'truenas', 'ceph'];
 // Asked with user and password (everything but Proxmox and the hosts that send on their own)
-const ACCOUNT_KINDS = [...API_KINDS, ...NET_KINDS, 'redfish', 'veeam'];
+const ACCOUNT_KINDS = [...API_KINDS, ...NET_KINDS, 'redfish', 'veeam', 'truenas', 'ceph'];
 
 const URL_RE = /^https:\/\/[a-z0-9.\-[\]:]+(:\d{1,5})?$/i;
 const PVE_TOKEN = /^[\w.@-]+![\w.-]+$/;   // user@realm!tokenid
@@ -146,7 +149,31 @@ export async function readPve(host) {
   const dayAgo = Date.now() / 1000 - 86400;
   for (const b of backups.filter((x) => !x.ok && x.end && x.start > dayAgo).slice(0, 8)) b.reason = (await taskLog(host, b.node, b.upid)).reason;
   for (const b of backups) delete b.upid;
-  return { kind: 'pve', missing: await missingRights(host, 'pve'), nodes, storages: storages.sort((a, b) => a.name.localeCompare(b.name)), guests: guests.filter((g) => !g.template).sort((a, b) => a.vmid - b.vmid), backups: backups.slice(0, 100) };
+  return { kind: 'pve', missing: await missingRights(host, 'pve'), nodes, pools: await readPvePools(host, nodes), storages: storages.sort((a, b) => a.name.localeCompare(b.name)), guests: guests.filter((g) => !g.template).sort((a, b) => a.vmid - b.vmid), backups: backups.slice(0, 100) };
+}
+
+/**
+ * ZFS pools of every node (with their vdevs, errors and the last scrub) and the Ceph cluster, if there is one - the
+ * same read rights (Sys.Audit). A node without ZFS answers an empty list; a cluster without Ceph an error, which only
+ * means "no Ceph".
+ */
+async function readPvePools(host, nodes) {
+  const out = [];
+  for (const n of nodes.filter((x) => x.online)) {
+    const node = encodeURIComponent(n.name);
+    let list = [];
+    try { list = await apiGet(host, `/nodes/${node}/disks/zfs`); } catch (e) { log.debug(`Proxmox ${host.name}: ZFS of ${n.name}: ${e.message}`); continue; }
+    for (const z of (Array.isArray(list) ? list : []).slice(0, 16)) {
+      let detail = null;
+      try { detail = await apiGet(host, `/nodes/${node}/disks/zfs/${encodeURIComponent(z.name)}`); } catch (e) { log.debug(`Proxmox ${host.name}: ZFS ${z.name}: ${e.message}`); }
+      out.push(zfsFromPve(z, detail, n.name));
+    }
+  }
+  try {
+    const c = cephPool(await apiGet(host, '/cluster/ceph/status'), 'Ceph');
+    if (c) out.push(c);
+  } catch (e) { log.debug(`Proxmox ${host.name}: no Ceph (${e.message})`); }
+  return out;
 }
 
 /**
@@ -292,6 +319,8 @@ export function proxmoxMetrics(data) {
   if (data.kind === 'redfish') return redfishMetrics(data);
   if (data.cloud) return cloudMetrics(data);
   if (data.kind === 'veeam') return veeamMetrics(data);
+  if (data.kind === 'truenas') return truenasMetrics(data);
+  if (data.kind === 'ceph') return cephMetrics(data);
   if (data.netdevices) {
     // Network controller: per device online, clients, load; all clients together
     for (const x of data.netdevices) {
@@ -313,6 +342,8 @@ export function proxmoxMetrics(data) {
       // Temperature: only when the node also runs the Linux script (Proxmox gives none) - the hottest sensor, its limit
       if (n.temp) out.push({ metric: 'nodeTemp', key: n.name, name: n.name, value: n.temp.c, unit: '°C', kind: 'number', op: 'ge', threshold: n.temp.warn, sensor: n.temp.name });
     }
+    // ZFS pools and Ceph (Proxmox; TrueNAS and a Ceph of its own have only these)
+    out.push(...poolMetrics(data.pools));
     for (const s of data.storages || []) out.push({ metric: 'storage', key: `${s.node}/${s.name}`, name: `${s.name} (${s.node})`, value: s.pct, unit: '%', kind: 'number', op: 'ge', threshold: 85, used: s.used, total: s.total });
     for (const g of data.guests || []) {
       out.push({ metric: 'guestRunning', key: String(g.vmid), name: `${g.vmid} ${g.name}`, value: g.status, kind: 'state', node: g.node, cpu: g.cpu, mem: g.mem });
@@ -410,7 +441,7 @@ export function createProxmox({ db }) {
     // A host that sends on its own is not asked: only check whether its nodes still report
     if (PUSH_KINDS.includes(h.kind)) return checkPush(h);
     try {
-      const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : h.kind === 'redfish' ? await readRedfish(withSecret(h)) : h.kind === 'veeam' ? await readVeeam(withSecret(h)) : NET_READERS[h.kind] ? await NET_READERS[h.kind](withSecret(h))
+      const data = h.kind === 'pbs' ? await readPbs(withSecret(h)) : h.kind === 'redfish' ? await readRedfish(withSecret(h)) : h.kind === 'veeam' ? await readVeeam(withSecret(h)) : h.kind === 'truenas' ? await readTrueNas(withSecret(h)) : h.kind === 'ceph' ? await readCeph(withSecret(h)) : NET_READERS[h.kind] ? await NET_READERS[h.kind](withSecret(h))
         : READERS[h.kind] ? await READERS[h.kind](withSecret(h)) : CLOUD_READERS[h.kind] ? await CLOUD_READERS[h.kind](withSecret(h), parse(h.data, {})) : await readPveCluster(h);
       if (data.netdevices) syncNetDevices(data);
       if (data.kind === 'redfish') syncRedfish(data);

@@ -44,7 +44,7 @@ export function maskSecrets(text) {
 
 // --- Placeholders ------------------------------------------------------------------------------------------
 const PREFIX = { device: 'GERAET', host: 'HOST', hv: 'HV', node: 'KNOTEN', guest: 'GAST', user: 'USER', mail: 'MAIL', location: 'STANDORT',
-  channel: 'KANAL', mac: 'MAC', dn: 'DN', ip: 'IP' };
+  channel: 'KANAL', mac: 'MAC', dn: 'DN', ip: 'IP', pool: 'POOL' };
 // Words too general to be a name worth hiding (a device called "NAS" stays "NAS")
 const COMMON = new Set(['nas', 'switch', 'router', 'firewall', 'server', 'drucker', 'printer', 'proxmox', 'pve', 'pbs', 'local', 'admin', 'administrator',
   'test', 'user', 'users', 'system', 'default', 'gast', 'guest', 'online', 'offline', 'windows', 'linux', 'docker', 'backup', 'storage', 'usv', 'ups',
@@ -298,10 +298,15 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
         auto_watch: parse(d.auto_watch, null), auto_fields: Object.keys(parse(d.auto_fields)), monitors: mons.get(d.id) || 0, source: sourceOf(db, d.id),
         snmp: s ? { kind: s.kind, at: s.at, ok: !!s.ok, error: an.anon(s.error), data: shape(parse(s.data)), alerts: Object.keys(parse(s.alerts)).length } : null,
         printer: p ? { at: p.at, ok: !!p.ok, error: an.anon(p.error), data: shape(parse(p.data)) } : null,
-        script: r ? { at: r.at, version: parse(r.data).script || null, data: shape(parse(r.data)) } : null,
+        script: r ? { at: r.at, version: parse(r.data).script || null, pools: poolsOut(parse(r.data).pools, an), data: shape(parse(r.data)) } : null,
         values: vals };
     });
   }
+
+  /** Storage pools without their names in the clear (pools and nodes as placeholders) */
+  const poolsOut = (list, an) => (Array.isArray(list) && list.length ? list.map((p) => ({ kind: p.kind, name: an.alias('pool', p.name), node: p.node ? an.alias('node', p.node) : '',
+    state: p.state, good: p.good, pct: p.pct, down: p.down, scrubAt: p.scrubAt, scrubErrors: p.scrubErrors, text: an.anon(p.text || '') })) : undefined);
+  const countBy = (list, key) => list.reduce((a, x) => { const k = String(key(x)); a[k] = (a[k] || 0) + 1; return a; }, {});
 
   function hostsOut(an) {
     return db.prepare('SELECT * FROM proxmox_hosts ORDER BY id').all().map((h) => {
@@ -311,7 +316,11 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       return { id: h.id, name: an.alias('hv', h.name), kind: h.kind, url: an.anon(h.url), verify: !!h.verify, own_ca: !!h.ca, last_at: h.last_at, last_ok: !!h.last_ok,
         last_error: an.anon(h.last_error), auto_watch: parse(h.auto_watch, null), data: shape(data),
         // cloud: regions and whether costs are read - never tenant, subscription, project or key
-        cloud: data.cloud ? { regions: parse(h.options)?.regions || [], costs: !!parse(h.options)?.costs } : undefined, missing_rights: an.deep(data.missing || []), values: vals };
+        cloud: data.cloud ? { regions: parse(h.options)?.regions || [], costs: !!parse(h.options)?.costs } : undefined, missing_rights: an.deep(data.missing || []),
+        // ZFS, Ceph (Proxmox, TrueNAS, Ceph dashboard): state and why; TrueNAS: its alerts and replications by state
+        pools: poolsOut(data.pools, an), version: data.version || undefined,
+        alerts: data.kind === 'truenas' ? countBy(data.alerts || [], (a) => a.level) : undefined,
+        replications: data.kind === 'truenas' ? countBy(data.replications || [], (r) => (r.enabled ? r.state : 'disabled')) : undefined, values: vals };
     });
   }
 

@@ -27,7 +27,7 @@ export const DEVICE_PICKS = {
   nas: [['volume', 4, DATA_VOLUME], ['raid', 2], ['health', 1], ['temp', 1], ['upsPower', 1]],
   ups: [['upsPower', 1], ['upsCharge', 1], ['upsRuntime', 1]],
   switch: [],
-  host: [['hostOnline', 1], ['hostCpu', 1], ['hostMem', 1], ['hostDisk', 1, SYSTEM_DRIVE], ['hostTempMax', 1], ['servicesFailed', 1], ['localCheck', 20]],
+  host: [['hostOnline', 1], ['hostCpu', 1], ['hostMem', 1], ['hostDisk', 1, SYSTEM_DRIVE], ['hostTempMax', 1], ['servicesFailed', 1], ['hostPool', 8], ['localCheck', 20]],
 };
 const NODE_KINDS = ['pve', 'vmware', 'hyperv', 'xcpng', 'nutanix', 'ovirt', 'libvirt'];
 export function hostPicks(kind) {
@@ -36,9 +36,12 @@ export function hostPicks(kind) {
   if (['unifi', 'omada', 'mikrotik'].includes(kind)) return [['netOnline', 6]];
   // Cloud: what the provider itself reports as broken - its alarms, its checks of the VMs, the databases, the load balancers
   if (kind === 'veeam') return [['jobsFailed', 1], ['repoUsed', 3]];
+  if (kind === 'truenas') return [['pool', 8], ['poolUsed', 8], ['nasAlertsCrit', 1], ['replication', 10]];
+  if (kind === 'ceph') return [['pool', 1], ['poolUsed', 1], ['poolDown', 1]];
   if (kind === 'm365') return [['m365Issues', 1], ['m365Sku', 6]];
   if (['aws', 'azure', 'gcp'].includes(kind)) return [['cloudAlarms', 1], ['cloudResources', 1], ['cloudCheck', 6], ['dbState', 4], ['lbUnhealthy', 4]];
-  if (NODE_KINDS.includes(kind)) return [['nodeOnline', 4], ['storage', 3], ['backupFailed', 1]];
+  // pools: ZFS of the nodes, the Ceph cluster - their state (degraded, a disk gone) is what must not go unnoticed
+  if (NODE_KINDS.includes(kind)) return [['nodeOnline', 4], ['storage', 3], ['pool', 8], ['backupFailed', 1]];
   return [['nodeOnline', 4]];
 }
 

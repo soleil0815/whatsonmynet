@@ -64,7 +64,7 @@ Jede Nacht (Standard 02:30) sucht WhatsOnMyNet in allen Subnetzen deiner Standor
 - **Drucker:** jede Tonerkartusche und Störungen
 - **NAS:** Volumes, RAID, Zustand (System, Lüfter, Netzteil) und Temperatur
 - **USV:** Netz/Akku, Ladung und Restlaufzeit
-- **Windows- und Linux-Rechner mit Skript:** online, CPU, RAM, Systemlaufwerk, höchste Temperatur und ausgefallene Dienste
+- **Windows- und Linux-Rechner mit Skript:** online, CPU, RAM, Systemlaufwerk, höchste Temperatur, ausgefallene Dienste und der Zustand der Speicherpools (ZFS, RAID, Storage Spaces)
 - **Hosts unter Virtualisierung:** Knoten, Speicher und Sicherungen; bei Backup Server Datenspeicher und Aufgaben; bei Controllern die Geräte; bei Servern mit Verwaltungschip der Zustand
 
 Das gilt für Geräte und Hosts, die neu dazukommen, und jeweils einmal: Löschst du einen dieser Sensoren, kommt er nicht wieder. Abschalten unter *Einstellungen → Benachrichtigungen → Neue Geräte automatisch überwachen*.
@@ -546,6 +546,18 @@ Ab Version 12 liest WhatsOnMyNet über die REST-API (Port 9419) die **Jobs** mit
 2. Adresse mit Port eintragen (z. B. `https://vbr01.firma.local:9419`), **Zertifikat abrufen** und den Fingerabdruck bestätigen, Benutzer und Passwort.
 
 Sensoren: *Veeam-Job …* (Alarm bei **Fehler oder Warnung** im letzten Lauf; abgeschaltete Jobs schweigen), *Letzter Lauf …* (Alarm, wenn ein geplanter Job über 26 Stunden nicht gelaufen ist), *Repository …* (ab 85 % voll) und *Veeam-Jobs mit Fehler oder Warnung* (alle zusammen).
+
+## Speicherpools: ZFS, Ceph, Software-RAID, Storage Spaces, TrueNAS
+
+Was mehr ist als eine Platte, zeigt WhatsOnMyNet überall gleich: **Zustand** (ONLINE, DEGRADED, HEALTH_WARN …) mit dem Grund, **Belegung**, **ausgefallene Mitglieder** (Platten, OSDs) und bei ZFS der **letzte Scrub** samt gefundener Fehler. Alles nur lesend.
+
+- **Proxmox VE:** die ZFS-Pools jedes Knotens und - falls vorhanden - der Ceph-Cluster, über dieselbe Anbindung und dasselbe Token (Recht `Sys.Audit`). Neu angebundene Hosts bekommen gleich Sensoren für den Zustand.
+- **Linux-Rechner mit Skript:** ZFS-Pools (`zpool`, auch ohne root) und Software-RAID (`/proc/mdstat`: degraded, ausgefallene Platte, Resync).
+- **Windows-Rechner mit Skript:** Storage Spaces - Pools, ihre virtuellen Datenträger und Platten, die nicht gesund sind.
+- **TrueNAS** (ab 25.04): *Überwachung → Virtualisierung* → **Host hinzufügen** → *TrueNAS*. Einen eigenen Benutzer mit der Rolle **Read-Only Administrator** anlegen, für ihn einen **API-Schlüssel** erzeugen, Adresse eintragen und das Zertifikat bestätigen. WhatsOnMyNet liest Pools, die offenen **Warnungen** von TrueNAS und die **Replikationen** - über die WebSocket-API (die alte REST-API gibt es ab TrueNAS 26 nicht mehr).
+- **Ceph ohne Proxmox:** *Host hinzufügen* → *Ceph*, über das Ceph-Dashboard (meist Port 8443) mit einem Dashboard-Benutzer der Rolle **read-only**: Zustand mit den Meldungen von Ceph, OSDs, Belegung, PGs.
+
+Sensoren: *Zustand …* (Alarm, sobald ein Pool nicht in Ordnung ist - auch wenn der letzte Scrub Fehler fand), *Belegung …* (ZFS ab 80 %, weil ZFS darüber langsam wird; Ceph ab 75 %), *Tage seit dem letzten Scrub …* (ab 35 Tagen) und *Ausgefallene Platten/OSDs …*. Bei TrueNAS dazu *Offene/Kritische Warnungen* und *Replikation …* (Alarm bei Fehler).
 
 ## Microsoft 365
 

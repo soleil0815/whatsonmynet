@@ -46,9 +46,9 @@ export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgre
 export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'nodeTemp', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed', 'netOnline', 'netClients', 'netCpu', 'netMem', 'clientsTotal', 'netUpdates',
   'rfHealth', 'rfPower', 'rfFan', 'rfTemp', 'rfPsu', 'rfDrive', 'rfDriveLife', 'rfVolume', 'rfWatts',
   'cloudCheck', 'cloudCpu', 'dbState', 'dbCpu', 'dbStorage', 'lbUnhealthy', 'cloudAlarms', 'cloudResources', 'costMonth',
-  'jobResult', 'jobAge', 'repoUsed', 'jobsFailed', 'm365Service', 'm365Issues', 'm365Sku', 'm365Free'];
+  'jobResult', 'jobAge', 'repoUsed', 'jobsFailed', 'm365Service', 'm365Issues', 'm365Sku', 'm365Free', 'pool', 'poolUsed', 'poolScrub', 'poolDown', 'nasAlerts', 'nasAlertsCrit', 'replication'];
 export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'portLoad', 'localCheck', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service', 'upsPower', 'upsCharge', 'upsRuntime', 'upsLoad',
-  'hostPdHealth', 'hostPdTemp', 'hostPdWear', 'hostUpdates', 'hostUpdatesSec', 'hostReboot', 'hostAv', 'hostFirewall', 'hostEvCritical', 'hostEvErrors', 'hostCert', 'hostTemp', 'hostTempMax'];
+  'hostPdHealth', 'hostPdTemp', 'hostPdWear', 'hostPool', 'hostPoolUsed', 'hostPoolScrub', 'hostPoolDown', 'hostUpdates', 'hostUpdatesSec', 'hostReboot', 'hostAv', 'hostFirewall', 'hostEvCritical', 'hostEvErrors', 'hostCert', 'hostTemp', 'hostTempMax'];
 const DB_TYPES = ['mysql', 'postgres', 'redis'];
 const CONNECT_TYPES = ['http', 'tcp', 'ping'];
 const VALUE_TYPES = ['sensor', 'snmp', 'proxmox'];
@@ -69,8 +69,8 @@ const MAX_DEPTH = 20;
 export const LIMITS = { interval_s: [20, 86400, 60], timeout_s: [1, 60, 10], fail_threshold: [1, 10, 3], resend_min: [0, 1440, 0], escalate_min: [0, 1440, 0] };
 const clamp = (k, raw) => { const [lo, hi, def] = LIMITS[k]; return Math.min(hi, Math.max(lo, int(String(raw)) || def)); };
 // Values that are a state (on/off, healthy …): no own condition and limit, always "alarm when not ok"
-export const SENSOR_STATE_METRICS = ['printerErrors', 'health', 'disk', 'raid', 'port', 'hostOnline', 'service', 'upsPower', 'hostPdHealth', 'hostReboot', 'hostAv', 'hostFirewall', 'localCheck'];
-export const PROXMOX_STATE_METRICS = ['nodeOnline', 'guestRunning', 'netOnline', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume', 'cloudCheck', 'dbState', 'jobResult', 'm365Service', 'm365Sku'];
+export const SENSOR_STATE_METRICS = ['printerErrors', 'health', 'disk', 'raid', 'port', 'hostOnline', 'service', 'upsPower', 'hostPdHealth', 'hostPool', 'hostReboot', 'hostAv', 'hostFirewall', 'localCheck'];
+export const PROXMOX_STATE_METRICS = ['nodeOnline', 'guestRunning', 'netOnline', 'rfHealth', 'rfPower', 'rfFan', 'rfPsu', 'rfDrive', 'rfVolume', 'cloudCheck', 'dbState', 'jobResult', 'm365Service', 'm365Sku', 'pool', 'replication'];
 /** Does this monitor compare a measured value against a limit of its own (condition + threshold)? */
 export function hasLimit(m) {
   const metric = (typeof m.options === 'string' ? parse(m.options, {}) : m.options || {}).metric;

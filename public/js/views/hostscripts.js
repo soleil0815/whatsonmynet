@@ -107,6 +107,7 @@ export function systemPanel(x) {
     x.ups ? [h('h3', { class: 'sub-title' }, x.ups.source === 'battery' ? t('ups.titleBattery') : t('ups.title')), upsBlock(x.ups)] : null,
     careBlock(x),
     tempsBlock(x.temps),
+    poolsBlock(x.pools),
     pdisksBlock(x.pdisks),
     checksBlock(x.checks),
     eventsBlock(x.events),
@@ -198,6 +199,20 @@ function tempsBlock(list) {
   const tone = (x) => (x.crit !== null && x.crit !== undefined && x.c >= x.crit ? 'bad' : x.c >= x.warn ? 'new' : '');
   return [sub(t('host.temps')), h('div', { class: 'chips' }, [...list].sort((a, b) => b.c - a.c).map((x) =>
     h('span', { class: `badge ${tone(x) ? `badge-${tone(x)}` : ''}`, title: t('host.tempLimit', { warn: x.warn }) }, `${x.name} · ${x.c} °C`)))];
+}
+
+/** ZFS pools, Ceph, software RAID, Storage Spaces: state, why not fine, space, last scrub (device page and hypervisors) */
+export function poolsBlock(list, { title = true } = {}) {
+  if (!list?.length) return null;
+  const kind = { zfs: 'ZFS', ceph: 'Ceph', md: 'RAID', spaces: 'Storage Spaces' };
+  const scrub = (p) => (p.kind !== 'zfs' ? '' : p.scrubAt ? t('pool.scrub', { when: fmtAgo(p.scrubAt, t) }) : t('pool.noScrub'));
+  return [title ? sub(t('pool.title')) : null, h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+    h('thead', {}, h('tr', {}, h('th', {}, t('pool.name')), h('th', {}, t('host.state')), h('th', { class: 'num' }, t('pool.used')), h('th', { class: 'hide-sm' }, t('pool.scrubHead')))),
+    h('tbody', {}, list.map((p) => h('tr', {},
+      h('td', {}, h('span', { class: 'name' }, p.name), h('span', { class: 'muted small', style: { display: 'block' } }, [kind[p.kind], p.node].filter(Boolean).join(' · '))),
+      h('td', {}, badge(p.good ? 'ok' : 'bad', p.state), p.text && !p.good && p.text !== p.state ? h('span', { class: 'muted small', style: { display: 'block' } }, p.text.startsWith(`${p.state} · `) ? p.text.slice(p.state.length + 3) : p.text) : null),
+      h('td', { class: 'num' }, p.pct !== null && p.pct !== undefined ? `${p.pct} %${p.total ? ` · ${bytes(p.used)} / ${bytes(p.total)}` : ''}` : '–'),
+      h('td', { class: 'hide-sm small' }, scrub(p), p.scrubErrors > 0 ? h('span', { class: 'bad-text', style: { display: 'block' } }, t('pool.scrubErrors', { n: p.scrubErrors })) : null))))))];
 }
 
 function pdisksBlock(list) {

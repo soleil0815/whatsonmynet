@@ -6,7 +6,7 @@ import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker, onOffSwitch } from './common.js';
 import { openMonitorForm } from './monitoring.js';
-import { scriptDialog, hostScriptsSettings, helpLink } from './hostscripts.js';
+import { scriptDialog, hostScriptsSettings, helpLink, poolsBlock } from './hostscripts.js';
 import { aboutContent } from './about.js';
 import { hardwareDetail } from './hardware.js';
 import { SECTIONS, settingsNav } from './settingsnav.js';
@@ -470,6 +470,7 @@ function proxmoxDetail(x) {
   if (!d.kind) return head;
   if (d.cloud) return d.kind === 'm365' ? m365Detail(x, d, head) : cloudDetail(x, d, head);
   if (d.kind === 'veeam') return veeamDetail(d, head);
+  if (d.kind === 'truenas' || d.kind === 'ceph') return storageDetail(x, d, head);
   if (d.netdevices) return netDetail(d, head);
   // Cluster: which node answered, and which nodes can stand in
   const via = x.last_ok && d.via ? h('div', { class: 'note warn' }, t('px.via', { node: d.via.node, url: x.url, error: d.via.error || '' })) : null;
@@ -489,6 +490,7 @@ function proxmoxDetail(x) {
       nodeScriptTip(x, d),
       h('h3', { class: 'sub-title' }, t('px.storages')),
       h('div', { class: 'supplies' }, (d.storages || []).filter((s) => s.total).map((s) => meter(s.node ? `${s.name} · ${s.node}` : s.name, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
+      (d.pools || []).length ? [h('h3', { class: 'sub-title' }, t('pool.title')), poolsBlock(d.pools, { title: false })] : null,
       h('h3', { class: 'sub-title' }, pve ? t('px.guests', { running, n: (d.guests || []).length }) : t('virt.guests', { running, n: (d.guests || []).length })),
       h('div', { class: 'chips' }, (d.guests || []).map((g) => h('span', { class: `badge ${g.status === 'running' ? 'badge-ok' : ''}`, title: [g.node, t(`val.state.${g.status}`), g.cpu !== null && g.cpu !== undefined ? `CPU ${g.cpu} %` : ''].filter(Boolean).join(' · ') }, pve ? `${g.vmid} ${g.name}` : g.name))),
       !pve ? null : h('h3', { class: 'sub-title' }, t('px.backups')),
@@ -603,19 +605,19 @@ function confirmServerCert(r, kind) {
 }
 
 // Hypervisors beside Proxmox: asked through their API (account with read rights) or sending on their own (script)
-const VIRT = ['pve', 'pbs', 'veeam', 'vmware', 'xcpng', 'hyperv', 'nutanix', 'ovirt', 'libvirt'];
+const VIRT = ['pve', 'pbs', 'veeam', 'truenas', 'ceph', 'vmware', 'xcpng', 'hyperv', 'nutanix', 'ovirt', 'libvirt'];
 const PUSH = ['hyperv', 'libvirt'];
 const NET = ['unifi', 'omada', 'mikrotik'];
 const HW = ['redfish'];
 const CLOUD = ['aws', 'azure', 'gcp', 'm365'];
-const VIRT_URL = { veeam: 'https://vbr01.firma.local:9419', redfish: 'https://idrac-srv01.firma.local', unifi: 'https://unifi.firma.local', omada: 'https://omada.firma.local:8043', mikrotik: 'https://router.firma.local', vmware: 'https://vcenter.firma.local', xcpng: 'https://xcp-master.firma.local', nutanix: 'https://prism.firma.local:9440', ovirt: 'https://engine.firma.local' };
-const VIRT_USER = { veeam: 'FIRMA\\womn-viewer', redfish: 'whatsonmynet', unifi: 'whatsonmynet', omada: 'whatsonmynet', mikrotik: 'whatsonmynet', vmware: 'whatsonmynet@vsphere.local', xcpng: 'root', nutanix: 'whatsonmynet', ovirt: 'whatsonmynet@internal' };
+const VIRT_URL = { veeam: 'https://vbr01.firma.local:9419', truenas: 'https://nas01.firma.local', ceph: 'https://ceph-mgr.firma.local:8443', redfish: 'https://idrac-srv01.firma.local', unifi: 'https://unifi.firma.local', omada: 'https://omada.firma.local:8043', mikrotik: 'https://router.firma.local', vmware: 'https://vcenter.firma.local', xcpng: 'https://xcp-master.firma.local', nutanix: 'https://prism.firma.local:9440', ovirt: 'https://engine.firma.local' };
+const VIRT_USER = { veeam: 'FIRMA\\womn-viewer', truenas: 'womn-readonly', ceph: 'womn-readonly', redfish: 'whatsonmynet', unifi: 'whatsonmynet', omada: 'whatsonmynet', mikrotik: 'whatsonmynet', vmware: 'whatsonmynet@vsphere.local', xcpng: 'root', nutanix: 'whatsonmynet', ovirt: 'whatsonmynet@internal' };
 
 /** Step 1: what kind of host */
 function pickVirt(then, kinds = VIRT) {
   if (kinds.length === 1) { then(kinds[0]); return; }
   const dlg = modal(t(kinds === NET ? 'net.add' : kinds === CLOUD ? 'cloud.add' : 'virt.add'), h('div', { class: 'pick-grid' }, kinds.map((k) => h('button', { type: 'button', class: 'pick', onclick: () => { dlg.close(); then(k); } },
-    h('span', { class: 'pick-ico', html: icon(k === 'pbs' || k === 'veeam' ? 'download' : NET.includes(k) ? 'accesspoint' : CLOUD.includes(k) ? 'cloud' : 'hypervisor') }),
+    h('span', { class: 'pick-ico', html: icon(k === 'pbs' || k === 'veeam' ? 'download' : k === 'truenas' || k === 'ceph' ? 'nas' : NET.includes(k) ? 'accesspoint' : CLOUD.includes(k) ? 'cloud' : 'hypervisor') }),
     h('span', { class: 'pick-title' }, t(`virt.k.${k}`)),
     h('span', { class: 'pick-text' }, t(`virt.what.${k}`))))), { wide: true });
 }
@@ -745,6 +747,26 @@ function editCloud(x, kind, reload) {
   }, actions: [
     btn(t('cancel'), { onclick: () => m.close() }),
     h('button', { class: 'btn btn-primary', type: 'submit' }, t('pxs.save'))] });
+}
+
+/** TrueNAS and a Ceph of its own: pools first (state, space, scrub), then what TrueNAS itself reports and the replications */
+function storageDetail(x, d, head) {
+  const missing = x.last_ok && (d.missing || []).length ? h('div', { class: 'note warn' }, t('nas.missing', { list: d.missing.join(', ') })) : null;
+  const tone = { CRITICAL: 'bad', ALERT: 'bad', EMERGENCY: 'bad', ERROR: 'bad', WARNING: 'warn' };
+  const replTone = (r) => (!r.enabled ? '' : ['ERROR', 'FAILED'].includes(r.state) ? 'bad' : ['SUCCESS', 'FINISHED'].includes(r.state) ? 'ok' : '');
+  return h('div', {}, head, missing,
+    d.version ? h('p', { class: 'muted small', style: { margin: '0 0 10px' } }, [d.name, d.version].filter(Boolean).join(' · ')) : null,
+    d.kind === 'ceph' && d.osds ? h('p', { class: 'muted small', style: { margin: '0 0 10px' } }, t('nas.osds', { up: d.osds.up, n: d.osds.n, in: d.osds.in }), d.mons ? ` · ${t('nas.mons', { n: d.mons })}` : '') : null,
+    h('h3', { class: 'sub-title' }, t('pool.title')),
+    (d.pools || []).length ? poolsBlock(d.pools, { title: false }) : h('p', { class: 'muted small' }, t('nas.noPools')),
+    d.kind === 'ceph' && (d.checks || []).length ? [h('h3', { class: 'sub-title' }, t('nas.checks')), h('ul', { class: 'port-macs' }, d.checks.map((c) => h('li', {},
+      h('span', { class: `badge ${c.severity === 'HEALTH_ERR' ? 'badge-bad' : 'badge-warn'}` }, c.type), h('span', { class: 'small' }, c.text))))] : null,
+    d.kind === 'truenas' ? [h('h3', { class: 'sub-title' }, t('nas.alerts', { n: (d.alerts || []).length })),
+      (d.alerts || []).length ? h('ul', { class: 'port-macs' }, d.alerts.map((a) => h('li', {}, h('span', { class: `badge ${tone[a.level] ? `badge-${tone[a.level]}` : ''}` }, a.level),
+        h('span', { class: 'small' }, a.text), a.at ? h('span', { class: 'muted small' }, fmtDate(a.at, getLang())) : null))) : h('p', { class: 'muted small' }, t('nas.noAlerts'))] : null,
+    d.kind === 'truenas' && (d.replications || []).length ? [h('h3', { class: 'sub-title' }, t('nas.repl', { n: d.replications.length })),
+      h('ul', { class: 'port-macs' }, d.replications.map((r) => h('li', {}, h('span', { class: `badge ${replTone(r) ? `badge-${replTone(r)}` : ''}` }, r.enabled ? r.state : t('vm.disabled')),
+        h('strong', { class: 'small' }, r.name), r.at ? h('span', { class: 'muted small' }, fmtDate(r.at, getLang())) : null, r.error ? h('span', { class: 'small bad-text' }, r.error) : null)))] : null);
 }
 
 /** Veeam: jobs with their last result and next run, repositories with their space */
@@ -1032,6 +1054,21 @@ function hostSummary(x) {
     figures.push(t('vo.fig.services', { ok: (d.services || []).length - badSvc, n: (d.services || []).length }));
     if ((d.licenses || []).length) figures.push(t('vo.fig.licenses', { free: d.licenses.reduce((a, l) => a + Math.max(0, l.free), 0) }));
     deep.push(d.account || '', ...(d.services || []).map((s) => s.name), ...(d.issues || []).map((i) => `${i.id} ${i.title}`), ...(d.licenses || []).map((l) => `${l.name} ${l.sku}`));
+  } else if (d.kind === 'truenas' || d.kind === 'ceph') {
+    const ps = d.pools || [];
+    const badP = ps.filter((p) => !p.good).length;
+    if (badP) bad(tn('vo.poolsBad', { n: badP }));
+    const full = ps.filter((p) => p.pct !== null && p.pct >= (p.kind === 'ceph' ? 75 : 80));
+    if (full.length) (full.some((p) => p.pct >= 90) ? bad : warn)(tn('vo.storeFull', { n: full.length }));
+    const crit = (d.alerts || []).filter((a) => ['ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'].includes(a.level)).length;
+    if (crit) bad(tn('vo.nasAlerts', { n: crit }));
+    else if ((d.alerts || []).length) warn(tn('vo.nasAlerts', { n: d.alerts.length }));
+    const rf = (d.replications || []).filter((r) => r.enabled && ['ERROR', 'FAILED'].includes(r.state)).length;
+    if (rf) bad(tn('vo.replFailed', { n: rf }));
+    figures.push(tn('vo.fig.pools', { n: ps.length }));
+    if (ps.length) figures.push(t('vo.fig.storage', { pct: Math.max(0, ...ps.map((p) => p.pct || 0)) }));
+    Object.assign(n, { stores: ps.length, storesFull: full.length, backupIssues: rf });
+    deep.push(d.name || '', ...ps.map((p) => p.name), ...(d.replications || []).map((r) => r.name));
   } else if (d.kind === 'veeam') {
     const failed = (d.jobs || []).filter((j) => j.status !== 'disabled' && String(j.result).toLowerCase() === 'failed').length;
     const warned = (d.jobs || []).filter((j) => j.status !== 'disabled' && String(j.result).toLowerCase() === 'warning').length;
@@ -1072,6 +1109,9 @@ function hostSummary(x) {
     if (offN) bad(tn('vo.nodesOff', { n: offN }));
     const full = stores.filter((y) => y.pct >= 85);
     if (full.length) (full.some((y) => y.pct >= 95) ? bad : warn)(tn('vo.storeFull', { n: full.length }));
+    // ZFS pools of the nodes, Ceph: degraded, a disk or OSD gone
+    const badPools = (d.pools || []).filter((p) => !p.good).length;
+    if (badPools) bad(tn('vo.poolsBad', { n: badPools }));
     let backupIssues = 0;
     if (d.kind === 'pve') {
       const failed = (d.backups || []).filter((b) => !b.ok && b.end && Date.now() / 1000 - b.start < 86400).length;

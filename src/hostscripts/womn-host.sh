@@ -12,6 +12,8 @@ export LC_ALL=C
 @SETUP@
 
 esc() { printf '%s' "$1" | tr -d '\001-\010\013-\037\177' | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/," "); if (NR>1) print " "; print}'; }
+# the same, keeping lines and tabs (for text the server reads itself: zpool status, /proc/mdstat)
+escn() { printf '%s' "$1" | tr -d '\001-\010\013-\037\177' | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/,"\\t"); if (NR>1) print "\\n"; print}'; }
 
 name=$(hostname 2>/dev/null || cat /proc/sys/kernel/hostname)
 os=$(. /etc/os-release 2>/dev/null && printf '%s' "${PRETTY_NAME:-$NAME}")
@@ -122,6 +124,22 @@ if command -v lsblk >/dev/null 2>&1; then
   done
 fi
 
+# Storage pools: ZFS (zpool, readable by any user) and Linux software RAID (/proc/mdstat) - the text as it is, the
+# server reads state, members, errors and the last scrub out of it
+zj=null
+if command -v zpool >/dev/null 2>&1; then
+  zl=$(zpool list -Hp -o name,health,size,alloc 2>/dev/null | head -n 32)
+  if [ -n "$zl" ]; then
+    zs=""
+    for zp in $(printf '%s\n' "$zl" | cut -f1); do
+      zs="$zs${zs:+,}\"$(esc "$zp")\":\"$(escn "$(zpool status -p "$zp" 2>/dev/null | head -c 20000)")\""
+    done
+    zj="{\"list\":\"$(escn "$zl")\",\"status\":{$zs}}"
+  fi
+fi
+md=""
+[ -r /proc/mdstat ] && grep -q '^md' /proc/mdstat 2>/dev/null && md=$(head -c 20000 /proc/mdstat)
+
 # Updates: the package search runs after the report at most every 6 hours (apt: simulated upgrade, dnf: cache only);
 # the report sends the last result. A pending restart (Debian/Ubuntu) is read every time.
 if [ "$(id -u)" = 0 ]; then CACHE=/var/cache/whatsonmynet; else CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/whatsonmynet; fi
@@ -227,7 +245,7 @@ for a in /sys/class/net/*/address; do
 done
 ips=$( (ip -o -4 addr show scope global 2>/dev/null || true) | awk '{split($4,a,"/"); printf "%s\"%s\"", (n++?",":""), a[1]}')
 
-body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj]}"
+body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\"}"
 if [ -n "$PIN" ]; then TLS="-k --pinnedpubkey $PIN"; else TLS=""; fi
 # shellcheck disable=SC2086
 printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer $TOKEN" -H 'X-WOMN-Request: 1' -H 'Content-Type: application/json' --data-binary @- "$URL" >/dev/null

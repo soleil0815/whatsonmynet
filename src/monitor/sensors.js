@@ -1,6 +1,7 @@
 // Sensors: monitors on values the devices already deliver (printer supplies, NAS volumes/disks/temperature,
 // switch ports) and on any SNMP value (OID) - like the sensors of PRTG. A sensor check reads the latest state the
 // pollers stored (no extra traffic to the device); the free SNMP sensor asks the device itself (read-only).
+import { poolMetrics } from '../pools.js';
 import { openSnmp, getValues, text } from '../scan/snmpwalk.js';
 import { nasProblems } from '../scan/nas.js';
 import { proxmoxMetrics } from '../proxmox.js';
@@ -112,6 +113,8 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
       out.push({ metric: 'hostTempMax', key: '', name: hot.name, value: hot.c, unit: '°C', kind: 'number', op: 'ge', threshold: 85 });
       for (const tp of temps) out.push({ metric: 'hostTemp', key: tp.key, name: tp.name, value: tp.c, unit: '°C', kind: 'number', op: 'ge', threshold: tp.warn });
     }
+    // ZFS pools, software RAID, Storage Spaces
+    out.push(...poolMetrics(x.pools, 'host'));
     // own checks (scripts in the checks folder of the machine)
     for (const c of x.checks || []) out.push({ metric: 'localCheck', key: c.name, name: c.name, value: CHECK_STATE[c.status], unit: '', kind: 'state' });
   } else if (s.kind === 'switch') {
@@ -250,6 +253,13 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
     case 'upsCharge': val = num(s.data.ups?.charge ?? null, '%'); break;
     case 'upsRuntime': { const r = s.data.ups?.runtime; val = num(r === null || r === undefined ? null : Math.round(r / 60), 'min'); break; }
     case 'upsLoad': val = num(s.data.ups?.load ?? null, '%'); break;
+    // ZFS pools, software RAID, Storage Spaces of the machine (scripts from 0.42 on)
+    case 'hostPool': case 'hostPoolUsed': case 'hostPoolScrub': case 'hostPoolDown': {
+      const x = poolMetrics(s.data.pools, 'host').find((y) => y.metric === o.metric && y.key === o.key);
+      if (!x) return { ok: false, ms: null, message: `${label}: not found - the pool is gone or the script no longer reports it`, data: o.metric === 'hostPool' ? { state: 'unknown' } : undefined };
+      if (o.metric === 'hostPool') return { ok: x.good, ms: null, message: `${label}: ${x.text}`, data: { state: x.good ? 'ok' : 'critical' } };
+      if (x.value === null) return { ok: false, ms: null, message: `${label}: ${o.metric === 'hostPoolScrub' ? 'no scrub found - start one (zpool scrub) or set up a monthly one' : 'no value'}` };
+      val = num(x.value, x.unit, x.total ? { used: x.used, total: x.total } : {}); break; }
     default: return { ok: false, ms: null, message: 'unknown sensor' };
   }
   if (val.v === null || val.v === undefined) return { ok: false, ms: null, message: `${label}: no value` };
@@ -336,6 +346,7 @@ export function proxmoxCheck(db, m, { staleMin = 30 } = {}) {
   if (x.value === null || x.value === undefined) {
     // missing rights only when the host said so; else the node just did not deliver the value this time
     const rights = (parse(h.data, {}).missing || []).length > 0;
+    if (o.metric === 'poolScrub') return { ok: false, ms: null, message: `${label}: no scrub found - start one (zpool scrub) or set up a monthly one` };
     return { ok: false, ms: null, message: `${label}: ${o.metric === 'backupAge' || o.metric === 'groupAge' || o.metric === 'jobAge' ? 'no backup found'
       : rights ? 'no value - the account probably lacks read rights (Monitoring → Virtualization)' : 'no value at the moment (not delivered by the host)'}` };
   }

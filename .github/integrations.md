@@ -15,12 +15,14 @@ differently – and whether the code below is affected. Old and new versions mus
 
 | System | Code | What is used | Watch |
 |---|---|---|---|
-| Proxmox VE | `src/proxmox.js` | `/api2/json`: cluster/resources, cluster/status, nodes/*/tasks, nodes/*/certificates/info, nodes/*/apt/update, access/permissions; token `PVEAPIToken`; role PVEAuditor | pve.proxmox.com roadmap and release notes, API viewer |
+| Proxmox VE | `src/proxmox.js`, `src/pools.js` | `/api2/json`: cluster/resources, cluster/status, cluster/ceph/status, nodes/*/disks/zfs (+ /{pool}), nodes/*/tasks, nodes/*/certificates/info, nodes/*/apt/update, access/permissions; token `PVEAPIToken`; role PVEAuditor | pve.proxmox.com roadmap and release notes, API viewer |
 | Proxmox Backup Server | `src/proxmox.js` | status/datastore-usage, admin/datastore/*/groups, tasks; token `PBSAPIToken`; role Audit | pbs roadmap |
 | VMware vCenter/ESXi | `src/virt.js` | REST (`/api/…`, session) | Broadcom release notes, vSphere Automation API changes |
 | XCP-ng / XenServer, Nutanix Prism, oVirt/OLVM | `src/virt.js` | XO/XAPI, Prism v2/v3, oVirt REST | vendor API docs, end-of-life notices |
 | Hyper-V | `src/hostscripts/womn-hyperv.ps1` | Get-VM, Cluster Shared Volumes | Windows Server release notes |
 | KVM/libvirt | `src/hostscripts/womn-libvirt.sh` | `virsh -r` | libvirt news |
+| TrueNAS (SCALE/CE 25.04+) | `src/truenas.js`, `src/lib/wsrpc.js` | JSON-RPC 2.0 over WebSocket `/api/current`: auth.login_ex (`API_KEY_PLAIN`), system.info, pool.query, alert.list, replication.query; user with role Read-Only Administrator | TrueNAS API docs (api.truenas.com): method/field changes per version; REST v2.0 removed in 26 |
+| Ceph (own cluster) | `src/ceph.js` | Dashboard REST `Accept: application/vnd.ceph.api.v1.0+json`: POST /api/auth, GET /api/health/minimal, POST /api/auth/logout; dashboard role read-only | Ceph release notes (dashboard API versions, health/minimal fields) |
 | Veeam Backup & Replication | `src/veeam.js` | REST `x-api-version: 1.1-rev0` (VBR 12), `/api/oauth2/token`, `/api/v1/jobs/states`, `/api/v1/backup…`, `/api/v1/server…`; role Veeam Backup Viewer | Veeam REST API reference: supported revisions per VBR version (when is 1.1-rev0 dropped?) |
 
 ## 2. Cloud and SaaS (`src/cloud.js`)
@@ -58,8 +60,8 @@ differently – and whether the code below is affected. Old and new versions mus
 
 | What | Code | Watch |
 |---|---|---|
-| Windows script (Windows PowerShell 5.1): CIM/WMI classes, WMI classes MSFT_NetAdapter and MSFT_NetFirewallProfile (root/StandardCimv2), MSFT_PhysicalDisk + MSFT_StorageReliabilityCounter (root/Microsoft/Windows/Storage), MSFT_MpComputerStatus (root/Microsoft/Windows/Defender) - deliberately not the modules (each run would log ~70 events 4104) -, Microsoft.Update.Session, Get-WinEvent, certificate store, schtasks; own checks (Checkmk local check format, ACL check) | `src/hostscripts/womn-host.ps1`, `setup.ps1.part` | Windows deprecated/removed features (WMIC, VBScript, PowerShell 2.0), new Windows / Server releases, TLS defaults |
-| Linux script (POSIX sh): lsblk, `smartctl -j`, journalctl, apt/dnf, /sys/class/hwmon and thermal, NUT/apcupsd, ufw/firewalld, reboot-required; own checks | `src/hostscripts/womn-host.sh` | smartmontools JSON changes, distribution releases (Debian, Ubuntu LTS, RHEL family) |
+| Windows script (Windows PowerShell 5.1): CIM/WMI classes, WMI classes MSFT_NetAdapter and MSFT_NetFirewallProfile (root/StandardCimv2), MSFT_PhysicalDisk + MSFT_StorageReliabilityCounter, MSFT_StoragePool with associated MSFT_VirtualDisk/MSFT_PhysicalDisk (Storage Spaces) (root/Microsoft/Windows/Storage), MSFT_MpComputerStatus (root/Microsoft/Windows/Defender) - deliberately not the modules (each run would log ~70 events 4104) -, Microsoft.Update.Session, Get-WinEvent, certificate store, schtasks; own checks (Checkmk local check format, ACL check) | `src/hostscripts/womn-host.ps1`, `setup.ps1.part` | Windows deprecated/removed features (WMIC, VBScript, PowerShell 2.0), new Windows / Server releases, TLS defaults |
+| Linux script (POSIX sh): lsblk, `smartctl -j`, `zpool list -Hp` / `zpool status -p` (text read in `src/pools.js`), /proc/mdstat, journalctl, apt/dnf, /sys/class/hwmon and thermal, NUT/apcupsd, ufw/firewalld, reboot-required; own checks | `src/hostscripts/womn-host.sh` | smartmontools JSON changes, OpenZFS `zpool status` wording, distribution releases (Debian, Ubuntu LTS, RHEL family) |
 | Checkmk local check format | `src/hostfacts.js` (`cleanChecks`) | Checkmk docs (format extensions) |
 
 ## 6. Checks and services (`src/monitor/*`)
