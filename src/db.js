@@ -850,6 +850,14 @@ const EVENTS_SCHEMA = [
      INSERT INTO events_hour_id(hour, event_id, n) SELECT CAST(strftime('%s', new.at) AS INTEGER) / 3600, new.event_id, 1 WHERE new.event_id IS NOT NULL
        ON CONFLICT(hour, event_id) DO UPDATE SET n = n + 1;
    END;`,
+  // 6: which senders sent which Windows event (and source) on which day - "from 812 computers" exact, also with
+  // thousands of them (before: counted in the newest 500 messages). Small next to the messages: one row per computer,
+  // event and day. Filled with the counts; a day leaves when its messages are gone. What is counted already is taken now.
+  `CREATE TABLE IF NOT EXISTS ev.events_day_src (event_id INTEGER NOT NULL, app TEXT NOT NULL, day INTEGER NOT NULL, source_ip TEXT NOT NULL,
+     PRIMARY KEY (event_id, app, day, source_ip)) WITHOUT ROWID;
+   INSERT OR IGNORE INTO ev.events_day_src(event_id, app, day, source_ip)
+     SELECT DISTINCT event_id, app, CAST(strftime('%s', at) AS INTEGER) / 86400, source_ip FROM ev.events_in
+     WHERE event_id IS NOT NULL AND id <= (SELECT v FROM ev.events_fts_state WHERE k = 'counted');`,
 ];
 export const eventsFile = (dbFile) => (dbFile === ':memory:' ? ':memory:' : path.join(path.dirname(dbFile), 'events.sqlite'));
 

@@ -6,6 +6,13 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Messages for large networks: new messages are written in batches - many times faster (on a small server with an SSD more than 10,000 a second). The flood protection now takes 100 instead of 20 a second per sender and 3,000 instead of 300 in all (changeable with WOMN_MESSAGES_PER_SECOND); over TCP and TLS nothing is lost any more - the sender waits a moment instead of messages being dropped. Dropped ones (UDP) are shown at the top of the page
+- By sender: a page at a time (100, then "Show 100 more"), with quick filters and their numbers - errors, warnings, silent for 24 hours, with a filter of its own -, device type from the inventory and order (newest message, most messages, name)
+- What takes the space?: "from … computers" is counted exactly, with thousands too (before: estimated from the newest 500 messages); below the 15 biggest senders stands what all others take together, and with devices in the inventory the split by device type
+- Load test: docker compose exec whatsonmynet womn-admin loadtest measures on your own hardware how many messages a second the server takes and says what that means in computers and space (a test file of its own, removed afterwards)
+
+## 0.42.1 - 2026-11-17
+
 - Manual: a complete NXLog configuration as example that sends source and log along (so leaving out like 1@Ntfs applies); Fluent Bit as a second free agent with a ready configuration, checked on a real Windows Server; notes on Winlogbeat and Windows Event Forwarding
 - Messages: Windows events from Fluent Bit (JSON) are recognised with their severity - the level as a number and "audit failure" from the keywords
 - Windows scripts: the download window names the registry entry for software distribution and inventory (HKLM\SOFTWARE\WhatsOnMyNet, value HostScript or HyperVScript, current version); the manual shows it as a table with a query and a detection rule for Intune/SCCM

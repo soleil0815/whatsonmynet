@@ -276,7 +276,7 @@ Die Suche findet eine Ereignisnummer, wenn man nur die Zahl eingibt. Umlaute in 
 
 **Gut zu wissen:** Dieselbe Nummer gibt es bei verschiedenen Quellen - 8004 ist bei AppLocker „Programm blockiert“, bei der Gruppenrichtlinie „Verarbeitung abgeschlossen“. Schickt NXLog ohne `Exec` (nur Nummer, keine Quelle), kann eine Regel beides nicht unterscheiden. Mit den `Exec`-Zeilen oben kommt die Quelle mit, und die Regel trifft genau.
 
-**Nach Absender:** Die Seite zeigt zuerst je Rechner oder Gerät eine Zeile - mit der letzten Meldung und den Meldungen, Warnungen und Fehlern der letzten 24 Stunden - statt alle Meldungen untereinander. Ein Klick auf den Absender zeigt nur seine Meldungen; *Alle Meldungen* zeigt wie bisher alles. Auf der Seite eines Geräts führt *Mehr → Meldungen des Geräts* direkt dorthin.
+**Nach Absender:** Die Seite zeigt zuerst je Rechner oder Gerät eine Zeile - mit der letzten Meldung und den Meldungen, Warnungen und Fehlern der letzten 24 Stunden - statt alle Meldungen untereinander. Ein Klick auf den Absender zeigt nur seine Meldungen; *Alle Meldungen* zeigt wie bisher alles. Auf der Seite eines Geräts führt *Mehr → Meldungen des Geräts* direkt dorthin. Die Liste kommt seitenweise (100 Absender, darunter *Weitere 100 anzeigen*), damit sie auch mit Tausenden Rechnern schnell bleibt. Darüber filtern Schnellfilter mit ihrer Anzahl: *Fehler* und *Warnungen* der letzten 24 Stunden, *Still seit 24 Std.* (ein Rechner, der plötzlich nichts mehr schickt - Agent beendet, Ziel geändert, Rechner aus) und *Mit eigenem Filter*. Daneben lassen sich die Absender nach Gerätetyp aus dem Inventar eingrenzen (*Server*, *Computer*, *NAS* …, *Nicht im Inventar*) und ordnen: neueste Meldung zuerst, meiste Meldungen oder nach Name. Die Reihenfolge merkt sich der Browser.
 
 **Suchen:** Die Suche findet **ganze Wörter und Wortanfänge** in Text, Quelle, Absender, Protokoll und Konto - Groß- und Kleinschreibung und Umlaute egal (`Lufter` findet *Lüfter*). `m.muster` findet das Konto *FIRMA\m.muster*, `Druck` die *Druckwarteschlange*. **Mehrere Begriffe** mit Leerzeichen müssen alle vorkommen, egal in welcher Reihenfolge und in welchem Feld: `PC-0001 4104 svc-pocketknife` findet die Ereignisse 4104 von PC-0001, in denen *svc-pocketknife* steht. In **Anführungszeichen** steht eine feste Wortfolge (`"link down"`), ein **Minus** schließt aus (`4625 -svc-backup`: alle 4625 außer denen des Dienstkontos). Eine Zahl wie `4625` findet zusätzlich die Windows-Ereignis-ID, ein Name auch das Gerät aus dem Inventar. Dafür führt WhatsOnMyNet einen **Suchindex** - so bleibt die Suche auch bei vielen Gigabyte und 30 oder 90 Tagen schnell. Teile mitten im Wort (z. B. `006A` aus *0xC000006A*) findet die normale Suche nicht; findet sie nichts, bietet die Seite **Auch in Wortteilen suchen** an - dann wird jede Meldung im gewählten Zeitraum gelesen, mit einem kurzen Zeitraum geht das trotzdem flott.
 
@@ -293,7 +293,7 @@ Nach dem Update auf 0.39 baut WhatsOnMyNet den Index für die schon gespeicherte
 
 Die gewählte Vorgabe (z. B. *Letzte 24 Stunden*) merkt sich der Browser; ein eigener Zeitraum gilt nur, solange die Seite offen ist. Die Übersicht *Nach Absender* zählt weiter die letzten 24 Stunden.
 
-**Was belegt den Platz?** Der Knopf oben auf der Seite zeigt für die letzten 24 Stunden, 7 oder 30 Tage, welche **Windows-Ereignisse** und **Absender** die meisten Meldungen schicken: Menge pro Tag, Anteil, geschätzter Platz über die eingestellten Tage, von welchen Rechnern, ein Beispiel und ob nur Info oder auch Warnungen und Fehler dabei sind. Hinweise helfen beim Entscheiden: *Regel braucht es* (eine Benachrichtigungsregel wartet auf diese Nummer - ausschließen geht dann nicht), *meist wichtig* (Sicherheit, Abstürze, Neustarts wie 4625, 4740, 1102, 7045 - nur mit gutem Grund weglassen) und *übliches Rauschen*. Administratoren schließen ein Ereignis mit **Nicht speichern** aus; es kommt in die Liste *Windows-Ereignisse: diese Nummern nie annehmen* und lässt sich dort wieder herausnehmen. Schon gespeicherte bleiben bis zum Aufräumen. Für Geräte ohne Ereignis-ID (Switches, NAS) zeigt die Tabelle *Absender*, wie viel davon nur Info ist - oft reicht dort der Filter „ab Warnung“.
+**Was belegt den Platz?** Der Knopf oben auf der Seite zeigt für die letzten 24 Stunden, 7 oder 30 Tage, welche **Windows-Ereignisse** und **Absender** die meisten Meldungen schicken: Menge pro Tag, Anteil, geschätzter Platz über die eingestellten Tage, von welchen Rechnern, ein Beispiel und ob nur Info oder auch Warnungen und Fehler dabei sind. Hinweise helfen beim Entscheiden: *Regel braucht es* (eine Benachrichtigungsregel wartet auf diese Nummer - ausschließen geht dann nicht), *meist wichtig* (Sicherheit, Abstürze, Neustarts wie 4625, 4740, 1102, 7045 - nur mit gutem Grund weglassen) und *übliches Rauschen*. Administratoren schließen ein Ereignis mit **Nicht speichern** aus; es kommt in die Liste *Windows-Ereignisse: diese Nummern nie annehmen* und lässt sich dort wieder herausnehmen. Schon gespeicherte bleiben bis zum Aufräumen. Für Geräte ohne Ereignis-ID (Switches, NAS) zeigt die Tabelle *Absender*, wie viel davon nur Info ist - oft reicht dort der Filter „ab Warnung“. „von 1.204 Rechnern“ ist genau gezählt, auch bei Tausenden (ganze Tage: im Zeitraum *Letzte 24 Stunden* zählt der erste Tag ganz). Unter den 15 größten Absendern steht, was **alle übrigen zusammen** schicken - in großen Netzen liegt dort oft der meiste Platz: viele Clients mit wenig statt eines Servers mit viel. Sind die Absender im Inventar, zeigt *Nach Gerätetyp*, wie sich die Meldungen auf Clients, Server, NAS usw. verteilen.
 
 **Dieselbe Nummer, verschiedene Quellen:** Die 1 von NTFS ist Rauschen, die 1 von Sysmon ein Prozessstart. Kommt eine Nummer von mehreren Quellen, zeigt die Übersicht je Quelle eine eigene Zeile, und **Nicht speichern** schließt dann nur diese Quelle aus. In der Liste *Windows-Ereignisse: diese Nummern nie annehmen* steht das als `1@Microsoft-Windows-Ntfs`; von Hand genügt ein Teil des Namens (`1@Ntfs`), Groß- und Kleinschreibung egal. Unter dem Feld steht lesbar, welche Einträge nur für eine Quelle gelten. Das wirkt nur, wenn die Meldung ihre Quelle mitbringt - bei NXLog mit der Konfiguration aus diesem Handbuch (JSON oder die lesbare Form); fehlt sie, wird die Meldung behalten. Eine Benachrichtigungsregel für eine andere Quelle verhindert das Ausschließen nicht.
 
@@ -322,7 +322,7 @@ Unter *Meldungen → Ereignisregeln* legst du fest, welche Meldungen wohin gehen
 
 **Gut zu wissen:**
 - Die Meldungen liegen in einer **eigenen Datei** (`data/events.sqlite`) - nicht in der Datenbank und nicht in den täglichen Sicherungen. Aufbewahrt werden sie 30 Tage in höchstens 2 GB (beides unter *Empfang einstellen*); was zuerst erreicht ist, zählt, die ältesten gehen zuerst. Wird der Datenträger knapp, bleiben mindestens 10 % (und 1 GB) frei - dann wird früher aufgeräumt. Die Seite zeigt den belegten Platz, die Meldungen pro Tag und wie viele Tage der Platz reicht; reicht er nicht für die eingestellten Tage, steht dort, von wem die meisten Meldungen kommen.
-- Je Absender höchstens 20 Meldungen pro Sekunde, 300 insgesamt (Schutz vor Flut).
+- **Schutz vor Flut:** Über UDP (und bei Traps) höchstens 100 Meldungen pro Sekunde je Absender und 3.000 insgesamt - was darüber kommt, wird verworfen und oben auf der Seite gezählt („… wegen Überflutung verworfen“). Über **TCP und TLS geht nichts verloren:** Je Absender werden bis 500 pro Sekunde angenommen, der Rest wartet - die Verbindung pausiert bis zur nächsten Sekunde, NXLog bzw. Fluent Bit halten die Meldungen so lange fest. Für Windows-Rechner und Domänencontroller deshalb TCP nehmen. Die Grenze insgesamt lässt sich mit `WOMN_MESSAGES_PER_SECOND` in der `.env` ändern (100 bis 100.000).
 - *Nur von Geräten im Inventar* verwirft Meldungen fremder Absender. Syslog über UDP lässt sich fälschen - für Alarme lieber Traps mit eigener Community nutzen.
 - Bei der Ausfallsicherung empfängt jede Installation für sich: In den Geräten Master **und** Standby als Ziel eintragen.
 - SNMPv3-Traps werden (noch) nicht angenommen.
@@ -369,6 +369,29 @@ Für 90 Tage gilt das Dreifache. Dazu kommt, was WhatsOnMyNet ohnehin frei hält
 3. Reicht der Platz nicht: Unter *Nach Absender* steht, wer am meisten schickt. Erst dort ansetzen - gesprächige Absender auf *ab Warnung* (Domänencontroller, Firewalls), das übliche Rauschen unter *Empfang einstellen* ergänzen. Erst dann *Höchstens Platz (GB)* unter *Empfang einstellen* erhöhen.
 4. **Tage:** 30 Tage reichen für den Alltag (Was war letzte Woche los?). Wer Vorfälle auch später noch nachvollziehen will - ein Angriff fällt oft erst nach Wochen auf -, nimmt 90 Tage. Die Meldungen enthalten Benutzer- und Rechnernamen: die Dauer mit Datenschutz bzw. Personalrat abstimmen und nicht länger aufbewahren als nötig.
 5. Die Meldungsdatei ist nicht in den täglichen Sicherungen - ihre Größe zählt also nur einmal.
+
+### Wie viele Meldungen schafft der Server?
+
+Neue Meldungen werden gesammelt geschrieben: alles, was in einem Augenblick ankommt, in einem Rutsch. Wie viele pro Sekunde ein Server dauerhaft annimmt, hängt vor allem am Datenträger (SSD oder nicht) - der Lasttest misst es auf deiner Hardware, neben dem laufenden Programm:
+
+```sh
+docker compose exec whatsonmynet womn-admin loadtest
+```
+
+Er legt eine eigene Testdatei neben den Daten an (`data/loadtest-…`, braucht 3 GB frei, wird am Ende gelöscht - deine Meldungen bleiben unberührt), schickt Windows-Ereignisse über TCP wie NXLog, Stufe für Stufe schneller (250, 500, 1.000 … pro Sekunde, je 6 Sekunden), und hört auf, sobald der Server nicht mehr mitkommt: Meldungen bleiben liegen, Suchindex und Zählung fallen zurück oder das Programm muss länger als eine Viertelsekunde auf seine Runde warten. Am Ende steht, was das in Rechnern heißt, und wie viel Platz eine Meldung braucht. Beispiel auf einem kleinen Server mit 2 Kernen und SSD:
+
+```
+  asked/s  stored/s  index behind  waits (p99)
+    4,000     3,949           380        18 ms
+    8,000     7,926         9,326        46 ms
+   16,000    15,710        16,041        73 ms
+   32,000    31,924        86,745       253 ms   ← no longer keeps up
+
+Kept up with 16,000 messages a second.
+For every day count half of it (logon peaks, cleanup, the web pages): 8,000 a second ...
+```
+
+Für den Alltag die Hälfte rechnen - morgens melden sich alle gleichzeitig an, und Aufräumen und Weboberfläche brauchen auch ihren Teil. Meist begrenzt ohnehin der **Platz**, nicht die Geschwindigkeit: ein Windows-Rechner, der alles schickt, belegt einige MB am Tag. Bei sehr vielen Rechnern (ab etwa 1.000, die alles schicken) gehören die Ereignisse zusätzlich in eine Log-Plattform wie Graylog, Wazuh oder Elastic; WhatsOnMyNet bekommt dann nur, was wichtig ist (*ab Warnung*, Ereignisregeln).
 
 ## Drucker, Switches und NAS
 

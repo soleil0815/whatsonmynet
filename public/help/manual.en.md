@@ -276,7 +276,7 @@ The search finds an event id when only the number is entered. Umlauts in the cod
 
 **Good to know:** the same id exists for different sources - 8004 is "program blocked" for AppLocker and "processing completed" for group policy. If NXLog sends without `Exec` (only the id, no source), a rule cannot tell them apart. With the `Exec` lines above the source comes along and the rule hits exactly.
 
-**By sender:** the page first shows one row per computer or device - with the last message and the messages, warnings and errors of the last 24 hours - instead of all messages one below the other. A click on the sender shows only its messages; *All messages* shows everything as before. On the page of a device *More → Messages of the device* leads straight there.
+**By sender:** the page first shows one row per computer or device - with the last message and the messages, warnings and errors of the last 24 hours - instead of all messages one below the other. A click on the sender shows only its messages; *All messages* shows everything as before. On the page of a device *More → Messages of the device* leads straight there. The list comes a page at a time (100 senders, below them *Show 100 more*), so it stays fast with thousands of computers too. Above it quick filters with their numbers: *Errors* and *Warnings* of the last 24 hours, *Silent for 24 h* (a computer that suddenly sends nothing any more - agent stopped, target changed, computer off) and *With a filter of its own*. Next to them the senders can be narrowed by device type from the inventory (*Server*, *Computer*, *NAS* …, *Not in the inventory*) and ordered: newest message first, most messages or by name. The browser remembers the order.
 
 **Searching:** the search finds **whole words and beginnings of words** in text, source, sender, log and account - upper or lower case and umlauts alike (`Lufter` finds *Lüfter*). `m.muster` finds the account *FIRMA\m.muster*, `print` the *printer*. **Several terms** separated by spaces must all be there, in any order and any field: `PC-0001 4104 svc-pocketknife` finds the events 4104 of PC-0001 that mention *svc-pocketknife*. **Quotes** make a fixed sequence of words (`"link down"`), a **minus** leaves out (`4625 -svc-backup`: every 4625 except those of the service account). A number like `4625` also finds the Windows event id, a name also the device in the inventory. For this WhatsOnMyNet keeps a **search index** - searching stays fast with many gigabytes and 30 or 90 days too. Parts in the middle of a word (e.g. `006A` of *0xC000006A*) are not found by the normal search; when it finds nothing, the page offers **Search parts of words too** - then every message in the time range is read, which is still quick with a short range.
 
@@ -293,7 +293,7 @@ After the update to 0.39 WhatsOnMyNet builds the index for the messages already 
 
 The browser remembers the preset chosen (e.g. *Last 24 hours*); a custom range only holds while the page is open. The *By sender* overview still counts the last 24 hours.
 
-**What takes the space?** The button at the top of the page shows for the last 24 hours, 7 or 30 days which **Windows events** and **senders** send the most messages: amount a day, share, estimated space over the days set, from which computers, an example and whether it is info only or warnings and errors too. Hints help to decide: *a rule needs it* (a notification rule waits for this id - it cannot be left out then), *usually important* (security, crashes, restarts such as 4625, 4740, 1102, 7045 - leave out only with a good reason) and *usual noise*. Admins leave an event out with **Do not keep**; it goes into the list *Windows events: never take these ids* and can be taken out there again. Messages already stored stay until the cleanup. For devices without event ids (switches, NAS) the table *Senders* shows how much of it is info only - the filter "warning and worse" is often enough there.
+**What takes the space?** The button at the top of the page shows for the last 24 hours, 7 or 30 days which **Windows events** and **senders** send the most messages: amount a day, share, estimated space over the days set, from which computers, an example and whether it is info only or warnings and errors too. Hints help to decide: *a rule needs it* (a notification rule waits for this id - it cannot be left out then), *usually important* (security, crashes, restarts such as 4625, 4740, 1102, 7045 - leave out only with a good reason) and *usual noise*. Admins leave an event out with **Do not keep**; it goes into the list *Windows events: never take these ids* and can be taken out there again. Messages already stored stay until the cleanup. For devices without event ids (switches, NAS) the table *Senders* shows how much of it is info only - the filter "warning and worse" is often enough there. "from 1,204 computers" is counted exactly, with thousands too (whole days: in the period *Last 24 hours* the first day counts whole). Below the 15 biggest senders stands what **all the others together** send - in large networks most of the space is often there: many clients with a little instead of one server with a lot. With the senders in the inventory, *By type of device* shows how the messages are spread over clients, servers, NAS and so on.
 
 **One number, several sources:** 1 of NTFS is noise, 1 of Sysmon a process start. When a number comes from several sources, the overview shows a row of its own per source, and **Do not keep** then leaves out that source only. In the list *Windows events: never take these ids* it reads `1@Microsoft-Windows-Ntfs`; by hand part of the name is enough (`1@Ntfs`), any case. Below the field it says which entries apply to one source only. This only works when the message brings its source along - with NXLog with the configuration of this manual (JSON or the readable form); without it the message is kept. A notification rule for another source does not prevent leaving it out.
 
@@ -322,7 +322,7 @@ Under *Messages → Event rules* you set which messages go where - **apart from 
 
 **Good to know:**
 - The messages are in a **file of their own** (`data/events.sqlite`) - not in the database and not in the daily backups. They are kept 30 days in at most 2 GB (both under *Receiving settings*); whichever comes first counts, the oldest go first. When the disk gets short, at least 10 % (and 1 GB) stay free - the cleanup then starts earlier. The page shows the space used, the messages per day and how many days the space lasts; if it does not last for the days set, it says who sends the most.
-- At most 20 messages per second per sender, 300 in all (flood protection).
+- **Flood protection:** over UDP (and for traps) at most 100 messages a second per sender and 3,000 in all - what comes beyond is dropped and counted at the top of the page ("… dropped (flood)"). Over **TCP and TLS nothing is lost:** up to 500 a second per sender are taken, the rest waits - the connection pauses until the next second, NXLog or Fluent Bit keep the messages meanwhile. So use TCP for Windows computers and domain controllers. The limit in all can be changed with `WOMN_MESSAGES_PER_SECOND` in `.env` (100 to 100,000).
 - *Only from devices in the inventory* drops messages of other senders. Syslog over UDP can be forged - for alarms better use traps with a community of your own.
 - With failover every installation receives for itself: enter master **and** standby as targets in the devices.
 - SNMPv3 traps are not taken (yet).
@@ -370,6 +370,29 @@ For 90 days, three times as much. On top comes what WhatsOnMyNet keeps free anyw
 3. Not enough space: *By sender* shows who sends the most. Start there - chatty senders to *warning and worse* (domain controllers, firewalls), add the usual noise under *Receiving settings*. Only then raise *At most space (GB)* under *Receiving settings*.
 4. **Days:** 30 days cover everyday work (what happened last week?). To trace incidents later as well - an attack is often noticed only after weeks - take 90 days. The messages contain user and computer names: agree the time with data protection or the works council and keep them no longer than needed.
 5. The messages file is not in the daily backups - its size counts only once.
+
+### How many messages does the server take?
+
+New messages are written in batches: all that arrives in one moment, in one go. How many a second a server takes for good depends mostly on the disk (SSD or not) - the load test measures it on your hardware, next to the running program:
+
+```sh
+docker compose exec whatsonmynet womn-admin loadtest
+```
+
+It makes a test file of its own next to the data (`data/loadtest-…`, needs 3 GB free, removed at the end - your messages are not touched), sends Windows events over TCP as NXLog does, faster step by step (250, 500, 1,000 … a second, 6 seconds each), and stops as soon as the server no longer keeps up: messages are left lying, search index and counts fall behind, or the program has to wait longer than a quarter of a second for its turn. At the end it says what that means in computers and how much space a message takes. Example on a small server with 2 cores and an SSD:
+
+```
+  asked/s  stored/s  index behind  waits (p99)
+    4,000     3,949           380        18 ms
+    8,000     7,926         9,326        46 ms
+   16,000    15,710        16,041        73 ms
+   32,000    31,924        86,745       253 ms   ← no longer keeps up
+
+Kept up with 16,000 messages a second.
+For every day count half of it (logon peaks, cleanup, the web pages): 8,000 a second ...
+```
+
+Count half of it for every day - in the morning everybody signs in at once, and cleanup and web interface need their share too. Usually the **space** limits anyway, not the speed: a Windows computer sending everything takes a few MB a day. With very many computers (from about 1,000 sending everything) the events belong in a log platform such as Graylog, Wazuh or Elastic as well; WhatsOnMyNet then gets what matters (*warning and worse*, event rules).
 
 ## Printers, switches and NAS
 

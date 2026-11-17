@@ -9,8 +9,11 @@
 // Each installation keeps what it received itself (failover: send to both), in a file of its own (data/events.sqlite,
 // see db.js): kept 30 days, in at most 2 GB - and never so much that less than 10 % of the disk (at least 1 GB) is left.
 // Whatever comes first: the oldest messages go.
-// A flood (a device in a loop, or someone sending on purpose) is cut: at most 20 messages per second per sender and
-// 300 in all; text is cut to 4000 characters (a German failed sign-in 4625 is some 2000 - the reason is in its middle). UDP has no sender check - traps at least need a known community.
+// A flood (a device in a loop, or someone sending on purpose) is cut: at most 100 messages per second per sender over
+// UDP (and traps) and 3000 in all (WOMN_MESSAGES_PER_SECOND) - what goes beyond is dropped. Over TCP and TLS nothing is dropped: up to 500 a second
+// per sender are taken, the rest is held back - the connection pauses until the next second, the agent (NXLog, Fluent
+// Bit) keeps the messages meanwhile. Messages are written in batches (all that came in during one turn of the event
+// loop, in one transaction): a busy network costs a fraction of writing each message on its own. Text is cut to 4000 characters (a German failed sign-in 4625 is some 2000 - the reason is in its middle). UDP has no sender check - traps at least need a known community.
 import dgram from 'node:dgram';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,8 +34,10 @@ const PRUNE_PIECE = 10000;
 const FAR = '9999-12-31T23:59:59.999Z';
 const STATS_MS = 60 * 1000;
 const STATS_FRESH_MS = 15 * 1000;
-const PER_SENDER = 20;
-const PER_SECOND = 300;
+// (in all: WOMN_MESSAGES_PER_SECOND, default 3000)
+export const FLOOD = { perSender: 100, perSenderStream: 500, perSecond: config.messagesPerSecond, connectionsPerSender: 10 };
+// written at once at most (more waiting: written right away, not at the end of the turn)
+const BATCH_MAX = 2000;
 export const TEXT_MAX = 4000;
 const clip = (s, n) => String(s ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 
@@ -296,12 +301,14 @@ export function describeTrap(pdu) {
 
 // ---------------------------------------------------------------------------------------------- the service
 const MAX_CONNECTIONS = 200;
-const MAX_PER_SENDER = 10;
 const IDLE_MS = 60 * 60 * 1000;   // a device keeps its connection open; one silent for an hour is closed
 
-export function createEvents({ db, settings, tls: tlsSource = null, onEvent = () => {} }) {
-  const status = { traps: { on: false, port: config.trapPort, error: '' }, syslog: { on: false, port: config.syslogPort, error: '' },
-    syslogTcp: { on: false, port: config.syslogTcpPort, error: '', connections: 0 }, syslogTls: { on: false, port: config.syslogTlsPort, error: '', connections: 0 } };
+export function createEvents({ db, settings, tls: tlsSource = null, onEvent = () => {}, limits: floodOwn = {}, ports = {}, bind = config.bind }) {
+  // limits and ports of their own: only for the tests and the load test (womn-admin loadtest)
+  const flood = { ...FLOOD, ...floodOwn };
+  const port = { traps: ports.traps ?? config.trapPort, syslog: ports.syslog ?? config.syslogPort, syslogTcp: ports.syslogTcp ?? config.syslogTcpPort, syslogTls: ports.syslogTls ?? config.syslogTlsPort };
+  const status = { traps: { on: false, port: port.traps, error: '' }, syslog: { on: false, port: port.syslog, error: '' },
+    syslogTcp: { on: false, port: port.syslogTcp, error: '', connections: 0 }, syslogTls: { on: false, port: port.syslogTls, error: '', connections: 0 } };
   let trapRx = null; let sysSock = null; let tcpServer = null; let tlsServer = null;
   const conns = new Set();
   let skipped = 0;
@@ -344,22 +351,29 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     return index.get(ip) ?? null;
   };
   const counts = new Map(); let second = 0; let inSecond = 0; let dropped = 0;
-  const allowed = (ip) => {
+  // since the start: dropped by the flood protection (UDP, traps) / held back a moment (TCP, TLS - none lost)
+  let flooded = 0; let heldBack = 0; let lastFloodLog = 0;
+  /** May a message of this sender go in this second? stream: a TCP/TLS connection - it waits instead of being dropped */
+  const allowed = (ip, stream = false) => {
     const s = Math.floor(Date.now() / 1000);
     if (s !== second) {
-      if (dropped) log.warn(`Messages: ${dropped} dropped in one second (flood protection)`);
+      // said at most once a minute (a flood would fill the log too)
+      if (dropped && Date.now() - lastFloodLog > 60000) { log.warn(`Messages: ${dropped} dropped in one second (flood protection)`); lastFloodLog = Date.now(); }
       second = s; inSecond = 0; dropped = 0; counts.clear();
     }
-    const n = (counts.get(ip) || 0) + 1;
-    counts.set(ip, n);
-    if (n > PER_SENDER || ++inSecond > PER_SECOND) { dropped++; return false; }
+    const n = counts.get(ip) || 0;
+    if (n >= (stream ? flood.perSenderStream : flood.perSender) || inSecond >= flood.perSecond) {
+      if (stream) heldBack++; else { dropped++; flooded++; }
+      return false;
+    }
+    counts.set(ip, n + 1); inSecond++;
     return true;
   };
 
-  /** Stores one message (also used by the tests) → the stored row or null (dropped) */
-  function receive(kind, ip, ev, at = new Date()) {
+  /** The checks of one message → the row to write, or null (not taken). rated: the flood check was done already */
+  function accept(kind, ip, ev, at, rated = false) {
     const addr = String(ip || '').replace(/^::ffff:/, '');
-    if (!allowed(addr)) return null;
+    if (!rated && !allowed(addr)) return null;
     const device = deviceOf(addr);
     if (settings.get('events.onlyKnown') && !device) return null;
     if (!idWanted(ev.eventId, ev.app)) { filtered++; return null; }
@@ -368,10 +382,50 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const row = { at: at.toISOString(), kind, source_ip: addr, device_id: device, severity: Math.max(0, Math.min(7, Number(ev.severity) || 0)), facility: ev.facility ?? null,
       host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, TEXT_MAX) || '(empty)',
       event_id: Number.isInteger(ev.eventId) ? ev.eventId : null, channel: clip(ev.channel, 120), account: clip(ev.account, 120) };
-    row.id = insert.run(row.at, row.kind, row.source_ip, row.device_id, row.severity, row.facility, row.host, row.app, row.oid, row.text, row.event_id, row.channel, row.account).lastInsertRowid;
-    senderUp.run(row.source_ip, row.device_id, row.host, row.at, row.at, row.id);
-    receivedSince++;
-    try { onEvent(row); } catch (e) { log.warn(`Messages: ${e.message}`); }
+    return row;
+  }
+  /** Rows into the file in one transaction (one row per sender in the overview), then the rules and monitors */
+  const writeRows = db.transaction((rows) => {
+    const last = new Map();
+    for (const r of rows) {
+      r.id = insert.run(r.at, r.kind, r.source_ip, r.device_id, r.severity, r.facility, r.host, r.app, r.oid, r.text, r.event_id, r.channel, r.account).lastInsertRowid;
+      const l = last.get(r.source_ip);
+      // the first message of the batch for a new sender, the newest one for the rest; a name only fills in
+      last.set(r.source_ip, { first: l?.first ?? r.at, row: r, host: r.host || l?.host || '' });
+    }
+    for (const [ip, l] of last) senderUp.run(ip, l.row.device_id, l.host, l.first, l.row.at, l.row.id);
+  });
+  function write(rows) {
+    writeRows(rows);
+    receivedSince += rows.length;
+    for (const r of rows) { try { onEvent(r); } catch (e) { log.warn(`Messages: ${e.message}`); } }
+  }
+  // Waiting to be written: what came in during this turn of the event loop
+  let pending = []; let flushing = null; let writeFailedAt = 0;
+  function flush() {
+    if (flushing) { clearImmediate(flushing); flushing = null; }
+    if (!pending.length) return;
+    const rows = pending; pending = [];
+    try { write(rows); } catch (e) {
+      // the disk is full or the file is locked: these are lost - said once a minute, the receivers go on
+      if (Date.now() - writeFailedAt > 60000) { log.warn(`Messages: ${rows.length} could not be stored: ${e.message}`); writeFailedAt = Date.now(); }
+    }
+  }
+  /** A message of a receiver: checked now, written with the others of this turn */
+  function queue(kind, ip, ev, rated = false) {
+    const row = accept(kind, ip, ev, new Date(), rated);
+    if (!row) return;
+    pending.push(row);
+    if (pending.length >= BATCH_MAX) flush();
+    else if (!flushing) flushing = setImmediate(flush);
+  }
+
+  /** Stores one message right away (also used by the tests) → the stored row or null (dropped) */
+  function receive(kind, ip, ev, at = new Date()) {
+    flush();
+    const row = accept(kind, ip, ev, at);
+    if (!row) return null;
+    write([row]);
     return row;
   }
 
@@ -385,22 +439,22 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   function startTraps() {
     status.traps.error = '';
     try {
-      trapRx = snmp.createReceiver({ port: config.trapPort, address: config.bind || null, transport: 'udp4', includeAuthentication: true }, (err, n) => {
+      trapRx = snmp.createReceiver({ port: port.traps, address: bind || null, transport: 'udp4', includeAuthentication: true }, (err, n) => {
         if (err) {
           // a port that cannot be opened, or a trap with an unknown community (ignored)
           if (/EACCES|EADDRINUSE|EADDRNOTAVAIL/.test(`${err.code} ${err.message}`)) {
             status.traps.on = false;
-            status.traps.error = err.code === 'EADDRINUSE' ? `port ${config.trapPort} is in use` : err.code === 'EACCES' ? `port ${config.trapPort} not allowed without root - use 1162 and a redirect` : err.message;
+            status.traps.error = err.code === 'EADDRINUSE' ? `port ${port.traps} is in use` : err.code === 'EACCES' ? `port ${port.traps} not allowed without root - use 1162 and a redirect` : err.message;
             log.warn(`SNMP traps: ${status.traps.error}`);
           } else log.debug(`SNMP trap refused: ${err.message}`);
           return;
         }
         const d = describeTrap(n.pdu);
-        receive('trap', n.rinfo?.address, { severity: d.severity, oid: d.oid, app: d.name, text: d.text });
+        queue('trap', n.rinfo?.address, { severity: d.severity, oid: d.oid, app: d.name, text: d.text });
       });
       for (const c of communities()) trapRx.getAuthorizer().addCommunity(c);
       status.traps.on = true;
-      log.info(`SNMP traps: listening on UDP ${config.trapPort}`);
+      log.info(`SNMP traps: listening on UDP ${port.traps}`);
     } catch (e) { status.traps.error = e.message; log.warn(`SNMP traps: ${e.message}`); }
   }
   function startSyslog() {
@@ -408,16 +462,17 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     sysSock = dgram.createSocket('udp4');
     sysSock.on('error', (e) => {
       status.syslog.on = false;
-      status.syslog.error = e.code === 'EADDRINUSE' ? `port ${config.syslogPort} is in use` : e.code === 'EACCES' ? `port ${config.syslogPort} not allowed without root - use 1514 and a redirect` : e.message;
+      status.syslog.error = e.code === 'EADDRINUSE' ? `port ${port.syslog} is in use` : e.code === 'EACCES' ? `port ${port.syslog} not allowed without root - use 1514 and a redirect` : e.message;
       log.warn(`Syslog: ${status.syslog.error}`);
       try { sysSock.close(); } catch { /* closed */ }
       sysSock = null;
     });
     sysSock.on('message', (buf, rinfo) => {
-      const ev = parseSyslog(buf);
-      receive('syslog', rinfo.address, ev);
+      // the flood check first: a flood is not even parsed
+      if (!allowed(String(rinfo.address || '').replace(/^::ffff:/, ''))) return;
+      queue('syslog', rinfo.address, parseSyslog(buf), true);
     });
-    sysSock.bind(config.syslogPort, config.bind || undefined, () => { status.syslog.on = true; log.info(`Syslog: listening on UDP ${config.syslogPort}`); });
+    sysSock.bind(port.syslog, bind || undefined, () => { status.syslog.on = true; status.syslog.port = sysSock.address().port; log.info(`Syslog: listening on UDP ${status.syslog.port}`); });
   }
   /** One TCP or TLS listener for syslog: framing, limits per sender and in all, idle timeout */
   function streamServer(kind, server) {
@@ -433,17 +488,31 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const accept = (sock) => {
       const ip = String(sock.remoteAddress || '').replace(/^::ffff:/, '');
       const same = [...conns].filter((c) => c.ip === ip).length;
-      if (same >= MAX_PER_SENDER) { sock.destroy(); return; }
+      if (same >= flood.connectionsPerSender) { sock.destroy(); return; }
       const c = { ip, sock, kind };
       conns.add(c); st.connections++;
       sock.setTimeout(IDLE_MS, () => sock.destroy());
-      const feed = syslogFramer((frame) => receive('syslog', ip, parseSyslog(frame)), () => { skipped++; log.debug(`Syslog: a message from ${ip} longer than ${MAX_FRAME} bytes was skipped`); });
-      sock.on('data', (d) => { if (!feed(d)) sock.destroy(); });
+      // Above the limit a message waits (in order) and the connection pauses until the next second: the agent keeps
+      // the rest meanwhile - TCP loses nothing, it only comes a little later
+      const held = []; let waiting = null;
+      const take = (frame) => queue('syslog', ip, parseSyslog(frame), true);
+      const pass = (frame) => { if (held.length || !allowed(ip, true)) held.push(frame); else take(frame); };
+      const wait = () => { if (!waiting && !sock.destroyed) { sock.pause(); waiting = setTimeout(drain, 1005 - (Date.now() % 1000)); } };
+      const drain = () => {
+        waiting = null;
+        while (held.length && allowed(ip, true)) take(held.shift());
+        if (held.length) wait(); else if (!sock.destroyed) sock.resume();
+      };
+      const feed = syslogFramer(pass, () => { skipped++; log.debug(`Syslog: a message from ${ip} longer than ${MAX_FRAME} bytes was skipped`); });
+      sock.on('data', (d) => {
+        if (!feed(d)) { sock.destroy(); return; }
+        if (held.length) wait();
+      });
       sock.on('error', () => {});
-      sock.on('close', () => { conns.delete(c); st.connections--; });
+      sock.on('close', () => { clearTimeout(waiting); held.length = 0; conns.delete(c); st.connections--; });
     };
     server.on(kind === 'syslogTls' ? 'secureConnection' : 'connection', accept);
-    server.listen(st.port, config.bind || undefined, () => { st.on = true; log.info(`Syslog ${kind === 'syslogTls' ? 'TLS' : 'TCP'}: listening on ${st.port}`); });
+    server.listen(st.port, bind || undefined, () => { st.on = true; st.port = server.address().port; log.info(`Syslog ${kind === 'syslogTls' ? 'TLS' : 'TCP'}: listening on ${st.port}`); });
     return server;
   }
   function tlsOptions() {
@@ -467,6 +536,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   }
 
   function stopAll() {
+    flush();
     if (trapRx) { try { trapRx.close(); } catch { /* closed */ } trapRx = null; }
     if (sysSock) { try { sysSock.close(); } catch { /* closed */ } sysSock = null; }
     for (const srv of [tcpServer, tlsServer]) if (srv) { try { srv.close(); } catch { /* closed */ } }
@@ -522,13 +592,15 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   const countAddHour = db.prepare(`INSERT INTO events_hour_id(hour, event_id, n)
     SELECT CAST(strftime('%s', at) AS INTEGER) / 3600, event_id, COUNT(*) FROM events_in WHERE id > ? AND id <= ? AND event_id IS NOT NULL GROUP BY 1, 2
     ON CONFLICT(hour, event_id) DO UPDATE SET n = n + excluded.n`);
+  const countAddDay = db.prepare(`INSERT OR IGNORE INTO events_day_src(event_id, app, day, source_ip)
+    SELECT DISTINCT event_id, app, CAST(strftime('%s', at) AS INTEGER) / 86400, source_ip FROM events_in WHERE id > ? AND id <= ? AND event_id IS NOT NULL`);
   const countSet = db.prepare("UPDATE events_fts_state SET v = ? WHERE k = 'counted'");
   /** One batch into the counts; how many ids are left above them */
   function countBatch(max = COUNT_BATCH) {
     const done = counted(); const top = ftsTop.get() || 0;
     if (top <= done) return 0;
     const to = Math.min(top, done + max);
-    db.transaction(() => { countAddMin.run(done, to); countAddHours.run(done, to); countAddHour.run(done, to); countSet.run(to); })();
+    db.transaction(() => { countAddMin.run(done, to); countAddHours.run(done, to); countAddHour.run(done, to); countAddDay.run(done, to); countSet.run(to); })();
     return top - to;
   }
   let ftsTimer = null; let ftsRunning = false; let ftsStart = null;
@@ -715,38 +787,88 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     if (hiIso < toIso) parts.push({ src: 'events_in e INDEXED BY events_in_at', sql: 'e.at >= ? AND e.at < ?', args: [hiIso, toIso] });
     return parts;
   }
-  /** Messages since a time per sender (n, warnings, errors) - from the counts, the cut minute and the newest from the messages */
+  /** Messages since a time per sender (n, warnings, errors) - whole hours from the hour counts (a minute row per sender
+   * and minute would be millions with thousands of senders), the minutes up to the first whole hour, the cut minute
+   * and the newest from the messages */
   function countSince(sinceMs) {
     const m = Math.ceil(sinceMs / 60000);
+    const h = Math.ceil(m / 60);
     const out = new Map();
     const add = (r) => { const x = out.get(r.source_ip) || { source_ip: r.source_ip, n: 0, warn: 0, err: 0 }; x.n += r.n; x.warn += r.warn; x.err += r.err; out.set(r.source_ip, x); };
-    db.prepare(`SELECT source_ip, SUM(n) n, SUM(CASE WHEN severity <= 4 THEN n ELSE 0 END) warn, SUM(CASE WHEN severity <= 3 THEN n ELSE 0 END) err
-      FROM events_minute WHERE minute >= ? GROUP BY source_ip`).all(m).forEach(add);
+    const sums = 'source_ip, SUM(n) n, SUM(CASE WHEN severity <= 4 THEN n ELSE 0 END) warn, SUM(CASE WHEN severity <= 3 THEN n ELSE 0 END) err';
+    db.prepare(`SELECT ${sums} FROM events_hour WHERE hour >= ? GROUP BY source_ip`).all(h).forEach(add);
+    db.prepare(`SELECT ${sums} FROM events_minute WHERE minute >= ? AND minute < ? GROUP BY source_ip`).all(m, h * 60).forEach(add);
     for (const p of notCounted(new Date(sinceMs).toISOString(), new Date(m * 60000).toISOString(), FAR, FAR)) {
       db.prepare(`SELECT source_ip, COUNT(*) n, SUM(severity <= 4) warn, SUM(severity <= 3) err FROM ${p.src} WHERE ${p.sql} GROUP BY source_ip`).all(...p.args).forEach(add);
     }
     return out;
   }
+  // One row per sender - without the text of its newest message (thousands of senders: only the page shown gets it)
   let sendersCache = null; let sendersAt = 0;
-  function senders({ q = '', fresh = false } = {}) {
+  function senderRows(fresh = false) {
     // counted again at most every 5 seconds while messages come in (the 24 hours are not free on a busy network)
     if (fresh || !sendersCache || Date.now() - sendersAt > (receivedSince ? 5000 : STATS_MS)) {
       const day = countSince(Date.now() - 86400000);
-      sendersCache = db.prepare(`SELECT s.source_ip, s.device_id, s.host, s.first_at, s.last_at, d.name device_name, d.type device_type,
-          e.severity last_severity, e.app last_app, e.event_id last_event_id, e.text last_text
-        FROM event_senders s LEFT JOIN devices d ON d.id = s.device_id LEFT JOIN events_in e ON e.id = s.last_id ORDER BY s.last_at DESC`).all()
+      const list = db.prepare(`SELECT s.source_ip, s.device_id, s.host, s.first_at, s.last_at, s.last_id, d.name device_name, d.type device_type
+        FROM event_senders s LEFT JOIN devices d ON d.id = s.device_id ORDER BY s.last_at DESC`).all()
         .map((r) => { const x = day.get(r.source_ip) || {}; return { ...r, day: x.n || 0, warn: x.warn || 0, err: x.err || 0 }; });
       // a muted sender has nothing stored - it stays in the list all the same, or it could never be unmuted
-      const have = new Set(sendersCache.map((r) => r.source_ip));
-      for (const f of db.prepare('SELECT f.source_ip, d.id device_id, d.name device_name FROM event_source_filters f LEFT JOIN devices d ON d.ip = f.source_ip').all()) {
-        if (!have.has(f.source_ip)) sendersCache.push({ source_ip: f.source_ip, device_id: f.device_id, host: '', first_at: null, last_at: null, device_name: f.device_name, day: 0, warn: 0, err: 0 });
+      const have = new Set(list.map((r) => r.source_ip));
+      for (const f of db.prepare('SELECT f.source_ip, d.id device_id, d.name device_name, d.type device_type FROM event_source_filters f LEFT JOIN devices d ON d.ip = f.source_ip').all()) {
+        if (!have.has(f.source_ip)) list.push({ source_ip: f.source_ip, device_id: f.device_id, host: '', first_at: null, last_at: null, last_id: null, device_name: f.device_name, device_type: f.device_type, day: 0, warn: 0, err: 0 });
       }
-      sendersAt = Date.now();
+      sendersCache = list; sendersAt = Date.now();
     }
     const filters = new Map(db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((r) => [r.source_ip, r.min_severity]));
-    sendersCache = sendersCache.map((r) => ({ ...r, filter: filters.has(r.source_ip) ? filters.get(r.source_ip) : null, dropped: droppedBy.get(r.source_ip) || 0 }));
+    return sendersCache.map((r) => ({ ...r, filter: filters.has(r.source_ip) ? filters.get(r.source_ip) : null, dropped: droppedBy.get(r.source_ip) || 0 }));
+  }
+  /** The newest message of each of these senders (severity, source, id, text) */
+  function withLast(rows) {
+    const ids = rows.map((r) => r.last_id).filter((x) => x !== null && x !== undefined);
+    const last = new Map();
+    for (let i = 0; i < ids.length; i += 500) {
+      const part = ids.slice(i, i + 500);
+      for (const e of db.prepare(`SELECT id, severity, app, event_id, text FROM events_in WHERE id IN (${part.map(() => '?').join(',')})`).all(...part)) last.set(e.id, e);
+    }
+    return rows.map((r) => { const e = last.get(r.last_id) || {}; return { ...r, last_severity: e.severity ?? null, last_app: e.app ?? null, last_event_id: e.event_id ?? null, last_text: e.text ?? null }; });
+  }
+  const matchesQ = (r, n) => !n || [r.source_ip, r.host, r.device_name].some((v) => String(v || '').toLowerCase().includes(n));
+  // quick filters of the overview: errors / warnings in the last 24 hours, silent for 24 hours, with a filter of its own
+  const SHOW = {
+    err: (r) => r.err > 0,
+    warn: (r) => r.warn - r.err > 0,
+    silent: (r) => r.day === 0,
+    filter: (r) => r.filter !== null && r.filter !== undefined,
+  };
+  const SORT = {
+    last: (a, b) => String(b.last_at || '').localeCompare(String(a.last_at || '')),
+    day: (a, b) => b.day - a.day || String(b.last_at || '').localeCompare(String(a.last_at || '')),
+    name: (a, b) => String(a.device_name || a.host || a.source_ip).localeCompare(String(b.device_name || b.host || b.source_ip), undefined, { numeric: true, sensitivity: 'base' }),
+  };
+  /** All senders (q filters names and addresses), each with its newest message - for few senders and the tests */
+  function senders({ q = '', fresh = false } = {}) {
     const n = String(q || '').trim().toLowerCase().slice(0, 100);
-    return n ? sendersCache.filter((r) => [r.source_ip, r.host, r.device_name].some((v) => String(v || '').toLowerCase().includes(n))) : sendersCache;
+    return withLast(senderRows(fresh).filter((r) => matchesQ(r, n)));
+  }
+  /**
+   * The overview by sender, a page at a time (10 000 computers are no list to scroll through): q, a quick filter
+   * (show), the type of device ('-' = not in the inventory), the order; how many there are for each quick filter and type.
+   */
+  function senderPage({ q = '', show = '', type = '', sort = 'last', offset = 0, limit = 100, fresh = false } = {}) {
+    const n = String(q || '').trim().toLowerCase().slice(0, 100);
+    const all = senderRows(fresh);
+    const found = all.filter((r) => matchesQ(r, n));
+    const counts = { all: found.length };
+    for (const [k, f] of Object.entries(SHOW)) counts[k] = found.filter(f).length;
+    const byType = new Map();
+    for (const r of found) { const k = r.device_type || '-'; byType.set(k, (byType.get(k) || 0) + 1); }
+    let list = SHOW[show] ? found.filter(SHOW[show]) : found;
+    if (type) list = list.filter((r) => (r.device_type || '-') === String(type));
+    list = [...list].sort(SORT[sort] || SORT.last);
+    const from = Math.max(0, Math.floor(Number(offset) || 0));
+    const size = Math.max(1, Math.min(500, Math.floor(Number(limit) || 100)));
+    return { senders: withLast(list.slice(from, from + size)), total: list.length, all: all.length, offset: from, counts,
+      types: [...byType].map(([k, c]) => ({ type: k, n: c })).sort((a, b) => b.n - a.n) };
   }
 
   // ------------------------------------------------------------------------------------------- space and age
@@ -799,6 +921,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       db.prepare('DELETE FROM events_minute WHERE minute < ? AND n <= 0').run(Math.floor(firstMs / 60000) + 1);
       db.prepare('DELETE FROM events_hour WHERE hour < ? AND n <= 0').run(Math.floor(firstMs / 3600000) + 1);
       db.prepare('DELETE FROM events_hour_id WHERE hour < ? AND n <= 0').run(Math.floor(firstMs / 3600000) + 1);
+      // who sent what: the days before the oldest message
+      db.prepare('DELETE FROM events_day_src WHERE day < ?').run(Math.floor(firstMs / 86400000));
       // a sender whose messages are all gone leaves the overview too
       db.prepare('DELETE FROM event_senders WHERE last_id < COALESCE((SELECT MIN(id) FROM events_in), 9e18)').run();
       try { db.pragma('ev.incremental_vacuum'); } catch { /* an older file without auto-vacuum keeps its pages for reuse */ }
@@ -847,24 +971,45 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       // a source of the period that is not among the newest 500 has no example: it goes with the rest
       for (const [app, m] of split) if (m > 0) entries.push({ id, app, n: m, rows: apps.get(app) || [], estimated });
     }
+    // how many computers sent it in the period: exact, from the day table (whole days - the first day of the period
+    // counts whole) and what is newer than the counts
+    const day0 = Math.floor(sinceMs / 86400000);
+    const fromCounts = db.prepare(`SELECT COUNT(*) FROM (SELECT source_ip FROM events_day_src WHERE event_id = ? AND day >= ?
+      UNION SELECT source_ip FROM events_in NOT INDEXED WHERE id > ? AND event_id = ?)`).pluck();
+    const fromCountsApp = db.prepare(`SELECT COUNT(*) FROM (SELECT source_ip FROM events_day_src WHERE event_id = ? AND app = ? AND day >= ?
+      UNION SELECT source_ip FROM events_in NOT INDEXED WHERE id > ? AND event_id = ? AND COALESCE(app, '') = ?)`).pluck();
+    const splitIds = new Set(entries.map((e) => e.id).filter((id, i, all) => all.indexOf(id) !== i));
     const events = entries.sort((a, b) => b.n - a.n).slice(0, top).map(({ id, app, n, rows, estimated }) => {
       const ex = rows[0] || {};
       const who = new Map();
       for (const r of rows) { const k = r.host || names.get(r.source_ip) || r.source_ip; who.set(k, (who.get(k) || 0) + 1); }
+      const done = counted();
+      const computers = Math.max(who.size, splitIds.has(id) ? fromCountsApp.get(id, app, day0, done, id, app) : fromCounts.get(id, day0, done, id));
       const avg = rows.length ? rows.reduce((a, r) => a + r.len, 0) / rows.length : avgAll;
       const perDay = n / d;
       return { id, app, n, estimated, perDay: Math.round(perDay), share: total ? Math.round((n / total) * 1000) / 10 : 0,
         bytes: Math.round(perDay * keepDays * perRow * (avg / avgAll)),
         worst: rows.length ? Math.min(...rows.map((r) => r.severity)) : null,
-        senders: [...who].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name), moreSenders: Math.max(0, who.size - 3),
+        senders: [...who].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name), moreSenders: Math.max(0, computers - Math.min(3, who.size)), computers,
         example: { host: ex.host || names.get(ex.source_ip) || ex.source_ip || '', app: ex.app || app || '', channel: ex.channel || '', text: String(ex.text || '').slice(0, 300) } };
     });
     const filters = new Map(db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((r) => [r.source_ip, r.min_severity]));
-    const senders = perSender.filter((r) => r.n > 0).sort((a, b) => b.n - a.n).slice(0, 15).map((r) => ({
+    const busy = perSender.filter((r) => r.n > 0).sort((a, b) => b.n - a.n);
+    const senders = busy.slice(0, 15).map((r) => ({
       source_ip: r.source_ip, name: names.get(r.source_ip) || '', filter: filters.has(r.source_ip) ? filters.get(r.source_ip) : null, n: r.n, perDay: Math.round(r.n / d),
       share: total ? Math.round((r.n / total) * 1000) / 10 : 0, info: r.n ? Math.round(((r.n - r.warn) / r.n) * 100) : 0,
       bytes: Math.round((r.n / d) * keepDays * perRow) }));
-    return { days: d, total, perDay: Math.round(total / d), keepDays, used: st.used, events, senders };
+    // the senders below the 15 together - with thousands of computers most of the space can be there
+    const restList = busy.slice(15); const restN = restList.reduce((a, r) => a + r.n, 0);
+    const rest = restList.length ? { senders: restList.length, n: restN, perDay: Math.round(restN / d), share: total ? Math.round((restN / total) * 1000) / 10 : 0,
+      bytes: Math.round((restN / d) * keepDays * perRow) } : null;
+    // by type of device (from the inventory): are it the clients, the servers or a NAS?
+    const typeOf = new Map(db.prepare('SELECT s.source_ip, d.type FROM event_senders s LEFT JOIN devices d ON d.id = s.device_id').all().map((r) => [r.source_ip, r.type || '']));
+    const g = new Map();
+    for (const r of busy) { const k = typeOf.get(r.source_ip) || '-'; const x = g.get(k) || { type: k, senders: 0, n: 0 }; x.senders++; x.n += r.n; g.set(k, x); }
+    const groups = [...g.values()].sort((a, b) => b.n - a.n).map((x) => ({ ...x, perDay: Math.round(x.n / d), share: total ? Math.round((x.n / total) * 1000) / 10 : 0,
+      bytes: Math.round((x.n / d) * keepDays * perRow) }));
+    return { days: d, total, perDay: Math.round(total / d), keepDays, used: st.used, events, senders, senderCount: busy.length, rest, groups };
   }
 
   // How the space goes: for the page (cached a minute - counting a few million rows is not free; once new messages
@@ -906,7 +1051,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   let pruneTimer = null; let pruneSoon = null;
 
   return {
-    receive, list, histogram, senders, prune, apply, communities,
+    receive, queue, flush, list, histogram, senders, senderPage, prune, apply, communities,
     /** What is kept of one sender: min severity 0-7, -1 muted, null = as for all */
     setSenderFilter(ip, min, by = '') {
       const a = String(ip || '').trim().slice(0, 64);
@@ -917,7 +1062,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       sevFilter = null; sendersCache = null;
     },
     reloadTls, indexBatch, countBatch, indexPump, indexStatus, noise,
-    status: () => ({ searchIndex: indexStatus(), counts: countStatus(), traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, filtered, total: storage().total,
+    status: () => ({ searchIndex: indexStatus(), counts: countStatus(), traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, filtered, flooded, heldBack, perSecond: flood.perSecond, total: storage().total,
       last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null, storage: storage() }),
     storage,
     /** Receivers as set, and the cleanup every 10 minutes (the limit holds between the daily rounds too) */

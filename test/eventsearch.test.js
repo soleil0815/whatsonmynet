@@ -126,12 +126,12 @@ test('a file from before the update: indexed in the background, found all the ti
   const db0 = openDatabase(path.join(dir, 'whatsonmynet.sqlite'));
   db0.close();
   const f = new Database(path.join(dir, 'events.sqlite'));
-  f.exec('DROP TRIGGER events_counts_gone; DROP TRIGGER events_counts_changed; DROP TABLE events_minute; DROP TABLE events_hour; DROP TABLE events_hour_id; DROP TRIGGER events_fts_gone; DROP TRIGGER events_fts_changed; DROP TABLE events_fts; DROP TABLE events_fts_state; DROP INDEX events_in_event; PRAGMA user_version = 3;');
+  f.exec('DROP TRIGGER events_counts_gone; DROP TRIGGER events_counts_changed; DROP TABLE events_minute; DROP TABLE events_hour; DROP TABLE events_hour_id; DROP TRIGGER events_fts_gone; DROP TRIGGER events_fts_changed; DROP TABLE events_fts; DROP TABLE events_fts_state; DROP INDEX events_in_event; DROP TABLE events_day_src; PRAGMA user_version = 3;');
   const ins0 = f.prepare("INSERT INTO events_in(at,kind,source_ip,severity,text) VALUES(?, 'syslog', '10.0.10.5', 6, ?)");
   f.transaction(() => { for (let i = 0; i < 12000; i++) ins0.run(new Date(Date.now() - (12000 - i) * 60000).toISOString(), i === 10 ? 'Kennwort abgelaufen m.muster' : `Meldung ${i}`); })();
   f.close();
   const db = openDatabase(path.join(dir, 'whatsonmynet.sqlite'));
-  assert.equal(db.pragma('ev.user_version', { simple: true }), 5);
+  assert.equal(db.pragma('ev.user_version', { simple: true }), 6);
   const ev = createEvents({ db, settings: createSettings(db) });
   assert.equal(done(db), 0, 'nothing indexed yet');
   assert.equal(ev.indexStatus().building, false, '12 000 are not a build worth a note');

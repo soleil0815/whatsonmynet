@@ -1,6 +1,6 @@
 #!/bin/sh
 # Emergency access from the Docker host (see README, "Locked out?"):
-#   docker compose exec whatsonmynet womn-admin list | reset <name> | create <name>
+#   docker compose exec whatsonmynet womn-admin list | reset <name> | create <name> | loadtest
 # "docker compose exec" runs as root – switch to PUID/PGID first, so no file in ./data ever belongs to root.
 set -e
 umask 077

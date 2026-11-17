@@ -180,6 +180,7 @@ input.mono { font-family: var(--mono); }
 .task-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .task-reason { margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9em; overflow: auto; }
 .bad-text { color: var(--bad); }
+.warn-text { color: var(--new); }
 .dup-list li { margin: 4px 0; }
 .panel > h2:not(.section-title), .panel-head { padding: 16px 20px 0; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }

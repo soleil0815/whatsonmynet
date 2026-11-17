@@ -13,7 +13,7 @@ process.env.WOMN_SYSLOG_TCP_PORT = String(await freePort());
 process.env.WOMN_SYSLOG_TLS_PORT = String(await freePort());
 const { memoryDb, tmp } = await import('./helpers.js');
 const { createSettings } = await import('../src/settings.js');
-const { createEvents, syslogFramer } = await import('../src/events.js');
+const { createEvents, syslogFramer, FLOOD } = await import('../src/events.js');
 
 const key = path.join(tmp, 'sl.key'); const crt = path.join(tmp, 'sl.crt');
 execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-keyout', key, '-out', crt, '-days', '2', '-subj', '/CN=womn.firma.local',
@@ -101,4 +101,51 @@ test('switched off: ports closed, connections ended', async () => {
   await wait(100);
   assert.deepEqual([ev.status().syslogTcp.on, ev.status().syslogTls.on], [false, false]);
   await assert.rejects(new Promise((r, j) => { const s = net.connect(Number(process.env.WOMN_SYSLOG_TCP_PORT), '127.0.0.1', r); s.once('error', j); }));
+});
+
+test('TCP: above the limit a sender is held back, not dropped - all come, in order, a little later', async () => {
+  const d2 = memoryDb(); const s2 = createSettings(d2);
+  s2.set('events.syslogTcp', true);
+  const seen = [];
+  const e2 = createEvents({ db: d2, settings: s2, limits: { perSenderStream: 30 }, ports: { syslogTcp: 0 }, bind: '127.0.0.1', onEvent: (r) => seen.push(r.id) });
+  e2.apply();
+  for (let i = 0; i < 40 && !e2.status().syslogTcp.on; i++) await wait(25);
+  const c = net.connect(e2.status().syslogTcp.port, '127.0.0.1');
+  await new Promise((r) => c.once('connect', r));
+  const t0 = Date.now();
+  c.write(Array.from({ length: 100 }, (_, i) => `<14>pc01 app: message ${i}\n`).join(''));
+  const got = () => d2.prepare('SELECT text FROM events_in ORDER BY id').pluck().all();
+  for (let i = 0; i < 120 && got().length < 100; i++) await wait(50);
+  c.end(); e2.stop();
+  assert.deepEqual(got(), Array.from({ length: 100 }, (_, i) => `message ${i}`), 'all of them, in order');
+  assert.ok(Date.now() - t0 >= 2000, 'spread over the seconds (30 a second)');
+  assert.ok(e2.status().heldBack > 0);
+  assert.equal(e2.status().flooded, 0, 'none dropped');
+  // the rules and monitors saw each message once, after it was written (with its id)
+  assert.equal(seen.length, 100); assert.ok(seen.every((id) => id > 0));
+  assert.equal(new Set(seen).size, 100);
+  assert.equal(FLOOD.perSenderStream, 500);
+});
+
+test('messages of one turn are written together: one row per sender, the newest message and the first time', () => {
+  const d3 = memoryDb(); const s3 = createSettings(d3);
+  const e3 = createEvents({ db: d3, settings: s3 });
+  const t = d3.prepare('SELECT total_changes()').pluck();
+  e3.queue('syslog', '10.0.10.5', { severity: 6, host: 'PC-0005', app: 'a', text: 'one' });
+  e3.queue('syslog', '10.0.10.5', { severity: 4, host: '', app: 'a', text: 'two' });
+  e3.queue('syslog', '10.0.10.6', { severity: 6, host: 'PC-0006', app: 'b', text: 'three' });
+  assert.equal(d3.prepare('SELECT COUNT(*) FROM events_in').pluck().get(), 0, 'not yet - at the end of the turn');
+  const before = t.get();
+  e3.flush();
+  assert.equal(d3.prepare('SELECT COUNT(*) FROM events_in').pluck().get(), 3);
+  assert.ok(t.get() - before <= 6, 'three messages and two senders');
+  const s = d3.prepare('SELECT source_ip, host, last_id, first_at FROM event_senders ORDER BY source_ip').all();
+  const ids = d3.prepare('SELECT id, text FROM events_in ORDER BY id').all();
+  assert.deepEqual(s.map((r) => [r.source_ip, r.host, r.last_id]), [['10.0.10.5', 'PC-0005', ids[1].id], ['10.0.10.6', 'PC-0006', ids[2].id]]);
+  assert.ok(s[0].first_at);
+  // receive() still writes at once (and what is waiting before it)
+  e3.queue('syslog', '10.0.10.7', { severity: 6, text: 'waiting' });
+  e3.receive('syslog', '10.0.10.7', { severity: 6, text: 'now' });
+  assert.deepEqual(d3.prepare('SELECT text FROM events_in WHERE source_ip = ? ORDER BY id').pluck().all('10.0.10.7'), ['waiting', 'now']);
+  e3.stop();
 });

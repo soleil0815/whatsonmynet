@@ -52,6 +52,8 @@ export const config = {
   dataDir: path.resolve(process.env.WOMN_DATA_DIR || '/data'),
   logLevel: process.env.WOMN_LOG_LEVEL || 'info',
   sessionHours: Math.min(720, Math.max(1, Number(process.env.WOMN_SESSION_HOURS) || 12)),
+  // messages taken a second in all (flood protection; womn-admin loadtest says what the server can do): 100-100 000
+  messagesPerSecond: Math.min(100000, Math.max(100, Math.round(Number(process.env.WOMN_MESSAGES_PER_SECOND) || 3000))),
   composeVersion: Number(process.env.WOMN_COMPOSE_VERSION || 0),
   publicDir: path.join(here, '..', 'public'),
 };
