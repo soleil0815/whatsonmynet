@@ -125,7 +125,8 @@ test('one number from two sources: two rows; leaving out one source keeps the ot
   assert.equal((await call('POST', '/api/events/noise/deny', { id: 1, src: 'microsoft-windows-ntfs' })).data.winDeny, r.data.winDeny, 'not twice');
   assert.match(ctx.db.prepare("SELECT detail FROM audit WHERE action='events.settings' ORDER BY id DESC LIMIT 1").pluck().get(), /event 1 of Microsoft-Windows-Ntfs/);
   d = (await call('GET', '/api/events/noise?days=7')).data;
-  assert.deepEqual(d.events.filter((e) => e.id === 1).map((e) => [e.app, e.denied]), [['Microsoft-Windows-Ntfs', true], ['Microsoft-Windows-Sysmon', false]]);
+  // (the one left out goes to the end, apart)
+  assert.deepEqual(d.events.filter((e) => e.id === 1).map((e) => [e.app, e.denied]), [['Microsoft-Windows-Sysmon', false], ['Microsoft-Windows-Ntfs', true]]);
   // new ones: 1 of Ntfs no longer kept, 1 of Sysmon still
   assert.equal(ctx.events.receive('syslog', '10.0.10.14', { severity: 6, text: 'x', eventId: 1, app: 'Microsoft-Windows-Ntfs' }), null);
   assert.ok(ctx.events.receive('syslog', '10.0.10.14', { severity: 4, text: 'y', eventId: 1, app: 'Microsoft-Windows-Sysmon' }));
@@ -216,4 +217,25 @@ test('by sender a page at a time: quick filters, type of device, order, the next
   assert.deepEqual(named.senders.map((x) => x.host), ['PC-0000', 'PC-0001', 'PC-0002']);
   // nonsense is ignored, never an error
   assert.equal((await call('GET', '/api/events/senders?show=x&sort=y&offset=-5&limit=99999', undefined, { who: 'editor' })).status, 200);
+});
+
+test('left out already: at the end, apart, with the day it is gone; the figure of what goes by itself', async () => {
+  // 59 goes into the list "never take" - its older messages are still stored
+  ctx.settings.set('events.winDeny', `${ctx.settings.get('events.winDeny')}, 59`);
+  // the newest one came just before it was left out (ids grow with the time, as when they arrive)
+  ins.run(ago(0), '10.0.10.11', 6, 'PC-0011', 'Microsoft-Windows-RemoteDesktopServices-RdpCoreTS', 'Application', 'RpcGetCurrentSessionCapabilities', 59);
+  const d = (await call('GET', '/api/events/noise?days=7', undefined, { who: 'editor' })).data;
+  const i59 = d.events.findIndex((e) => e.id === 59);
+  assert.ok(i59 >= 0);
+  assert.ok(d.events.slice(0, i59).every((e) => !e.denied) && d.events.slice(i59).every((e) => e.denied), 'the left-out ones last');
+  const e59 = d.events[i59];
+  assert.ok(d.events.some((e) => !e.denied && e.n < e59.n), 'though bigger than some of the others');
+  const keep = d.keepDays;
+  const newest = db.prepare('SELECT MAX(at) FROM events_in WHERE event_id = 59').pluck().get();
+  assert.equal(e59.goneBy, new Date(Date.parse(newest) + keep * 86400000).toISOString());
+  assert.equal(d.deniedPerDay, Math.round(d.events.filter((e) => e.denied).reduce((a, e) => a + e.n, 0) / 7));
+  assert.equal(d.events.filter((e) => !e.denied).every((e) => e.goneBy === null), true);
+  // the question for the AI chat leaves them out
+  const txt = (await call('GET', '/api/events/noise/text?days=7&lang=de', undefined, { who: 'editor' })).data.text;
+  assert.doesNotMatch(txt, /^- 59/m);
 });

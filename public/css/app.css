@@ -877,6 +877,10 @@ td.nowrap { white-space: nowrap; }
 .ev-share { display: inline-block; width: 60px; height: 6px; border-radius: 3px; background: var(--line); vertical-align: middle; overflow: hidden; }
 .ev-share > span { display: block; height: 100%; background: var(--accent); }
 .ev-noise td { vertical-align: top; }
-.ev-noise .ev-noise-text { max-width: 36ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-noise .ev-noise-text { max-width: 30ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-noise .ev-noise-act .btn { white-space: nowrap; }
+/* "What takes the space?": room for the buttons next to the figures (they were cut off at the right) */
+dialog.modal.wide:has(.ev-noise) { width: min(980px, calc(100vw - 24px)); }
+.ev-noise-gone > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
 .ev-noise .num { text-align: right; font-variant-numeric: tabular-nums; }
 .ev-noise .ev-noise-act { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }

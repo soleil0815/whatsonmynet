@@ -443,14 +443,13 @@ export async function renderEvents(main) {
         e.rules.length ? h('span', { class: 'badge badge-ok', title: e.rules.join(', ') }, t('ev.noise.rule', { n: e.rules.length })) : null,
         e.keep ? h('span', { class: 'badge badge-warn', title: t('ev.noise.keepHint') }, t('ev.noise.keep')) : null,
         e.usual ? h('span', { class: 'badge', title: t('ev.noise.usualHint') }, t('ev.noise.usual')) : null,
-        e.denied ? h('span', { class: 'badge' }, t('ev.noise.isDenied')) : null];
+        e.denied ? h('span', { class: 'badge' }, e.goneBy ? t('ev.noise.goneBy', { date: new Date(e.goneBy).toLocaleDateString(getLang() === 'en' ? 'en-GB' : 'de-DE') }) : t('ev.noise.isDenied')) : null];
       const sevText = (w) => (w === null ? '' : w <= 3 ? t('ev.noise.worstErr') : w === 4 ? t('ev.noise.worstWarn') : t('ev.noise.worstInfo'));
-      mount(box,
-        h('p', { class: 'muted', style: { margin: 0 } }, t('ev.noise.lead', { day: n(data.perDay), keep: data.keepDays, used: gb(data.used) })),
-        data.events.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-noise' },
+      const active = data.events.filter((e) => !e.denied); const gone = data.events.filter((e) => e.denied);
+      const eventTable = (list) => h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-noise' },
           h('thead', {}, h('tr', {}, h('th', {}, t('ev.noise.event')), h('th', { class: 'num' }, t('ev.noise.perDay')), h('th', {}, t('ev.noise.share')),
             h('th', { class: 'num', title: t('ev.noise.spaceHint', { keep: data.keepDays }) }, t('ev.noise.space', { keep: data.keepDays })), h('th', {}))),
-          h('tbody', {}, data.events.map((e) => h('tr', {},
+          h('tbody', {}, list.map((e) => h('tr', {},
             h('td', {}, h('strong', {}, String(e.id)), ' ', h('span', { class: 'muted small', title: e.app || e.example.channel || '' }, String(e.app || e.example.channel || t('ev.noise.noSource')).replace(/^Microsoft-Windows-/, '')),
               h('div', { class: 'sub' }, [e.computers > 3 ? t('ev.noise.computers', { n: n(e.computers) }) : '', e.senders.join(', '), e.moreSenders ? t('ev.noise.more', { n: n(e.moreSenders) }) : '', sevText(e.worst)].filter(Boolean).join(' · ')),
               e.example.text ? h('div', { class: 'sub ev-noise-text', title: e.example.text }, e.example.text.slice(0, 160)) : null,
@@ -461,8 +460,14 @@ export async function renderEvents(main) {
             h('td', { class: 'min' }, h('div', { class: 'ev-noise-act' },
               btn(t('ev.noise.show'), { class: 'btn btn-sm btn-ghost', onclick: () => show(String(e.id)) }),
               admin && !isReadOnly() && !e.denied ? btn(t('ev.noise.deny'), { class: 'btn btn-sm', disabled: e.rules.length > 0,
-                title: e.rules.length ? t('ev.noise.ruleBlocks', { list: e.rules.join(', ') }) : e.app ? t('ev.noise.denyHintSrc', { what: label(e) }) : t('ev.noise.denyHint'), onclick: () => deny(e) }) : null)))))))
-          : null,
+                title: e.rules.length ? t('ev.noise.ruleBlocks', { list: e.rules.join(', ') }) : e.app ? t('ev.noise.denyHintSrc', { what: label(e) }) : t('ev.noise.denyHint'), onclick: () => deny(e) }) : null)))))));
+      mount(box,
+        h('p', { class: 'muted', style: { margin: 0 } }, t('ev.noise.lead', { day: n(data.perDay), keep: data.keepDays, used: gb(data.used) }),
+          data.deniedPerDay ? ` ${t('ev.noise.leadGone', { day: n(data.deniedPerDay), pct: Math.round((data.deniedPerDay / Math.max(1, data.perDay)) * 100) })}` : ''),
+        active.length ? eventTable(active) : null,
+        // left out already: only older messages, they go by themselves - at the end, folded
+        gone.length ? h('details', { class: 'ev-noise-gone' }, h('summary', {}, t(gone.length === 1 ? 'ev.noise.goneTitle1' : 'ev.noise.goneTitle', { n: gone.length, day: n(data.deniedPerDay || 0) })),
+          h('p', { class: 'muted small', style: { margin: '6px 0' } }, t('ev.noise.goneLead', { keep: data.keepDays })), eventTable(gone)) : null,
         // by type of device: clients, servers, NAS … (worth it only with more than one type)
         data.groups?.length > 1 ? h('div', {}, h('h3', { style: { margin: '8px 0 4px' } }, t('ev.noise.groups')),
           h('div', { class: 'table-wrap' }, h('table', { class: 'data ev-noise' },

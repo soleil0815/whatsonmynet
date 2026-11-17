@@ -35,11 +35,15 @@ function toSink(e) {
 // The program's log keeps info and above even when less is printed (WOMN_LOG_LEVEL=warn); debug only when printed
 const stored = Math.min(current, levels.info);
 
+// printed from this level on (the load test prints only warnings and errors next to its own table)
+let printed = current;
+export function setPrintLevel(level) { printed = Math.max(current, levels[level] ?? current); }
+
 function write(level, msg, extra) {
   if (levels[level] < current && levels[level] < stored) return;
   const at = new Date().toISOString();
   const tail = extra === undefined ? '' : ' ' + JSON.stringify(redact(extra));
-  if (levels[level] >= current) (level === 'error' || level === 'warn' ? console.error : console.log)(`${at} ${level.toUpperCase().padEnd(5)} ${msg}${tail}`);
+  if (levels[level] >= printed) (level === 'error' || level === 'warn' ? console.error : console.log)(`${at} ${level.toUpperCase().padEnd(5)} ${msg}${tail}`);
   const e = { at, level, message: `${msg}${tail}` };
   if (sink) toSink(e);
   else if (early.length < EARLY_MAX) early.push(e);

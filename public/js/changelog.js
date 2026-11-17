@@ -3,6 +3,15 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Was belegt den Platz?: Schon ausgeschlossene Ereignisse stehen nicht mehr oben, sondern zugeklappt am Ende - mit dem Tag, an dem ihre älteren Meldungen weg sind. Oben steht, wie viel der Menge pro Tag nur noch solche Altlast ist; die Liste zeigt dafür die 30 größten, bei denen man noch etwas tun kann',
+    'Was belegt den Platz?: Der Knopf „Nicht speichern“ war bei schmalerem Fenster rechts abgeschnitten - das Fenster ist breiter, die Spalten passen',
+    'Lasttest: zeigt nur noch seine Tabelle, ohne Protokollzeilen dazwischen',
+  ], en: [
+    'What takes the space?: events left out already are no longer at the top but folded at the end - with the day their older messages are gone. At the top it says how much of the amount a day is only such leftovers; the list shows the 30 biggest one can still act on instead',
+    'What takes the space?: the button "Do not keep" was cut off at the right in a narrower window - the window is wider, the columns fit',
+    'Load test: shows only its table, without log lines in between',
+  ] },
+  { version: '0.43.0', date: '2026-11-17', de: [
     'Meldungen für große Netze: Neue Meldungen werden gesammelt geschrieben - ein Vielfaches schneller (auf einem kleinen Server mit SSD über 10.000 pro Sekunde). Der Schutz vor Flut nimmt jetzt 100 statt 20 pro Sekunde je Absender und 3.000 statt 300 insgesamt (änderbar mit WOMN_MESSAGES_PER_SECOND); über TCP und TLS geht dabei nichts mehr verloren - der Absender wartet kurz, statt dass Meldungen verworfen werden. Verworfene (UDP) stehen oben auf der Seite',
     'Nach Absender: seitenweise (100, dann „Weitere 100 anzeigen“), mit Schnellfiltern samt Anzahl - Fehler, Warnungen, still seit 24 Stunden, mit eigenem Filter -, Gerätetyp aus dem Inventar und Reihenfolge (neueste Meldung, meiste Meldungen, Name)',
     'Was belegt den Platz?: „von … Rechnern“ ist genau gezählt, auch bei Tausenden (vorher aus den neuesten 500 Meldungen geschätzt); unter den 15 größten Absendern steht, was alle übrigen zusammen belegen, und mit Geräten im Inventar die Verteilung nach Gerätetyp',
