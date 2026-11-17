@@ -265,7 +265,7 @@ Unter *Überwachung → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Beric
 - Die Meldungen liegen in einer **eigenen Datei** (`data/events.sqlite`): 30 Tage in höchstens 2 GB, bei knappem Datenträger bleiben mindestens 10 % frei. Die Seite zeigt, wie lange der Platz reicht und wer die meisten Meldungen schickt.
 - **Was belegt den Platz?** zeigt, welche Windows-Ereignisse und Absender den Speicher füllen - mit Hinweisen, was man behalten sollte, Ausschließen per Klick (auch nur für eine Quelle, z. B. `1@Ntfs`) und einer anonymisierten Frage zum Kopieren in den KI-Chat des Vertrauens.
 - **Speicherpools überwacht:** ZFS und Ceph (Proxmox), ZFS und mdadm (Linux-Skript), Storage Spaces (Windows-Skript), **TrueNAS** und **Ceph** über ihre APIs - Alarm, wenn ein Pool degradiert, eine Platte ausfällt oder der Scrub überfällig ist.
-- **Windows-Skript mit Versionsnummer** (Registry `HKLM\SOFTWARE\WhatsOnMyNet`) zum Filtern in der Softwareverteilung; die Geräteseite markiert veraltete Skripte. Ein abgewiesener Bericht landet in einer Statusdatei statt als Warnung 4100 im Ereignisprotokoll.
+- **Windows-Skript mit Versionsnummer** (Registry `HKLM\SOFTWARE\WhatsOnMyNet`, Wert `HostScript` bzw. `HyperVScript`) zum Filtern in der Softwareverteilung; die Geräteseite markiert veraltete Skripte. Ein abgewiesener Bericht landet in einer Statusdatei statt als Warnung 4100 im Ereignisprotokoll.
 - **Zeitleiste und Übersicht sofort da**, auch bei Millionen Meldungen: eine Zählung je Minute und Stunde ersetzt das Durchlesen aller Meldungen - die Zahlen bleiben genau, alte Meldungen gehen in Stücken, ohne den Empfang aufzuhalten.
 - **Platz planen:** gerechnet rund 2 KB je Meldung, samt Suchindex - *Platz ≈ Meldungen pro Tag × Tage × 2 KB*. Grob für 30 Tage:
 

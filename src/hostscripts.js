@@ -45,7 +45,9 @@ export function hostScript(kind, { url, token, pin = {} }) {
   text = k.ps
     ? text.replace('@URL@', () => psQuote(url)).replace('@TOKEN@', () => psQuote(token)).replace('@THUMB@', () => psQuote(pin.sha1 || '')).replace('@PUBKEY@', () => psQuote(pin.key || ''))
     : text.replace('@URL@', () => shQuote(url)).replace('@TOKEN@', () => shQuote(token)).replace('@PIN@', () => shQuote(pin.spki ? `sha256//${pin.spki}` : ''));
-  return { file: k.file, text, uninstall: uninstallScript(kind) };
+  // where software inventories find the version (Windows scripts): the page shows it next to the download
+  const registry = k.ps ? { key: 'HKLM\\SOFTWARE\\WhatsOnMyNet', value: REG_NAMES[kind], version: SCRIPT_VERSIONS[kind] } : null;
+  return { file: k.file, text, registry, uninstall: uninstallScript(kind) };
 }
 
 /** Removes the scheduled task / cron entry and the script file again (also the setup of version 0.6.0) */

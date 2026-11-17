@@ -669,6 +669,24 @@ Das Skript installiert nichts, lädt nichts nach, öffnet keinen Port und brauch
 
 **Skriptblockprotokoll (Ereignis 4104):** Das Windows-Skript liest Netzwerkkarten, Festplatten, Defender und Firewall direkt aus WMI und lädt dafür keine PowerShell-Module. Ist das Skriptblockprotokoll eingeschaltet, hinterlässt ein Lauf deshalb nur wenige Einträge der Stufe *Ausführlich* mit dem Pfad `C:\ProgramData\WhatsOnMyNet\womn-host.ps1` - keine Warnungen. Das Skript enthält auch keines der Wörter, die PowerShell als verdächtig einstuft (etwa eingebetteten C#-Code mit `Add-Type` oder `Bypass`): Das angeheftete Zertifikat prüft es in PowerShell selbst, die geplante Aufgabe läuft unter *RemoteSigned* und ohne Fortschrittsanzeige. Auch „Systemfehler“ (Ereignis 4100) entstehen keine: Das Skript nimmt die ersten Einträge einer Liste per Index statt mit `Select-Object -First`, das Windows PowerShell beim Abbrechen der Abfrage als Systemfehler protokolliert. Ältere Skripte erzeugten pro Lauf Warnungen 4104 - vor 0.33 rund 70 ohne Pfad, bis 0.33.2 eine mit dem Pfad des Skripts; mit *Neues Skript* sind sie weg.
 
+**Für Softwareverteilung und Inventar:** Welche Skriptversion auf einem Rechner läuft, steht in der Registry - so findet sie jedes Inventar- oder Verteilungswerkzeug (PDQ Inventory, Intune, SCCM/MECM, eigene Lösungen):
+
+| | Windows-Skript | Hyper-V-Skript |
+|---|---|---|
+| Schlüssel | `HKEY_LOCAL_MACHINE\SOFTWARE\WhatsOnMyNet` | `HKEY_LOCAL_MACHINE\SOFTWARE\WhatsOnMyNet` |
+| Wert | `HostScript` | `HyperVScript` |
+| Typ | Zeichenfolge (REG_SZ) | Zeichenfolge (REG_SZ) |
+| Inhalt | Version, z. B. `0.42.0` | Version, z. B. `0.42.0` |
+
+Geschrieben wird der Wert bei der Einrichtung (dem ersten Aufruf als Administrator), das Deinstallationsskript entfernt ihn wieder - den Schlüssel nur, wenn danach nichts mehr darin steht. Fehlt der Wert oder ist die Version kleiner als die, die WhatsOnMyNet gerade ausgibt (steht im Fenster beim Herunterladen des Skripts), läuft dort ein älteres Skript: einmal neu verteilen. Rechner mit einem Skript vor 0.42 haben den Wert noch nicht. Abfragen von Hand:
+
+```
+reg query "HKLM\SOFTWARE\WhatsOnMyNet" /v HostScript
+(Get-ItemProperty 'HKLM:\SOFTWARE\WhatsOnMyNet' -ErrorAction SilentlyContinue).HostScript
+```
+
+Als Erkennungsregel (Intune, SCCM): Registry, Schlüssel und Wert wie oben, Vergleich *Version größer oder gleich* der aktuellen Skriptversion.
+
 **Version und abgewiesene Berichte:** Jedes Windows-Skript trägt eine Versionsnummer: in der ersten Zeile, in der Registry unter `HKLM\SOFTWARE\WhatsOnMyNet` (Wert `HostScript`, beim Hyper-V-Skript `HyperVScript`) und im Bericht. Die Geräteseite zeigt sie unter *System* und markiert ein älteres Skript als *veraltet*; in der Softwareverteilung filtert man auf den Registry-Wert. Die Nummer ändert sich nur, wenn sich das Skript selbst ändert - nicht bei jedem Update von WhatsOnMyNet. Weist WhatsOnMyNet einen Bericht ab (Schlüssel nicht mehr gültig, Gerät gelöscht) oder ist nicht erreichbar, steht die Antwort in `C:\ProgramData\WhatsOnMyNet\womn-host-send.json` (Zeit, Status, Meldung), und die geplante Aufgabe endet mit Ergebnis 2 - ohne Eintrag im PowerShell-Protokoll. Skripte vor 0.42 schrieben dafür bei jedem Lauf eine Warnung 4100.
 
 **Wieder entfernen:** Zu jedem Skript gibt es ein **Deinstallationsskript** (im Skript-Dialog unter *Wieder entfernen* und unter *Einstellungen → Rechner-Skripte*). Es entfernt die geplante Aufgabe bzw. den cron-Eintrag und das Skript - genauso ausführen oder verteilen. Danach ist der Rechner wie vorher. Ein Skript unter *Einstellungen → Rechner-Skripte* zu löschen oder neu zu erzeugen, sperrt den alten Schlüssel.

@@ -41,7 +41,9 @@ export function scriptDialog(title, r, { where = 'host', onClose } = {}) {
     h('ol', { class: 'px-steps' },
       h('li', {}, rich(t(ps ? 'hs.get.win' : 'hs.get.lnx', { file: s.file })),
         h('div', { class: 'actions', style: { marginTop: '6px' } }, btn(t('virt.download'), { class: 'btn btn-sm btn-primary', onclick: () => download(s.file, s.text) }, 'download'))),
-      h('li', {}, rich(t(ps ? 'hs.run.win' : 'hs.run.lnx')), cmd(runLine(s.file)), h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, rich(t(ps ? 'hs.dist.win' : 'hs.dist.lnx')))),
+      h('li', {}, rich(t(ps ? 'hs.run.win' : 'hs.run.lnx')), cmd(runLine(s.file)), h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, rich(t(ps ? 'hs.dist.win' : 'hs.dist.lnx'))),
+        // where a software inventory finds which script version a computer runs
+        s.registry ? h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, rich(t('hs.registry', s.registry))) : null),
       h('li', {}, rich(t(where === 'host' ? 'hs.then.host' : 'virt.run3')))),
     h('details', { class: 'cert-manual' }, h('summary', {}, t('hs.remove')),
       h('p', { class: 'small' }, rich(t('hs.removeText', { file: u.file }))),

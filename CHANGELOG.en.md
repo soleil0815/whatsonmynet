@@ -8,6 +8,7 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 - Manual: a complete NXLog configuration as example that sends source and log along (so leaving out like 1@Ntfs applies); Fluent Bit as a second free agent with a ready configuration, checked on a real Windows Server; notes on Winlogbeat and Windows Event Forwarding
 - Messages: Windows events from Fluent Bit (JSON) are recognised with their severity - the level as a number and "audit failure" from the keywords
+- Windows scripts: the download window names the registry entry for software distribution and inventory (HKLM\SOFTWARE\WhatsOnMyNet, value HostScript or HyperVScript, current version); the manual shows it as a table with a query and a detection rule for Intune/SCCM
 
 ## 0.42.0 - 2026-11-17
 
