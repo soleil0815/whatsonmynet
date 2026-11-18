@@ -48,7 +48,7 @@ function pairForm(reload, s) {
 function handbackText(x) {
   const n = getLang();
   const nums = { checks: (x.checks || 0).toLocaleString(n), events: (x.events || 0).toLocaleString(n) };
-  if (x.state === 'done') return [t('fo.hb.done', nums), x.skipped?.length ? ` ${t('fo.hb.skipped', { names: x.skipped.join(', ') })}` : ''].join('');
+  if (x.state === 'done') return [t('fo.hb.done', nums), x.messages ? ` ${t('fo.hb.messages', { n: x.messages.toLocaleString(n) })}` : '', x.skipped?.length ? ` ${t('fo.hb.skipped', { names: x.skipped.join(', ') })}` : ''].join('');
   if (x.state === 'pending') return [t('fo.hb.pending', nums), x.error ? ` (${x.error})` : ''].join('');
   return t(`fo.hb.${x.state}`) || '';
 }
@@ -64,6 +64,7 @@ function received(list) {
         h('td', { class: 'nowrap' }, fmtDate(x.from, getLang())),
         h('td', { class: 'nowrap' }, fmtDate(x.to, getLang())),
         h('td', {}, t('fo.hb.got', { checks: x.checks.toLocaleString(getLang()), events: x.events.toLocaleString(getLang()) }),
+          x.messages ? ` ${t('fo.hb.messages', { n: x.messages.toLocaleString(getLang()) })}` : null,
           x.skipped?.length ? h('div', { class: 'muted small' }, t('fo.hb.skippedHere', { names: x.skipped.join(', ') })) : null),
         h('td', { class: 'nowrap muted' }, fmtDate(x.at, getLang()))))))));
 }
@@ -149,6 +150,9 @@ export async function failoverSettings(body, _s, reload) {
           [t('fo.master'), h('span', { class: 'mono' }, sb.address)],
           [t('fo.lastContact'), h('span', {}, when(sb.lastContact), sb.lastError ? h('span', { class: 'tone-bad' }, ` · ${why(sb.lastError)}`) : null)],
           [t('fo.lastSync'), h('span', {}, when(sb.lastSync), sb.syncError ? h('span', { class: 'tone-bad' }, ` · ${why(sb.syncError)}`) : null)],
+          [t('fo.messages'), sb.messages ? h('span', {}, t('fo.messagesCopied', { n: sb.messages.copied.toLocaleString(getLang()) }), ' · ', when(sb.messages.at),
+            sb.messages.behind ? h('span', { class: 'muted' }, ` · ${t('fo.messagesBehind', { n: sb.messages.behind.toLocaleString(getLang()) })}`) : null,
+            sb.messages.error ? h('span', { class: 'tone-bad' }, ` · ${why(sb.messages.error)}`) : null) : h('span', { class: 'muted' }, t('fo.messagesNone'))],
           sb.masterVersion ? [t('fo.masterVersion'), h('span', { class: 'mono' }, `${sb.masterVersion}${sb.masterVersion !== s.version ? ` (${t('fo.here')} ${s.version})` : ''}`)] : null,
           [t('fo.pairedAt'), when(sb.pairedAt)],
         ]),

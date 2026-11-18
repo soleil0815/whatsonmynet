@@ -1,4 +1,4 @@
-// Failover: settings for the admin, and the four endpoints a paired standby calls on its master (with its secret,
+// Failover: settings for the admin, and the five endpoints a paired standby calls on its master (with its secret,
 // no session).
 import express from 'express';
 import { requireRole, requireAuth } from '../auth/session.js';
@@ -16,6 +16,7 @@ export function createFailoverApi(ctx) {
   r.get('/failover/snapshot', async (req, res) => { await failover.sendSnapshot(req, res); });
   r.post('/failover/yield', (req, res) => res.json(failover.yieldTo(req)));
   r.post('/failover/handback', (req, res) => res.json(failover.receiveHandback(req)));
+  r.get('/failover/messages', (req, res) => res.json(failover.messagesFor(req)));
 
   // ---- for every signed-in user: the bar at the top while this is a standby (or has taken over)
   r.get('/failover/banner', requireAuth, (_req, res) => res.json(failover.banner()));

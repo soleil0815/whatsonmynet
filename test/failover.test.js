@@ -137,6 +137,30 @@ test('standby: pairs, takes the data of the master, only reads, alarms nothing',
   B.ctx.failover._state().standby.needSync = true;
   await B.ctx.failover.tick();
   assert.deepEqual((await B.call('GET', '/api/monitors')).data.map((m) => m.name).sort(), ['Drucker EG', 'Intranet']);
+
+  // the messages of the master (syslog, traps, Windows events) come over too - a message the standby got itself
+  // (the sender sends to both) is not there twice
+  const msg = (X, text, ip = '10.0.10.21', at = new Date()) => X.ctx.events.receive('syslog', ip, { severity: 4, text, eventId: 4625, app: 'Security' }, at);
+  const now = new Date();
+  msg(A, 'Anmeldung fehlgeschlagen: max', '10.0.10.21', now);
+  msg(A, 'Anmeldung fehlgeschlagen: testadmin', '10.0.10.22', now);
+  msg(B, 'Anmeldung fehlgeschlagen: max', '10.0.10.21', new Date(now.getTime() + 800));
+  await B.ctx.failover.tick();
+  const onB = (text) => B.db.prepare('SELECT COUNT(*) n FROM events_in WHERE text=?').get(text).n;
+  assert.equal(onB('Anmeldung fehlgeschlagen: max'), 1, 'not twice');
+  assert.equal(onB('Anmeldung fehlgeschlagen: testadmin'), 1);
+  const ms = B.ctx.failover.status().standby.messages;
+  assert.equal(ms.copied, 1);
+  assert.equal(ms.error, '');
+  // the next round goes on where it stopped
+  msg(A, 'Dienst gestartet', '10.0.10.23');
+  await B.ctx.failover.tick();
+  assert.equal(onB('Dienst gestartet'), 1);
+  assert.equal(B.ctx.failover.status().standby.messages.copied, 2);
+  // a copy starts no rules or event monitors here (counted and searchable like any message)
+  assert.equal(B.db.prepare("SELECT device_id FROM events_in WHERE text='Dienst gestartet'").get().device_id, null);
+  // only for the standby with the secret
+  assert.equal((await A.call('GET', '/api/failover/messages?after=0')).status, 401);
 });
 
 test('the master is gone longer than the set time: the standby takes over; it is back: the standby is quiet again', async () => {
@@ -180,10 +204,17 @@ test('the master is gone longer than the set time: the standby takes over; it is
   B.db.prepare("INSERT INTO monitor_events(monitor_id,at,kind,message,notified) VALUES(?,?,'down','Intranet: timeout','Bereitschaft')").run(mid, at(4.1));
   // the printer: the master checked it itself meanwhile (only the standby was cut off from it) - it keeps its own
   check.run(pid, at(5), 0, null, 'standby: refused');
+  // a message that reached only the standby while it had taken over
+  B.ctx.events.receive('syslog', '10.0.10.24', { severity: 3, text: 'USV: Netzausfall', app: 'ups' }, new Date(Date.parse(from) + 3 * 60000));
   A.db.prepare("INSERT INTO checks(monitor_id,at,ok,ms,message) VALUES(?,?,1,5,'')").run(pid, at(5));
-  // the master answers again: the standby hands back first, then takes the master's data
+  // the master answers again: the standby hands back first, then takes the master's data - and its receivers follow
+  // the master's settings at once (syslog on/off, lists of event ids)
+  const refresh = B.ctx.events.refresh; let refreshed = 0;
+  B.ctx.events.refresh = () => { refreshed++; return refresh(); };
   await listenA();
   await B.ctx.failover.tick();
+  B.ctx.events.refresh = refresh;
+  assert.ok(refreshed >= 1, 'the receivers follow the copy of the master');
   const b = B.ctx.failover.status();
   assert.equal(b.standby.state, 'listening');
   assert.equal(B.ctx.failover.active(), false);
@@ -195,6 +226,8 @@ test('the master is gone longer than the set time: the standby takes over; it is
   assert.equal(hb.state, 'done', JSON.stringify(hb));
   assert.equal(hb.checks, 3);
   assert.equal(hb.events, 1);
+  assert.equal(hb.messages, 1, 'the message of the takeover went back');
+  assert.equal(A.db.prepare("SELECT COUNT(*) n FROM events_in WHERE text='USV: Netzausfall'").get().n, 1);
   assert.deepEqual(hb.skipped, ['Drucker EG']);
   // now on the master: the checks, the alarm and the hourly values of the takeover - only the standby's share
   assert.equal(A.db.prepare("SELECT COUNT(*) n FROM checks WHERE monitor_id=? AND at >= ?").get(mid, from).n, 3);

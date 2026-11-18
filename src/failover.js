@@ -190,7 +190,7 @@ export function whyText(e) {
  * @param notify (ev) => Promise - alarm to the default channels (takeover / handing back)
  * @param certPem () => PEM of the own HTTPS certificate (for the pin in the pairing code)
  */
-export function createFailover({ db, settings, dataDir, engines = [], notify = async () => {}, certPem = () => '', snapshot, discard, audit = () => {} }) {
+export function createFailover({ db, settings, dataDir, engines = [], notify = async () => {}, certPem = () => '', snapshot, discard, audit = () => {}, onSynced = () => {}, events = null }) {
   const file = path.join(dataDir, 'failover.json');
   let st = load();
   let timer = null;
@@ -293,6 +293,9 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       if (newKey) (copied ? newKey.commit : newKey.discard)();
     }
     settings.clearCache?.();
+    // what runs on every installation (the receivers of syslog and traps) follows the master's settings at once -
+    // not only after a restart; so a standby that becomes master goes on exactly as the master did
+    try { onSynced(); } catch (e) { log.warn(`Failover: after the copy: ${e.message}`); }
   }
 
   async function sync(key) {
@@ -367,6 +370,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
           log.warn(`Failover: taking the data of the master failed: ${s.syncError}`);
         }
       }
+      await pullMessages(s);
       save();
       return;
     }
@@ -432,6 +436,35 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
     audit('failover.handback', st.standby.address);
   }
 
+  // ---------------------------------------------------------------------------------------------- messages
+  // The messages (syslog, traps, Windows events) live in a file of their own and are far more than the rest: the
+  // standby takes the new ones every minute, in pages, from where it stopped (the master's message number). So it
+  // knows what the master knows - and goes on with it when it has to take over.
+  const PULL_PAGE = 5000; const PULL_PAGES = 20;
+  async function pullMessages(s) {
+    if (!events) return;
+    const c = s.messages || (s.messages = { after: 0, copied: 0, at: null, error: '' });
+    try {
+      for (let i = 0; i < PULL_PAGES; i++) {
+        const r = await pinnedRequest(peer(), 'GET', `/api/failover/messages?after=${c.after}&limit=${PULL_PAGE}`, { timeoutMs: 60000 });
+        if (r.status === 404) { c.error = 'the master runs an older version'; return; }
+        if (r.status !== 200 || !Array.isArray(r.json?.rows)) throw new Error(`HTTP ${r.status}`);
+        const { rows, maxId } = r.json;
+        // the master's messages file was started anew (restored, deleted): from the beginning, twins are not taken twice
+        if (maxId < c.after) { c.after = 0; continue; }
+        if (!rows.length) break;
+        c.copied += events.importCopies(rows);
+        c.after = Number(rows.at(-1)[0]) || c.after;
+        c.behind = Math.max(0, maxId - c.after);
+        if (rows.length < PULL_PAGE) break;
+      }
+      c.at = nowIso(); c.error = '';
+    } catch (e) {
+      c.error = whyText(e);
+      log.warn(`Failover: taking the messages of the master failed: ${c.error}`);
+    }
+  }
+
   // ---------------------------------------------------------------------------------------------- handing back
   const packFile = path.join(dataDir, 'failover-handback.json');
   const loadPacks = () => { try { const x = JSON.parse(fs.readFileSync(packFile, 'utf8')); return Array.isArray(x) ? x : []; } catch { return []; } };
@@ -443,7 +476,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
   }
   function savePack(p) {
     const t = (st.takeovers || []).find((x) => x.id === p.id);
-    if (t) t.handback = { state: 'pending', checks: p.checks.length, events: p.events.length, hours: p.hourly.length };
+    if (t) t.handback = { state: 'pending', checks: p.checks.length, events: p.events.length, hours: p.hourly.length, messages: p.messages?.length || 0 };
     writePacks([...loadPacks().filter((x) => x.id !== p.id), p]);
   }
 
@@ -460,7 +493,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
   /** What this server measured during a takeover: checks, hourly values (less the start), alarms - with the monitors' names */
   function collectPack(t) {
     const checks = db.prepare('SELECT monitor_id, at, ok, ms, message FROM checks WHERE at >= ? AND at < ? ORDER BY at LIMIT ?').raw().all(t.from, t.to, MAX_ROWS);
-    const events = db.prepare('SELECT monitor_id, at, kind, message, notified FROM monitor_events WHERE at >= ? AND at < ? ORDER BY at LIMIT ?').raw().all(t.from, t.to, MAX_ROWS);
+    const evRows = db.prepare('SELECT monitor_id, at, kind, message, notified FROM monitor_events WHERE at >= ? AND at < ? ORDER BY at LIMIT ?').raw().all(t.from, t.to, MAX_ROWS);
     const base = t.base || { hour: hourOf(t.from), rows: {} };
     const hourly = [];
     for (const r of db.prepare('SELECT monitor_id, hour, ok, total, ms_sum, v_n, v_sum, v_min, v_max FROM monitor_hourly WHERE hour >= ? AND hour <= ? LIMIT ?').raw().all(base.hour, hourOf(t.to), MAX_ROWS)) {
@@ -468,11 +501,14 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       const row = b ? [r[0], r[1], r[2] - b[0], r[3] - b[1], r[4] - b[2], r[5] - b[3], r[6] - b[4], r[7], r[8]] : r;
       if (row[3] > 0 || row[5] > 0) hourly.push(row);
     }
-    const ids = [...new Set([...checks, ...events, ...hourly].map((r) => r[0]))];
+    const ids = [...new Set([...checks, ...evRows, ...hourly].map((r) => r[0]))];
     const monitors = {};
     const one = db.prepare('SELECT name, type FROM monitors WHERE id=?');
     for (const id of ids) { const m = one.get(id); if (m) monitors[id] = m; }
-    return { id: t.id, master: st.standby?.address || '', from: t.from, to: t.to, monitors, checks, events, hourly };
+    // messages that came here meanwhile - from the last copy of the master's on (the minutes before the takeover too)
+    const since = st.standby?.messages?.at && st.standby.messages.at < t.from ? st.standby.messages.at : t.from;
+    const messages = events ? events.exportSince(0, MAX_ROWS, since).rows.filter((r) => r[1] < t.to).map((r) => r.slice(1)) : [];
+    return { id: t.id, master: st.standby?.address || '', from: t.from, to: t.to, monitors, checks, events: evRows, hourly, messages };
   }
 
   /**
@@ -498,11 +534,12 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
   /** Split a pack into requests below the size limit (each part on its own: the master takes each part once) */
   function partsOf(p) {
     const parts = [];
-    let cur = { checks: [], events: [], hourly: [] }; let size = 0;
-    for (const kind of ['events', 'hourly', 'checks']) {
-      for (const row of p[kind]) {
+    const empty = () => ({ checks: [], events: [], hourly: [], messages: [] });
+    let cur = empty(); let size = 0;
+    for (const kind of ['events', 'hourly', 'checks', 'messages']) {
+      for (const row of p[kind] || []) {
         const n = JSON.stringify(row).length + 1;
-        if (size + n > PART_BYTES && size > 0) { parts.push(cur); cur = { checks: [], events: [], hourly: [] }; size = 0; }
+        if (size + n > PART_BYTES && size > 0) { parts.push(cur); cur = empty(); size = 0; }
         cur[kind].push(row); size += n;
       }
     }
@@ -520,7 +557,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       // another master than the one of this takeover (paired anew meanwhile): it does not belong there
       if (p.master && p.master !== st.standby?.address) { if (t) t.handback = { state: 'otherMaster' }; continue; }
       const parts = partsOf(p);
-      const sum = { checks: 0, events: 0, hours: 0, skipped: [] };
+      const sum = { checks: 0, events: 0, hours: 0, messages: 0, skipped: [] };
       let ok = true;
       for (let i = 0; i < parts.length && ok; i++) {
         try {
@@ -528,7 +565,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
             pack: p.id, part: i, of: parts.length, from: p.from, to: p.to, byName: !!p.byName, monitors: p.monitors, ...parts[i] } });
           if (r.status === 404) throw Object.assign(new Error('the master runs an older version - update it'), { code: 'EOLD' });
           if (r.status !== 200 || !r.json?.ok) throw new Error(r.json?.error?.message || `HTTP ${r.status}`);
-          sum.checks += r.json.checks || 0; sum.events += r.json.events || 0; sum.hours += r.json.hours || 0;
+          sum.checks += r.json.checks || 0; sum.events += r.json.events || 0; sum.hours += r.json.hours || 0; sum.messages += r.json.messages || 0;
           for (const n of r.json.skipped || []) if (!sum.skipped.includes(n)) sum.skipped.push(n);
         } catch (e) {
           ok = false;
@@ -614,7 +651,8 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
         envKey: keyFromEnvironment(),
         master: st.role === 'master' ? { createdAt: st.master?.createdAt || null, peer: st.master?.peer || null } : null,
         standby: st.role === 'standby' && s ? { address: s.address, delayMin: s.delayMin, state: s.state, pairedAt: s.pairedAt, lastContact: s.lastContact || null,
-          lastSync: s.lastSync || null, syncError: s.syncError || '', lastError: s.lastError || '', activeSince: s.state === 'active' ? s.activeSince : null, masterVersion: s.masterVersion || '',
+          lastSync: s.lastSync || null, syncError: s.syncError || '', lastError: s.lastError || '',
+          messages: s.messages ? { copied: s.messages.copied || 0, at: s.messages.at || null, behind: s.messages.behind || 0, error: s.messages.error || '' } : null, activeSince: s.state === 'active' ? s.activeSince : null, masterVersion: s.masterVersion || '',
           versions: s.gap ? { master: s.gap.master, here: s.gap.here, schema: !!s.gap.schema, since: s.gap.since, notifiedAt: s.gap.notifiedAt || null } : null } : null,
         former: st.former ? { address: st.former.address } : null,
         yielded: st.role === 'yielded' ? st.yielded || {} : null,
@@ -768,7 +806,12 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
         map.set(key, id);
         return id;
       };
-      const n = { checks: 0, events: 0, hours: 0 };
+      const n = { checks: 0, events: 0, hours: 0, messages: 0 };
+      // messages of the devices that reached the standby meanwhile (time window checked; twins are not taken twice)
+      if (events && Array.isArray(b.messages)) {
+        const lo = new Date(Date.parse(from) - 24 * 3600 * 1000).toISOString();
+        n.messages = events.importCopies(b.messages.slice(0, MAX_ROWS).filter((r) => Array.isArray(r) && String(r[0]) >= lo && String(r[0]) <= to).map((r) => [0, ...r]));
+      }
       db.transaction(() => {
         const hasCheck = db.prepare('SELECT 1 FROM checks WHERE monitor_id=? AND at=?');
         const addCheck = db.prepare('INSERT INTO checks(monitor_id,at,ok,ms,message) VALUES(?,?,?,?,?)');
@@ -801,9 +844,9 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
           n.hours++;
         }
       })();
-      if (!rec) { rec = { pack, from, to, at: nowIso(), parts: [], of, checks: 0, events: 0, hours: 0, skipped: [] }; st.received = [rec, ...st.received].slice(0, 20); }
+      if (!rec) { rec = { pack, from, to, at: nowIso(), parts: [], of, checks: 0, events: 0, hours: 0, messages: 0, skipped: [] }; st.received = [rec, ...st.received].slice(0, 20); }
       rec.parts.push(part); rec.at = nowIso();
-      rec.checks += n.checks; rec.events += n.events; rec.hours += n.hours;
+      rec.checks += n.checks; rec.events += n.events; rec.hours += n.hours; rec.messages = (rec.messages || 0) + n.messages;
       for (const x of skipped) if (!rec.skipped.includes(x) && rec.skipped.length < 20) rec.skipped.push(x);
       save();
       if (rec.parts.length === of) {
@@ -811,6 +854,12 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
         audit('failover.received', `${from} - ${to}`);
       }
       return { ok: true, ...n, skipped: [...skipped] };
+    },
+    /** The standby takes the messages after its last one (pages of at most 10000) */
+    messagesFor(req) {
+      masterAuth(req);
+      if (!events) return { rows: [], maxId: 0 };
+      return events.exportSince(Number(req.query?.after) || 0, Number(req.query?.limit) || 5000);
     },
     /** The standby was made master: this one keeps quiet from now on */
     yieldTo(req) {

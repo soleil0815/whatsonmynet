@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Ausfallsicherung: Der Standby weiß jetzt alles, was der Master weiß - auch die Meldungen der Geräte (Syslog, Traps, Windows-Ereignisse) holt er jede Minute nach, doppelte (Geräte schicken an beide) stehen nur einmal da. Ändert sich am Master eine Empfangs-Einstellung (Syslog an/aus, Ereignis-IDs), folgt der Standby sofort statt erst nach einem Neustart. Meldungen, die während einer Übernahme nur am Standby ankamen, gehen danach an den Master',
+  ], en: [
+    'Failover: the standby now knows everything the master knows - it takes the messages of the devices (syslog, traps, Windows events) every minute too, twins (devices send to both) are there only once. When a receiving setting changes on the master (syslog on/off, event ids), the standby follows at once instead of after a restart. Messages that reached only the standby during a takeover go to the master afterwards',
+  ] },
+  { version: '0.49.0', date: '2026-11-18', de: [
     'Ausfallsicherung: Kommt der Master wieder, gibt ihm der Standby zurück, was er in der Zwischenzeit gemessen hat - Prüfungen, Stundenwerte (Verfügbarkeit, Antwortzeiten, Sensorwerte) und Alarme. Der Verlauf des Masters hat so keine Lücke. Einstellungen gehen weiter nur vom Master zum Standby. Hat der Master einen Monitor selbst geprüft (nur der Standby war abgeschnitten), behält er seine Werte. Alarme früherer Übernahmen gehen nach dem Update ebenfalls zurück',
     'Einstellungen: Jeder Bereich beginnt mit einem kurzen Hinweis in einfachen Worten, wozu er da ist, mit Link ins Handbuch',
   ], en: [

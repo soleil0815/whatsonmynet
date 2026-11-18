@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Ausfallsicherung: Der Standby weiß jetzt alles, was der Master weiß - auch die Meldungen der Geräte (Syslog, Traps, Windows-Ereignisse) holt er jede Minute nach, doppelte (Geräte schicken an beide) stehen nur einmal da. Ändert sich am Master eine Empfangs-Einstellung (Syslog an/aus, Ereignis-IDs), folgt der Standby sofort statt erst nach einem Neustart. Meldungen, die während einer Übernahme nur am Standby ankamen, gehen danach an den Master
+
+## 0.49.0 - 2026-11-18
+
 - Ausfallsicherung: Kommt der Master wieder, gibt ihm der Standby zurück, was er in der Zwischenzeit gemessen hat - Prüfungen, Stundenwerte (Verfügbarkeit, Antwortzeiten, Sensorwerte) und Alarme. Der Verlauf des Masters hat so keine Lücke. Einstellungen gehen weiter nur vom Master zum Standby. Hat der Master einen Monitor selbst geprüft (nur der Standby war abgeschnitten), behält er seine Werte. Alarme früherer Übernahmen gehen nach dem Update ebenfalls zurück
 - Einstellungen: Jeder Bereich beginnt mit einem kurzen Hinweis in einfachen Worten, wozu er da ist, mit Link ins Handbuch
 

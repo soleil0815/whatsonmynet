@@ -35,7 +35,7 @@ Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans y
 | ☁️ **Cloud** | AWS, Azure, Google Cloud, Microsoft 365 (service health, incidents, licences): VMs with the checks of the provider, databases, load balancers, alarms, costs - read only |
 | 💻 **Machines without agent** | Windows and Linux report through a small script: CPU, RAM, drives, services, updates, antivirus, temperatures |
 | 🔔 **Notifications** | E-mail, Telegram, Teams, Slack, Discord, Matrix, Signal, ntfy, Gotify, Pushover, Home Assistant, webhook and 100 more through Apprise |
-| 🛟 **Failover** | A second WhatsOnMyNet as standby takes over when the master fails and hands back afterwards, measurements included - paired with a code |
+| 🛟 **Failover** | A second WhatsOnMyNet as standby takes over when the master fails and hands back afterwards, measurements included; it knows everything the master knows, the messages too - paired with a code |
 | 🔒 **Security** | HTTPS from the first start, Active Directory, two-factor sign-in, rights per location, passwords encrypted, read-only access to other systems |
 
 | | | |
@@ -232,7 +232,7 @@ A second WhatsOnMyNet stands by as **standby** and takes over when the **master*
 1. Master: *Settings → Failover → Make this the master* - a pairing code appears (shown once).
 2. Standby: there *This server as standby*, enter the address of the master and the code, choose the time until it takes over (10 minutes by default, 3 to 240) - **Pair**.
 
-The standby asks for a sign of life every minute and for the data every 5 minutes (over HTTPS; the key of the master's certificate is in the code and is checked before anything is sent). It does not check, scan or alarm and only shows. When the master does not answer for longer than set, the standby monitors and alarms and reports this to the default channels. When the master is back, the standby hands it its measurements and alarms of the time between (settings never go back), is quiet again and takes its data. If the old master does not come back: *Make this the master* on the standby. Both servers need the same version - if they run different ones for half an hour, the standby reminds you via the default channels which one to update; the standby also takes the key (`secret.key`) of the master. Details in the manual.
+The standby asks for a sign of life and the new messages of the devices every minute, for the rest of the data with the receiving settings every 5 minutes (over HTTPS; the key of the master's certificate is in the code and is checked before anything is sent). It does not check, scan or alarm and only shows. When the master does not answer for longer than set, the standby monitors and alarms and reports this to the default channels. When the master is back, the standby hands it its measurements and alarms of the time between (settings never go back), is quiet again and takes its data. If the old master does not come back: *Make this the master* on the standby. Both servers need the same version - if they run different ones for half an hour, the standby reminds you via the default channels which one to update; the standby also takes the key (`secret.key`) of the master. Details in the manual.
 
 ## Proxmox VE and Backup Server (from version 0.4)
 

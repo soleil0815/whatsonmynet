@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Failover: the standby now knows everything the master knows - it takes the messages of the devices (syslog, traps, Windows events) every minute too, twins (devices send to both) are there only once. When a receiving setting changes on the master (syslog on/off, event ids), the standby follows at once instead of after a restart. Messages that reached only the standby during a takeover go to the master afterwards
+
+## 0.49.0 - 2026-11-18
+
 - Failover: when the master comes back, the standby hands it what it measured meanwhile - checks, hourly values (uptime, response times, sensor values) and alarms. So the master's history has no gap. Settings still only go from master to standby. If the master checked a monitor itself (only the standby was cut off), it keeps its own values. Alarms of earlier takeovers go back after the update too
 - Settings: every section starts with a short note in plain words on what it is for, with a link to the manual
 
