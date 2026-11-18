@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Ausfallsicherung: Das Nachholen der Meldungen am Standby belastete die CPU stark (jede Meldung wurde einzeln auf Doppelte geprüft). Jetzt geht die Prüfung je Zeitabschnitt in einem Durchgang - in einem Netz mit vielen Meldungen pro Sekunde etwa fünfmal schneller - und das Nachholen nimmt sich höchstens 8 Sekunden pro Minute. Ein großer Bestand braucht so etwas länger, die Seite zeigt, wie viel noch offen ist',
+  ], en: [
+    'Failover: catching up the messages on the standby loaded the CPU heavily (each message was checked for twins on its own). Now the check runs once per time slice - about five times faster in a network with many messages per second - and catching up takes at most 8 seconds per minute. A large stock takes a bit longer then; the page shows how much is still to come',
+  ] },
+  { version: '0.50.0', date: '2026-11-18', de: [
     'Ausfallsicherung: Der Standby weiß jetzt alles, was der Master weiß - auch die Meldungen der Geräte (Syslog, Traps, Windows-Ereignisse) holt er jede Minute nach, doppelte (Geräte schicken an beide) stehen nur einmal da. Ändert sich am Master eine Empfangs-Einstellung (Syslog an/aus, Ereignis-IDs), folgt der Standby sofort statt erst nach einem Neustart. Meldungen, die während einer Übernahme nur am Standby ankamen, gehen danach an den Master',
   ], en: [
     'Failover: the standby now knows everything the master knows - it takes the messages of the devices (syslog, traps, Windows events) every minute too, twins (devices send to both) are there only once. When a receiving setting changes on the master (syslog on/off, event ids), the standby follows at once instead of after a restart. Messages that reached only the standby during a takeover go to the master afterwards',
