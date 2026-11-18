@@ -127,6 +127,9 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
     notify: (ev) => channels.notifyIds([], { ...ev, at: new Date().toISOString() }),
     certPem: () => tls?.current()?.cert || '',
     snapshot: () => backups.snapshot(), discard: (f) => backups.discard(f),
+    // the messages: created further down (they need the TLS of this server) - reached when used
+    onSynced: () => events.refresh(),
+    events: { exportSince: (...a) => events.exportSince(...a), importCopies: (...a) => events.importCopies(...a) },
     audit: (action, detail) => { try { db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), 'system', action, String(detail ?? '').slice(0, 500)); } catch { /* never stops */ } } });
   // Diagnostic package: the program's own log (server.js attaches it), versions, placeholders
   const diagnostics = createDiagnostics({ db, settings, failover, dbFile: path.join(dataDir, 'whatsonmynet.sqlite'), backupsDir: path.join(dataDir, 'backups') });

@@ -35,7 +35,7 @@ Netzwerk-Inventar, Monitoring und Sensoren in einem Container: WhatsOnMyNet scan
 | ☁️ **Cloud** | AWS, Azure, Google Cloud, Microsoft 365 (Dienststatus, Störungen, Lizenzen): VMs mit den Prüfungen des Anbieters, Datenbanken, Load Balancer, Alarme, Kosten - nur lesend |
 | 💻 **Rechner ohne Agent** | Windows und Linux melden sich per kleinem Skript: CPU, RAM, Laufwerke, Dienste, Updates, Virenschutz, Temperaturen |
 | 🔔 **Benachrichtigungen** | E-Mail, Telegram, Teams, Slack, Discord, Matrix, Signal, ntfy, Gotify, Pushover, Home Assistant, Webhook und über Apprise 100 weitere |
-| 🛟 **Ausfallsicherung** | Ein zweites WhatsOnMyNet als Standby übernimmt, wenn der Master ausfällt, und gibt danach samt Messwerten wieder ab - gekoppelt mit einem Code |
+| 🛟 **Ausfallsicherung** | Ein zweites WhatsOnMyNet als Standby übernimmt, wenn der Master ausfällt, und gibt danach samt Messwerten wieder ab; er weiß alles, was der Master weiß, auch die Meldungen - gekoppelt mit einem Code |
 | 🔒 **Sicherheit** | HTTPS ab dem ersten Start, Active Directory, Zwei-Faktor-Anmeldung, Rechte pro Standort, Passwörter verschlüsselt, nur lesender Zugriff auf fremde Systeme |
 
 | | | |
@@ -232,7 +232,7 @@ Ein zweites WhatsOnMyNet steht als **Standby** bereit und übernimmt, wenn der *
 1. Master: *Einstellungen → Ausfallsicherung → Zum Master machen* - ein Kopplungscode erscheint (einmalig).
 2. Standby: dort *Dieses System als Standby*, Adresse des Masters und Code eintragen, Zeit bis zur Übernahme wählen (Standard 10 Minuten, 3 bis 240) - **Koppeln**.
 
-Der Standby holt jede Minute ein Lebenszeichen und alle 5 Minuten die Daten (über HTTPS; der Schlüssel des Master-Zertifikats ist im Code und wird vor dem Senden geprüft). Er prüft, scannt und alarmiert nicht und zeigt nur an. Antwortet der Master länger als eingestellt nicht, überwacht und alarmiert der Standby und meldet das an die Standard-Kanäle. Ist der Master wieder da, gibt der Standby ihm seine Messwerte und Alarme aus der Zwischenzeit zurück (Einstellungen gehen nie zurück), ist wieder still und holt sich dessen Daten. Kommt der alte Master nicht wieder: am Standby *Zum Master machen*. Beide Systeme brauchen dieselbe Version - laufen sie eine halbe Stunde lang unterschiedlich, erinnert der Standby über die Standard-Kanäle daran, welches zu aktualisieren ist; der Standby übernimmt auch den Schlüssel (`secret.key`) des Masters. Details im Handbuch.
+Der Standby holt jede Minute ein Lebenszeichen und die neuen Meldungen der Geräte, alle 5 Minuten die übrigen Daten samt Empfangs-Einstellungen (über HTTPS; der Schlüssel des Master-Zertifikats ist im Code und wird vor dem Senden geprüft). Er prüft, scannt und alarmiert nicht und zeigt nur an. Antwortet der Master länger als eingestellt nicht, überwacht und alarmiert der Standby und meldet das an die Standard-Kanäle. Ist der Master wieder da, gibt der Standby ihm seine Messwerte und Alarme aus der Zwischenzeit zurück (Einstellungen gehen nie zurück), ist wieder still und holt sich dessen Daten. Kommt der alte Master nicht wieder: am Standby *Zum Master machen*. Beide Systeme brauchen dieselbe Version - laufen sie eine halbe Stunde lang unterschiedlich, erinnert der Standby über die Standard-Kanäle daran, welches zu aktualisieren ist; der Standby übernimmt auch den Schlüssel (`secret.key`) des Masters. Details im Handbuch.
 
 ## Proxmox VE und Backup Server (ab Version 0.4)
 

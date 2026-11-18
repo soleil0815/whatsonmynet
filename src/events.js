@@ -6,8 +6,9 @@
 // with the certificate of this server) - not 162/514, because WhatsOnMyNet runs without root rights; a port redirect on the
 // host or the port set on the device does the rest (see the manual).
 //
-// Each installation keeps what it received itself (failover: send to both), in a file of its own (data/events.sqlite,
-// see db.js): kept 30 days, in at most 2 GB - and never so much that less than 10 % of the disk (at least 1 GB) is left.
+// Each installation keeps what it received itself, in a file of its own (data/events.sqlite, see db.js; a failover
+// standby also takes the master's messages, twins once - see failover.js): kept 30 days, in at most 2 GB - and never
+// so much that less than 10 % of the disk (at least 1 GB) is left.
 // Whatever comes first: the oldest messages go.
 // A flood (a device in a loop, or someone sending on purpose) is cut: at most 100 messages per second per sender over
 // UDP (and traps) and 3000 in all (WOMN_MESSAGES_PER_SECOND) - what goes beyond is dropped. Over TCP and TLS nothing is dropped: up to 500 a second
@@ -424,6 +425,42 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     else if (!flushing) flushing = setImmediate(flush);
   }
 
+  // ---------------------------------------------------------------------------------------- failover copies
+  // A standby knows what the master knows: it takes the master's messages (and the master those the standby got while
+  // it had taken over). A row already here - the same sender, the same text within 10 s, because the sender sends to
+  // both - is not taken twice. Copies start no rules and no event monitors: the active installation did that.
+  const COPY_COLS = 'id, at, kind, source_ip, severity, facility, host, app, oid, text, event_id, channel, account';
+  /** The messages after this id, oldest first: [[id, at, kind, ip, severity, facility, host, app, oid, text, eventId, channel, account]] */
+  function exportSince(afterId, limit = 5000, until = null) {
+    const n = Math.max(1, Math.min(until ? 500000 : 10000, Number(limit) || 5000));
+    const rows = until
+      ? db.prepare(`SELECT ${COPY_COLS} FROM events_in WHERE id > ? AND at >= ? ORDER BY at LIMIT ?`).raw().all(Number(afterId) || 0, until, n)
+      : db.prepare(`SELECT ${COPY_COLS} FROM events_in WHERE id > ? ORDER BY id LIMIT ?`).raw().all(Number(afterId) || 0, n);
+    return { rows, maxId: db.prepare('SELECT MAX(id) FROM events_in').pluck().get() || 0 };
+  }
+  const twin = db.prepare('SELECT 1 FROM events_in WHERE at >= ? AND at <= ? AND source_ip = ? AND text = ? LIMIT 1');
+  /** Copies from the other installation → how many were new here */
+  function importCopies(list) {
+    const rows = [];
+    for (const r of Array.isArray(list) ? list.slice(0, 20000) : []) {
+      if (!Array.isArray(r)) continue;
+      const at = new Date(String(r[1] ?? ''));
+      if (!Number.isFinite(at.getTime())) continue;
+      const ip = clip(String(r[3] ?? '').replace(/^::ffff:/, ''), 64);
+      const text = clip(r[9], TEXT_MAX) || '(empty)';
+      if (!ip || !/^[a-z]{2,12}$/.test(String(r[2]))) continue;
+      const iso = at.toISOString();
+      if (twin.get(new Date(at.getTime() - 10000).toISOString(), new Date(at.getTime() + 10000).toISOString(), ip, text)) continue;
+      rows.push({ at: iso, kind: String(r[2]), source_ip: ip, device_id: deviceOf(ip), severity: Math.max(0, Math.min(7, Number(r[4]) || 0)),
+        facility: Number.isInteger(r[5]) ? r[5] : null, host: clip(r[6], 120), app: clip(r[7], 60), oid: clip(r[8], 200), text,
+        event_id: Number.isInteger(r[10]) ? r[10] : null, channel: clip(r[11], 120), account: clip(r[12], 120), transport: '' });
+    }
+    // in the order they happened, so the overview of senders ends with the newest
+    rows.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+    if (rows.length) writeRows(rows);
+    return rows.length;
+  }
+
   /** Stores one message right away (also used by the tests) → the stored row or null (dropped) */
   function receive(kind, ip, ev, at = new Date(), transport = '') {
     flush();
@@ -549,12 +586,26 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     status.traps.on = false; status.syslog.on = false; status.syslogTcp.on = false; status.syslogTls.on = false;
   }
   /** (Re)opens the receivers as the settings say */
+  const RECEIVER_KEYS = ['events.traps', 'events.syslog', 'events.syslogTcp', 'events.syslogTls'];
+  let applied = '';
+  const receiverState = () => JSON.stringify(RECEIVER_KEYS.map((k) => !!settings.get(k)));
   function apply() {
     idFilter = null; sevFilter = null;
     stopAll();
+    applied = receiverState();
     if (settings.get('events.traps')) startTraps();
     if (settings.get('events.syslog')) startSyslog();
     startStreams();
+  }
+  /**
+   * The settings changed under the receivers (a standby took the master's data): filters (event ids, severity, only
+   * known senders) count anew at once; the receivers open or close only when one of them was switched - an open UDP
+   * port is not closed for nothing.
+   */
+  function refresh() {
+    idFilter = null; sevFilter = null;
+    if (!applied) return; // the receivers were never opened (start or the settings do that)
+    if (receiverState() !== applied) { log.info('Messages: receivers set anew after the copy of the master'); apply(); }
   }
 
   // A time as the database keeps it (ISO in UTC), or null; anything that is not a date is refused by the route first
@@ -1115,7 +1166,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
         .run(a, Math.max(-1, Math.min(7, Number(min))), new Date().toISOString(), String(by).slice(0, 120));
       sevFilter = null; sendersCache = null;
     },
-    reloadTls, indexBatch, countBatch, indexPump, indexStatus, noise,
+    reloadTls, refresh, exportSince, importCopies, indexBatch, countBatch, indexPump, indexStatus, noise,
     status: () => ({ searchIndex: indexStatus(), counts: countStatus(), traps: { ...status.traps }, syslog: { ...status.syslog }, syslogTcp: { ...status.syslogTcp }, syslogTls: { ...status.syslogTls }, skipped, filtered, flooded, heldBack, perSecond: flood.perSecond, total: storage().total,
       last: db.prepare('SELECT at FROM events_in ORDER BY id DESC LIMIT 1').get()?.at || null, storage: storage() }),
     storage,
@@ -1125,7 +1176,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       if (!pruneTimer) { pruneTimer = setInterval(() => { try { prune(); } catch (e) { log.warn(`Messages cleanup failed: ${e.message}`); } }, PRUNE_MS); pruneTimer.unref(); }
       if (!ftsTimer) { ftsTimer = setInterval(indexPump, FTS_MS); ftsTimer.unref(); setImmediate(indexPump); }
     },
-    stop() { clearInterval(pruneTimer); pruneTimer = null; clearTimeout(pruneSoon); pruneSoon = null; clearInterval(ftsTimer); ftsTimer = null; stopAll(); },
+    stop() { applied = ''; clearInterval(pruneTimer); pruneTimer = null; clearTimeout(pruneSoon); pruneSoon = null; clearInterval(ftsTimer); ftsTimer = null; stopAll(); },
   };
 }
 

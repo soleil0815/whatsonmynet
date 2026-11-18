@@ -159,3 +159,31 @@ test('only from inventory devices when asked; each installation keeps its own me
   ctx.events.prune();
   assert.equal(db.prepare("SELECT COUNT(*) n FROM events_in WHERE text='known sender'").get().n, 0);
 });
+
+test('settings changed underneath (a standby took the master\'s data): receivers and filters follow at once', async () => {
+  const { settings } = ctx;
+  settings.set('events.onlyKnown', false);
+  assert.equal(ctx.events.status().syslog.on, false);
+  // the master switched syslog on: the port opens right away, not only after a restart - and closes the same way
+  settings.set('events.syslog', true);
+  ctx.events.refresh();
+  await wait(100);
+  assert.equal(ctx.events.status().syslog.on, true);
+  settings.set('events.syslog', false);
+  ctx.events.refresh();
+  await wait(100);
+  assert.equal(ctx.events.status().syslog.on, false);
+  settings.set('events.syslog', true);
+  ctx.events.refresh();
+  await wait(100);
+  assert.equal(ctx.events.status().syslog.on, true);
+  // a new "never take" list counts at once (the cached list is dropped)
+  settings.set('events.winDeny', '');
+  ctx.events.refresh();
+  assert.ok(ctx.events.receive('syslog', '10.0.10.31', { severity: 4, text: 'vor der Liste', eventId: 4242, app: 'Kernel-General' }));
+  settings.set('events.winDeny', '4242');
+  ctx.events.refresh();
+  assert.equal(ctx.events.receive('syslog', '10.0.10.31', { severity: 4, text: 'nach der Liste', eventId: 4242, app: 'Kernel-General' }), null);
+  settings.set('events.winDeny', '');
+  ctx.events.refresh();
+});
