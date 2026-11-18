@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Monitoring nach Gruppe wie in Uptime Kuma: Jede Gruppe ist eine eigene Zeile mit Zustand, einem Balken für alle Mitglieder (rot, wo eines gestört war), Verfügbarkeit und „2 von 6 gestört“, die Mitglieder stehen eingerückt darunter. Ein Gruppen-Monitor ist diese Zeile selbst statt eines weiteren Eintrags. Sobald es eine eigene Gruppe gibt, öffnet die Liste nach Gruppe - die Wahl über der Liste bleibt
+
+## 0.46.0 - 2026-11-18
+
 - Statusseiten ohne Anmeldung (wie in Uptime Kuma): Monitoring → Statusseiten. Du wählst Gruppen und Monitore und unter welchem Namen sie erscheinen; die Seite zeigt Zustand, die letzten 90 Tage und die Verfügbarkeit, dazu auf Wunsch einen Hinweis - nie Adressen oder Fehlertexte. Zugang über einen geheimen Link oder eine eigene Adresse, auf Wunsch nur aus bestimmten Netzen. Ohne Statusseite ist ohne Anmeldung nichts zu sehen
 
 ## 0.45.1 - 2026-11-18

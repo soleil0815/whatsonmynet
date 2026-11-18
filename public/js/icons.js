@@ -58,6 +58,7 @@ const P = {
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h4"/>',
   'chevron-up': '<path d="M6 15l6-6 6 6"/>',
   'chevron-down': '<path d="M6 9l6 6 6-6"/>',
+  'chevron-right': '<path d="M9 6l6 6-6 6"/>',
   cloud: '<path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96 6 6 0 0 1 11.6 1.46 3.75 3.75 0 0 1-.5 7.5H7z"/>',
   coffee: '<path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9z"/><path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M8 3c0 1.5 1 1.5 1 3M12 3c0 1.5 1 1.5 1 3"/>',
 };

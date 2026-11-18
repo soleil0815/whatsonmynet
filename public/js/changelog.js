@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Monitoring nach Gruppe wie in Uptime Kuma: Jede Gruppe ist eine eigene Zeile mit Zustand, einem Balken für alle Mitglieder (rot, wo eines gestört war), Verfügbarkeit und „2 von 6 gestört“, die Mitglieder stehen eingerückt darunter. Ein Gruppen-Monitor ist diese Zeile selbst statt eines weiteren Eintrags. Sobald es eine eigene Gruppe gibt, öffnet die Liste nach Gruppe - die Wahl über der Liste bleibt',
+  ], en: [
+    'Monitoring by group as in Uptime Kuma: every group is a row of its own with state, one bar for all members (red where one was down), uptime and "2 of 6 down", the members indented below it. A group monitor is that row itself instead of one more entry. As soon as there is a group of its own the list opens by group - the choice above the list stays',
+  ] },
+  { version: '0.46.0', date: '2026-11-18', de: [
     'Statusseiten ohne Anmeldung (wie in Uptime Kuma): Monitoring → Statusseiten. Du wählst Gruppen und Monitore und unter welchem Namen sie erscheinen; die Seite zeigt Zustand, die letzten 90 Tage und die Verfügbarkeit, dazu auf Wunsch einen Hinweis - nie Adressen oder Fehlertexte. Zugang über einen geheimen Link oder eine eigene Adresse, auf Wunsch nur aus bestimmten Netzen. Ohne Statusseite ist ohne Anmeldung nichts zu sehen',
   ], en: [
     'Status pages without login (as in Uptime Kuma): Monitoring → Status pages. You choose groups and monitors and under which name they appear; the page shows state, the last 90 days and the uptime, plus a notice if you like - never addresses or error texts. Access by a secret link or an address of its own, if wanted only from certain networks. Without a status page nothing can be seen without login',

@@ -10,6 +10,7 @@ import { openHostScript } from './hostscripts.js';
 import { checkText } from '../checktext.js';
 import { historyChart, duration } from './monchart.js';
 import { renderStatusPages } from './statuspages.js';
+import { groupSlots } from '../groupslots.js';
 
 
 export function statusPill(status) {
@@ -187,6 +188,16 @@ function beatsBar(beats, slots = 40, valueMode = false) {
     beats.slice(-slots).map((b) => h('i', { class: b.ok ? 'ok' : 'bad', title: `${fmtDate(b.at, getLang())} · ${valueMode || !b.ok ? checkText(b.message, getLang()) : `${b.ms ?? '–'} ms`}` })));
 }
 
+/** One bar for a group: a piece is red when a member failed in it, green when checks were fine, empty without (groupslots.js) */
+export function groupBeats(members, slots = 40) {
+  const lang = getLang();
+  return h('span', { class: 'beats', 'aria-hidden': 'true' }, groupSlots(members, slots).map((x) => {
+    const at = fmtDate(x.at, lang);
+    if (x.bad.length) return h('i', { class: 'bad', title: `${at} · ${t('mon.grpSlotBad', { n: x.bad.length })}: ${x.bad.slice(0, 3).join(', ')}${x.bad.length > 3 ? ' …' : ''}` });
+    return h('i', { class: x.ok ? 'ok' : 'none', title: x.ok ? `${at} · ${t('mon.grpSlotOk')}` : null });
+  }));
+}
+
 /** Size in bytes, readable: 31,8 GB */
 export function fmtBytes(n) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
@@ -244,7 +255,8 @@ export async function renderMonitoring(main, id, sub) {
   const ORDER = ['down', 'unreachable', 'pending', 'maintenance', 'up', 'paused'];
   // By state (what is down first) or by group (like Uptime Kuma); folded groups are remembered in the browser
   const store = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* not kept */ } } };
-  let view = store.get('mon.view', 'state') === 'group' ? 'group' : 'state';
+  // not chosen yet: by group as soon as one monitor has a group of its own (as in Uptime Kuma), else by state
+  let view = store.get('mon.view', null);
   const folded = new Set(store.get('mon.folded', []));
   const viewSel = h('select', { 'aria-label': t('mon.view'), style: { width: 'auto' }, onchange: (e) => { view = e.currentTarget.value; store.set('mon.view', view); draw(); } },
     h('option', { value: 'state' }, t('mon.viewState')), h('option', { value: 'group' }, t('mon.viewGroup')));
@@ -254,12 +266,13 @@ export async function renderMonitoring(main, id, sub) {
   let shown = [];
   const cols = (kind === 'sensors' ? 4 : 5) + (edit ? 1 : 0);
 
-  function row(m) {
-    const box = edit ? h('input', { type: 'checkbox', checked: selected.has(m.id), 'data-id': String(m.id), 'aria-label': `${t('inv.select')}: ${m.name}`,
-      onchange: (e) => { if (e.target.checked) selected.add(m.id); else selected.delete(m.id); e.target.closest('tr').classList.toggle('sel', e.target.checked); renderBulk(); } }) : null;
-    return h('tr', { class: `click${selected.has(m.id) ? ' sel' : ''}`, onclick: (e) => { if (!e.target.closest('a,button,input,label')) navigate(`/monitoring/${m.id}`); } },
+  const boxFor = (m) => (edit ? h('input', { type: 'checkbox', checked: selected.has(m.id), 'data-id': String(m.id), 'aria-label': `${t('inv.select')}: ${m.name}`,
+    onchange: (e) => { if (e.target.checked) selected.add(m.id); else selected.delete(m.id); e.target.closest('tr').classList.toggle('sel', e.target.checked); renderBulk(); } }) : null);
+  function row(m, child = false) {
+    const box = boxFor(m);
+    return h('tr', { class: `click${selected.has(m.id) ? ' sel' : ''}${child ? ' grp-child' : ''}`, onclick: (e) => { if (!e.target.closest('a,button,input,label')) navigate(`/monitoring/${m.id}`); } },
       edit ? h('td', { class: 'min' }, box) : null,
-      h('td', {}, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
+      h('td', { class: 'mon-name' }, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
         h('div', { style: { minWidth: 0 } }, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
           h('div', { class: 'sub' }, ipMoved(m) ? h('span', { class: 'tone-bad' }, t('mon.ipMoved', ipMoved(m)))
             : m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, checkText(m.last_message, getLang()))
@@ -269,6 +282,34 @@ export async function renderMonitoring(main, id, sub) {
       h('td', {}, pct(m.uptime24)),
       h('td', { class: 'hide-sm' }, nowCell(m)),
       kind === 'sensors' ? null : h('td', { class: 'hide-sm' }, certBadge(m)));
+  }
+
+  /**
+   * The row of a group: caret, state, name, one bar for all members (a slot is red when one of them failed in it),
+   * the mean uptime of the members, "2 of 6 down". With a group monitor its own checks, uptime and link.
+   */
+  function groupRow(g, part, gm, open, key) {
+    const bad = part.filter((m) => m.status === 'down' || m.status === 'unreachable').length;
+    const checked = part.filter((m) => ['up', 'down', 'unreachable'].includes(m.status)).length;
+    const toggle = h('button', { type: 'button', class: 'grp-toggle', 'aria-expanded': String(open), 'aria-label': `${open ? t('mon.grpFold') : t('mon.grpOpen')}: ${g || t('mon.noGroup')}`, onclick: () => {
+      if (open) folded.add(key); else folded.delete(key);
+      store.set('mon.folded', [...folded].slice(-200)); draw();
+    } }, h('span', { class: 'grp-caret', 'aria-hidden': 'true', html: icon(open ? 'chevron-down' : 'chevron-right') }));
+    const state = gm ? gm.status : bad ? 'down' : checked ? 'up' : 'pending';
+    const count = bad ? t('mon.grpBad', { n: bad, total: part.length }) : checked ? t('mon.grpOk', { n: checked, total: part.length }) : t('mon.grpCount', { n: part.length });
+    const ups = part.map((m) => m.uptime24).filter((v) => v !== null && v !== undefined);
+    const mean = ups.length ? Math.round((ups.reduce((a, b) => a + b, 0) / ups.length) * 100) / 100 : null;
+    const name = gm ? h('a', { href: `/monitoring/${gm.id}`, 'data-link': true, class: 'name' }, g) : h('span', { class: 'name' }, g || t('mon.noGroup'));
+    return h('tr', { class: `grp-row${gm ? ' click' : ''}${gm && selected.has(gm.id) ? ' sel' : ''}${bad ? ' grp-bad' : ''}`,
+      onclick: gm ? (e) => { if (!e.target.closest('a,button,input,label')) navigate(`/monitoring/${gm.id}`); } : null },
+      edit ? h('td', { class: 'min' }, gm ? boxFor(gm) : null) : null,
+      h('td', {}, h('div', { class: 'grp-name' }, toggle, monitorDot(state),
+        h('div', { style: { minWidth: 0 } }, name,
+          h('div', { class: 'sub' }, gm ? h('span', {}, t(gm.options?.mode === 'all' ? 'mon.grpAlarmAll' : 'mon.grpAlarmAny')) : h('span', {}, t('mon.grpMembers', { n: part.length })))))),
+      h('td', { class: 'hide-sm' }, gm ? beatsBar(gm.beats, 40) : groupBeats(part, 40)),
+      h('td', { title: gm ? null : t('mon.grpUptimeMean') }, pct(gm ? gm.uptime24 : mean)),
+      h('td', { class: 'hide-sm' }, h('span', { class: bad ? 'tone-bad' : 'muted' }, count)),
+      kind === 'sensors' ? null : h('td', { class: 'hide-sm' }));
   }
 
   function draw() {
@@ -290,26 +331,29 @@ export async function renderMonitoring(main, id, sub) {
     const rows = [];
     const rank = (m) => { const i = ORDER.indexOf(m.status); return i < 0 ? ORDER.indexOf('pending') : i; };
     if (view === 'group') {
-      // one block per group: those with something down first and always open, "no group" at the end
+      // one block per group, like Uptime Kuma: the group is a row of its own (state, bar, uptime), its members indented
+      // below it. A group monitor (alarm for the group) is that row - it is not listed a second time.
       const groups = new Map();
-      for (const m of list) { const g = groupOf(m); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(m); }
+      const alarmOf = new Map();
+      for (const m of list) {
+        if (m.type === 'group' && m.options?.group && !alarmOf.has(m.options.group.toLowerCase())) { alarmOf.set(m.options.group.toLowerCase(), m); continue; }
+        const g = groupOf(m); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(m);
+      }
+      // a group monitor whose group has no member in this list (filtered, or the sensors tab) stays a normal row
+      for (const [k, gm] of alarmOf) {
+        if ([...groups.keys()].some((g) => g.toLowerCase() === k)) continue;
+        const g = groupOf(gm); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(gm); alarmOf.delete(k);
+      }
       const badOf = (part) => part.filter((m) => m.status === 'down' || m.status === 'unreachable').length;
       const order = [...groups.keys()].sort((a, b) => (!a) - (!b) || (badOf(groups.get(b)) > 0) - (badOf(groups.get(a)) > 0) || a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
       for (const g of order) {
         const part = groups.get(g).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, undefined, { numeric: true }));
-        const bad = badOf(part);
-        const checked = part.filter((m) => ['up', 'down', 'unreachable'].includes(m.status)).length;
+        const gm = g ? alarmOf.get(g.toLowerCase()) || null : null;
         const key = g || '\u0000';
         // a search or a filter opens what it found; a group with something down never stays folded
-        const open = bad > 0 || !!term || !!filter || !folded.has(key);
-        const toggle = h('button', { type: 'button', class: 'grp-toggle', 'aria-expanded': String(open), onclick: () => {
-          if (open) folded.add(key); else folded.delete(key);
-          store.set('mon.folded', [...folded].slice(-200)); draw();
-        } }, h('span', { class: 'grp-caret', 'aria-hidden': 'true' }, open ? '▾' : '▸'),
-          h('span', { class: `dot dot-${bad ? 'bad' : checked ? 'ok' : 'muted'}` }), h('strong', {}, g || t('mon.noGroup')),
-          h('span', { class: 'muted small' }, ` · ${bad ? t('mon.grpBad', { n: bad, total: part.length }) : checked ? t('mon.grpOk', { n: checked, total: part.length }) : t('mon.grpCount', { n: part.length })}`));
-        rows.push(h('tr', { class: 'group grp-head' }, h('td', { colspan: cols }, toggle)));
-        if (open) for (const m of part) rows.push(row(m));
+        const open = badOf(part) > 0 || !!term || !!filter || !folded.has(key);
+        rows.push(groupRow(g, part, gm, open, key));
+        if (open) for (const m of part) rows.push(row(m, true));
       }
     } else {
       for (const st of ORDER) {
@@ -368,6 +412,7 @@ export async function renderMonitoring(main, id, sub) {
     if (!alive) return;
     all = list.filter(mine);
     byId = new Map(list.map((m) => [m.id, m]));
+    if (view !== 'group' && view !== 'state') { view = all.some((m) => m.group_name) ? 'group' : 'state'; viewSel.value = view; }
     if (!all.length) {
       selected.clear();
       mount(body, h('div', { class: 'empty' }, h('h2', {}, t(kind === 'sensors' ? 'sens.emptyTitle' : 'mon.emptyTitle')), h('p', {}, t(!edit ? 'mon.emptyViewer' : kind === 'sensors' ? 'sens.emptyText' : 'mon.emptyText')),
