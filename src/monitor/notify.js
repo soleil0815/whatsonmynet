@@ -47,8 +47,8 @@ const TEXT = {
     foNever: 'noch nie',
     newDevice: '🆕 Neues Gerät im Netz: {list}',
     newDevices: '🆕 {n} neue Geräte im Netz: {list}',
-    supplyLow: '🟠 {name}: {supply} nur noch {pct} %',
-    supplyWasteLow: '🟠 {name}: {supply} fast voll (noch {pct} % frei)',
+    supplyLow: '🟠 {name}: {supply} nur noch {pct} %', supplyLowSays: '🟠 {name}: {supply} wird knapp (meldet der Drucker)',
+    supplyWasteLow: '🟠 {name}: {supply} fast voll (noch {pct} % frei)', supplyWasteFullSoon: '🟠 {name}: {supply} fast voll (meldet der Drucker)',
     supplyEmpty: '🔴 {name}: {supply} ist leer',
     supplyWasteFull: '🔴 {name}: {supply} ist voll',
     nasBad: '🔴 {name}: {what}',
@@ -95,8 +95,8 @@ const TEXT = {
     foNever: 'never',
     newDevice: '🆕 New device on the network: {list}',
     newDevices: '🆕 {n} new devices on the network: {list}',
-    supplyLow: '🟠 {name}: {supply} down to {pct} %',
-    supplyWasteLow: '🟠 {name}: {supply} almost full ({pct} % space left)',
+    supplyLow: '🟠 {name}: {supply} down to {pct} %', supplyLowSays: '🟠 {name}: {supply} running low (the printer reports)',
+    supplyWasteLow: '🟠 {name}: {supply} almost full ({pct} % space left)', supplyWasteFullSoon: '🟠 {name}: {supply} almost full (the printer reports)',
     supplyEmpty: '🔴 {name}: {supply} is empty',
     supplyWasteFull: '🔴 {name}: {supply} is full',
     nasBad: '🔴 {name}: {what}',
@@ -145,6 +145,7 @@ export function eventText(ev, lang = 'de') {
     case 'supply': {
       const vars = { name: ev.device?.name || '', supply: ev.supply?.description || '', pct: ev.supply?.pct ?? '' };
       if (ev.empty) return fill(ev.supply?.receptacle ? T.supplyWasteFull : T.supplyEmpty, vars);
+      if (ev.supply?.pct === null || ev.supply?.pct === undefined) return fill(ev.supply?.receptacle ? T.supplyWasteFullSoon : T.supplyLowSays, vars);
       return fill(ev.supply?.receptacle ? T.supplyWasteLow : T.supplyLow, vars);
     }
     case 'nas': {

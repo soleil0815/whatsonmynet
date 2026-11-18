@@ -408,7 +408,7 @@ Geräte vom Typ *Drucker*, *Switch* und *NAS* werden per SNMP gefragt (nur lesen
 
 ![Drucker](img/printer-de.png)
 
-- **Drucker**: Toner bzw. Tinte je Farbe, Trommel, Resttoner, Seitenzähler, Störungen und Display-Text. Unter 15 % kommt eine Meldung - einmal pro Kartusche.
+- **Drucker**: Toner bzw. Tinte je Farbe, Trommel, Resttoner, Seitenzähler, Störungen und Display-Text. Unter 15 % kommt eine Meldung - einmal pro Kartusche. Viele Farbdrucker nennen für Farbtoner keinen Füllstand, nur „vorhanden“ (gestreifter Balken); meldet der Drucker selbst „wenig“ oder „leer“ (wie auf seinem Display), zeigt WhatsOnMyNet das so an und meldet es genauso.
 - **Switch**: Ports als Kacheln, welche Geräte an welchem Port hängen (auch mit VLANs), LLDP-Nachbarn, Firmware. Jede Geräteseite zeigt „Angeschlossen an“. Ab der zweiten Abfrage auch die **Auslastung** jedes Ports (ein und aus, in Mbit/s und Prozent der Portgeschwindigkeit) - das Mittel zwischen zwei Abfragen (Standard 15 Minuten). Stark belastete Ports sind in der Kachel markiert; der Sensor *Auslastung Port …* alarmiert ab 80 %.
 - **NAS**: Volumes, bei Synology auch Festplatten, RAID, Temperatur, Lüfter, Netzteil und DSM-Update. Probleme werden gemeldet - und wieder, wenn alles in Ordnung ist.
 - **Ins Inventar übernommen**: Was das Gerät über sich selbst sagt - Seriennummer, Modell, Firmware bzw. Betriebssystem (z. B. DSM-Version), bei Synology/QNAP der Hersteller - landet gleich in den Angaben des Geräts und bleibt aktuell (z. B. nach einem Firmware-Update). Was du selbst mit einem anderen Wert eingetragen hast, bleibt stehen. Der Verlauf zeigt jede Übernahme.

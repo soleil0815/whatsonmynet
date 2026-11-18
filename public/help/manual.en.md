@@ -409,7 +409,7 @@ Devices of type *Printer*, *Switch* and *NAS* are queried via SNMP (read-only). 
 
 ![Printer](img/printer-en.png)
 
-- **Printer**: toner or ink per colour, drum, waste toner, page counter, faults and display text. Below 15 % a notice is sent - once per cartridge.
+- **Printer**: toner or ink per colour, drum, waste toner, page counter, faults and display text. Below 15 % a notice is sent - once per cartridge. Many colour printers give no level for colour toner, only "available" (striped bar); when the printer itself reports "low" or "empty" (as on its display), WhatsOnMyNet shows and reports it that way.
 - **Switch**: ports as tiles, which devices hang at which port (VLAN-aware), LLDP neighbours, firmware. Every device page shows "Plugged in at". From the second query on also the **load** of every port (in and out, in Mbit/s and percent of the port speed) - the average between two queries (default 15 minutes). Busy ports are marked in the tile; the sensor *Load port …* alarms from 80 %.
 - **NAS**: volumes; on Synology also disks, RAID, temperature, fans, power supply and DSM update. Problems are reported - and again when everything is fine.
 - **Taken into the inventory**: what the device says about itself - serial number, model, firmware or operating system (e.g. DSM version), for Synology/QNAP the manufacturer - goes right into the details of the device and stays current (e.g. after a firmware update). What you entered yourself with another value stays. The history shows every takeover.

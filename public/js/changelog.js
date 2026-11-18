@@ -3,6 +3,13 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Drucker: Toner ohne Füllstand („vorhanden“) sieht nicht mehr voll aus - auf der Geräteseite ein gestreifter Balken in seiner Farbe, im Bericht ein heller. Meldet der Drucker selbst „wenig“ oder „leer“ (z. B. Lexmark bei Cyan und Magenta), steht das dort samt „bitte nachbestellen“, es kommt eine Meldung und ein Sensor schlägt an',
+    'Drucker-Bericht: Fixiereinheit, Transfereinheit und Trommel in Blau wie auf der Geräteseite statt in Grau, das wie leer aussah',
+  ], en: [
+    'Printers: toner without a level ("available") no longer looks full - a striped bar in its colour on the device page, a pale one in the report. When the printer itself reports "low" or "empty" (e.g. Lexmark for cyan and magenta), it says so there with "please order", a notice is sent and a sensor goes off',
+    'Printer report: fuser, transfer unit and drum in blue as on the device page instead of grey, which looked empty',
+  ] },
+  { version: '0.45.0', date: '2026-11-18', de: [
     'Gruppen für Monitore und Sensoren (wie in Uptime Kuma): eigene Gruppe im Formular oder für mehrere auf einmal, sonst gilt der Standort des Geräts. Neue Ansicht „Nach Gruppe“ mit Zusammenfassung je Gruppe; Gruppen mit einer Störung stehen oben und bleiben aufgeklappt',
     'Gruppen-Alarm: neue Monitor-Art „Gruppe“ – gestört, wenn ein Mitglied gestört ist oder erst, wenn alle gestört sind; mit eigenen Kanälen, Eskalation und Wartungsfenstern. So kommt für eine Gruppe ein Alarm statt einer pro Monitor',
     'Wartungsfenster: Monitore einer Gruppe lassen sich mit einem Haken zusammen wählen',

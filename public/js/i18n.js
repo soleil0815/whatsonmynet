@@ -966,7 +966,7 @@ const de = {
   'sup.wasteInk': 'Resttintenbehälter', 'sup.drum': 'Trommel', 'sup.developer': 'Entwickler', 'sup.fuserOil': 'Fixieröl', 'sup.fuser': 'Fixiereinheit',
   'sup.transferUnit': 'Transfereinheit', 'sup.tonerCartridge': 'Tonerkartusche', 'sup.fuserOiler': 'Fixierölgeber', 'sup.water': 'Wasser', 'sup.wasteWater': 'Abwasser',
   'sup.bandingSupply': 'Banderole', 'sup.bindingSupply': 'Bindematerial', 'sup.staples': 'Heftklammern', 'sup.other': 'Verbrauchsmaterial',
-  'sup.full': 'voll', 'sup.empty': 'leer', 'sup.freePct': '{pct} % frei', 'sup.some': 'vorhanden', 'sup.unknown': 'unbekannt',
+  'sup.full': 'voll', 'sup.empty': 'leer', 'sup.freePct': '{pct} % frei', 'sup.some': 'vorhanden', 'sup.low': 'wenig', 'sup.nearlyFull': 'fast voll', 'sup.unknown': 'unbekannt',
   // Switches, NAS
   'set.snmpdev': 'Switches & NAS', 'snmpd.lead': 'Geräte vom Typ Switch und NAS werden regelmäßig per SNMP gefragt (nur lesend). Switches: Ports, welche Geräte an welchem Port hängen, Nachbarn (LLDP), Firmware. NAS: Volumes, Festplatten, RAID, Temperatur.',
   'snmpd.enabled': 'Switches und NAS regelmäßig abfragen', 'snmpd.interval': 'Abstand (Minuten)', 'snmpd.threshold': 'Volume voll ab (%)',
@@ -1947,7 +1947,7 @@ const en = {
   'sup.wasteInk': 'Waste ink box', 'sup.drum': 'Drum', 'sup.developer': 'Developer', 'sup.fuserOil': 'Fuser oil', 'sup.fuser': 'Fuser',
   'sup.transferUnit': 'Transfer unit', 'sup.tonerCartridge': 'Toner cartridge', 'sup.fuserOiler': 'Fuser oiler', 'sup.water': 'Water', 'sup.wasteWater': 'Waste water',
   'sup.bandingSupply': 'Banding', 'sup.bindingSupply': 'Binding', 'sup.staples': 'Staples', 'sup.other': 'Supply',
-  'sup.full': 'full', 'sup.empty': 'empty', 'sup.freePct': '{pct} % free', 'sup.some': 'available', 'sup.unknown': 'unknown',
+  'sup.full': 'full', 'sup.empty': 'empty', 'sup.freePct': '{pct} % free', 'sup.some': 'available', 'sup.low': 'low', 'sup.nearlyFull': 'almost full', 'sup.unknown': 'unknown',
   // Switches, NAS
   'set.snmpdev': 'Switches & NAS', 'snmpd.lead': 'Devices of type switch and NAS are queried via SNMP at regular intervals (read-only). Switches: ports, which devices are plugged into which port, neighbours (LLDP), firmware. NAS: volumes, disks, RAID, temperature.',
   'snmpd.enabled': 'Query switches and NAS regularly', 'snmpd.interval': 'Interval (minutes)', 'snmpd.threshold': 'Volume full at (%)',
