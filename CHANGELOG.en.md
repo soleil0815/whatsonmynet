@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Failover: catching up the messages on the standby loaded the CPU heavily (each message was checked for twins on its own). Now the check runs once per time slice - about five times faster in a network with many messages per second - and catching up takes at most 8 seconds per minute. A large stock takes a bit longer then; the page shows how much is still to come
+
+## 0.50.0 - 2026-11-18
+
 - Failover: the standby now knows everything the master knows - it takes the messages of the devices (syslog, traps, Windows events) every minute too, twins (devices send to both) are there only once. When a receiving setting changes on the master (syslog on/off, event ids), the standby follows at once instead of after a restart. Messages that reached only the standby during a takeover go to the master afterwards
 
 ## 0.49.0 - 2026-11-18

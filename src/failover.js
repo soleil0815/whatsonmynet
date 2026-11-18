@@ -440,12 +440,16 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
   // The messages (syslog, traps, Windows events) live in a file of their own and are far more than the rest: the
   // standby takes the new ones every minute, in pages, from where it stopped (the master's message number). So it
   // knows what the master knows - and goes on with it when it has to take over.
-  const PULL_PAGE = 5000; const PULL_PAGES = 20;
+  // Gently: pages of 2000, at most 8 s of work per minute, a breath between pages (receivers and the page stay quick).
+  // Catching up a large stock after pairing takes a while then - the page shows how much is still to come.
+  const PULL_PAGE = 2000; const PULL_PAGES = 50; const PULL_BUDGET_MS = 8000;
   async function pullMessages(s) {
     if (!events) return;
     const c = s.messages || (s.messages = { after: 0, copied: 0, at: null, error: '' });
+    const t0 = Date.now();
     try {
-      for (let i = 0; i < PULL_PAGES; i++) {
+      for (let i = 0; i < PULL_PAGES && Date.now() - t0 < PULL_BUDGET_MS; i++) {
+        if (i) await new Promise((r) => setImmediate(r));
         const r = await pinnedRequest(peer(), 'GET', `/api/failover/messages?after=${c.after}&limit=${PULL_PAGE}`, { timeoutMs: 60000 });
         if (r.status === 404) { c.error = 'the master runs an older version'; return; }
         if (r.status !== 200 || !Array.isArray(r.json?.rows)) throw new Error(`HTTP ${r.status}`);

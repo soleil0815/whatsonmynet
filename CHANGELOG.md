@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Ausfallsicherung: Das Nachholen der Meldungen am Standby belastete die CPU stark (jede Meldung wurde einzeln auf Doppelte geprüft). Jetzt geht die Prüfung je Zeitabschnitt in einem Durchgang - in einem Netz mit vielen Meldungen pro Sekunde etwa fünfmal schneller - und das Nachholen nimmt sich höchstens 8 Sekunden pro Minute. Ein großer Bestand braucht so etwas länger, die Seite zeigt, wie viel noch offen ist
+
+## 0.50.0 - 2026-11-18
+
 - Ausfallsicherung: Der Standby weiß jetzt alles, was der Master weiß - auch die Meldungen der Geräte (Syslog, Traps, Windows-Ereignisse) holt er jede Minute nach, doppelte (Geräte schicken an beide) stehen nur einmal da. Ändert sich am Master eine Empfangs-Einstellung (Syslog an/aus, Ereignis-IDs), folgt der Standby sofort statt erst nach einem Neustart. Meldungen, die während einer Übernahme nur am Standby ankamen, gehen danach an den Master
 
 ## 0.49.0 - 2026-11-18

@@ -438,25 +438,46 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       : db.prepare(`SELECT ${COPY_COLS} FROM events_in WHERE id > ? ORDER BY id LIMIT ?`).raw().all(Number(afterId) || 0, n);
     return { rows, maxId: db.prepare('SELECT MAX(id) FROM events_in').pluck().get() || 0 };
   }
-  const twin = db.prepare('SELECT 1 FROM events_in WHERE at >= ? AND at <= ? AND source_ip = ? AND text = ? LIMIT 1');
+  // Twins are looked up per time slice of at most 5 minutes with ONE pass over the messages of that slice (index on
+  // "at") - not one query per message: with many messages per second that cost a whole pass per row and kept the CPU
+  // of a standby busy while it caught up.
+  const inWindow = db.prepare('SELECT at, source_ip, text FROM events_in WHERE at >= ? AND at <= ?');
+  const TWIN_MS = 10000; const SLICE_MS = 5 * 60000;
   /** Copies from the other installation → how many were new here */
   function importCopies(list) {
-    const rows = [];
+    const cand = [];
     for (const r of Array.isArray(list) ? list.slice(0, 20000) : []) {
       if (!Array.isArray(r)) continue;
-      const at = new Date(String(r[1] ?? ''));
-      if (!Number.isFinite(at.getTime())) continue;
+      const t = new Date(String(r[1] ?? '')).getTime();
+      if (!Number.isFinite(t)) continue;
       const ip = clip(String(r[3] ?? '').replace(/^::ffff:/, ''), 64);
-      const text = clip(r[9], TEXT_MAX) || '(empty)';
       if (!ip || !/^[a-z]{2,12}$/.test(String(r[2]))) continue;
-      const iso = at.toISOString();
-      if (twin.get(new Date(at.getTime() - 10000).toISOString(), new Date(at.getTime() + 10000).toISOString(), ip, text)) continue;
-      rows.push({ at: iso, kind: String(r[2]), source_ip: ip, device_id: deviceOf(ip), severity: Math.max(0, Math.min(7, Number(r[4]) || 0)),
-        facility: Number.isInteger(r[5]) ? r[5] : null, host: clip(r[6], 120), app: clip(r[7], 60), oid: clip(r[8], 200), text,
-        event_id: Number.isInteger(r[10]) ? r[10] : null, channel: clip(r[11], 120), account: clip(r[12], 120), transport: '' });
+      cand.push({ t, r, ip, text: clip(r[9], TEXT_MAX) || '(empty)' });
     }
-    // in the order they happened, so the overview of senders ends with the newest
-    rows.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+    cand.sort((x, y) => x.t - y.t);
+    const rows = [];
+    for (let i = 0; i < cand.length;) {
+      // one slice: the candidates of up to 5 minutes, and what is here from 10 s before to 10 s after them
+      const start = cand[i].t; let j = i;
+      while (j < cand.length && cand[j].t - start <= SLICE_MS) j++;
+      const here = new Map();
+      for (const x of inWindow.iterate(new Date(start - TWIN_MS).toISOString(), new Date(cand[j - 1].t + TWIN_MS).toISOString())) {
+        const k = `${x.source_ip}\u0000${x.text}`;
+        const list2 = here.get(k); const at = Date.parse(x.at);
+        if (list2) list2.push(at); else here.set(k, [at]);
+      }
+      for (; i < j; i++) {
+        const { t, r, ip, text } = cand[i];
+        const k = `${ip}\u0000${text}`;
+        const seen = here.get(k);
+        if (seen && seen.some((at) => Math.abs(at - t) <= TWIN_MS)) continue;
+        // a twin within the same page counts too
+        if (seen) seen.push(t); else here.set(k, [t]);
+        rows.push({ at: new Date(t).toISOString(), kind: String(r[2]), source_ip: ip, device_id: deviceOf(ip), severity: Math.max(0, Math.min(7, Number(r[4]) || 0)),
+          facility: Number.isInteger(r[5]) ? r[5] : null, host: clip(r[6], 120), app: clip(r[7], 60), oid: clip(r[8], 200), text,
+          event_id: Number.isInteger(r[10]) ? r[10] : null, channel: clip(r[11], 120), account: clip(r[12], 120), transport: '' });
+      }
+    }
     if (rows.length) writeRows(rows);
     return rows.length;
   }
