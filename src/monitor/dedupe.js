@@ -55,6 +55,7 @@ export function fingerprint(m, index) {
     case 'docker': return `docker|${m.docker_host_id}|${m.target}`;
     case 'dns': return `dns|${String(m.target).toLowerCase()}|${o.server || ''}|${o.rtype || 'A'}|${String(o.expect || '').toLowerCase()}`;
     case 'mssql': return `mssql|${hostKey(index, m.target)}|${m.port}|${String(o.instance || '').toLowerCase()}`;
+    case 'group': return `group|${String(o.group || '').toLowerCase()}|${o.mode === 'all' ? 'all' : 'any'}`;
     case 'event': return `event|${m.device_id || '*'}|${o.source || 'any'}|${o.maxSeverity}|${String(o.match || '').toLowerCase()}`;
     default: return `${m.type}|${hostKey(index, m.target)}|${m.port}|${String(o.database || '').toLowerCase()}`;
   }

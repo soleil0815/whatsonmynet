@@ -269,12 +269,19 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
   function monitorsOut(since, an) {
     const stats = new Map(db.prepare(`SELECT monitor_id, COUNT(*) n, SUM(ok=0) failed, ROUND(AVG(ms)) ms FROM checks WHERE at >= ? GROUP BY monitor_id`).all(since).map((r) => [r.monitor_id, r]));
     const events = new Map(db.prepare('SELECT monitor_id, COUNT(*) n FROM monitor_events WHERE at >= ? GROUP BY monitor_id').all(since).map((r) => [r.monitor_id, r.n]));
-    return db.prepare('SELECT * FROM monitors ORDER BY id').all().map((m) => {
+    // groups by number (their names are the user's own words): GROUP-1, GROUP-2 … - the same in the group monitors
+    const rows = db.prepare('SELECT * FROM monitors ORDER BY id').all();
+    const groupNames = [...new Set(rows.flatMap((m) => [m.group_name, m.type === 'group' ? parse(m.options)?.group : ''])
+      .map((g) => String(g || '').trim().toLowerCase()).filter(Boolean))].sort();
+    const grp = (g) => { const i = groupNames.indexOf(String(g || '').trim().toLowerCase()); return i < 0 ? '' : `GROUP-${i + 1}`; };
+    return rows.map((m) => {
       const s = stats.get(m.id) || {};
+      const opts = parse(m.options);
+      if (m.type === 'group' && opts) opts.group = grp(opts.group);
       return { id: m.id, type: m.type, name: an.anon(m.name), target: an.anon(m.target), port: m.port, device_id: m.device_id, parent_id: m.parent_id,
         enabled: !!m.enabled, interval_s: m.interval_s, timeout_s: m.timeout_s, fail_threshold: m.fail_threshold, status: m.status, status_since: m.status_since,
         last_check: m.last_check, last_ms: m.last_ms, last_message: an.anon(m.last_message), fail_count: m.fail_count,
-        options: an.deep(parse(m.options)), data: an.deep(parse(m.data)),
+        group: grp(m.group_name), options: an.deep(opts), data: an.deep(parse(m.data)),
         period: { checks: s.n || 0, failed: s.failed || 0, avg_ms: s.ms ?? null, events: events.get(m.id) || 0 } };
     });
   }
@@ -402,7 +409,9 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
     return {
       since,
       log: count(logs, (l) => l.level),
-      monitors: { by_type: count(monitors, (m) => m.type), by_status: count(monitors, (m) => m.status), paused: monitors.filter((m) => !m.enabled).length },
+      monitors: { by_type: count(monitors, (m) => m.type), by_status: count(monitors, (m) => m.status), paused: monitors.filter((m) => !m.enabled).length,
+        // groups of their own (Uptime-Kuma-like) and how many monitors are in one
+        groups: new Set(monitors.map((m) => m.group).filter(Boolean)).size, in_group: monitors.filter((m) => m.group).length },
       checks: db.prepare('SELECT m.type, COUNT(*) n, SUM(c.ok=0) failed FROM checks c JOIN monitors m ON m.id=c.monitor_id WHERE c.at >= ? GROUP BY m.type').all(since),
       events: Object.fromEntries(db.prepare('SELECT kind, COUNT(*) n FROM monitor_events WHERE at >= ? GROUP BY kind').all(since).map((r) => [r.kind, r.n])),
       scans: db.prepare('SELECT kind, status, COUNT(*) n FROM scans WHERE started_at >= ? GROUP BY kind, status').all(since),

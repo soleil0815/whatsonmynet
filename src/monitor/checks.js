@@ -129,6 +129,7 @@ export function runCheck(m, ctx = {}) {
   if (m.type === 'tcp') return tcpCheck(m.target, m.port, m.timeout_s);
   if (m.type === 'proxmox') return Promise.resolve(ctx.db ? proxmoxCheck(ctx.db, m) : { ok: false, ms: null, message: 'no database' });
   if (m.type === 'sensor') return Promise.resolve(ctx.db ? sensorCheck(ctx.db, m) : { ok: false, ms: null, message: 'no database' });
+  if (m.type === 'group') return Promise.resolve(ctx.group ? ctx.group(m) : { ok: false, ms: null, message: 'no database' });
   if (m.type === 'event') return Promise.resolve(ctx.db ? eventCheck(ctx.db, m) : { ok: false, ms: null, message: 'no database' });
   if (m.type === 'snmp') {
     let o = {};

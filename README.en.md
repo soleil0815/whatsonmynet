@@ -24,7 +24,7 @@ Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans y
 | | |
 |---|---|
 | 🔍 **Scan and inventory** | Gentle scan with radar, manufacturer and device type by itself (Telematik too), inventory by ticking, MAC as identity, network map from the switches |
-| 📈 **Monitoring** | New devices are watched right away (monitor and first sensors by themselves); web, TCP, ping, network drives, Docker, MariaDB/PostgreSQL/Redis, certificates - with escalation, dependencies, maintenance windows and a year of history |
+| 📈 **Monitoring** | New devices are watched right away (monitor and first sensors by themselves); web, TCP, ping, network drives, Docker, MariaDB/PostgreSQL/Redis, certificates - with escalation, dependencies, groups (one alarm per group), maintenance windows and a year of history |
 | 🌡️ **Sensors like PRTG** | Toner, disks, ports, UPS, every temperature, CPU, RAM, VMs and backups - with limit, alarm and a chart that shows outages with start, end and length |
 | 🖥️ **Virtualization and hardware** | Proxmox VE/Backup Server (clusters too), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity via Redfish |
 | 🧪 **More checks** | Mail servers (SMTP/IMAP/POP3 with TLS and certificate), DNS, LDAP/Active Directory, time servers (NTP), Microsoft SQL Server |

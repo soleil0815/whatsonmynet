@@ -70,6 +70,11 @@ const PATTERNS = [
   [/^failed: (.*)$/, 'gestört: $1'],
   // messages devices sent (traps, syslog): the device's own text stays as it is
   [/^no matching message in the last (\d+) min$/, 'keine passende Meldung in den letzten $1 Min.'],
+  [/^(\d+) of (\d+) down: (.*) \(\+(\d+) more\)$/, '$1 von $2 gestört: $3 (+$4 weitere)'],
+  [/^(\d+) of (\d+) down: (.*)$/, '$1 von $2 gestört: $3'],
+  [/^(\d+) of (\d+) up$/, '$1 von $2 in Ordnung'],
+  [/^group "(.*)" has no members$/, 'Gruppe „$1“ hat keine Mitglieder'],
+  [/^no member checked \((\d+) in maintenance, paused or waiting\)$/, 'kein Mitglied geprüft ($1 in Wartung, pausiert oder wartend)'],
   [/^(trap|syslog) (emerg|alert|crit|err|warning|notice|info|debug) from (\S+): ([\s\S]*)$/, (_, k, sev, ip, rest) => `${k === 'trap' ? 'Trap' : 'Syslog'} ${SEV_DE[sev]} von ${ip}: ${
     rest.replace(/^(\w+: )?(port down|port up|device started|device restarted|SNMP request with a wrong community|UPS on battery|UPS alarm cleared|UPS alarm|UPS self-test completed|APC UPS on battery|APC UPS back on mains|APC UPS battery low)/, (m, app, w) => `${app || ''}${TRAP_DE[w]}`)
       .replace(/ \(\+(\d+) more\)$/, ' (+$1 weitere)')}`],

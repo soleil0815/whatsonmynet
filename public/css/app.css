@@ -230,7 +230,7 @@ input.mono { font-family: var(--mono); }
 .state-label { flex: 1; }
 .state-row b { font-family: var(--display); font-size: 22px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; min-width: 2ch; text-align: right; }
 .state-note { width: 120px; text-align: right; font-size: 13px; color: var(--muted); }
-.dot-ok { background: var(--ok); } .dot-bad { background: var(--bad); } .dot-new { background: var(--new-fill); } .dot-ti { background: var(--ti); }
+.dot-ok { background: var(--ok); } .dot-bad { background: var(--bad); } .dot-new { background: var(--new-fill); } .dot-ti { background: var(--ti); } .dot-muted { background: var(--muted); }
 .tone-bad { color: var(--bad); } .tone-new { color: var(--new); }
 .recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; font-size: 13px; }
 .recent li { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; }
@@ -881,6 +881,9 @@ td.nowrap { white-space: nowrap; }
 .ev-noise .ev-noise-act .btn { white-space: nowrap; }
 /* "What takes the space?": room for the buttons next to the figures (they were cut off at the right) */
 dialog.modal.wide:has(.ev-noise) { width: min(980px, calc(100vw - 24px)); }
+.grp-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; width: 100%; }
+.grp-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.grp-caret { width: 1em; color: var(--muted); }
 .ev-transport { font: 600 10px/1.6 var(--mono); letter-spacing: .02em; }
 .ev-noise-gone > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
 .ev-noise .num { text-align: right; font-variant-numeric: tabular-nums; }
