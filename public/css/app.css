@@ -884,9 +884,16 @@ td.nowrap { white-space: nowrap; }
 .ev-noise .ev-noise-act .btn { white-space: nowrap; }
 /* "What takes the space?": room for the buttons next to the figures (they were cut off at the right) */
 dialog.modal.wide:has(.ev-noise) { width: min(980px, calc(100vw - 24px)); }
-.grp-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; width: 100%; }
-.grp-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.grp-caret { width: 1em; color: var(--muted); }
+.grp-toggle { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; flex: none; color: var(--muted); }
+.grp-toggle:hover { background: var(--bg-2); color: var(--ink); }
+.grp-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.grp-caret, .grp-caret svg { display: block; width: 16px; height: 16px; }
+/* Group rows like Uptime Kuma: the group is a row of its own, its members indented below with a line on the left */
+.data tr.grp-row td { background: var(--bg); border-top: 1px solid var(--line-2); }
+.data tr.grp-row .name { font-weight: 650; }
+.grp-name { display: flex; gap: 8px; align-items: center; margin-left: -6px; }
+.data tr.grp-child td.mon-name { padding-left: 34px; position: relative; }
+.data tr.grp-child td.mon-name::before { content: ''; position: absolute; left: 22px; top: 0; bottom: 0; border-left: 2px solid var(--line-2); }
 .ev-transport { font: 600 10px/1.6 var(--mono); letter-spacing: .02em; }
 .ev-noise-gone > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
 .ev-noise .num { text-align: right; font-variant-numeric: tabular-nums; }

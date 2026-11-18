@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Monitoring by group as in Uptime Kuma: every group is a row of its own with state, one bar for all members (red where one was down), uptime and "2 of 6 down", the members indented below it. A group monitor is that row itself instead of one more entry. As soon as there is a group of its own the list opens by group - the choice above the list stays
+
+## 0.46.0 - 2026-11-18
+
 - Status pages without login (as in Uptime Kuma): Monitoring → Status pages. You choose groups and monitors and under which name they appear; the page shows state, the last 90 days and the uptime, plus a notice if you like - never addresses or error texts. Access by a secret link or an address of its own, if wanted only from certain networks. Without a status page nothing can be seen without login
 
 ## 0.45.1 - 2026-11-18
