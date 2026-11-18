@@ -910,3 +910,11 @@ dialog.modal.wide:has(.ev-noise) { width: min(980px, calc(100vw - 24px)); }
 .sp-item-btns .icon-btn:disabled { opacity: .3; cursor: default; }
 .sp-add { display: flex; gap: 8px; flex-wrap: wrap; }
 .sp-add select { width: auto; max-width: 100%; }
+
+/* Search examples under the search field of the messages, and why an event id was not found */
+.ev-search-help { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: -6px 0 12px; }
+.ev-ex { all: unset; cursor: pointer; display: inline-flex; gap: 5px; align-items: baseline; border-radius: 6px; padding: 1px 2px; }
+.ev-ex code { font-family: var(--mono); font-size: 12px; background: var(--bg-2); color: var(--ink); padding: 1px 6px; border-radius: 5px; }
+.ev-ex:hover code { background: var(--accent-soft); color: var(--accent); }
+.ev-ex:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ev-why p { margin: 8px 0 0; color: var(--ink-2); }

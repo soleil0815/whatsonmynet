@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Meldungen suchen: Unter dem Suchfeld stehen Beispiele zum Anklicken. „Ereignis 1002“ (auch „Event 1002“, „ID 1002“, „id:1002“) findet nur dieses Windows-Ereignis statt nichts. Findet die Suche nach einer Ereignis-ID nichts, steht da warum: nicht gespeichert, zuletzt am … (mit „Ganzen Zeitraum zeigen“) oder nie angekommen',
+  ], en: [
+    'Searching messages: below the search field there are examples to click. "Event 1002" (also "ID 1002", "id:1002") finds only this Windows event instead of nothing. When a search for an event id finds nothing, it says why: not kept, came last on … (with "Show the whole time range") or never came in',
+  ] },
+  { version: '0.47.0', date: '2026-11-18', de: [
     'Monitoring nach Gruppe wie in Uptime Kuma: Jede Gruppe ist eine eigene Zeile mit Zustand, einem Balken für alle Mitglieder (rot, wo eines gestört war), Verfügbarkeit und „2 von 6 gestört“, die Mitglieder stehen eingerückt darunter. Ein Gruppen-Monitor ist diese Zeile selbst statt eines weiteren Eintrags. Sobald es eine eigene Gruppe gibt, öffnet die Liste nach Gruppe - die Wahl über der Liste bleibt',
   ], en: [
     'Monitoring by group as in Uptime Kuma: every group is a row of its own with state, one bar for all members (red where one was down), uptime and "2 of 6 down", the members indented below it. A group monitor is that row itself instead of one more entry. As soon as there is a group of its own the list opens by group - the choice above the list stays',

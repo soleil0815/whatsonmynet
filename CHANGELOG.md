@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Meldungen suchen: Unter dem Suchfeld stehen Beispiele zum Anklicken. „Ereignis 1002“ (auch „Event 1002“, „ID 1002“, „id:1002“) findet nur dieses Windows-Ereignis statt nichts. Findet die Suche nach einer Ereignis-ID nichts, steht da warum: nicht gespeichert, zuletzt am … (mit „Ganzen Zeitraum zeigen“) oder nie angekommen
+
+## 0.47.0 - 2026-11-18
+
 - Monitoring nach Gruppe wie in Uptime Kuma: Jede Gruppe ist eine eigene Zeile mit Zustand, einem Balken für alle Mitglieder (rot, wo eines gestört war), Verfügbarkeit und „2 von 6 gestört“, die Mitglieder stehen eingerückt darunter. Ein Gruppen-Monitor ist diese Zeile selbst statt eines weiteren Eintrags. Sobald es eine eigene Gruppe gibt, öffnet die Liste nach Gruppe - die Wahl über der Liste bleibt
 
 ## 0.46.0 - 2026-11-18

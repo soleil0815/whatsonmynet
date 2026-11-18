@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Searching messages: below the search field there are examples to click. "Event 1002" (also "ID 1002", "id:1002") finds only this Windows event instead of nothing. When a search for an event id finds nothing, it says why: not kept, came last on … (with "Show the whole time range") or never came in
+
+## 0.47.0 - 2026-11-18
+
 - Monitoring by group as in Uptime Kuma: every group is a row of its own with state, one bar for all members (red where one was down), uptime and "2 of 6 down", the members indented below it. A group monitor is that row itself instead of one more entry. As soon as there is a group of its own the list opens by group - the choice above the list stays
 
 ## 0.46.0 - 2026-11-18
