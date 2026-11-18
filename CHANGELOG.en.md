@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Status pages without login (as in Uptime Kuma): Monitoring → Status pages. You choose groups and monitors and under which name they appear; the page shows state, the last 90 days and the uptime, plus a notice if you like - never addresses or error texts. Access by a secret link or an address of its own, if wanted only from certain networks. Without a status page nothing can be seen without login
+
+## 0.45.1 - 2026-11-18
+
 - Printers: toner without a level ("available") no longer looks full - a striped bar in its colour on the device page, a pale one in the report. When the printer itself reports "low" or "empty" (e.g. Lexmark for cyan and magenta), it says so there with "please order", a notice is sent and a sensor goes off
 - Printer report: fuser, transfer unit and drum in blue as on the device page instead of grey, which looked empty
 

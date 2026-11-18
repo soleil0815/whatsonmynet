@@ -25,6 +25,7 @@ import { syncStoredFacts } from './devicefill.js';
 import { createDirectory } from './auth/directory.js';
 import { createAgents } from './agents.js';
 import { createReports } from './reports.js';
+import { createStatusPages, renderStatusPage, renderNotFound } from './statuspages.js';
 import { createProxmox } from './proxmox.js';
 import { createBackups } from './backup.js';
 import { HttpError } from './lib/http.js';
@@ -101,6 +102,7 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   const directory = createDirectory(settings);
   const agents = createAgents({ db, settings, inventory, scanner });
   const reports = createReports({ db, settings, mailer });
+  const statusPages = createStatusPages({ db, shownStatus: (m) => monitoring.shownStatus(m) });
   const proxmox = createProxmox({ db, settings });
   // Restart after a restore: the normal shutdown (Docker starts the container again)
   const backups = createBackups({ db, settings, dbFile: paths.db, backupsDir: paths.backups, restart: () => setTimeout(() => process.kill(process.pid, 'SIGTERM'), 800).unref() });
@@ -146,7 +148,7 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   } });
   const apiTokens = createApiTokens({ settings });
   diagnostics.useSources({ events, eventRules, apiTokens });
-  const ctx = { db, settings, events, eventRules, apiTokens, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups,
+  const ctx = { db, settings, events, eventRules, apiTokens, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups, statusPages,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 
@@ -206,6 +208,19 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
     let role = 'master';
     try { const s = failover.status(); role = s.role === 'standby' ? `standby-${s.standby?.state || ''}` : s.role; } catch { /* alone */ }
     res.type('text/plain; version=0.0.4; charset=utf-8').send(renderMetrics(db, { version: config.version, role }));
+  });
+
+  // Status pages: without login, no cookies, no session - only what the page was made to show (see statuspages.js).
+  // Unknown, switched off or not for this network: the same "not found". Own limit per address.
+  const statusLimit = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false, validate: { xForwardedForHeader: false },
+    handler: (_req, res) => res.status(429).type('text/plain').send('too many requests\n') });
+  app.get('/status/:slug', statusLimit, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    let v = null;
+    try { v = statusPages.forVisitor(req.params.slug, req.ip); } catch (e) { log.error(`status page: ${e.message}`); }
+    if (!v) return res.status(404).type('html').send(renderNotFound(langFromHeader(req.get('accept-language')) === 'en' ? 'en' : 'de'));
+    res.type('html').send(renderStatusPage(v));
   });
 
   app.use(parseCookies);

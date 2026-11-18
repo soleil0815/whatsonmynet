@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Statusseiten ohne Anmeldung (wie in Uptime Kuma): Monitoring → Statusseiten. Du wählst Gruppen und Monitore und unter welchem Namen sie erscheinen; die Seite zeigt Zustand, die letzten 90 Tage und die Verfügbarkeit, dazu auf Wunsch einen Hinweis - nie Adressen oder Fehlertexte. Zugang über einen geheimen Link oder eine eigene Adresse, auf Wunsch nur aus bestimmten Netzen. Ohne Statusseite ist ohne Anmeldung nichts zu sehen',
+  ], en: [
+    'Status pages without login (as in Uptime Kuma): Monitoring → Status pages. You choose groups and monitors and under which name they appear; the page shows state, the last 90 days and the uptime, plus a notice if you like - never addresses or error texts. Access by a secret link or an address of its own, if wanted only from certain networks. Without a status page nothing can be seen without login',
+  ] },
+  { version: '0.45.1', date: '2026-11-18', de: [
     'Drucker: Toner ohne Füllstand („vorhanden“) sieht nicht mehr voll aus - auf der Geräteseite ein gestreifter Balken in seiner Farbe, im Bericht ein heller. Meldet der Drucker selbst „wenig“ oder „leer“ (z. B. Lexmark bei Cyan und Magenta), steht das dort samt „bitte nachbestellen“, es kommt eine Meldung und ein Sensor schlägt an',
     'Drucker-Bericht: Fixiereinheit, Transfereinheit und Trommel in Blau wie auf der Geräteseite statt in Grau, das wie leer aussah',
   ], en: [

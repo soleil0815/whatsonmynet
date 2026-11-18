@@ -50,7 +50,12 @@ test('setup: an admin, a NAS, a viewer, a secret or two, some log lines', async 
 });
 
 test('anonymised by default: no real name, address or secret anywhere in the package', async () => {
+  // a status page: counted, its secret link (a key) never in the package
+  const sp = ctx.statusPages.create({ name: 'Status', networks: '10.0.10.0/24' });
   const p = await pkg('?days=7');
+  assert.equal(p.text.includes(sp.slug), false, 'secret link of a status page');
+  assert.deepEqual(JSON.parse(p.files['statistik.json']).status_pages, { n: 1, enabled: 1, secret_link: 1, own_address: 0, limited_to_networks: 1, items: 0 });
+  ctx.statusPages.remove(sp.id);
   assert.equal(p.status, 200);
   assert.match(p.name, /whatsonmynet-diagnose-.*-7T-anonym\.zip/);
   for (const f of ['LIESMICH.txt', 'versionen.json', 'aenderungen.md', 'umgebung.json', 'einstellungen.json', 'statistik.json', 'protokoll.csv', 'fehler.txt',

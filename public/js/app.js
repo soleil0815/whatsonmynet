@@ -57,7 +57,7 @@ const ROUTES = [
   [/^\/devices\/(\d+)$/, renderDevice, 'inventory'],
   [/^\/scan(?:\/(\d+))?$/, renderScan, 'scan'],
   [/^\/monitoring(?:\/(\d+))?$/, renderMonitoring, 'monitoring'],
-  [/^\/monitoring\/(maintenance)$/, (main, sub) => renderMonitoring(main, null, sub), 'monitoring'],
+  [/^\/monitoring\/(maintenance|status)$/, (main, sub) => renderMonitoring(main, null, sub), 'monitoring'],
   [/^\/monitoring\/(sensors)$/, (main, sub) => renderMonitoring(main, null, sub), 'sensors'],
   [/^\/locations$/, renderLocations, 'locations'],
   [/^\/(virtualization|proxmox)$/, renderProxmox, 'proxmox'],

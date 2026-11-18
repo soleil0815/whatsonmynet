@@ -412,6 +412,9 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       monitors: { by_type: count(monitors, (m) => m.type), by_status: count(monitors, (m) => m.status), paused: monitors.filter((m) => !m.enabled).length,
         // groups of their own (Uptime-Kuma-like) and how many monitors are in one
         groups: new Set(monitors.map((m) => m.group).filter(Boolean)).size, in_group: monitors.filter((m) => m.group).length },
+      // status pages without login: how many, how reached - never their addresses (a secret link is a key)
+      status_pages: db.prepare(`SELECT COUNT(*) n, SUM(enabled) enabled, SUM(access='link') secret_link, SUM(access='open') own_address,
+        SUM(networks <> '[]') limited_to_networks, SUM(json_array_length(items)) items FROM status_pages`).get(),
       checks: db.prepare('SELECT m.type, COUNT(*) n, SUM(c.ok=0) failed FROM checks c JOIN monitors m ON m.id=c.monitor_id WHERE c.at >= ? GROUP BY m.type').all(since),
       events: Object.fromEntries(db.prepare('SELECT kind, COUNT(*) n FROM monitor_events WHERE at >= ? GROUP BY kind').all(since).map((r) => [r.kind, r.n])),
       scans: db.prepare('SELECT kind, status, COUNT(*) n FROM scans WHERE started_at >= ? GROUP BY kind, status').all(since),

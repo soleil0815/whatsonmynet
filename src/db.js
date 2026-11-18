@@ -722,6 +722,24 @@ export const MIGRATIONS = [
   // the device, else "no group" - in the list by group, in maintenance windows, on status pages
   // (a database brought back to an older schema number - a restored copy, the tests - may have the column already)
   { sql: "ALTER TABLE monitors ADD COLUMN group_name TEXT NOT NULL DEFAULT '';", unless: "SELECT 1 FROM pragma_table_info('monitors') WHERE name = 'group_name'" },
+  // 40: status pages without login (like Uptime Kuma): what is shown (items: groups and monitors), under which address
+  // (slug: a secret link or a name of its own) and for which networks
+  `CREATE TABLE IF NOT EXISTS status_pages (
+     id INTEGER PRIMARY KEY,
+     name TEXT NOT NULL,
+     slug TEXT NOT NULL UNIQUE,
+     access TEXT NOT NULL DEFAULT 'link' CHECK (access IN ('link','open')),
+     networks TEXT NOT NULL DEFAULT '[]',
+     description TEXT NOT NULL DEFAULT '',
+     notice TEXT NOT NULL DEFAULT '',
+     notice_level TEXT NOT NULL DEFAULT 'info',
+     show_uptime INTEGER NOT NULL DEFAULT 1,
+     language TEXT NOT NULL DEFAULT 'de',
+     items TEXT NOT NULL DEFAULT '[]',
+     enabled INTEGER NOT NULL DEFAULT 1,
+     created_at TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

@@ -1,0 +1,65 @@
+/* Status page without login (statuspages.js): one quiet sheet, light and dark by the system setting, nothing from outside */
+@font-face { font-family: 'Inter'; src: url('/fonts/inter-latin-wght-normal.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --line: #e3e5e9; --ink: #1d1d1f; --muted: #6b6f76;
+  --up: #1f9d55; --up-soft: rgba(31, 157, 85, .12); --warn: #e8a317; --down: #d4351c; --down-soft: rgba(212, 53, 28, .1);
+  --maint: #2f6fdb; --maint-soft: rgba(47, 111, 219, .1); --none: #d9dce1; --info-soft: rgba(47, 111, 219, .08);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131416; --panel: #1c1d20; --line: #2c2e33; --ink: #f2f3f5; --muted: #9a9ea6;
+    --up: #34c472; --up-soft: rgba(52, 196, 114, .14); --warn: #f0b429; --down: #ff6a55; --down-soft: rgba(255, 106, 85, .14);
+    --maint: #5b9bff; --maint-soft: rgba(91, 155, 255, .14); --none: #34373d; --info-soft: rgba(91, 155, 255, .1);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 40px 16px 48px; }
+header h1 { font-size: 28px; line-height: 1.2; letter-spacing: -.02em; margin: 0 0 6px; }
+.lead { color: var(--muted); margin: 0 0 4px; max-width: 70ch; }
+.overall { display: flex; align-items: center; gap: 12px; margin: 24px 0 16px; padding: 18px 20px; border-radius: 14px; font-size: 18px; font-weight: 600; background: var(--up-soft); }
+.overall .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--up); flex: none; box-shadow: 0 0 0 4px var(--up-soft); }
+.o-down, .o-partial { background: var(--down-soft); }
+.o-down .dot, .o-partial .dot { background: var(--down); box-shadow: 0 0 0 4px var(--down-soft); }
+.o-maintenance { background: var(--maint-soft); }
+.o-maintenance .dot { background: var(--maint); box-shadow: 0 0 0 4px var(--maint-soft); }
+.o-pending { background: var(--panel); }
+.o-pending .dot { background: var(--muted); box-shadow: none; }
+.notice { margin: 0 0 16px; padding: 14px 18px; border-radius: 12px; background: var(--info-soft); border-left: 4px solid var(--maint); }
+.n-warn { background: rgba(232, 163, 23, .12); border-left-color: var(--warn); }
+.n-bad { background: var(--down-soft); border-left-color: var(--down); }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; margin: 0 0 16px; padding: 4px 20px; }
+section h2 { font-size: 14px; font-weight: 600; color: var(--muted); margin: 14px 0 0; }
+ul { list-style: none; margin: 0; padding: 0; }
+.line { padding: 14px 0; }
+.line + .line { border-top: 1px solid var(--line); }
+.line-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; margin-right: auto; }
+.uptime { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
+.state { font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--up); }
+.s-down, .s-partial { color: var(--down); }
+.s-maintenance { color: var(--maint); }
+.s-pending, .s-off { color: var(--muted); }
+.bars { display: flex; gap: 2px; height: 30px; }
+.bars i { flex: 1; border-radius: 2px; background: var(--none); }
+.bars i.up { background: var(--up); }
+.bars i.warn { background: var(--warn); }
+.bars i.down { background: var(--down); }
+.legend { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin: -8px 4px 0; }
+.legend .d-short { display: none; }
+footer { margin-top: 28px; color: var(--muted); font-size: 13px; text-align: center; }
+@media (max-width: 600px) {
+  main { padding-top: 24px; }
+  header h1 { font-size: 23px; }
+  section { padding: 2px 14px; }
+  .bars { height: 26px; }
+  /* the last 30 days on a phone - 90 bars would be hairlines */
+  .bars i:nth-child(-n+60) { display: none; }
+  .legend .d-long { display: none; }
+  .legend .d-short { display: inline; }
+  .line-head { flex-wrap: wrap; row-gap: 2px; }
+}
+@media print { body { background: #fff; } section { break-inside: avoid; } }
