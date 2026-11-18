@@ -418,6 +418,20 @@ export function createMonitoringApi(ctx) {
   });
 
   // Maintenance windows (editors)
+  // Status pages without login: only administrators make them (they publish what runs, see statuspages.js)
+  const pages = ctx.statusPages;
+  r.get('/status-pages', admin, (_req, res) => res.json(pages.list()));
+  r.get('/status-pages/:id/preview', admin, (req, res) => res.json(pages.view(idParam(req))));
+  r.post('/status-pages', admin, (req, res) => { const p = pages.create(req.body); audit(req, 'statuspage.create', p.name); res.status(201).json(p); });
+  r.put('/status-pages/:id', admin, (req, res) => { const p = pages.update(idParam(req), req.body); audit(req, 'statuspage.update', p.name); res.json(p); });
+  r.post('/status-pages/:id/new-link', admin, (req, res) => { const p = pages.renewLink(idParam(req)); audit(req, 'statuspage.newLink', p.name); res.json(p); });
+  r.delete('/status-pages/:id', admin, (req, res) => {
+    const p = pages.get(idParam(req));
+    pages.remove(idParam(req));
+    audit(req, 'statuspage.delete', p?.name || req.params.id);
+    res.json({ ok: true });
+  });
+
   r.get('/maintenance', (_req, res) => res.json(maintenance.list()));
   r.post('/maintenance', editor, unscoped, (req, res) => { const w = maintenance.create(req.body); audit(req, 'maintenance.create', w.name); res.status(201).json(w); });
   r.put('/maintenance/:id', editor, unscoped, (req, res) => { const w = maintenance.update(idParam(req), req.body); audit(req, 'maintenance.update', w.name); res.json(w); });

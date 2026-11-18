@@ -139,6 +139,16 @@ Monitore und Sensoren lassen sich in **Gruppen** ordnen, z. B. „Webseiten“, 
 - **Wartungsfenster:** Monitore mit eigener Gruppe stehen dort unter *Gruppe …* – ein Haken nimmt die ganze Gruppe.
 - Eine Webseite ohne Gerät gehört so trotzdem irgendwohin. Läuft sie auf einem eigenen Server, kann sie zusätzlich von dessen Ping **abhängen** (unten): Fällt der Server aus, kommt nur dessen Alarm.
 
+### Statusseiten ohne Anmeldung
+
+Wie in Uptime Kuma: eine Seite, die ohne Anmeldung zeigt, was läuft und was nicht – für Kollegen, den Empfang oder einen Bildschirm im Flur. Es gibt sie erst, wenn ein Administrator eine anlegt: *Monitoring → Statusseiten → Statusseite anlegen*.
+
+- **Was sie zeigt**, bestimmst du: Gruppen und einzelne Monitore, in deiner Reihenfolge, jeweils unter einem **angezeigten Namen** (leer = der Name in WhatsOnMyNet). Eine Gruppe ist eine Zeile („Teilweise gestört“, wenn ein Teil ausfällt) – oder mit *Jeden einzeln zeigen* ein Abschnitt mit ihren Monitoren.
+- Je Zeile: Zustand (*In Betrieb*, *Gestört*, *Teilweise gestört*, *Wartung*, *Nicht überwacht*), die **letzten 90 Tage** als Balken (auf dem Handy 30) und die Verfügbarkeit in Prozent (abschaltbar). Oben die Gesamtlage („Störung bei 2 von 6“), darunter auf Wunsch ein **Hinweis** (z. B. eine angekündigte Wartung) und eine Beschreibung.
+- **Nie** auf der Seite: Adressen, Ziele und Fehlertexte – nur Namen: die du vergibst, sonst die der Monitore (bei *Jeden einzeln zeigen* also z. B. „DC01 Ping“ – dann lieber Gruppe als eine Zeile). Sie lädt nichts aus dem Internet, hat kein JavaScript und aktualisiert sich jede Minute; Suchmaschinen sollen sie nicht aufnehmen.
+- **Zugang:** *Geheimer Link* (Standard) – eine Adresse aus Zufallszeichen, nur wer sie bekommt, sieht die Seite; *Neuer Link* macht den alten sofort ungültig. Oder *Eigene Adresse* wie `/status/it` – die kann jeder aufrufen, der sie kennt. Beide lassen sich auf **Netze beschränken** (z. B. `10.0.10.0/24`); hinter einem Reverse Proxy zählt die Adresse, die er weitergibt (`WOMN_TRUST_PROXY`).
+- Eine ausgeschaltete, gelöschte oder für das Netz nicht freigegebene Seite antwortet genauso wie eine, die es nie gab: „nicht gefunden“.
+
 ### Abhängigkeiten: keine Alarmflut
 
 Fällt ein Switch aus, sind auch alle Geräte dahinter nicht mehr erreichbar. Damit dann nicht zwanzig Meldungen kommen, kann jeder Monitor von einem anderen **abhängen** (Formular → *Hängt ab von*, z. B. der Ping auf den Switch oder den Internet-Router).

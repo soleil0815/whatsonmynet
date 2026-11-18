@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Statusseiten ohne Anmeldung (wie in Uptime Kuma): Monitoring → Statusseiten. Du wählst Gruppen und Monitore und unter welchem Namen sie erscheinen; die Seite zeigt Zustand, die letzten 90 Tage und die Verfügbarkeit, dazu auf Wunsch einen Hinweis - nie Adressen oder Fehlertexte. Zugang über einen geheimen Link oder eine eigene Adresse, auf Wunsch nur aus bestimmten Netzen. Ohne Statusseite ist ohne Anmeldung nichts zu sehen
+
+## 0.45.1 - 2026-11-18
+
 - Drucker: Toner ohne Füllstand („vorhanden“) sieht nicht mehr voll aus - auf der Geräteseite ein gestreifter Balken in seiner Farbe, im Bericht ein heller. Meldet der Drucker selbst „wenig“ oder „leer“ (z. B. Lexmark bei Cyan und Magenta), steht das dort samt „bitte nachbestellen“, es kommt eine Meldung und ein Sensor schlägt an
 - Drucker-Bericht: Fixiereinheit, Transfereinheit und Trommel in Blau wie auf der Geräteseite statt in Grau, das wie leer aussah
 

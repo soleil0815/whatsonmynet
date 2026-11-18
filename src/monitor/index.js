@@ -912,7 +912,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   }
 
   return {
-    create, update, remove, bulk, get, list, detail, summary, deviceStatus, suggestionFor, checkNow, childCandidates, adoptChildren,
+    create, update, remove, bulk, get, list, detail, summary, deviceStatus, shownStatus: (m) => shownStatus(m), suggestionFor, checkNow, childCandidates, adoptChildren,
     pause: (id) => setEnabled(id, false),
     resume: (id) => setEnabled(id, true),
     record,

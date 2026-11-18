@@ -139,6 +139,16 @@ Monitors and sensors can be put in **groups**, e.g. "Websites", "Telephony", "St
 - **Maintenance windows:** monitors with a group of their own are listed there under *Group …* – one tick takes the whole group.
 - A website without a device belongs somewhere this way too. If it runs on a server of its own, it can also **depend** on that server's ping (below): when the server fails, only its alarm comes.
 
+### Status pages without login
+
+As in Uptime Kuma: a page that shows without login what runs and what does not – for colleagues, the reception desk or a screen in the corridor. It exists only once an administrator makes one: *Monitoring → Status pages → Create status page*.
+
+- **What it shows** is up to you: groups and single monitors, in your order, each under a **name shown** (empty = the name in WhatsOnMyNet). A group is one line ("Partly down" when part of it fails) – or, with *Show each one*, a section with its monitors.
+- Per line: state (*Operational*, *Down*, *Partly down*, *Maintenance*, *Not monitored*), the **last 90 days** as bars (30 on a phone) and the uptime in percent (can be switched off). At the top the overall state ("Outage at 2 of 6"), below it a **notice** if you like (e.g. an announced maintenance) and a description.
+- **Never** on the page: addresses, targets and error texts – only names: those you give, else those of the monitors (with *Show each one* e.g. "DC01 Ping" – then rather the group as one line). It loads nothing from the internet, has no JavaScript and refreshes every minute; search engines are asked not to index it.
+- **Access:** *Secret link* (default) – an address of random characters, only those who get it see the page; *New link* makes the old one invalid at once. Or *Own address* such as `/status/it` – anyone who knows it can open it. Both can be **limited to networks** (e.g. `10.0.10.0/24`); behind a reverse proxy the address it passes on counts (`WOMN_TRUST_PROXY`).
+- A page that is switched off, deleted or not open to the network answers just like one that never existed: "not found".
+
 ### Dependencies: no alarm flood
 
 When a switch fails, every device behind it is unreachable too. So that twenty messages do not arrive at once, every monitor can **depend on** another one (form → *Depends on*, e.g. the ping of the switch or the internet router).

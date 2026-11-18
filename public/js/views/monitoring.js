@@ -9,6 +9,7 @@ import { pageHead, field, input, select, btn, formData } from './common.js';
 import { openHostScript } from './hostscripts.js';
 import { checkText } from '../checktext.js';
 import { historyChart, duration } from './monchart.js';
+import { renderStatusPages } from './statuspages.js';
 
 
 export function statusPill(status) {
@@ -224,6 +225,7 @@ const pct = (v) => (v === null || v === undefined ? '–' : `${v.toLocaleString(
 export async function renderMonitoring(main, id, sub) {
   if (id) return renderDetail(main, Number(id));
   if (sub === 'maintenance') return renderMaintenance(main);
+  if (sub === 'status') return renderStatusPages(main, tabBar);
   const edit = state.user.canEdit;
   // Monitors (reachable, service running …) and sensors (values of devices and hypervisors) - one list each
   const kind = sub === 'sensors' ? 'sensors' : 'monitors';
@@ -386,7 +388,7 @@ export async function renderMonitoring(main, id, sub) {
 
 function tabBar(active) {
   return h('div', { class: 'tabs page-tabs', role: 'tablist' },
-    [['monitors', '/monitoring'], ['sensors', '/monitoring/sensors'], ['maintenance', '/monitoring/maintenance']].map(([k, href]) => h('a', { href, 'data-link': true, role: 'tab',
+    [['monitors', '/monitoring'], ['sensors', '/monitoring/sensors'], ['maintenance', '/monitoring/maintenance'], state.user.isAdmin ? ['status', '/monitoring/status'] : null].filter(Boolean).map(([k, href]) => h('a', { href, 'data-link': true, role: 'tab',
       class: active === k ? 'on' : '', 'aria-selected': String(active === k) }, t(`mon.tab.${k}`))));
 }
 
