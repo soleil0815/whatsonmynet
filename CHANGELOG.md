@@ -6,6 +6,12 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Gruppen für Monitore und Sensoren (wie in Uptime Kuma): eigene Gruppe im Formular oder für mehrere auf einmal, sonst gilt der Standort des Geräts. Neue Ansicht „Nach Gruppe“ mit Zusammenfassung je Gruppe; Gruppen mit einer Störung stehen oben und bleiben aufgeklappt
+- Gruppen-Alarm: neue Monitor-Art „Gruppe“ – gestört, wenn ein Mitglied gestört ist oder erst, wenn alle gestört sind; mit eigenen Kanälen, Eskalation und Wartungsfenstern. So kommt für eine Gruppe ein Alarm statt einer pro Monitor
+- Wartungsfenster: Monitore einer Gruppe lassen sich mit einem Haken zusammen wählen
+
+## 0.44.0 - 2026-11-17
+
 - Nach Absender: Jeder Absender zeigt, wie er schickt - UDP, TCP, TLS oder Trap; „auch UDP“, wenn er heute noch über UDP geschickt hat. Der Schnellfilter „Noch per UDP“ zeigt die Geräte, die man auf TCP umstellen kann (dort geht bei einer Flut nichts verloren). Bestehende Absender bekommen das Kennzeichen mit ihrer nächsten Meldung
 
 ## 0.43.1 - 2026-11-17

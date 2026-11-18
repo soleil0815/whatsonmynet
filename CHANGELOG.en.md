@@ -6,6 +6,12 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Groups for monitors and sensors (as in Uptime Kuma): a group of its own in the form or for several at once, else the location of the device. New view "By group" with a summary per group; groups with something down come first and stay open
+- Group alarm: new monitor kind "Group" – down when one member is down, or only when all are; with channels, escalation and maintenance windows of its own. So a group sends one alarm instead of one per monitor
+- Maintenance windows: the monitors of a group can be chosen together with one tick
+
+## 0.44.0 - 2026-11-17
+
 - By sender: every sender shows how it sends - UDP, TCP, TLS or trap; "also UDP" when it still sent over UDP today. The quick filter "Still over UDP" shows the devices that could go over to TCP (nothing is lost there in a flood). Existing senders get the mark with their next message
 
 ## 0.43.1 - 2026-11-17

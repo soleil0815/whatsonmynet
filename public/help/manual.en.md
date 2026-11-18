@@ -130,6 +130,15 @@ On the page of a monitor you choose the range: **24 h, 3 d, 7 d** show every sin
 
 Single checks are kept for 7 days, the hourly summary for a good year. For the first months after the update to 0.9: older hours only know the average, so the area appears only for new data.
 
+### Groups
+
+Monitors and sensors can be put in **groups**, e.g. "Websites", "Telephony", "Storage" (form → *Group*; the ones in use are offered). Without a group of its own, the **location of the device** counts as group, else *No group*. Several at once: tick them in the list → *Change* → *Group* (or *Take out of the group*).
+
+- **View "By group"** (choice above the list, the browser remembers it): one block per group with a summary ("2 of 6 down"). Groups with something down come first and are always open, the others can be folded. The search finds group names too.
+- **One alarm for the whole group:** *Add monitor* → *Group*. It is down when **one** member is down – or only when **all** are (e.g. two redundant internet lines). Members down or unreachable count; paused ones, ones in a maintenance window and ones not checked yet do not. It has channels, escalation and maintenance windows of its own like every monitor. Tip: set channels only on the group monitor, not on the members – then one alarm comes instead of many.
+- **Maintenance windows:** monitors with a group of their own are listed there under *Group …* – one tick takes the whole group.
+- A website without a device belongs somewhere this way too. If it runs on a server of its own, it can also **depend** on that server's ping (below): when the server fails, only its alarm comes.
+
 ### Dependencies: no alarm flood
 
 When a switch fails, every device behind it is unreachable too. So that twenty messages do not arrive at once, every monitor can **depend on** another one (form → *Depends on*, e.g. the ping of the switch or the internet router).

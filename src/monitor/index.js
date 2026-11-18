@@ -42,7 +42,7 @@ export function certStep(days, thresholds) {
   return fit.length ? Math.min(...fit) : null;
 }
 
-export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb', 'event', 'dns', 'mail', 'ldap', 'ntp', 'mssql'];
+export const MONITOR_TYPES = ['http', 'tcp', 'ping', 'docker', 'mysql', 'postgres', 'redis', 'sensor', 'snmp', 'proxmox', 'smb', 'event', 'dns', 'mail', 'ldap', 'ntp', 'mssql', 'group'];
 export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'nodeTemp', 'storage', 'guestRunning', 'backupAge', 'backupFailed', 'datastore', 'groupAge', 'tasksFailed', 'netOnline', 'netClients', 'netCpu', 'netMem', 'clientsTotal', 'netUpdates',
   'rfHealth', 'rfPower', 'rfFan', 'rfTemp', 'rfPsu', 'rfDrive', 'rfDriveLife', 'rfVolume', 'rfWatts',
   'cloudCheck', 'cloudCpu', 'dbState', 'dbCpu', 'dbStorage', 'lbUnhealthy', 'cloudAlarms', 'cloudResources', 'costMonth',
@@ -80,7 +80,7 @@ export function hasLimit(m) {
   return false;
 }
 // What a change of several monitors at once may set (the "advanced" part of the form plus the limit of sensors)
-const BULK_FIELDS = ['interval_s', 'fail_threshold', 'timeout_s', 'resend_min', 'escalate_min', 'escalate_channels', 'channels', 'op', 'threshold'];
+const BULK_FIELDS = ['group_name', 'interval_s', 'fail_threshold', 'timeout_s', 'resend_min', 'escalate_min', 'escalate_channels', 'channels', 'op', 'threshold'];
 export const BULK_MAX = 1000;
 
 export function createMonitoring({ db, channels, maintenance, settings = null, now = () => new Date() }) {
@@ -92,7 +92,29 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       const list = String(settings?.get('scan.snmpCommunities') || '').split(/[\n,]/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
       return list.length ? list : ['public'];
     },
+    group: (m) => groupCheck(m),
   };
+  // The group a monitor is shown in: its own, else the location of its device
+  const GROUP_OF = "COALESCE(NULLIF(m.group_name, ''), l.name, '')";
+  /**
+   * A group monitor: down when one member is down (mode any) or all are (mode all). Down and "behind something that is
+   * down" count; paused ones, members in a maintenance window and ones not checked yet do not. Its own alarms, channels,
+   * escalation and maintenance windows as every monitor.
+   */
+  function groupCheck(m) {
+    const o = parse(m.options, {});
+    const name = String(o.group || '');
+    const members = db.prepare(`SELECT m.id, m.name, m.status, m.enabled FROM monitors m LEFT JOIN devices d ON d.id = m.device_id
+      LEFT JOIN locations l ON l.id = d.location_id WHERE m.type <> 'group' AND lower(${GROUP_OF}) = lower(?) ORDER BY m.name`).all(name)
+      .filter((x) => x.enabled).map((x) => ({ ...x, shown: shownStatus(x) }));
+    const counted = members.filter((x) => ['up', 'down', 'unreachable'].includes(x.shown));
+    const bad = counted.filter((x) => x.shown !== 'up');
+    if (!members.length) return { ok: false, ms: null, message: `group "${name}" has no members` };
+    if (!counted.length) return { ok: true, ms: null, message: `no member checked (${members.length} in maintenance, paused or waiting)` };
+    const down = o.mode === 'all' ? bad.length === counted.length : bad.length > 0;
+    const names = bad.slice(0, 5).map((x) => x.name).join(', ') + (bad.length > 5 ? ` (+${bad.length - 5} more)` : '');
+    return { ok: !down, ms: null, message: bad.length ? `${bad.length} of ${counted.length} down: ${names}` : `${counted.length} of ${counted.length} up` };
+  }
   const sensorOptions = (input, old) => {
     const prev = old ? parse(old.options, {}) : {};
     const o = input.options && typeof input.options === 'object' ? input.options : {};
@@ -218,6 +240,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
         return clamp('escalate_min', raw);
       })(),
       escalate_channels: JSON.stringify(ids(input.escalate_channels ?? parse(old?.escalate_channels, []), 50)),
+      // a group of its own (empty: the location of its device)
+      group_name: line(input.group_name ?? old?.group_name ?? '', 60),
     };
     if (!v.name) throw new HttpError(400, 'err.nameRequired', undefined, 'name');
     v.parent_id = cleanParent(input, old);
@@ -254,6 +278,20 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       if (old && old.type === 'sensor') v.device_id = null;
       v.target = (base.label || metric).slice(0, 200);
       v.port = null;
+    } else if (type === 'group') {
+      // A group monitor: the group it watches and when it counts as down (one member down / all down)
+      const prev = old && old.type === 'group' ? parse(old.options, {}) : {};
+      const o = input.options && typeof input.options === 'object' ? input.options : {};
+      const group = line(o.group ?? prev.group ?? '', 60);
+      if (!group) throw new HttpError(400, 'err.groupRequired', undefined, 'group');
+      const mode = (o.mode ?? prev.mode) === 'all' ? 'all' : 'any';
+      v.options = JSON.stringify({ group, mode });
+      v.target = group;
+      v.port = null;
+      v.device_id = null;
+      // it shows up in the group it watches; the members have their own retries already
+      if (!v.group_name) v.group_name = group;
+      if (!old) v.fail_threshold = 1;
     } else if (type === 'event') {
       // Messages a device sends (trap/syslog): from one device of the inventory or from any sender
       const prev = old && old.type === 'event' ? parse(old.options, {}) : {};
@@ -390,7 +428,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
         if (!old || old.type !== 'ping') { if (!(await pingAvailable())) throw new HttpError(400, 'err.pingUnavailable'); }
       }
     }
-    if (!old && type !== 'event') {
+    if (!old && type !== 'event' && type !== 'group') {
       const dev = input.device_id ? Number(input.device_id) : null;
       if (type === 'sensor' && !dev) throw new HttpError(400, 'err.sensorDevice');
       if (dev && !db.prepare('SELECT 1 FROM devices WHERE id=?').get(dev)) throw new HttpError(400, 'err.notFound');
@@ -489,6 +527,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     };
     const empty = (x) => x === undefined || x === null || x === '';
     for (const k of ['interval_s', 'timeout_s', 'fail_threshold', 'resend_min']) if (!empty(changes[k])) input[k] = ranged(k, changes[k]);
+    // the group: '' takes them out of their group
+    if ('group_name' in changes) input.group_name = line(changes.group_name ?? '', 60);
     // escalation: null or '' = back to the setting for all monitors
     if ('escalate_min' in changes) input.escalate_min = empty(changes.escalate_min) ? null : ranged('escalate_min', changes.escalate_min);
     for (const k of ['channels', 'escalate_channels']) {
@@ -614,7 +654,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   function get(id) { return shape(db.prepare('SELECT * FROM monitors WHERE id=?').get(id)); }
 
   function list() {
-    const rows = db.prepare('SELECT m.*, d.name device_name FROM monitors m LEFT JOIN devices d ON d.id=m.device_id ORDER BY m.name').all();
+    const rows = db.prepare(`SELECT m.*, d.name device_name, l.name location_name FROM monitors m LEFT JOIN devices d ON d.id=m.device_id
+      LEFT JOIN locations l ON l.id=d.location_id ORDER BY m.name`).all();
     const beats = db.prepare(`SELECT monitor_id, ok, ms, at, message FROM (
       SELECT monitor_id, ok, ms, at, message, ROW_NUMBER() OVER (PARTITION BY monitor_id ORDER BY id DESC) rn FROM checks
       WHERE at >= ?) WHERE rn <= 40 ORDER BY monitor_id, at`).all(iso(new Date(now().getTime() - 86400000)));

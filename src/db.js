@@ -718,6 +718,9 @@ export const MIGRATIONS = [
   // 38: the nightly light scan is off on new installations (WhatsOnMyNet scans nothing unless an administrator says
   // so) - one already in use keeps it as it was: its setting is written down instead of following the new default
   `INSERT OR IGNORE INTO settings(key, value) SELECT 'lightscan.enabled', 'true' WHERE EXISTS (SELECT 1 FROM users);`,
+  // 39: groups of monitors (like Uptime Kuma): a name of its own ("Websites", "Telephony" …). Empty: the location of
+  // the device, else "no group" - in the list by group, in maintenance windows, on status pages
+  `ALTER TABLE monitors ADD COLUMN group_name TEXT NOT NULL DEFAULT '';`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

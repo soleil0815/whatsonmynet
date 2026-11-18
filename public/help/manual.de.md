@@ -130,6 +130,15 @@ Auf der Seite eines Monitors wählst du den Zeitraum: **24 h, 3 T, 7 T** zeigen 
 
 Einzelne Prüfungen werden 7 Tage aufbewahrt, die stündliche Zusammenfassung gut ein Jahr. Für die ersten Monate nach dem Update auf 0.9 gilt: Ältere Stunden kennen nur den Mittelwert, die Fläche erscheint erst für neue Daten.
 
+### Gruppen
+
+Monitore und Sensoren lassen sich in **Gruppen** ordnen, z. B. „Webseiten“, „Telefonie“, „Speicher“ (Formular → *Gruppe*; vorhandene werden vorgeschlagen). Ohne eigene Gruppe gilt der **Standort des Geräts** als Gruppe, sonst *Ohne Gruppe*. Mehrere auf einmal: in der Liste ankreuzen → *Ändern* → *Gruppe* (oder *Aus der Gruppe nehmen*).
+
+- **Ansicht „Nach Gruppe“** (Auswahl über der Liste, der Browser merkt sie sich): je Gruppe ein Block mit Zusammenfassung („2 von 6 gestört“). Gruppen mit einer Störung stehen oben und sind immer aufgeklappt, die übrigen lassen sich zuklappen. Die Suche findet auch Gruppennamen.
+- **Ein Alarm für die ganze Gruppe:** *Monitor anlegen* → *Gruppe*. Er ist gestört, wenn **ein** Mitglied gestört ist – oder erst, wenn **alle** gestört sind (z. B. zwei redundante Internetleitungen). Es zählen gestörte und nicht erreichbare Mitglieder; pausierte, solche im Wartungsfenster und noch nicht geprüfte nicht. Er hat eigene Kanäle, Eskalation und Wartungsfenster wie jeder Monitor. Tipp: Kanäle nur beim Gruppen-Monitor setzen, nicht bei den Mitgliedern – dann kommt ein Alarm statt vieler.
+- **Wartungsfenster:** Monitore mit eigener Gruppe stehen dort unter *Gruppe …* – ein Haken nimmt die ganze Gruppe.
+- Eine Webseite ohne Gerät gehört so trotzdem irgendwohin. Läuft sie auf einem eigenen Server, kann sie zusätzlich von dessen Ping **abhängen** (unten): Fällt der Server aus, kommt nur dessen Alarm.
+
 ### Abhängigkeiten: keine Alarmflut
 
 Fällt ein Switch aus, sind auch alle Geräte dahinter nicht mehr erreichbar. Damit dann nicht zwanzig Meldungen kommen, kann jeder Monitor von einem anderen **abhängen** (Formular → *Hängt ab von*, z. B. der Ping auf den Switch oder den Internet-Router).

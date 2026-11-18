@@ -3,6 +3,15 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Gruppen für Monitore und Sensoren (wie in Uptime Kuma): eigene Gruppe im Formular oder für mehrere auf einmal, sonst gilt der Standort des Geräts. Neue Ansicht „Nach Gruppe“ mit Zusammenfassung je Gruppe; Gruppen mit einer Störung stehen oben und bleiben aufgeklappt',
+    'Gruppen-Alarm: neue Monitor-Art „Gruppe“ – gestört, wenn ein Mitglied gestört ist oder erst, wenn alle gestört sind; mit eigenen Kanälen, Eskalation und Wartungsfenstern. So kommt für eine Gruppe ein Alarm statt einer pro Monitor',
+    'Wartungsfenster: Monitore einer Gruppe lassen sich mit einem Haken zusammen wählen',
+  ], en: [
+    'Groups for monitors and sensors (as in Uptime Kuma): a group of its own in the form or for several at once, else the location of the device. New view "By group" with a summary per group; groups with something down come first and stay open',
+    'Group alarm: new monitor kind "Group" – down when one member is down, or only when all are; with channels, escalation and maintenance windows of its own. So a group sends one alarm instead of one per monitor',
+    'Maintenance windows: the monitors of a group can be chosen together with one tick',
+  ] },
+  { version: '0.44.0', date: '2026-11-17', de: [
     'Nach Absender: Jeder Absender zeigt, wie er schickt - UDP, TCP, TLS oder Trap; „auch UDP“, wenn er heute noch über UDP geschickt hat. Der Schnellfilter „Noch per UDP“ zeigt die Geräte, die man auf TCP umstellen kann (dort geht bei einer Flut nichts verloren). Bestehende Absender bekommen das Kennzeichen mit ihrer nächsten Meldung',
   ], en: [
     'By sender: every sender shows how it sends - UDP, TCP, TLS or trap; "also UDP" when it still sent over UDP today. The quick filter "Still over UDP" shows the devices that could go over to TCP (nothing is lost there in a flood). Existing senders get the mark with their next message',

@@ -91,6 +91,8 @@ export function nowParts(m) {
   }
   if (m.type === 'sensor' && m.status === 'up' && m.last_message) return { main: checkText(m.last_message, getLang()).replace(/^[^:]*:\s*/, ''), sub: '', tone: 'ok' };
   if (m.type === 'event') return { main: m.status === 'down' ? t('ev.now.alarm') : t('ev.now.quiet'), sub: m.status === 'down' && m.data?.count ? t(m.data.count === 1 ? 'ev.now.count1' : 'ev.now.count', { n: m.data.count }) : '', tone: m.status === 'down' ? 'bad' : 'ok' };
+  // a group: "2 of 6 down" / "6 of 6 up"
+  if (m.type === 'group' && m.last_message) return { main: checkText(m.last_message, getLang()).replace(/:.*$/, ''), sub: '', tone: m.status === 'down' ? 'bad' : 'ok' };
   if (isValueType(m)) return { main: valueText(m), sub: '', tone: m.status === 'down' ? 'bad' : 'ok' };
   if (m.status === 'up' && m.last_ms !== null && m.last_ms !== undefined) return { main: `${m.last_ms} ms`, sub: '', tone: 'ok', plain: true };
   return { main: '–', sub: '', tone: 'muted', plain: true };
@@ -166,6 +168,7 @@ const noUnit = (s) => String(s || '').replace(/\s\((%|h|°C)\)$/, '');
 export function targetText(m) {
   if (m.type === 'proxmox') return noUnit(m.target);
   if (m.type === 'event') return m.target === '*' ? t('ev.f.anySender') : m.target;
+  if (m.type === 'group') return `${m.options?.group || m.target} · ${t(m.options?.mode === 'all' ? 'mon.f.grpAll' : 'mon.f.grpAny')}`;
   if (m.type === 'dns') return `${m.target} (${m.options?.rtype || 'A'})${m.options?.server ? ` @ ${m.options.server}` : ''}`;
   if (m.type === 'mssql' && m.options?.instance) return `${m.target}\\${m.options.instance}${m.port ? `:${m.port}` : ''}`;
   if (['mail', 'ldap', 'ntp', 'mssql'].includes(m.type)) return `${m.target}:${m.port}`;
@@ -237,6 +240,13 @@ export async function renderMonitoring(main, id, sub) {
   const q = h('input', { type: 'search', placeholder: t('mon.search'), 'aria-label': t('mon.search'), oninput: () => draw() });
   const chips = h('div', { class: 'inv-chips', role: 'group', 'aria-label': t('mon.col.name') });
   const ORDER = ['down', 'unreachable', 'pending', 'maintenance', 'up', 'paused'];
+  // By state (what is down first) or by group (like Uptime Kuma); folded groups are remembered in the browser
+  const store = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* not kept */ } } };
+  let view = store.get('mon.view', 'state') === 'group' ? 'group' : 'state';
+  const folded = new Set(store.get('mon.folded', []));
+  const viewSel = h('select', { 'aria-label': t('mon.view'), style: { width: 'auto' }, onchange: (e) => { view = e.currentTarget.value; store.set('mon.view', view); draw(); } },
+    h('option', { value: 'state' }, t('mon.viewState')), h('option', { value: 'group' }, t('mon.viewGroup')));
+  viewSel.value = view;
   // Several at once (editors): tick rows, then change interval/alarm settings, pause, resume or delete them together
   const selected = new Set();
   let shown = [];
@@ -267,20 +277,45 @@ export async function renderMonitoring(main, id, sub) {
       tone ? h('span', { class: `dot dot-${tone}` }) : null, label, h('span', { class: 'chip-n' }, n));
     mount(chips, chip('', t('all'), all.length), counts.down ? chip('down', t('mon.status.down'), counts.down, 'bad') : null,
       counts.unreachable ? chip('unreachable', t('mon.status.unreachable'), counts.unreachable) : null,
-      counts.up ? chip('up', t('mon.status.up'), counts.up, 'ok') : null, counts.paused ? chip('paused', t('mon.status.paused'), counts.paused) : null);
+      counts.up ? chip('up', t('mon.status.up'), counts.up, 'ok') : null, counts.paused ? chip('paused', t('mon.status.paused'), counts.paused) : null, viewSel);
     const term = q.value.trim().toLowerCase();
-    const list = all.filter((m) => (!filter || m.status === filter) && (!term || `${m.name} ${m.target} ${t(`mon.type.${m.type}`)}`.toLowerCase().includes(term)));
+    const list = all.filter((m) => (!filter || m.status === filter) && (!term || `${m.name} ${m.target} ${t(`mon.type.${m.type}`)} ${groupOf(m)}`.toLowerCase().includes(term)));
     // the selection follows what is shown: a filter that hides a row also takes it out of the selection
     shown = list;
     for (const id of [...selected]) if (!list.some((m) => m.id === id)) selected.delete(id);
     // the list is drawn anew every 15 s: a ticked box keeps the keyboard focus
     const focusId = document.activeElement?.closest?.('.panel') === body ? document.activeElement.dataset?.id : null;
     const rows = [];
-    for (const st of ORDER) {
-      const part = list.filter((m) => (ORDER.includes(m.status) ? m.status : 'pending') === st);
-      if (!part.length) continue;
-      rows.push(h('tr', { class: 'group' }, h('td', { colspan: cols }, `${t(`mon.status.${st}`)} · ${part.length}`)));
-      for (const m of part) rows.push(row(m));
+    const rank = (m) => { const i = ORDER.indexOf(m.status); return i < 0 ? ORDER.indexOf('pending') : i; };
+    if (view === 'group') {
+      // one block per group: those with something down first and always open, "no group" at the end
+      const groups = new Map();
+      for (const m of list) { const g = groupOf(m); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(m); }
+      const badOf = (part) => part.filter((m) => m.status === 'down' || m.status === 'unreachable').length;
+      const order = [...groups.keys()].sort((a, b) => (!a) - (!b) || (badOf(groups.get(b)) > 0) - (badOf(groups.get(a)) > 0) || a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      for (const g of order) {
+        const part = groups.get(g).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+        const bad = badOf(part);
+        const checked = part.filter((m) => ['up', 'down', 'unreachable'].includes(m.status)).length;
+        const key = g || '\u0000';
+        // a search or a filter opens what it found; a group with something down never stays folded
+        const open = bad > 0 || !!term || !!filter || !folded.has(key);
+        const toggle = h('button', { type: 'button', class: 'grp-toggle', 'aria-expanded': String(open), onclick: () => {
+          if (open) folded.add(key); else folded.delete(key);
+          store.set('mon.folded', [...folded].slice(-200)); draw();
+        } }, h('span', { class: 'grp-caret', 'aria-hidden': 'true' }, open ? '▾' : '▸'),
+          h('span', { class: `dot dot-${bad ? 'bad' : checked ? 'ok' : 'muted'}` }), h('strong', {}, g || t('mon.noGroup')),
+          h('span', { class: 'muted small' }, ` · ${bad ? t('mon.grpBad', { n: bad, total: part.length }) : checked ? t('mon.grpOk', { n: checked, total: part.length }) : t('mon.grpCount', { n: part.length })}`));
+        rows.push(h('tr', { class: 'group grp-head' }, h('td', { colspan: cols }, toggle)));
+        if (open) for (const m of part) rows.push(row(m));
+      }
+    } else {
+      for (const st of ORDER) {
+        const part = list.filter((m) => (ORDER.includes(m.status) ? m.status : 'pending') === st);
+        if (!part.length) continue;
+        rows.push(h('tr', { class: 'group' }, h('td', { colspan: cols }, `${t(`mon.status.${st}`)} · ${part.length}`)));
+        for (const m of part) rows.push(row(m));
+      }
     }
     mount(body, bulk, h('div', { class: 'table-wrap' }, rows.length ? h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, edit ? h('th', { class: 'min' }, allBox) : null, h('th', {}, t(kind === 'sensors' ? 'sens.col.name' : 'mon.col.name')), h('th', { class: 'hide-sm' }, t('mon.col.beats')),
@@ -534,8 +569,11 @@ function depPanel(m, edit, reload) {
 
 /** Form to add or edit a monitor. `preset` fills a new one (e.g. from a device). */
 // Step 1 of "Add monitor": what should be watched? One tile per kind, with a sentence what it checks
+/** The group a monitor is shown in: its own, else the location of its device ('' = none) */
+export const groupOf = (m) => (m.group_name || m.location_name || '').trim();
+
 const PICK = [['http', 'open'], ['ping', 'radar'], ['tcp', 'switch'], ['smb', 'nas'], ['sensor', 'gauge'], ['docker', 'server'], ['mysql', 'inventory'], ['snmp', 'router'], ['event', 'bell'],
-  ['mail', 'mail'], ['dns', 'link'], ['ldap', 'users'], ['ntp', 'history']];
+  ['mail', 'mail'], ['dns', 'link'], ['ldap', 'users'], ['ntp', 'history'], ['group', 'dashboard']];
 function pickKind(done, preset) {
   const tile = (type, ico, onclick) => h('button', { type: 'button', class: 'pick', onclick },
     h('span', { class: 'pick-ico', html: icon(ico) }), h('span', { class: 'pick-title' }, t(`mon.pick.${type}`)), h('span', { class: 'pick-text' }, t(`mon.pick.${type}.d`)));
@@ -583,7 +621,7 @@ export async function openMonitorForm(m, done, preset = null) {
     tls_verify: false, cert_check: true, cert_days: '30,14,7', channels: [], ...(preset || {}) };
   let dockerHosts = [];
   try { dockerHosts = await get('/docker/hosts'); } catch { /* none or no right */ }
-  const TYPES = ['http', 'tcp', 'ping', 'smb', 'sensor', 'snmp', 'event', 'docker', 'mysql', 'postgres', 'redis', 'mssql', 'mail', 'dns', 'ldap', 'ntp'];
+  const TYPES = ['http', 'tcp', 'ping', 'smb', 'sensor', 'snmp', 'event', 'docker', 'mysql', 'postgres', 'redis', 'mssql', 'mail', 'dns', 'ldap', 'ntp', 'group'];
   const PROTO = ['dns', 'mail', 'ldap', 'ntp', 'mssql'];
   const PROTO_PORT = { dns: 53, ldap: { ldaps: 636, starttls: 389, none: 389 }, ntp: 123, mssql: 1433, mail: { smtp: { none: 25, starttls: 587, implicit: 465 }, imap: { none: 143, starttls: 143, implicit: 993 }, pop3: { none: 110, starttls: 110, implicit: 995 } } };
   const DBT = ['mysql', 'postgres', 'redis'];
@@ -793,8 +831,10 @@ export async function openMonitorForm(m, done, preset = null) {
     snmpBox.hidden = ty !== 'snmp';
     eventBox.hidden = ty !== 'event';
     if (ty === 'event') loadEvDevices();
-    targetWrap.hidden = ty === 'sensor' || ty === 'event';
-    target.required = ty !== 'sensor' && ty !== 'event';
+    grpBox.hidden = ty !== 'group';
+    grpSel.required = ty === 'group';
+    targetWrap.hidden = ty === 'sensor' || ty === 'event' || ty === 'group';
+    target.required = ty !== 'sensor' && ty !== 'event' && ty !== 'group';
     srcSel.required = ty === 'sensor';
     oid.required = ty === 'snmp';
     condBox.hidden = !(ty === 'snmp' || ty === 'sensor');
@@ -822,7 +862,7 @@ export async function openMonitorForm(m, done, preset = null) {
   // check, 10.0.0.5 for ping/SMB/SNMP/databases, 10.0.0.5 + port 8443 for a TCP port. Back to web gives the old URL again.
   let prevType = typeSel.value;
   let lastUrl = prevType === 'http' ? target.value.trim() : '';
-  const NO_HOST = ['sensor', 'event'];
+  const NO_HOST = ['sensor', 'event', 'group'];
   typeSel.addEventListener('change', () => {
     if (typeSel.value === 'script') {
       typeSel.value = prevType;
@@ -865,6 +905,19 @@ export async function openMonitorForm(m, done, preset = null) {
   const parentChoices = others.filter((x) => !below.has(x.id)).sort((a, b) => (REACH.includes(b.type) - REACH.includes(a.type)) || a.name.localeCompare(b.name, undefined, { numeric: true }));
   const parentSel = select('parent_id', [['', t('mon.f.parentNone')], ...parentChoices.map((x) => [String(x.id), `${x.name} · ${t(`mon.type.${x.type}`)}`])], v.parent_id ? String(v.parent_id) : '');
   const parentBox = field(t('mon.f.parent'), parentSel, t('mon.f.parentHint'));
+  // The group: one of its own ("Websites"); empty = the location of its device. The names in use are offered.
+  const groupNames = [...new Set(others.map(groupOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  const groupList = h('datalist', { id: 'dl-mon-groups' }, groupNames.map((g) => h('option', { value: g })));
+  const groupIn = input('group_name', v.group_name || '', { maxlength: 60, list: 'dl-mon-groups', placeholder: v.location_name || t('mon.f.groupPh') });
+  const groupBox = field(t('mon.f.group'), [groupIn, groupList], t('mon.f.groupHint'));
+  // A group monitor: which group, and down when one member is down or only when all are
+  const go = v.type === 'group' ? v.options || {} : {};
+  const grpSel = select('grp_group', [['', t('mon.f.grpPick')], ...groupNames.map((g) => [g, g]), ...(go.group && !groupNames.includes(go.group) ? [[go.group, go.group]] : [])], go.group || '');
+  const grpMode = select('grp_mode', [['any', t('mon.f.grpAny')], ['all', t('mon.f.grpAll')]], go.mode === 'all' ? 'all' : 'any');
+  const grpBox = h('div', { class: 'form-grid full' },
+    field(t('mon.f.grpGroup'), grpSel, groupNames.length ? t('mon.f.grpGroupHint') : t('mon.f.grpNone')),
+    field(t('mon.f.grpMode'), grpMode, t('mon.f.grpModeHint')));
+  grpSel.addEventListener('change', () => { if (!m && grpSel.value && !nameIn.dataset.touched) nameIn.value = t('mon.f.grpName', { group: grpSel.value }); });
   const chanBox = chans.length ? h('div', { class: 'full field' }, t('mon.f.channels'),
     h('div', { class: 'chips' }, chans.map((c) => h('label', { class: 'check', style: { marginRight: '14px' } },
       h('input', { type: 'checkbox', name: `ch_${c.id}`, checked: selected.size ? selected.has(c.id) : false }), `${c.name}${c.is_default ? ` (${t('mon.f.default')})` : ''}`))),
@@ -886,6 +939,8 @@ export async function openMonitorForm(m, done, preset = null) {
   const form = h('form', { class: 'form-grid' },
     h('div', { class: 'full' }, field(t('mon.f.name'), nameIn)),
     field(t('mon.f.type'), typeSel, offerScript ? t('mon.f.typeScript') : null),
+    groupBox,
+    grpBox,
     targetWrap,
     portBox,
     sensorBox,
@@ -919,7 +974,8 @@ export async function openMonitorForm(m, done, preset = null) {
       fail_threshold: d.fail_threshold, resend_min: d.resend_min, http_status: d.http_status, http_keyword: d.http_keyword,
       tls_verify: d.tls_verify, cert_check: d.cert_check, cert_days: d.cert_days,
       channels: chans.filter((c) => d[`ch_${c.id}`]).map((c) => c.id), parent_id: d.parent_id ? Number(d.parent_id) : null,
-      escalate_min: d.escalate_min ?? '', escalate_channels: chans.filter((c) => d[`esc_${c.id}`]).map((c) => c.id) };
+      escalate_min: d.escalate_min ?? '', escalate_channels: chans.filter((c) => d[`esc_${c.id}`]).map((c) => c.id), group_name: (d.group_name || '').trim() };
+    if (d.type === 'group') { body.target = ''; body.options = { group: d.grp_group, mode: d.grp_mode }; }
     // An address typed as URL for a host check ("https://nas:5001" with ping) only needs the host
     if (!['http', 'docker', 'smb'].includes(d.type) && /^[a-z][a-z0-9+.-]*:\/\//i.test(body.target)) body.target = splitAddress(body.target).host;
     if (d.type === 'docker') body.docker_host_id = d.docker_host_id;
@@ -976,6 +1032,8 @@ export async function openMonitorForm(m, done, preset = null) {
 async function bulkMonitorEdit(list, kind, done) {
   let chans = [];
   try { chans = await get('/channels'); } catch { /* list stays empty */ }
+  let groupNames = [];
+  try { groupNames = [...new Set((await get('/monitors')).map(groupOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })); } catch { /* none offered */ }
   const KEEP = '__keep__';
   const keep = t('inv.keep');
   const numIn = (name, min, max) => input(name, '', { type: 'number', min, max, placeholder: keep, inputmode: 'numeric' });
@@ -996,6 +1054,10 @@ async function bulkMonitorEdit(list, kind, done) {
   const withLimit = list.filter((m) => m.has_limit).length;
   const form = h('form', { class: 'form-grid' },
     h('p', { class: 'full muted', style: { margin: 0 } }, t(sensors ? 'mon.bulkLeadSensors' : 'mon.bulkLead', { n: list.length })),
+    // the group: a name puts them all in it, "no group of its own" takes them out (back to the location of the device)
+    h('div', { class: 'full' }, field(t('mon.f.group'), [input('group_name', '', { maxlength: 60, placeholder: keep, list: 'dl-bulk-groups' }),
+      h('datalist', { id: 'dl-bulk-groups' }, groupNames.map((g) => h('option', { value: g }))),
+      h('label', { class: 'check', style: { marginTop: '6px' } }, h('input', { type: 'checkbox', name: 'group_clear' }), t('mon.bulkNoGroup'))], t('mon.bulkGroupHint'))),
     field(t('mon.f.interval'), numIn('interval_s', 20, 86400), t('mon.f.intervalHint')),
     field(t('mon.f.retries'), numIn('fail_threshold', 1, 10)),
     field(t('mon.f.timeout'), numIn('timeout_s', 1, 60)),
@@ -1010,6 +1072,7 @@ async function bulkMonitorEdit(list, kind, done) {
     const d = formData(form);
     const changes = {};
     for (const k of ['interval_s', 'fail_threshold', 'timeout_s', 'resend_min']) if (String(d[k] ?? '').trim()) changes[k] = d[k].trim();
+    if (d.group_clear) changes.group_name = ''; else if (String(d.group_name ?? '').trim()) changes.group_name = d.group_name.trim();
     if (d.escalate_min !== KEEP) changes.escalate_min = d.escalate_min === '' ? null : d.escalate_min;
     if (sensors && d.op !== KEEP) changes.op = d.op;
     if (sensors && d.threshold.trim()) changes.threshold = d.threshold.trim();
@@ -1125,7 +1188,8 @@ function scopePicker(monitors, chosenIds, hosts = new Map()) {
   const byDevice = (list) => {
     const map = new Map();
     for (const m of list) {
-      const k = m.device_name || (m.type === 'proxmox' ? hosts.get(Number(m.options?.host)) || t('mon.type.proxmox') : t('maint.noDevice'));
+      // a group of its own first ("all websites" with one tick), else by device as before
+      const k = m.group_name ? t('maint.group', { name: m.group_name }) : m.device_name || (m.type === 'proxmox' ? hosts.get(Number(m.options?.host)) || t('mon.type.proxmox') : t('maint.noDevice'));
       if (!map.has(k)) map.set(k, []);
       map.get(k).push(m);
     }
