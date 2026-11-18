@@ -376,7 +376,13 @@ jobs:
           [ "$LATEST" = true ] && tags="$tags -t $IMAGE:latest"
           # shellcheck disable=SC2086
           docker buildx imagetools create $tags "$IMAGE@$DIGEST"
-          now="$(docker buildx imagetools inspect "$IMAGE:$v" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          # the registry may answer "not found" for a few seconds right after the push - ask again before failing
+          now=""
+          for wait in 2 5 10 20; do
+            now="$(docker buildx imagetools inspect "$IMAGE:$v" --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"')" || now=""
+            [ "$now" = "$DIGEST" ] && break
+            sleep "$wait"
+          done
           [ "$now" = "$DIGEST" ] || { echo "::error::Published image ($now) is not the checked candidate ($DIGEST)"; exit 1; }
       # Release text: the same "what's new" lines the program shows (public/js/changelog.js), German and English
       - name: Release text from the changelog
