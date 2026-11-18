@@ -29,6 +29,8 @@ The setting survives a restart and needs no extra rights for the container. High
 
 ## First steps
 
+Every section under *Settings* starts with a short note on what it is for and a link to the matching part of this manual.
+
 1. **Add a location** (*Locations*): name and subnets, e.g. "Main building" with `192.168.10.0/24`.
 2. **Scan the network** (*Scan network*): tick the location, "Start scan". The radar shows the devices found; the scan is gentle (ARP, 26 typical ports, SNMP read-only).
 3. **Adopt**: in the result under "New" check type and name, tick devices, "Adopt into inventory". What you do not want in the inventory, "Ignore". Ignored by mistake? Tick it in the "Ignored" tab and choose "Stop ignoring" (it is listed under "New" again) or "Adopt into inventory" right away. The full list is under *Settings → Ignored devices*. Adopt and ignore work only from the newest scan of a subnet - once a newer scan has covered the subnet, an older scan stays readable, adopting or ignoring happens in the newer one. "Stop ignoring" works in the older scan too.
@@ -140,6 +142,8 @@ Monitors and sensors can be put in **groups**, e.g. "Websites", "Telephony", "St
 - A website without a device belongs somewhere this way too. If it runs on a server of its own, it can also **depend** on that server's ping (below): when the server fails, only its alarm comes.
 
 ### Status pages without login
+
+![Status page](img/statuspage-en.png)
 
 As in Uptime Kuma: a page that shows without login what runs and what does not – for colleagues, the reception desk or a screen in the corridor. It exists only once an administrator makes one: *Monitoring → Status pages → Create status page*.
 
@@ -850,7 +854,7 @@ When pairing, the standby takes **all data of the master** (devices, monitors, u
 
 **When the master fails:** if it does not answer for longer than the set time, the **standby takes over**. It then checks and alarms itself and reports to all default channels: "Failover: the master … has not answered for 10 min - this server (standby) has taken over monitoring." For longer maintenance on the master, raise the time on the standby beforehand.
 
-**When the master comes back:** as soon as it answers, the standby is quiet again ("… is back") and takes its data. **Nothing goes back to the master.** What the standby reported meanwhile is listed on the standby under *Takeovers*.
+**When the master comes back:** as soon as it answers, the standby is quiet again ("… is back"). Before that **it hands the master what it measured meanwhile**: the checks, the hourly values (uptime, response times, sensor values) and the alarms. So the master's history has no gap, and you see there on which day what happened. Then the standby takes the master's data as usual. **Settings never go back** - only measurements and alarms; settings only ever go from master to standby. If the master checked a monitor itself meanwhile (it was not away at all, only the standby was cut off), it keeps its own values for it; the same when it changed or deleted a monitor meanwhile. Each part is taken only once, even if the connection breaks in between. The standby lists under *Takeovers* what was handed back, the master under *Handed back by the standby*. Takeovers from older versions hand back their alarms after the update too (the measurements had been replaced by the master's data back then). Messages of the devices (syslog, traps) that reached the standby meanwhile stay there.
 
 **Both always on the same version:** update master and standby alike - only then does the standby work the same way when it has to take over, and only with the same database version can it take the data of the master. The standby keeps an eye on it: if the two run different versions for half an hour (updating one after the other is no problem), it sends a reminder to the default channels - e.g. "the master … runs version 0.39.0, this server (standby) 0.38.0. Please update this standby to 0.39.0." If it stays like that, it comes again every 7 days; if the standby cannot take the data any more because of the database version, at once and then daily, as an urgent message. When both are the same again, it says so once. Under *Failover* the difference shows on both sides, on the standby in the bar at the top too.
 

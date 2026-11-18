@@ -6,6 +6,11 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Ausfallsicherung: Kommt der Master wieder, gibt ihm der Standby zurück, was er in der Zwischenzeit gemessen hat - Prüfungen, Stundenwerte (Verfügbarkeit, Antwortzeiten, Sensorwerte) und Alarme. Der Verlauf des Masters hat so keine Lücke. Einstellungen gehen weiter nur vom Master zum Standby. Hat der Master einen Monitor selbst geprüft (nur der Standby war abgeschnitten), behält er seine Werte. Alarme früherer Übernahmen gehen nach dem Update ebenfalls zurück
+- Einstellungen: Jeder Bereich beginnt mit einem kurzen Hinweis in einfachen Worten, wozu er da ist, mit Link ins Handbuch
+
+## 0.48.0 - 2026-11-18
+
 - Meldungen suchen: Unter dem Suchfeld stehen Beispiele zum Anklicken. „Ereignis 1002“ (auch „Event 1002“, „ID 1002“, „id:1002“) findet nur dieses Windows-Ereignis statt nichts. Findet die Suche nach einer Ereignis-ID nichts, steht da warum: nicht gespeichert, zuletzt am … (mit „Ganzen Zeitraum zeigen“) oder nie angekommen
 
 ## 0.47.0 - 2026-11-18

@@ -6,9 +6,12 @@
 // Standby: address of the master + pairing code. It listens: no checks, no scans, no alarms, the interface shows the
 //   data of the master (read only). When the master has not answered for the set time (10 minutes by default), it
 //   takes over: monitoring, scans and alarms run here. As soon as the master answers again it is quiet again and
-//   takes the data of the master once more - nothing goes back to the master. What happened meanwhile is kept here
-//   as a takeover record. Only "Make this the master" turns a standby into the master for good; the old master is
-//   told on its next contact and keeps quiet then.
+//   takes the data of the master once more. Before that it hands back what it measured meanwhile: checks, hourly
+//   values and alarms of the takeover go to the master (only those - settings only ever go from master to standby),
+//   so the master's history has no gap just where it matters. A monitor the master checked itself meanwhile (it was
+//   only cut off from the standby) keeps the master's own data. What happened is also kept here as a takeover record.
+//   Only "Make this the master" turns a standby into the master for good; the old master is told on its next contact
+//   and keeps quiet then.
 //
 // Everything about failover lives in data/failover.json (not in the database - that one is replaced on every sync).
 // The connection to the master: HTTPS with the public key of its certificate pinned (from the pairing code) - checked
@@ -50,6 +53,10 @@ export function compareVersions(a, b) {
   return 0;
 }
 const MAX_SNAPSHOT = 4 * 1024 * 1024 * 1024;
+// Handing back: one request at most this large (the API takes 1 MB), rows of one kind at most this many per takeover
+const PART_BYTES = 700 * 1024;
+const MAX_ROWS = 500000;
+const hourOf = (iso) => `${String(iso).slice(0, 13)}:00`;
 // Tables that stay with each installation: who is signed in here, its own log, its versions and diagnostic placeholders
 export const LOCAL_TABLES = new Set(['sessions', 'server_log', 'version_history', 'diag_alias']);
 // While standby, the interface may only read - apart from signing in/out and the failover itself
@@ -335,6 +342,8 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
         log.info(`Failover: master ${s.address} answers again - this server is standby again`);
       }
       if (s.state !== 'listening') { s.state = 'listening'; setRunning(false); }
+      // what was measured during a takeover goes to the master (from the file - the data here are replaced next)
+      await handBack();
       const mine = db.pragma('user_version', { simple: true });
       versionGap(s, hello.schema !== mine);
       if (hello.schema !== mine) {
@@ -367,7 +376,8 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
     if (s.state === 'listening' && Date.now() - since >= (s.delayMin || DELAY_MIN.default) * 60 * 1000) {
       s.state = 'active';
       s.activeSince = nowIso();
-      st.takeovers = [{ from: s.activeSince, to: null, why: s.lastError, lastData: s.lastSync || null }, ...(st.takeovers || [])].slice(0, 20);
+      st.takeovers = [{ id: crypto.randomBytes(8).toString('hex'), from: s.activeSince, to: null, why: s.lastError, lastData: s.lastSync || null, base: baseline(s.activeSince) },
+        ...(st.takeovers || [])].slice(0, 20);
       setRunning(true);
       log.warn(`Failover: master ${s.address} has not answered for ${Math.round((Date.now() - since) / 60000)} min (${s.lastError}) - this server takes over`);
       audit('failover.takeover', s.address);
@@ -416,9 +426,122 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
         WHERE e.at >= ? AND e.kind IN ('down','up','escalate','unreachable') ORDER BY e.at LIMIT 200`).all(t.from)
         .map((e) => ({ at: e.at, kind: e.kind, name: e.name, message: String(e.message || '').slice(0, 300), notified: String(e.notified || '').slice(0, 200) }));
     } catch (e) { log.warn(`Failover: takeover record: ${e.message}`); }
+    try { savePack(collectPack(t)); } catch (e) { t.handback = { state: 'failed', error: e.message }; log.warn(`Failover: data of the takeover: ${e.message}`); }
     st.standby.state = 'listening';
     st.standby.needSync = true;
     audit('failover.handback', st.standby.address);
+  }
+
+  // ---------------------------------------------------------------------------------------------- handing back
+  const packFile = path.join(dataDir, 'failover-handback.json');
+  const loadPacks = () => { try { const x = JSON.parse(fs.readFileSync(packFile, 'utf8')); return Array.isArray(x) ? x : []; } catch { return []; } };
+  function writePacks(list) {
+    if (!list.length) { fs.rmSync(packFile, { force: true }); return; }
+    const tmp = `${packFile}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(list), { mode: 0o600 });
+    fs.renameSync(tmp, packFile);
+  }
+  function savePack(p) {
+    const t = (st.takeovers || []).find((x) => x.id === p.id);
+    if (t) t.handback = { state: 'pending', checks: p.checks.length, events: p.events.length, hours: p.hourly.length };
+    writePacks([...loadPacks().filter((x) => x.id !== p.id), p]);
+  }
+
+  /** The hourly values at the start of a takeover: that hour holds the master's checks too - only the rest goes back */
+  function baseline(at) {
+    const hour = hourOf(at);
+    const rows = {};
+    try {
+      for (const r of db.prepare('SELECT monitor_id, ok, total, ms_sum, v_n, v_sum FROM monitor_hourly WHERE hour = ?').all(hour)) rows[r.monitor_id] = [r.ok, r.total, r.ms_sum, r.v_n, r.v_sum];
+    } catch (e) { log.warn(`Failover: values at takeover: ${e.message}`); }
+    return { hour, rows };
+  }
+
+  /** What this server measured during a takeover: checks, hourly values (less the start), alarms - with the monitors' names */
+  function collectPack(t) {
+    const checks = db.prepare('SELECT monitor_id, at, ok, ms, message FROM checks WHERE at >= ? AND at < ? ORDER BY at LIMIT ?').raw().all(t.from, t.to, MAX_ROWS);
+    const events = db.prepare('SELECT monitor_id, at, kind, message, notified FROM monitor_events WHERE at >= ? AND at < ? ORDER BY at LIMIT ?').raw().all(t.from, t.to, MAX_ROWS);
+    const base = t.base || { hour: hourOf(t.from), rows: {} };
+    const hourly = [];
+    for (const r of db.prepare('SELECT monitor_id, hour, ok, total, ms_sum, v_n, v_sum, v_min, v_max FROM monitor_hourly WHERE hour >= ? AND hour <= ? LIMIT ?').raw().all(base.hour, hourOf(t.to), MAX_ROWS)) {
+      const b = r[1] === base.hour ? base.rows[r[0]] : null;
+      const row = b ? [r[0], r[1], r[2] - b[0], r[3] - b[1], r[4] - b[2], r[5] - b[3], r[6] - b[4], r[7], r[8]] : r;
+      if (row[3] > 0 || row[5] > 0) hourly.push(row);
+    }
+    const ids = [...new Set([...checks, ...events, ...hourly].map((r) => r[0]))];
+    const monitors = {};
+    const one = db.prepare('SELECT name, type FROM monitors WHERE id=?');
+    for (const id of ids) { const m = one.get(id); if (m) monitors[id] = m; }
+    return { id: t.id, master: st.standby?.address || '', from: t.from, to: t.to, monitors, checks, events, hourly };
+  }
+
+  /**
+   * Takeovers from before this version: only their record is left (the data were replaced by the master's). Its alarms
+   * go back by the monitors' names - so the master knows on which day what happened.
+   */
+  function legacyPacks() {
+    for (const t of st.takeovers || []) {
+      if (!t.to || t.handback) continue;
+      if (!t.id) t.id = crypto.randomBytes(8).toString('hex');
+      if (!t.events?.length) { t.handback = { state: 'nothing' }; continue; }
+      savePack({ id: t.id, master: st.standby?.address || '', from: t.from, to: t.to, byName: true, monitors: {}, checks: [], hourly: [],
+        events: t.events.map((e) => [e.name, e.at, e.kind, e.message || '', e.notified || '']) });
+    }
+  }
+
+  /** No master to hand back to any more (promoted, unpaired): the data stay here, where they were measured */
+  function dropPacks(why) {
+    for (const p of loadPacks()) { const t = (st.takeovers || []).find((x) => x.id === p.id); if (t) t.handback = { state: why }; }
+    writePacks([]);
+  }
+
+  /** Split a pack into requests below the size limit (each part on its own: the master takes each part once) */
+  function partsOf(p) {
+    const parts = [];
+    let cur = { checks: [], events: [], hourly: [] }; let size = 0;
+    for (const kind of ['events', 'hourly', 'checks']) {
+      for (const row of p[kind]) {
+        const n = JSON.stringify(row).length + 1;
+        if (size + n > PART_BYTES && size > 0) { parts.push(cur); cur = { checks: [], events: [], hourly: [] }; size = 0; }
+        cur[kind].push(row); size += n;
+      }
+    }
+    parts.push(cur);
+    return parts;
+  }
+
+  async function handBack() {
+    legacyPacks();
+    const packs = loadPacks();
+    if (!packs.length) return;
+    const keep = [];
+    for (const p of packs) {
+      const t = (st.takeovers || []).find((x) => x.id === p.id);
+      // another master than the one of this takeover (paired anew meanwhile): it does not belong there
+      if (p.master && p.master !== st.standby?.address) { if (t) t.handback = { state: 'otherMaster' }; continue; }
+      const parts = partsOf(p);
+      const sum = { checks: 0, events: 0, hours: 0, skipped: [] };
+      let ok = true;
+      for (let i = 0; i < parts.length && ok; i++) {
+        try {
+          const r = await pinnedRequest(peer(), 'POST', '/api/failover/handback', { timeoutMs: 60000, body: {
+            pack: p.id, part: i, of: parts.length, from: p.from, to: p.to, byName: !!p.byName, monitors: p.monitors, ...parts[i] } });
+          if (r.status === 404) throw Object.assign(new Error('the master runs an older version - update it'), { code: 'EOLD' });
+          if (r.status !== 200 || !r.json?.ok) throw new Error(r.json?.error?.message || `HTTP ${r.status}`);
+          sum.checks += r.json.checks || 0; sum.events += r.json.events || 0; sum.hours += r.json.hours || 0;
+          for (const n of r.json.skipped || []) if (!sum.skipped.includes(n)) sum.skipped.push(n);
+        } catch (e) {
+          ok = false;
+          if (t) t.handback = { ...(t.handback || {}), state: 'pending', error: whyText(e) };
+          log.warn(`Failover: handing back the data of the takeover from ${p.from}: ${whyText(e)}`);
+        }
+      }
+      if (ok) {
+        if (t) t.handback = { state: 'done', at: nowIso(), ...sum, skipped: sum.skipped.slice(0, 20) };
+        log.info(`Failover: data of the takeover from ${p.from} handed back (${sum.checks} checks, ${sum.events} alarms)`);
+      } else keep.push(p);
+    }
+    writePacks(keep);
   }
 
   /** Promoted master: tells the old one on its next contact, so it keeps quiet */
@@ -495,7 +618,8 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
           versions: s.gap ? { master: s.gap.master, here: s.gap.here, schema: !!s.gap.schema, since: s.gap.since, notifiedAt: s.gap.notifiedAt || null } : null } : null,
         former: st.former ? { address: st.former.address } : null,
         yielded: st.role === 'yielded' ? st.yielded || {} : null,
-        takeovers: st.takeovers || [],
+        takeovers: (st.takeovers || []).map(({ base: _b, ...x }) => x),
+        received: (st.received || []).filter((x) => x.parts?.length === x.of).map(({ parts: _p, ...x }) => x),
       };
     },
 
@@ -558,6 +682,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       if (st.role !== 'standby') throw new HttpError(409, 'err.badRequest');
       const s = st.standby;
       if (s.state === 'active') endTakeover('promoted');
+      dropPacks('promoted');
       st.former = { address: s.address, pin: s.pin, pem: s.pem || null, token: s.token };
       delete st.standby;
       st.role = 'master';
@@ -573,6 +698,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
     unpair() {
       const was = st.role;
       if (st.role === 'standby' && st.standby?.state === 'active') endTakeover('alone');
+      if (st.role === 'standby') dropPacks('unpaired');
       st = { role: 'alone', takeovers: st.takeovers || [], ...(st.former ? { former: st.former } : {}) };
       save();
       setRunning(true);
@@ -600,6 +726,91 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
         res.setHeader('X-WOMN-Schema', String(db.pragma('user_version', { simple: true })));
         await pipeline(fs.createReadStream(f), zlib.createGzip({ level: 6 }), res);
       } finally { discard(f); }
+    },
+    /**
+     * The standby hands back what it measured while it had taken over. Per monitor (same id, name and type here, or
+     * by name for records from before): checks and alarms that are not here yet, hourly values added up. A monitor
+     * this server checked itself meanwhile (only the standby was cut off) keeps its own data. Each part is taken once.
+     */
+    receiveHandback(req) {
+      masterAuth(req);
+      const b = req.body || {};
+      const pack = String(b.pack || '');
+      const part = Number(b.part); const of = Number(b.of);
+      const from = String(b.from || ''); const to = String(b.to || '');
+      if (!/^[0-9a-f]{16}$/.test(pack) || !Number.isInteger(part) || !Number.isInteger(of) || part < 0 || of < 1 || part >= of || of > 10000
+        || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to)) || from >= to) throw new HttpError(400, 'err.badRequest');
+      st.received = st.received || [];
+      let rec = st.received.find((x) => x.pack === pack);
+      if (rec?.parts?.includes(part)) return { ok: true, again: true, checks: 0, events: 0, hours: 0, skipped: [] };
+      const arr = (x, max) => (Array.isArray(x) ? x.slice(0, max) : []);
+      const str = (v, n) => String(v ?? '').slice(0, n);
+      const iso = (v) => { const x = str(v, 40); return Number.isNaN(Date.parse(x)) ? null : x; };
+      // which monitor here a row belongs to - or none
+      const byId = db.prepare('SELECT id, name, type FROM monitors WHERE id=?');
+      const byName = db.prepare('SELECT id FROM monitors WHERE name=? COLLATE NOCASE');
+      const own = db.prepare('SELECT 1 FROM checks WHERE monitor_id=? AND at > ? AND at < ? LIMIT 1');
+      const map = new Map(); const skipped = new Set();
+      const target = (key) => {
+        if (map.has(key)) return map.get(key);
+        let id = null; let name = String(key);
+        if (b.byName) {
+          const hits = byName.all(str(key, 200));
+          if (hits.length === 1) id = hits[0].id;
+        } else {
+          const m = byId.get(Number(key)); const theirs = b.monitors?.[key];
+          name = theirs?.name ? str(theirs.name, 200) : `#${key}`;
+          if (m && theirs && m.name === theirs.name && m.type === theirs.type) id = m.id;
+        }
+        // checked here meanwhile: this server was not away for it - its own data stay
+        if (id !== null && own.get(id, new Date(Date.parse(from) + 60000).toISOString(), new Date(Date.parse(to) - 60000).toISOString())) id = null;
+        if (id === null) skipped.add(name);
+        map.set(key, id);
+        return id;
+      };
+      const n = { checks: 0, events: 0, hours: 0 };
+      db.transaction(() => {
+        const hasCheck = db.prepare('SELECT 1 FROM checks WHERE monitor_id=? AND at=?');
+        const addCheck = db.prepare('INSERT INTO checks(monitor_id,at,ok,ms,message) VALUES(?,?,?,?,?)');
+        for (const r of arr(b.checks, MAX_ROWS)) {
+          const id = target(r?.[0]); const at = iso(r?.[1]);
+          if (id === null || !at || at < from || at >= to || hasCheck.get(id, at)) continue;
+          addCheck.run(id, at, r[2] ? 1 : 0, Number.isFinite(r[3]) ? Math.round(r[3]) : null, str(r[4], 500));
+          n.checks++;
+        }
+        const hasEvent = db.prepare('SELECT 1 FROM monitor_events WHERE monitor_id=? AND at=? AND kind=?');
+        const addEvent = db.prepare('INSERT INTO monitor_events(monitor_id,at,kind,message,notified) VALUES(?,?,?,?,?)');
+        for (const r of arr(b.events, MAX_ROWS)) {
+          const id = target(r?.[0]); const at = iso(r?.[1]); const kind = str(r?.[2], 20);
+          if (id === null || !at || at < from || at > to || !/^[a-z]+$/.test(kind) || hasEvent.get(id, at, kind)) continue;
+          addEvent.run(id, at, kind, str(r[3], 500), str(r[4], 200));
+          n.events++;
+        }
+        const addHour = db.prepare(`INSERT INTO monitor_hourly(monitor_id,hour,ok,total,ms_sum,v_n,v_sum,v_min,v_max) VALUES(?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(monitor_id,hour) DO UPDATE SET ok=ok+excluded.ok, total=total+excluded.total, ms_sum=ms_sum+excluded.ms_sum, v_n=v_n+excluded.v_n,
+            v_sum=v_sum+excluded.v_sum, v_min=CASE WHEN v_min IS NULL OR excluded.v_min < v_min THEN excluded.v_min ELSE v_min END,
+            v_max=CASE WHEN v_max IS NULL OR excluded.v_max > v_max THEN excluded.v_max ELSE v_max END`);
+        const num = (v) => (Number.isFinite(v) ? v : 0);
+        const nul = (v) => (Number.isFinite(v) ? v : null);
+        for (const r of arr(b.hourly, MAX_ROWS)) {
+          const id = target(r?.[0]); const hour = str(r?.[1], 16);
+          if (id === null || !/^\d{4}-\d{2}-\d{2}T\d{2}:00$/.test(hour) || hour < hourOf(from) || hour > hourOf(to)) continue;
+          const ok = Math.max(0, Math.round(num(r[2]))); const total = Math.max(0, Math.round(num(r[3])));
+          if (ok > total || total > 100000) continue;
+          addHour.run(id, hour, ok, total, Math.max(0, num(r[4])), Math.max(0, Math.round(num(r[5]))), num(r[6]), nul(r[7]), nul(r[8]));
+          n.hours++;
+        }
+      })();
+      if (!rec) { rec = { pack, from, to, at: nowIso(), parts: [], of, checks: 0, events: 0, hours: 0, skipped: [] }; st.received = [rec, ...st.received].slice(0, 20); }
+      rec.parts.push(part); rec.at = nowIso();
+      rec.checks += n.checks; rec.events += n.events; rec.hours += n.hours;
+      for (const x of skipped) if (!rec.skipped.includes(x) && rec.skipped.length < 20) rec.skipped.push(x);
+      save();
+      if (rec.parts.length === of) {
+        log.info(`Failover: the standby handed back its data from ${from} to ${to} (${rec.checks} checks, ${rec.events} alarms)`);
+        audit('failover.received', `${from} - ${to}`);
+      }
+      return { ok: true, ...n, skipped: [...skipped] };
     },
     /** The standby was made master: this one keeps quiet from now on */
     yieldTo(req) {

@@ -3,6 +3,13 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Ausfallsicherung: Kommt der Master wieder, gibt ihm der Standby zurück, was er in der Zwischenzeit gemessen hat - Prüfungen, Stundenwerte (Verfügbarkeit, Antwortzeiten, Sensorwerte) und Alarme. Der Verlauf des Masters hat so keine Lücke. Einstellungen gehen weiter nur vom Master zum Standby. Hat der Master einen Monitor selbst geprüft (nur der Standby war abgeschnitten), behält er seine Werte. Alarme früherer Übernahmen gehen nach dem Update ebenfalls zurück',
+    'Einstellungen: Jeder Bereich beginnt mit einem kurzen Hinweis in einfachen Worten, wozu er da ist, mit Link ins Handbuch',
+  ], en: [
+    'Failover: when the master comes back, the standby hands it what it measured meanwhile - checks, hourly values (uptime, response times, sensor values) and alarms. So the master\'s history has no gap. Settings still only go from master to standby. If the master checked a monitor itself (only the standby was cut off), it keeps its own values. Alarms of earlier takeovers go back after the update too',
+    'Settings: every section starts with a short note in plain words on what it is for, with a link to the manual',
+  ] },
+  { version: '0.48.0', date: '2026-11-18', de: [
     'Meldungen suchen: Unter dem Suchfeld stehen Beispiele zum Anklicken. „Ereignis 1002“ (auch „Event 1002“, „ID 1002“, „id:1002“) findet nur dieses Windows-Ereignis statt nichts. Findet die Suche nach einer Ereignis-ID nichts, steht da warum: nicht gespeichert, zuletzt am … (mit „Ganzen Zeitraum zeigen“) oder nie angekommen',
   ], en: [
     'Searching messages: below the search field there are examples to click. "Event 1002" (also "ID 1002", "id:1002") finds only this Windows event instead of nothing. When a search for an event id finds nothing, it says why: not kept, came last on … (with "Show the whole time range") or never came in',
