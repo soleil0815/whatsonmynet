@@ -6,6 +6,8 @@
 
 Netzwerk-Inventar, Monitoring und Sensoren in einem Container: WhatsOnMyNet scannt dein Netz, erkennt Geräte selbst, überwacht Webseiten, Dienste, Server und Hypervisoren und meldet sich, bevor jemand anruft. Läuft lokal, lädt nichts aus dem Internet, liest fremde Systeme nur.
 
+> **Für den eigenen Einsatz gebaut - Nutzung in eigener Verantwortung.** Ich habe WhatsOnMyNet in erster Linie für mich selbst entwickelt, weil ich genau so ein Werkzeug in meiner eigenen Umgebung haben wollte: einfach im Einstieg wie Uptime Kuma, aber mit Inventar, Meldungen, Sensoren und Ausfallsicherung, wenn man tiefer gräbt. Ich nutze es selbst im Betrieb; Fehler fallen mir dadurch meist schnell auf und werden zügig behoben. Wenn du WhatsOnMyNet ebenfalls einsetzen möchtest: gern - aber in eigener Verantwortung. Es gibt keine Gewährleistung und keine Haftung (Abschnitte 15 und 16 der [Lizenz](LICENSE)). Probier es zuerst in einer Testumgebung aus und leg Sicherungen an. Fehlerberichte und Verbesserungsvorschläge sind willkommen - am besten als [Issue](https://github.com/soleil0815/whatsonmynet/issues); Sicherheitslücken bitte nicht öffentlich, sondern wie in [SECURITY.md](SECURITY.md) beschrieben melden. Support oder feste Antwortzeiten kann ich nicht zusagen.
+
 ![Meldungen durchsuchen und zeitlich eingrenzen](.github/readme/logsearch-de.webp)
 
 <p>
