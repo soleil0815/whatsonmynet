@@ -176,6 +176,8 @@ export function createMonitoringApi(ctx) {
       list: ctx.events.list({ ...eventFilter(q), before: q.before || null, limit: q.limit || 200 })
         .map((r) => { const summary = logonSummary(r.event_id, r.text, req.user?.language === 'en' ? 'en' : 'de'); return summary ? { ...r, summary } : r; }) });
   });
+  // nothing found for an event id: kept at all, ever come in, when last (the page explains the empty list)
+  r.get('/events/why', editor, unscoped, (req, res) => res.json(ctx.events.whyNone(str(req.query?.q, 200))));
   // how many messages per step of time, with the same filters as the list (the bars above it)
   // Saved searches: search, severity, kind and time range (a preset - not a fixed day) under a name; one's own, or shared
   // with everyone who sees the messages. Only who made it (or an admin) deletes it.

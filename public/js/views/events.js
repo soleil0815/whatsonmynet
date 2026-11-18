@@ -78,6 +78,26 @@ export async function renderEvents(main) {
   // parts of words (e.g. "006A" of 0xC000006A): only on request - every message in the range is read then
   let part = false;
   const q = h('input', { type: 'search', placeholder: t('ev.search'), 'aria-label': t('ev.search'), title: t('ev.searchHint') });
+  // how the search works, with examples to click (the long version is the title of the field)
+  const tryQ = (text) => { q.value = text; part = false; senders = []; load(); q.focus(); };
+  const searchHelp = h('div', { class: 'ev-search-help small muted' }, t('ev.searchEx'), ' ',
+    [['ev.ex.id'], ['ev.ex.both'], ['ev.ex.phrase'], ['ev.ex.not']]
+      .map(([k]) => h('button', { type: 'button', class: 'ev-ex', onclick: () => tryQ(t(`${k}.q`)) }, h('code', {}, t(`${k}.q`)), h('span', {}, t(k)))));
+  const whyBox = h('div', { class: 'ev-why' });
+  async function explainNone(text) {
+    mount(whyBox);
+    let list = [];
+    try { list = await get(`/events/why?q=${encodeURIComponent(text)}`); } catch { return; }
+    if (q.value.trim() !== text) return;
+    const outside = (iso) => { const r = rangeNow(); return (r.from && iso < r.from) || (r.to && iso >= r.to); };
+    mount(whyBox, list.map((x) => {
+      if (x.notKept) return h('p', {}, t(`ev.why.${x.notKept}`, { id: x.id }), ' ', admin ? h('button', { type: 'button', class: 'btn-link', onclick: () => info && settingsDialog(info.settings) }, t('ev.why.settings')) : null);
+      if (!x.last) return h('p', {}, t('ev.why.never', { id: x.id }));
+      return h('p', {}, t('ev.why.last', { id: x.id, when: fmtDate(x.last, getLang()) }), ' ',
+        outside(x.last) ? h('button', { type: 'button', class: 'btn-link', onclick: () => setRange('') }, t('ev.why.allTime'))
+          : maxSeverity < 7 ? h('span', {}, t('ev.why.severity')) : source ? h('span', {}, t('ev.why.source')) : null);
+    }));
+  }
   const seg = h('div', { class: 'seg', role: 'group', 'aria-label': t('ev.view') });
   const sourceChip = h('div');
   const setView = (v) => { view = v; source = null; if (v !== 'open') remember('ev.view', v); q.value = ''; history.replaceState(null, '', v === 'open' ? '/events?view=open' : '/events'); load(); };
@@ -220,6 +240,7 @@ export async function renderEvents(main) {
     if (range === 'custom') { fromIn.value = custom.from === null ? '' : toLocalInput(custom.from); toIn.value = custom.to === null ? '' : toLocalInput(custom.to); }
     mount(histBox, bySender ? null : drawHist());
     q.placeholder = bySender ? t('ev.searchSenders') : t('ev.search');
+    searchHelp.hidden = bySender;
     mount(sourceChip, source ? h('div', { class: 'actions', style: { justifyContent: 'flex-start', gap: '8px' } },
       h('span', {}, t('ev.onlyFrom')), h('strong', {}, source.label), source.label !== source.ip ? h('span', { class: 'muted mono small' }, source.ip) : null,
       btn(t('ev.allSenders'), { class: 'btn btn-sm', onclick: () => { source = null; view = 'senders'; history.replaceState(null, '', '/events'); load(); } })) : null);
@@ -267,8 +288,11 @@ export async function renderEvents(main) {
           btn(t('ev.watch'), { class: 'btn btn-sm btn-ghost', title: t('ev.watchHint'), onclick: () => watch(r) }, 'pulse'),
           btn(t('ev.rule'), { class: 'btn btn-sm btn-ghost', title: t('ev.ruleHint'), onclick: () => ruleFrom(r) }, 'mail')])))))))
       : h('div', { class: 'panel panel-pad muted' }, off ? t('ev.noneOff') : q.value || kind || maxSeverity < 7 || range ? t('ev.noMatch') : t('ev.none'),
+        // a search for an event id: why nothing came (not kept, never came in, outside the time range)
+        whyBox,
         // nothing as a word: offer parts of words
         q.value.trim() && !part ? h('div', { class: 'ev-part' }, t('ev.partOffer'), ' ', h('button', { type: 'button', class: 'btn-link', onclick: () => { part = true; load(); } }, t('ev.partTry'))) : null));
+    if (!rows.length && /\d/.test(q.value)) explainNone(q.value.trim());
     if (q.value.trim() && part) listBox.prepend(h('div', { class: 'small muted ev-part' }, t('ev.partOn'), ' ', h('button', { type: 'button', class: 'btn-link', onclick: () => { part = false; load(); } }, t('ev.partOff'))));
     mount(more, hasMore ? btn(t('ev.more'), { class: 'btn btn-sm', onclick: () => load(true) }) : null);
     lockForEditing(body);
@@ -599,7 +623,7 @@ export async function renderEvents(main) {
     btn(t('ev.reload'), { class: 'btn', onclick: () => load() }, 'refresh'));
   mount(body, head, statusBox, spaceBox,
     h('div', { class: 'vo-toolbar ev-toolbar' }, seg, h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q), savedMenu, sevSel, rangeSel, chips),
-    customBox, sourceChip, histBox, listBox, more);
+    searchHelp, customBox, sourceChip, histBox, listBox, more);
   await load();
   // new messages show up by themselves while the page is open (not while searching through older ones)
   const auto = setInterval(() => { if (!body.isConnected) { clearInterval(auto); return; } if (dragging) return; if ((view === 'senders' && !source) || (rows.length <= 200 && !document.hidden)) { if (!document.hidden) load(); } }, 15000);

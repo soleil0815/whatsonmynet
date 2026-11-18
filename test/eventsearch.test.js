@@ -70,6 +70,37 @@ test('words, beginnings of words, the order of words; parts of words only on req
   db.close();
 });
 
+test('"Ereignis 1002", "Event 1002", "id:1002": only that Windows event; why a search for an id finds nothing', () => {
+  const db = openDatabase(path.join(dirOf('fts-id'), 'whatsonmynet.sqlite'));
+  const settings = createSettings(db);
+  const ev = createEvents({ db, settings });
+  const t = (h) => new Date(Date.parse('2026-11-10T08:00:00Z') + h * 3600000).toISOString();
+  const hang = ins(db, t(0), 'Das Programm explorer.exe hat nicht mehr mit Windows interagiert.', { eventId: 1002, sev: 3 });
+  const text = ins(db, t(1), 'Port 1002 geschlossen', { host: 'fw01' });
+  const other = ins(db, t(2), 'Fehler beim Anmelden', { eventId: 4625 });
+  assert.equal(ev.indexBatch(), 0);
+  assert.equal(ev.countBatch(), 0);
+  assert.deepEqual(ids(ev.list({ q: '1002' })), [text, hang], 'a number alone: the id and the number in texts');
+  for (const q of ['Ereignis 1002', 'event 1002', 'ID 1002', 'id:1002', 'Ereignis-ID 1002', 'eventid=1002']) assert.deepEqual(ids(ev.list({ q })), [hang], q);
+  assert.deepEqual(ids(ev.list({ q: 'Ereignis 1002 explorer' })), [hang], 'with words');
+  assert.deepEqual(ids(ev.list({ q: 'Ereignis 1002 -explorer' })), []);
+  assert.deepEqual(ids(ev.list({ q: '-Ereignis 1002' })), [text, other].sort((x, y) => y - x), 'left out');
+  assert.deepEqual(ids(ev.list({ q: '"Ereignis 1002"' })), [], 'in quotes: the words');
+  assert.deepEqual(ids(ev.list({ q: 'Ereignis 1002', from: t(1) })), [], 'the time range applies');
+  assert.equal(ev.histogram({ q: 'event 1002', from: t(0), to: t(3) }).total, 1);
+  // why nothing: came in last at …, never, not kept
+  assert.deepEqual(ev.whyNone('Ereignis 1002'), [{ id: 1002, notKept: null, last: t(0).replace(/:00:00\.000Z$/, ':00:00.000Z'), eventOnly: true }]);
+  assert.deepEqual(ev.whyNone('event 4740').map((x) => [x.id, x.notKept, x.last]), [[4740, null, null]]);
+  settings.set('events.winDeny', '1000-1002');
+  assert.equal(ev.whyNone('1002')[0].notKept, 'deny');
+  settings.set('events.winDeny', '1002@Application Hang');
+  assert.equal(ev.whyNone('1002')[0].notKept, 'denySource');
+  settings.set('events.winDeny', ''); settings.set('events.winAllow', '4625, 4740');
+  assert.equal(ev.whyNone('id:1002')[0].notKept, 'allow');
+  assert.deepEqual(ev.whyNone('explorer -1002'), [], 'only ids that are searched for');
+  db.close();
+});
+
 test('new messages are found before their batch, many hits come newest first, more of the list', () => {
   const db = openDatabase(path.join(dirOf('fts2'), 'whatsonmynet.sqlite'));
   const ev = createEvents({ db, settings: createSettings(db) });

@@ -638,15 +638,28 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
    * Each term: { raw, not, match } - match is the term for the index ('"svc pocketknife"*': these words in this
    * order, the last one may go on), '' when it has no word in it.
    */
+  // "Ereignis 1002", "Event 1002", "ID 1002", "id:1002": only the Windows event with that id (not the number in texts)
+  const EVENT_WORD = /^(?:id|event|events|eventid|event-id|ereignis|ereignisse|ereignis-id)$/i;
+  const EVENT_ID = /^(?:id|event|eventid|event-id|ereignis|ereignis-id)[:=](\d{1,6})$/i;
   function searchTerms(text) {
-    const out = [];
+    const tokens = [];
     for (const m of String(text).matchAll(/(-?)"([^"]*)"?|(-?)(\S+)/g)) {
-      const not = (m[1] || m[3]) === '-';
       const raw = (m[2] ?? m[4] ?? '').trim();
-      if (!raw) continue;
+      if (raw) tokens.push({ raw, not: (m[1] || m[3]) === '-', quoted: m[2] !== undefined });
+    }
+    const out = [];
+    for (let i = 0; i < tokens.length && out.length < 10; i++) {
+      const { raw, not, quoted } = tokens[i];
+      const own = !quoted && EVENT_ID.exec(raw);
+      const next = tokens[i + 1];
+      if (own || (!quoted && EVENT_WORD.test(raw) && next && !next.quoted && !next.not && /^\d{1,6}$/.test(next.raw))) {
+        const id = Number(own ? own[1] : next.raw);
+        if (!own) i++;
+        out.push({ raw: String(id), not, match: '', eventOnly: id });
+        continue;
+      }
       const words = raw.match(/[\p{L}\p{N}]+/gu);
       out.push({ raw: raw.slice(0, 100), not, match: words ? `"${words.slice(0, 16).join(' ')}"*` : '' });
-      if (out.length >= 10) break;
     }
     return out;
   }
@@ -670,7 +683,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     if (source) { where.push('e.source_ip = ?'); args.push(String(source).slice(0, 64)); }
     const terms = searchTerms(String(q || '').trim().slice(0, 200));
     // the index leads when at least one term is wanted (not only left out) and has a word in it
-    const words = !part && terms.some((t) => !t.not && t.match);
+    const words = !part && terms.some((t) => !t.not && (t.match || t.eventOnly !== undefined));
     // from is inclusive, to is not: two ranges side by side never count a message twice ("+": no index for the time
     // when the words lead)
     const at = words ? '+e.at' : 'e.at';
@@ -686,7 +699,12 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       const n = /^\d{1,6}$/.test(t.raw) ? Number(t.raw) : -1;
       const like = `%${t.raw.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
       let cond; let a;
-      if (!part && t.match) {
+      if (t.eventOnly !== undefined) {
+        // the event id alone - by its own index
+        cond = words ? '(e.event_id = ? AND e.id >= ? AND e.id < ?)' : 'e.event_id = ?';
+        a = words ? [t.eventOnly, lo, hi] : [t.eventOnly];
+        if (!t.not && words) fewest = Math.min(fewest, eventCount.get(t.eventOnly, lo, hi) || 0);
+      } else if (!part && t.match) {
         // the index up to "done"; what came in since its last round (a few seconds) the slow way
         cond = `(e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ? AND rowid >= ? AND rowid < ?) OR (e.id > ? AND ${likeCols}) OR ${devName} OR (e.event_id = ? AND e.id >= ? AND e.id < ?))`;
         a = [t.match, lo, hi, tail, like, like, like, like, like, like, like, n, lo, hi];
@@ -703,6 +721,28 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     // many hits (common words): the newest come quickly when walking back from the newest message
     many = words && fewest > MANY;
     return { where: where.join(' AND '), args, words, many };
+  }
+
+  /**
+   * A search for an event id found nothing - why? Per id: not kept (left out in the settings, or not in the list of
+   * wanted ids), never came in, or came in last at … (outside the time range, or of a severity filtered out).
+   */
+  const lastHourOf = db.prepare('SELECT MAX(hour) FROM events_hour_id WHERE event_id = ? AND n > 0').pluck();
+  function whyNone(q) {
+    const out = [];
+    for (const t of searchTerms(String(q || '').trim().slice(0, 200))) {
+      if (t.not) continue;
+      const id = t.eventOnly ?? (/^\d{1,6}$/.test(t.raw) ? Number(t.raw) : null);
+      if (id === null || out.some((x) => x.id === id)) continue;
+      const allow = ranges('events.winAllow');
+      const deny = parseDenyList(String(settings.get('events.winDeny') || '')) || { ranges: [], pairs: [] };
+      const notKept = allow.length && !inRanges(allow, id) ? 'allow' : deny.ranges.some(([a, b]) => id >= a && id <= b) ? 'deny'
+        : deny.pairs.some((x) => x.id === id) ? 'denySource' : null;
+      const hour = lastHourOf.get(id);
+      out.push({ id, notKept, last: hour ? new Date(hour * 3600000).toISOString() : null, eventOnly: t.eventOnly !== undefined });
+      if (out.length >= 3) break;
+    }
+    return out;
   }
 
   function list({ limit = 200, before = null, ...filter } = {}) {
@@ -1065,7 +1105,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   let pruneTimer = null; let pruneSoon = null;
 
   return {
-    receive, queue, flush, list, histogram, senders, senderPage, prune, apply, communities,
+    receive, queue, flush, list, whyNone, histogram, senders, senderPage, prune, apply, communities,
     /** What is kept of one sender: min severity 0-7, -1 muted, null = as for all */
     setSenderFilter(ip, min, by = '') {
       const a = String(ip || '').trim().slice(0, 64);
