@@ -44,6 +44,30 @@ function pairForm(reload, s) {
   return form;
 }
 
+/** What became of the data measured during a takeover (handed back to the master or why not) */
+function handbackText(x) {
+  const n = getLang();
+  const nums = { checks: (x.checks || 0).toLocaleString(n), events: (x.events || 0).toLocaleString(n) };
+  if (x.state === 'done') return [t('fo.hb.done', nums), x.skipped?.length ? ` ${t('fo.hb.skipped', { names: x.skipped.join(', ') })}` : ''].join('');
+  if (x.state === 'pending') return [t('fo.hb.pending', nums), x.error ? ` (${x.error})` : ''].join('');
+  return t(`fo.hb.${x.state}`) || '';
+}
+
+/** On the master: what a standby handed back after it had taken over */
+function received(list) {
+  if (!list?.length) return null;
+  return panel(t('fo.received'),
+    h('p', { class: 'muted', style: { marginTop: 0 } }, t('fo.receivedLead')),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+      h('thead', {}, h('tr', {}, h('th', {}, t('chart.from')), h('th', {}, t('chart.to')), h('th', {}, t('fo.what')), h('th', {}, t('fo.receivedAt')))),
+      h('tbody', {}, list.map((x) => h('tr', {},
+        h('td', { class: 'nowrap' }, fmtDate(x.from, getLang())),
+        h('td', { class: 'nowrap' }, fmtDate(x.to, getLang())),
+        h('td', {}, t('fo.hb.got', { checks: x.checks.toLocaleString(getLang()), events: x.events.toLocaleString(getLang()) }),
+          x.skipped?.length ? h('div', { class: 'muted small' }, t('fo.hb.skippedHere', { names: x.skipped.join(', ') })) : null),
+        h('td', { class: 'nowrap muted' }, fmtDate(x.at, getLang()))))))));
+}
+
 function takeovers(list) {
   if (!list?.length) return null;
   return panel(t('fo.takeovers'),
@@ -56,6 +80,7 @@ function takeovers(list) {
         h('td', { class: 'nowrap' }, dur(minutes(x.from, x.to))),
         h('td', {},
           h('div', {}, x.end ? t(`fo.end.${x.end}`) : t('fo.why', { why: why(x.why) || '–' })),
+          x.handback ? h('div', { class: `small${x.handback.state === 'done' ? '' : ' muted'}` }, handbackText(x.handback)) : null,
           x.events?.length ? h('details', { class: 'fo-events' }, h('summary', {}, t('fo.events', { n: x.events.length })),
             h('ul', {}, x.events.map((e) => h('li', {}, h('span', { class: 'mono small' }, fmtDate(e.at, getLang())), ' ',
               h('b', {}, e.name), ` - ${t(`fo.ev.${e.kind}`)}`, e.notified ? h('span', { class: 'muted' }, ` → ${e.notified}`) : null))))
@@ -78,7 +103,7 @@ export async function failoverSettings(body, _s, reload) {
           try { const r = await post('/failover/master', {}); showCode(r.code); reload(); } catch (ex) { fail(ex); }
         }) }, 'shield'))),
       panel(t('fo.beStandby'), h('p', { class: 'muted', style: { marginTop: 0 } }, t('fo.beStandbyLead')), pairForm(reload, s)),
-      takeovers(s.takeovers));
+      takeovers(s.takeovers), received(s.received));
     return;
   }
 
@@ -104,7 +129,7 @@ export async function failoverSettings(body, _s, reload) {
             try { const r = await post('/failover/master', {}); showCode(r.code); reload(); } catch (ex) { fail(ex); }
           } }, 'refresh'),
           unpairBtn(t('fo.unpairMaster')))),
-      takeovers(s.takeovers));
+      takeovers(s.takeovers), received(s.received));
     return;
   }
 
@@ -138,7 +163,7 @@ export async function failoverSettings(body, _s, reload) {
             try { const r = await post('/failover/promote', {}); showCode(r.code, () => location.reload()); } catch (ex) { fail(ex); }
           } }, 'shield'),
           unpairBtn(t('fo.unpairStandby')))),
-      takeovers(s.takeovers));
+      takeovers(s.takeovers), received(s.received));
     return;
   }
 
@@ -147,7 +172,7 @@ export async function failoverSettings(body, _s, reload) {
     h('p', { class: 'note warn' }, t('fo.yieldedNote', { since: when(s.yielded?.at), ip: s.yielded?.ip || '–' })),
     panel(t('fo.beStandby'), h('p', { class: 'muted', style: { marginTop: 0 } }, t('fo.yieldedStandby')), pairForm(reload, s)),
     panel(t('fo.alone'), h('p', { class: 'muted', style: { marginTop: 0 } }, t('fo.yieldedAlone')), h('div', { class: 'actions' }, unpairBtn(t('fo.unpairYielded')))),
-    takeovers(s.takeovers));
+    takeovers(s.takeovers), received(s.received));
 }
 
 // A standby only shows: also while it monitors in place of the master (its data come back from the master afterwards)

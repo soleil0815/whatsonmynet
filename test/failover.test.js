@@ -1,5 +1,5 @@
 // Failover: master and standby, pairing with a code, the standby takes the data, keeps quiet, takes over when the
-// master is gone, hands back when it answers again, and "make this the master" (the old one keeps quiet then).
+// master is gone, hands back its measurements when it answers again, and "make this the master" (the old one keeps quiet then).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -156,10 +156,32 @@ test('the master is gone longer than the set time: the standby takes over; it is
   assert.equal(B.ctx.failover.readOnly(), true);
   assert.equal(s.takeovers.length, 1);
   assert.equal(s.takeovers[0].to, null);
-  // during the takeover something happens here (kept with the takeover, not sent back)
+  // during the takeover the standby measures and alarms (as its engines would)
   const mid = B.db.prepare("SELECT id FROM monitors WHERE name='Intranet'").get().id;
-  B.db.prepare("INSERT INTO monitor_events(monitor_id,at,kind,message,notified) VALUES(?,?,'down','Intranet: timeout','Bereitschaft')").run(mid, new Date().toISOString());
-  // the master answers again
+  const pid = B.db.prepare("SELECT id FROM monitors WHERE name='Drucker EG'").get().id;
+  const hourOf = (iso) => `${iso.slice(0, 13)}:00`;
+  // the takeover began ten minutes ago (as if the set time had passed) - with the values of that hour as its start
+  const tk = B.ctx.failover._state().takeovers[0];
+  tk.from = new Date(Date.now() - 10 * 60000).toISOString();
+  // the master's values of that hour, in its data and in the copy here
+  const mid0 = B.db.prepare("SELECT id FROM monitors WHERE name='Intranet'").get().id;
+  for (const X of [A, B]) X.db.prepare('INSERT INTO monitor_hourly(monitor_id,hour,ok,total,ms_sum) VALUES(?,?,5,5,50) ON CONFLICT(monitor_id,hour) DO UPDATE SET ok=ok+5,total=total+5').run(mid0, hourOf(tk.from));
+  tk.base = { hour: hourOf(tk.from), rows: Object.fromEntries(B.db.prepare('SELECT monitor_id, ok, total, ms_sum, v_n, v_sum FROM monitor_hourly WHERE hour=?').all(hourOf(tk.from)).map((r) => [r.monitor_id, [r.ok, r.total, r.ms_sum, r.v_n, r.v_sum]])) };
+  const from = tk.from;
+  const at = (min) => new Date(Date.parse(from) + min * 60000).toISOString();
+  // the hour of the takeover had values of the master already (from its last copy): those must not be added twice
+  // (summed from the hour of the takeover on - the checks may fall into the next hour)
+  const sumFrom = (X) => X.db.prepare('SELECT COALESCE(SUM(ok),0) ok, COALESCE(SUM(total),0) total FROM monitor_hourly WHERE monitor_id=? AND hour>=?').get(mid, hourOf(from));
+  const aBase = sumFrom(A);
+  const check = B.db.prepare('INSERT INTO checks(monitor_id,at,ok,ms,message) VALUES(?,?,?,?,?)');
+  const hour = B.db.prepare(`INSERT INTO monitor_hourly(monitor_id,hour,ok,total,ms_sum) VALUES(?,?,?,1,?)
+    ON CONFLICT(monitor_id,hour) DO UPDATE SET ok=ok+excluded.ok, total=total+1, ms_sum=ms_sum+excluded.ms_sum`);
+  for (const [min, ok] of [[2, 1], [4, 0], [6, 0]]) { check.run(mid, at(min), ok, ok ? 12 : null, ok ? '' : 'timeout'); hour.run(mid, hourOf(at(min)), ok, ok ? 12 : 0); }
+  B.db.prepare("INSERT INTO monitor_events(monitor_id,at,kind,message,notified) VALUES(?,?,'down','Intranet: timeout','Bereitschaft')").run(mid, at(4.1));
+  // the printer: the master checked it itself meanwhile (only the standby was cut off from it) - it keeps its own
+  check.run(pid, at(5), 0, null, 'standby: refused');
+  A.db.prepare("INSERT INTO checks(monitor_id,at,ok,ms,message) VALUES(?,?,1,5,'')").run(pid, at(5));
+  // the master answers again: the standby hands back first, then takes the master's data
   await listenA();
   await B.ctx.failover.tick();
   const b = B.ctx.failover.status();
@@ -168,9 +190,54 @@ test('the master is gone longer than the set time: the standby takes over; it is
   assert.ok(b.takeovers[0].to);
   assert.equal(b.takeovers[0].end, 'back');
   assert.deepEqual(b.takeovers[0].events.map((e) => [e.name, e.kind]), [['Intranet', 'down']]);
-  // and the data are the master's again (the event of the takeover is not in them)
-  assert.equal(B.db.prepare("SELECT COUNT(*) n FROM monitor_events WHERE message='Intranet: timeout'").get().n, 0);
-  assert.equal(A.db.prepare("SELECT COUNT(*) n FROM monitor_events WHERE message='Intranet: timeout'").get().n, 0);
+  assert.equal(b.takeovers[0].base, undefined, 'the start values are not shown');
+  const hb = b.takeovers[0].handback;
+  assert.equal(hb.state, 'done', JSON.stringify(hb));
+  assert.equal(hb.checks, 3);
+  assert.equal(hb.events, 1);
+  assert.deepEqual(hb.skipped, ['Drucker EG']);
+  // now on the master: the checks, the alarm and the hourly values of the takeover - only the standby's share
+  assert.equal(A.db.prepare("SELECT COUNT(*) n FROM checks WHERE monitor_id=? AND at >= ?").get(mid, from).n, 3);
+  assert.equal(A.db.prepare("SELECT COUNT(*) n FROM monitor_events WHERE message='Intranet: timeout'").get().n, 1);
+  const h = sumFrom(A);
+  assert.deepEqual([h.ok - aBase.ok, h.total - aBase.total], [1, 3], 'only the share of the standby, not the start values again');
+  assert.equal(A.db.prepare("SELECT COUNT(*) n FROM checks WHERE monitor_id=? AND message='standby: refused'").get(pid).n, 0, 'the master kept its own');
+  // the master shows what it got; the standby has the master's data again - with what it handed back
+  const got = (await A.call('GET', '/api/failover')).data.received;
+  assert.equal(got.length, 1);
+  assert.deepEqual([got[0].checks, got[0].events, got[0].skipped], [3, 1, ['Drucker EG']]);
+  assert.equal(B.db.prepare("SELECT COUNT(*) n FROM monitor_events WHERE message='Intranet: timeout'").get().n, 1);
+  assert.ok(!fs.existsSync(path.join(dirB, 'failover-handback.json')), 'nothing left to hand back');
+  // the same part again (a lost answer): taken only once
+  const { secret, pin } = parseCode(code);
+  const again = await pinnedRequest({ address: addr(), pin, secret }, 'POST', '/api/failover/handback',
+    { body: { pack: got[0].pack, part: 0, of: 1, from: got[0].from, to: got[0].to, monitors: { [mid]: { name: 'Intranet', type: 'http' } }, checks: [[mid, at(3), 1, 5, '']] } });
+  assert.equal(again.json.again, true);
+  assert.equal(A.db.prepare('SELECT COUNT(*) n FROM checks WHERE monitor_id=? AND at=?').get(mid, at(3)).n, 0);
+  // without the secret nothing is taken
+  const bad = await pinnedRequest({ address: addr(), pin, secret: 'x'.repeat(43) }, 'POST', '/api/failover/handback', { body: { pack: 'a'.repeat(16), part: 0, of: 1, from, to: at(5) } });
+  assert.equal(bad.status, 401);
+});
+
+test('a takeover from before this version: its alarms go back by the names of the monitors', async () => {
+  const st = B.ctx.failover._state();
+  const t0 = new Date(Date.now() - 2 * 86400000).toISOString();
+  const t1 = new Date(Date.now() - 2 * 86400000 + 30 * 60000).toISOString();
+  st.takeovers.push({ from: t0, to: t1, end: 'back', why: 'no answer', events: [
+    { at: new Date(Date.parse(t0) + 60000).toISOString(), kind: 'down', name: 'intranet', message: 'Intranet: timeout (alt)', notified: 'Bereitschaft' },
+    { at: new Date(Date.parse(t0) + 9 * 60000).toISOString(), kind: 'up', name: 'Intranet', message: 'Intranet: wieder da', notified: '' },
+    { at: new Date(Date.parse(t0) + 2 * 60000).toISOString(), kind: 'down', name: 'Gibt es nicht', message: 'x', notified: '' }] });
+  st.takeovers.push({ from: t0, to: t1, end: 'back', events: [] });
+  await B.ctx.failover.tick();
+  const old = B.ctx.failover.status().takeovers.find((x) => x.from === t0 && x.events.length);
+  assert.equal(old.handback.state, 'done', JSON.stringify(old.handback));
+  assert.equal(old.handback.events, 2);
+  assert.deepEqual(old.handback.skipped, ['Gibt es nicht']);
+  assert.equal(B.ctx.failover.status().takeovers.find((x) => x.from === t0 && !x.events.length).handback.state, 'nothing');
+  assert.equal(A.db.prepare("SELECT COUNT(*) n FROM monitor_events WHERE message IN ('Intranet: timeout (alt)', 'Intranet: wieder da')").get().n, 2);
+  // a second round hands nothing back twice
+  await B.ctx.failover.tick();
+  assert.equal(A.db.prepare("SELECT COUNT(*) n FROM monitor_events WHERE message='Intranet: timeout (alt)'").get().n, 1);
 });
 
 test('the master gets a new certificate with the same key: the standby goes on by itself; another key: it does not talk', async () => {

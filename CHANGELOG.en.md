@@ -6,6 +6,11 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Failover: when the master comes back, the standby hands it what it measured meanwhile - checks, hourly values (uptime, response times, sensor values) and alarms. So the master's history has no gap. Settings still only go from master to standby. If the master checked a monitor itself (only the standby was cut off), it keeps its own values. Alarms of earlier takeovers go back after the update too
+- Settings: every section starts with a short note in plain words on what it is for, with a link to the manual
+
+## 0.48.0 - 2026-11-18
+
 - Searching messages: below the search field there are examples to click. "Event 1002" (also "ID 1002", "id:1002") finds only this Windows event instead of nothing. When a search for an event id finds nothing, it says why: not kept, came last on … (with "Show the whole time range") or never came in
 
 ## 0.47.0 - 2026-11-18

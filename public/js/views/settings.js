@@ -10,6 +10,7 @@ import { scriptDialog, hostScriptsSettings, helpLink, poolsBlock } from './hosts
 import { aboutContent } from './about.js';
 import { hardwareDetail } from './hardware.js';
 import { SECTIONS, settingsNav } from './settingsnav.js';
+import { sectionHelp } from './settingshelp.js';
 import { failoverSettings, lockForEditing } from './failover.js';
 import { diagnosticsSettings } from './diagnostics.js';
 import { checkText } from '../checktext.js';
@@ -30,6 +31,9 @@ export async function renderSettings(main, section = 'general') {
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev', 'notify'].includes(section) ? await get('/settings') : null;
   const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), api: apiSettings, ad, agents, backup, failover: failoverSettings, diag: diagnosticsSettings, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
+  // what this section is for, in plain words, above everything else
+  const help = sectionHelp(section);
+  if (help) body.prepend(help);
   // a standby only shows its settings - except its own failover controls and what only reads (about, log, diagnostics)
   if (!['failover', 'about', 'audit', 'diag'].includes(section)) lockForEditing(body);
 }

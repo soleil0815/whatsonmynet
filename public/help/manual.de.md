@@ -29,6 +29,8 @@ Die Einstellung bleibt nach einem Neustart erhalten und braucht keine zusätzlic
 
 ## Erste Schritte
 
+Jeder Bereich unter *Einstellungen* beginnt mit einem kurzen Hinweis, wozu er da ist, und einem Link zum passenden Abschnitt dieses Handbuchs.
+
 1. **Standort anlegen** (*Standorte*): Name und Subnetze, z. B. „Hauptgebäude“ mit `192.168.10.0/24`.
 2. **Netzwerk scannen** (*Netzwerk scannen*): Standort anhaken, „Scan starten“. Der Radar zeigt die gefundenen Geräte; der Scan ist schonend (ARP, 26 typische Ports, SNMP nur lesend).
 3. **Übernehmen**: Im Ergebnis unter „Neu“ Typ und Name prüfen, Geräte anhaken, „Ins Inventar übernehmen“. Was du nicht im Inventar willst, „Ignorieren“. Versehentlich ignoriert? Im Reiter „Ignoriert“ anhaken und „Nicht mehr ignorieren“ (steht dann wieder unter „Neu“) oder gleich „Ins Inventar übernehmen“. Die ganze Liste steht unter *Einstellungen → Ignorierte Geräte*. Übernehmen und Ignorieren geht nur aus dem neuesten Scan eines Subnetzes - hat ein neuerer Scan das Subnetz erfasst, bleibt ein älterer Scan lesbar, übernommen oder ignoriert wird im neueren. „Nicht mehr ignorieren“ geht auch im älteren Scan.
@@ -140,6 +142,8 @@ Monitore und Sensoren lassen sich in **Gruppen** ordnen, z. B. „Webseiten“, 
 - Eine Webseite ohne Gerät gehört so trotzdem irgendwohin. Läuft sie auf einem eigenen Server, kann sie zusätzlich von dessen Ping **abhängen** (unten): Fällt der Server aus, kommt nur dessen Alarm.
 
 ### Statusseiten ohne Anmeldung
+
+![Statusseite](img/statuspage-de.png)
 
 Wie in Uptime Kuma: eine Seite, die ohne Anmeldung zeigt, was läuft und was nicht – für Kollegen, den Empfang oder einen Bildschirm im Flur. Es gibt sie erst, wenn ein Administrator eine anlegt: *Monitoring → Statusseiten → Statusseite anlegen*.
 
@@ -849,7 +853,7 @@ Beim Koppeln übernimmt der Standby **alle Daten des Masters** (Geräte, Monitor
 
 **Wenn der Master ausfällt:** Antwortet er länger als die eingestellte Zeit nicht, **übernimmt der Standby**. Er prüft und alarmiert dann selbst und meldet an alle Standard-Kanäle: „Ausfallsicherung: Der Master … ist seit 10 Min. nicht erreichbar - dieses System hat die Überwachung übernommen.“ Für eine längere Wartung am Master stellst du die Zeit vorher am Standby hoch.
 
-**Wenn der Master wiederkommt:** Sobald er antwortet, ist der Standby wieder still („… ist wieder da“) und holt sich dessen Daten. **Zum Master geht nichts zurück.** Was der Standby in der Zeit gemeldet hat, steht am Standby unter *Übernahmen*.
+**Wenn der Master wiederkommt:** Sobald er antwortet, ist der Standby wieder still („… ist wieder da“). Vorher **gibt er dem Master zurück, was er in der Zeit gemessen hat**: die Prüfungen, die Stundenwerte (Verfügbarkeit, Antwortzeiten, Sensorwerte) und die Alarme. So hat der Verlauf des Masters keine Lücke, und man sieht dort, an welchem Tag was war. Danach holt sich der Standby wie gewohnt die Daten des Masters. **Einstellungen gehen nie zurück** - nur Messwerte und Alarme, Einstellungen immer nur vom Master zum Standby. Hat der Master einen Monitor in der Zeit selbst geprüft (er war gar nicht weg, nur der Standby war abgeschnitten), behält er dafür seine eigenen Werte; ebenso, wenn er einen Monitor inzwischen geändert oder gelöscht hat. Jeder Teil wird nur einmal übernommen, auch wenn die Verbindung zwischendurch abreißt. Am Standby steht unter *Übernahmen*, was zurückgegeben wurde, am Master unter *Vom Standby zurückgegeben*. Übernahmen aus älteren Versionen geben ihre Alarme nach dem Update ebenfalls zurück (die Messwerte hatte der Standby damals schon durch die Daten des Masters ersetzt). Meldungen der Geräte (Syslog, Traps), die in der Zeit am Standby ankamen, bleiben dort.
 
 **Beide immer auf derselben Version:** Master und Standby gleich aktualisieren - nur dann arbeitet der Standby im Notfall genauso, und nur bei gleicher Datenbankversion kann er die Daten des Masters übernehmen. Der Standby passt darauf auf: Laufen die beiden eine halbe Stunde lang mit unterschiedlichen Versionen (eins nach dem anderen zu aktualisieren ist also kein Problem), schickt er eine Erinnerung an die Standard-Kanäle - z. B. „Der Master … läuft mit Version 0.39.0, dieses System (Standby) mit 0.38.0. Bitte diesen Standby auf 0.39.0 aktualisieren.“ Bleibt es so, kommt sie alle 7 Tage wieder; kann der Standby die Daten wegen der Datenbankversion nicht mehr übernehmen, sofort und dann täglich, als dringende Meldung. Sind beide wieder gleich, meldet er das einmal. Unter *Ausfallsicherung* steht der Unterschied auf beiden Seiten, auf dem Standby auch in der Leiste oben.
 
