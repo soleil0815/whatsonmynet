@@ -9,6 +9,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 - Gruppen für Monitore und Sensoren (wie in Uptime Kuma): eigene Gruppe im Formular oder für mehrere auf einmal, sonst gilt der Standort des Geräts. Neue Ansicht „Nach Gruppe“ mit Zusammenfassung je Gruppe; Gruppen mit einer Störung stehen oben und bleiben aufgeklappt
 - Gruppen-Alarm: neue Monitor-Art „Gruppe“ – gestört, wenn ein Mitglied gestört ist oder erst, wenn alle gestört sind; mit eigenen Kanälen, Eskalation und Wartungsfenstern. So kommt für eine Gruppe ein Alarm statt einer pro Monitor
 - Wartungsfenster: Monitore einer Gruppe lassen sich mit einem Haken zusammen wählen
+- Rechner-Skript entfernt: Meldet sich das Skript eines Rechners einen Tag lang nicht, wird der Rechner für neue Sensoren nicht mehr angeboten. Seine Seite fragt, ob es entfernt wurde - mit „Skript neu erzeugen“ und „Skript-Daten entfernen“; danach steht dort wieder „Per Skript überwachen“. Bestehende Sensoren bleiben und melden danach „Skript-Daten entfernt“, bis du sie löschst. Wird das Skript eines einzelnen Rechners unter Einstellungen gelöscht, geht seine letzte Meldung gleich mit
 
 ## 0.44.0 - 2026-11-17
 

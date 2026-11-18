@@ -9,6 +9,7 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 - Groups for monitors and sensors (as in Uptime Kuma): a group of its own in the form or for several at once, else the location of the device. New view "By group" with a summary per group; groups with something down come first and stay open
 - Group alarm: new monitor kind "Group" – down when one member is down, or only when all are; with channels, escalation and maintenance windows of its own. So a group sends one alarm instead of one per monitor
 - Maintenance windows: the monitors of a group can be chosen together with one tick
+- Machine script removed: when the script of a machine has not reported for a day, the machine is no longer offered for new sensors. Its page asks whether it was removed - with "Create script again" and "Remove script data"; afterwards it offers "Monitor by script" again. Existing sensors stay and then report "script data removed" until you delete them. Deleting the script of a single machine under Settings drops its last report right away
 
 ## 0.44.0 - 2026-11-17
 

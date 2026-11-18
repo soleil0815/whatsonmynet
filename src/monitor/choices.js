@@ -2,9 +2,9 @@
 // host under Virtualization. A Proxmox node that is also a device (same name) shows the values of the hypervisor and
 // those of the Linux script together; a server with a management chip (Redfish) shows its hardware values too.
 // A value both sides deliver (CPU, RAM, the hottest temperature of a node with the script) is offered only once.
-import { metricsFor } from './sensors.js';
+import { metricsFor, sourceOf } from './sensors.js';
 import { proxmoxMetrics } from '../proxmox.js';
-import { nodeTempsInto } from '../hosts.js';
+import { nodeTempsInto, goneBefore } from '../hosts.js';
 
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
 /** "pve2.firma.local" → "pve2" */
@@ -80,12 +80,25 @@ export function createSensorChoices({ db, settings }) {
     return list;
   }
 
+  /**
+   * Machines whose script has been silent for a day (removed, most likely): their values are offered only to the sensors
+   * that already watch them, not for new ones. A NAS or switch with the script keeps its SNMP values.
+   */
+  function goneIds() {
+    const ids = db.prepare('SELECT device_id FROM host_reports WHERE at < ?').all(goneBefore()).map((r) => r.device_id);
+    return new Set(ids.filter((id) => sourceOf(db, id) === 'host'));
+  }
+  const dropGone = (list) => {
+    const gone = goneIds();
+    return gone.size ? list.filter((x) => x.src !== 'device' || x.taken || !gone.has(x.device)) : list;
+  };
+
   const dev = (deviceId, x, group) => ({ src: 'device', device: deviceId, group, ...x });
   const px = (h, x, group) => ({ src: 'host', host: h.id, hostName: h.name, group, ...x });
 
   return {
     /** Everything a sensor on this device can watch. withHosts = false for users limited to locations (hypervisors are not theirs) */
-    forDevice(deviceId, opts) { return markTaken(this.valuesOfDevice(deviceId, opts)); },
+    forDevice(deviceId, opts) { return dropGone(markTaken(this.valuesOfDevice(deviceId, opts))); },
     valuesOfDevice(deviceId, { withHosts = true } = {}) {
       const own = devValues(deviceId);
       const out = own.map((x) => dev(deviceId, x, null));
@@ -96,7 +109,7 @@ export function createSensorChoices({ db, settings }) {
     },
 
     /** Everything of a host under Virtualization, each node together with the values of its script */
-    forHost(hostId) { return markTaken(this.valuesOfHost(hostId)); },
+    forHost(hostId) { return dropGone(markTaken(this.valuesOfHost(hostId))); },
     valuesOfHost(hostId) {
       const h = hostsAll().find((x) => x.id === hostId);
       if (!h) return [];
@@ -130,12 +143,12 @@ export function createSensorChoices({ db, settings }) {
     },
 
     /** Does a device have anything to watch (for the button "Add sensor" on its page) */
-    hasValues(deviceId, opts) { return this.valuesOfDevice(deviceId, opts).length > 0; },
+    hasValues(deviceId, opts) { const gone = goneIds(); return this.valuesOfDevice(deviceId, opts).some((x) => x.src !== 'device' || !gone.has(x.device)); },
 
     /** Devices that offer values (printers, NAS, switches, UPS, machines with script, nodes, servers with Redfish) */
     deviceIds() {
       const ids = new Set(db.prepare("SELECT id FROM devices WHERE type IN ('printer','nas','switch','ups')").all().map((r) => r.id));
-      for (const r of db.prepare('SELECT device_id FROM host_reports').all()) ids.add(r.device_id);
+      for (const r of db.prepare('SELECT device_id FROM host_reports WHERE at >= ?').all(goneBefore())) ids.add(r.device_id);
       const idx = deviceIndex();
       for (const h of hostsAll()) {
         if (h.kind === 'redfish' && h.data?.deviceId) ids.add(h.data.deviceId);
