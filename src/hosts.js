@@ -19,6 +19,13 @@ const pct = (used, total) => (total > 0 ? Math.max(0, Math.min(100, Math.round((
 const clip = (s, n = 120) => String(s ?? '').replace(/[\x00-\x1f]/g, ' ').trim().slice(0, n);
 const IPV4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 export const STALE_MIN = 15;
+// Silent for a day: the script was most likely removed from the machine (or the machine is gone). Its last values stay
+// for the sensors that watch them, but the machine is no longer offered for new sensors and its page asks what happened.
+export const GONE_HOURS = 24;
+/** Is a report from this time that old? (ISO time; a missing one counts as gone) */
+export const reportGone = (at, now = Date.now()) => !(now - Date.parse(at) <= GONE_HOURS * 3600 * 1000);
+/** ISO time before which a report counts as gone - for SQL (ISO times compare as text) */
+export const goneBefore = (now = Date.now()) => new Date(now - GONE_HOURS * 3600 * 1000).toISOString();
 
 const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
@@ -172,7 +179,18 @@ export function createHosts({ db }) {
     // a Windows script older than the one WhatsOnMyNet hands out now (none sent: before 0.42)
     const windows = /windows/i.test(String(data.os || ''));
     const scriptOld = windows ? !data.script || older(data.script, SCRIPT_VERSIONS.windows) : false;
-    return { ...data, at: row.at, stale: Date.now() - Date.parse(row.at) > STALE_MIN * 60 * 1000, scriptOld, scriptNow: windows ? SCRIPT_VERSIONS.windows : null };
+    return { ...data, at: row.at, stale: Date.now() - Date.parse(row.at) > STALE_MIN * 60 * 1000, gone: reportGone(row.at), scriptOld, scriptNow: windows ? SCRIPT_VERSIONS.windows : null };
+  }
+
+  /**
+   * The script of this machine is gone: its last report and its own key go (a shared key stays - other machines use
+   * it). The device page then offers "Monitor by script" again; sensors that watched its values report "no value".
+   */
+  function forget(deviceId) {
+    return db.transaction(() => {
+      const n = db.prepare('DELETE FROM host_reports WHERE device_id=?').run(deviceId).changes;
+      return n + db.prepare('DELETE FROM host_tokens WHERE device_id=?').run(deviceId).changes;
+    })();
   }
 
   return {
@@ -181,11 +199,21 @@ export function createHosts({ db }) {
     push,
     report,
     list: () => db.prepare('SELECT * FROM host_tokens ORDER BY device_id IS NOT NULL, name').all().map(shapeToken),
-    remove(id) { if (!db.prepare('DELETE FROM host_tokens WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound'); },
+    forget,
+    // The script of a single machine: with its key its last report goes too (nothing can send it any more)
+    remove(id) {
+      const t = tokenRow(id);
+      if (!t) throw new HttpError(404, 'err.notFound');
+      db.transaction(() => {
+        db.prepare('DELETE FROM host_tokens WHERE id=?').run(id);
+        if (t.device_id) db.prepare('DELETE FROM host_reports WHERE device_id=?').run(t.device_id);
+      })();
+      return t;
+    },
     unmatched: () => db.prepare('SELECT hostname, ip, os, at FROM host_unmatched ORDER BY at DESC LIMIT 100').all(),
     forgetUnmatched: (hostname) => db.prepare('DELETE FROM host_unmatched WHERE hostname=?').run(String(hostname || '')),
-    /** Devices that report (for the sensor form) */
-    deviceIds: () => db.prepare('SELECT device_id FROM host_reports').all().map((r) => r.device_id),
+    /** Devices that report (for the sensor form) - not those silent for a day */
+    deviceIds: () => db.prepare('SELECT device_id FROM host_reports WHERE at >= ?').all(goneBefore()).map((r) => r.device_id),
   };
 }
 

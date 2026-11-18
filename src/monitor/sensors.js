@@ -163,7 +163,11 @@ const pdKey = (pd) => pd.serial || pd.name;
 export function sensorCheck(db, m, { staleMin = 180 } = {}) {
   const o = parse(m.options, {});
   const s = stateOf(db, m.device_id);
-  if (!s) return { ok: false, ms: null, message: 'device missing' };
+  if (!s) {
+    // a machine whose script data was removed ("Remove script data" on its page): the device is still there
+    const script = /^host/.test(String(o.metric || '')) && db.prepare('SELECT 1 FROM devices WHERE id=?').get(m.device_id);
+    return { ok: false, ms: null, message: script ? 'script data removed' : 'device missing' };
+  }
   if (!s.data || !s.at) return { ok: false, ms: null, message: 'no data yet' };
   if (!s.ok) return { ok: false, ms: null, message: 'device does not answer SNMP' };
   // A host script reports every 5 minutes: 15 minutes of silence = the machine (or its scheduled task) is down

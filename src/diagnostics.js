@@ -19,7 +19,7 @@ import { zip } from './lib/zip.js';
 import { DEFAULTS } from './settings.js';
 import { metricsFor, sourceOf } from './monitor/sensors.js';
 import { proxmoxMetrics } from './proxmox.js';
-import { nodeTempsInto } from './hosts.js';
+import { nodeTempsInto, reportGone } from './hosts.js';
 import { CHANGELOG } from '../public/js/changelog.js';
 
 export const KEEP_DAYS = 30;
@@ -305,7 +305,7 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
         auto_watch: parse(d.auto_watch, null), auto_fields: Object.keys(parse(d.auto_fields)), monitors: mons.get(d.id) || 0, source: sourceOf(db, d.id),
         snmp: s ? { kind: s.kind, at: s.at, ok: !!s.ok, error: an.anon(s.error), data: shape(parse(s.data)), alerts: Object.keys(parse(s.alerts)).length } : null,
         printer: p ? { at: p.at, ok: !!p.ok, error: an.anon(p.error), data: shape(parse(p.data)) } : null,
-        script: r ? { at: r.at, version: parse(r.data).script || null, pools: poolsOut(parse(r.data).pools, an), data: shape(parse(r.data)) } : null,
+        script: r ? { at: r.at, gone: reportGone(r.at), version: parse(r.data).script || null, pools: poolsOut(parse(r.data).pools, an), data: shape(parse(r.data)) } : null,
         values: vals };
     });
   }

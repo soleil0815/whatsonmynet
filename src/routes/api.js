@@ -320,6 +320,15 @@ export function createApi(ctx) {
     if (!db.prepare('UPDATE devices SET script_tip_hidden=? WHERE id=?').run(hidden, idParam(req)).changes) throw new HttpError(404, 'err.notFound');
     res.json({ hidden: !!hidden });
   });
+  // The script was removed from the machine: its last report and its own key go, the page offers the script again
+  r.delete('/devices/:id/host-report', admin, (req, res) => {
+    const id = idParam(req);
+    const d = db.prepare('SELECT name FROM devices WHERE id=?').get(id);
+    if (!d) throw new HttpError(404, 'err.notFound');
+    ctx.hosts.forget(id);
+    audit(req, 'host.forget', d.name);
+    res.json({ ok: true });
+  });
   r.patch('/devices/:id', editor, (req, res) => {
     visible(req, idParam(req));
     if (req.scope && 'location_id' in req.body && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
@@ -590,7 +599,7 @@ export function createApi(ctx) {
     res.status(201).json(out);
   });
   r.post('/hosts/:id/renew', admin, (req, res) => { const out = ctx.hosts.renew(idParam(req), { server: str(req.body?.server, 300), pin: pinOf() }); audit(req, 'host.renew', out.name); res.json(out); });
-  r.delete('/hosts/:id', admin, (req, res) => { ctx.hosts.remove(idParam(req)); audit(req, 'host.delete', req.params.id); res.json({ ok: true }); });
+  r.delete('/hosts/:id', admin, (req, res) => { const t = ctx.hosts.remove(idParam(req)); audit(req, 'host.delete', t.name); res.json({ ok: true }); });
   r.delete('/hosts/unmatched/:name', admin, (req, res) => { ctx.hosts.forgetUnmatched(req.params.name); res.json({ ok: true }); });
   r.get('/hosts/uninstall/:kind', editor, (req, res) => {
     if (!SCRIPT_KINDS.includes(req.params.kind)) throw new HttpError(404, 'err.notFound');

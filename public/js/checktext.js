@@ -5,7 +5,7 @@
 // Whole text after "<label>: " (or the whole message)
 const WORDS = {
   'not found': 'nicht gefunden', 'no data': 'keine Daten', 'no data yet': 'noch keine Daten', 'no current data': 'keine aktuellen Daten',
-  'no value': 'kein Wert', running: 'läuft', stopped: 'gestoppt', failed: 'gestört', paused: 'pausiert', empty: 'leer', normal: 'normal',
+  'no value': 'kein Wert', 'script data removed': 'Skript-Daten entfernt', running: 'läuft', stopped: 'gestoppt', failed: 'gestört', paused: 'pausiert', empty: 'leer', normal: 'normal',
   online: 'online', offline: 'offline', up: 'verbunden', down: 'getrennt', on: 'an', off: 'aus', partial: 'teilweise', outdated: 'veraltet',
   'restart required': 'Neustart nötig', 'no restart needed': 'kein Neustart nötig', 'replace battery': 'Akku tauschen', 'no UPS': 'keine USV',
   'no temperatures': 'keine Temperaturen', 'no faults': 'keine Störungen', 'system, fans, power supply normal': 'System, Lüfter und Netzteil in Ordnung',

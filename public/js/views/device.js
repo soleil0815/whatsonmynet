@@ -29,6 +29,7 @@ export function looksLikeHost(d) {
  * (no script report, no server hardware such as iDRAC/iLO) and nobody said "do not show again" for it.
  */
 export function scriptHint(d, ti, open, reload) {
+  if (d.host?.gone && !isReadOnly()) return scriptGone(d, open, reload);
   if (ti || d.host || d.hardware || d.script_tip_hidden || !looksLikeHost(d) || isReadOnly()) return null;
   const waiting = !!d.hostScript;
   const hide = state.user.canEdit ? h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: async (e) => {
@@ -43,6 +44,26 @@ export function scriptHint(d, ti, open, reload) {
       state.user.isAdmin ? btn(t(waiting ? 'hs.menuRenew' : 'hs.menu'), { class: 'btn btn-sm btn-primary', onclick: open }, 'computer') : null,
       helpLink(),
       hide)));
+}
+
+/**
+ * The script has been silent for a day: removed from the machine? Its last values stay for the sensors that watch
+ * them; new sensors are not offered. Admins can set it up again or drop its data (the page then offers the script anew).
+ */
+function scriptGone(d, open, reload) {
+  const admin = state.user.isAdmin;
+  const forget = async (e) => {
+    const b = e.currentTarget;
+    if (!await confirmDialog(t('hs.drop'), t('hs.dropConfirm', { name: d.name }), t('hs.drop'), t('cancel'), { danger: true })) return;
+    b.disabled = true;
+    try { await del(`/devices/${d.id}/host-report`); toast(t('hs.dropped')); reload(); } catch (ex) { fail(ex); b.disabled = false; }
+  };
+  return h('div', { class: 'note warn tip-script' }, h('div', {},
+    h('strong', {}, t('hs.goneTitle', { when: fmtAgo(d.host.at, t) })),
+    h('p', { style: { margin: '4px 0 8px' } }, t(admin ? 'hs.gone' : 'hs.goneAskAdmin')),
+    admin ? h('div', { class: 'actions', style: { justifyContent: 'flex-start' } },
+      btn(t('hs.menuRenew'), { class: 'btn btn-sm', onclick: open }, 'computer'),
+      btn(t('hs.drop'), { class: 'btn btn-sm btn-danger', onclick: forget }, 'trash')) : null));
 }
 
 export function historyText(r) {
@@ -168,7 +189,7 @@ export async function renderDevice(main, id) {
   const monPanel = h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('mon.device')),
       h('div', { class: 'actions' },
-        edit && (['printer', 'nas', 'switch', 'ups'].includes(d.type) || d.host || d.hasSensors) ? btn(t('sens.add'), { class: 'btn btn-sm btn-ghost', onclick: () =>
+        edit && (['printer', 'nas', 'switch', 'ups'].includes(d.type) || (d.host && !d.host.gone) || d.hasSensors) ? btn(t('sens.add'), { class: 'btn btn-sm btn-ghost', onclick: () =>
           openMonitorForm(null, () => renderDevice(main, id), { type: 'sensor', device_id: d.id, name: `${d.name} - Sensor`, interval_s: 300, fail_threshold: 1 }) }, 'plus') : null,
         edit && d.ip ? btn(t('mon.watch'), { class: 'btn btn-sm', onclick: async () => {
           try { const preset = await get(`/monitors/suggest/${d.id}`); openMonitorForm(null, () => renderDevice(main, id), preset); } catch (e) { fail(e); }
