@@ -5,6 +5,7 @@ import { HttpError, line, str } from './lib/http.js';
 import { log } from './lib/log.js';
 import { nasProblems } from './scan/nas.js';
 import { localDay } from './scan/nightly.js';
+import { supplyLow } from './printers.js';
 
 export const DEVICE_TYPES = { printers: 'printer', nas: 'nas', switches: 'switch' };
 
@@ -19,7 +20,7 @@ const T = {
   de: {
     subject: 'Gerätestatus - KW {week}', printers: 'Drucker', nas: 'Speichersysteme (NAS)', switches: 'Switches', shares: 'Netzlaufwerke',
     freeOf: '{free} frei von {total}',
-    order: 'bitte nachbestellen', nearlyFull: 'fast voll', empty: 'leer', full: 'voll', free: '{pct} % frei', some: 'vorhanden', unknown: 'unbekannt',
+    order: 'bitte nachbestellen', nearlyFull: 'fast voll', empty: 'leer', full: 'voll', free: '{pct} % frei', some: 'vorhanden', low: 'wenig', unknown: 'unbekannt',
     unreachable: 'zurzeit nicht erreichbar', pages: 'Seiten gedruckt (gesamt)', pagesLeft: 'noch ca. {n} Seiten',
     period: { daily: 'Seiten seit gestern', weekly: 'Seiten in den letzten 7 Tagen', monthly: 'Seiten in den letzten 30 Tagen' }, state: 'Zustand', ok: 'in Ordnung', attention: 'Handlungsbedarf',
     volume: 'Speicher', disks: 'Festplatten', temp: 'Temperatur', portsUp: '{up} von {n} Anschlüssen verbunden', none: 'Keine Geräte in diesem Bericht.',
@@ -31,7 +32,7 @@ const T = {
   en: {
     subject: 'Device status - week {week}', printers: 'Printers', nas: 'Storage (NAS)', switches: 'Switches', shares: 'Network drives',
     freeOf: '{free} free of {total}',
-    order: 'please order', nearlyFull: 'almost full', empty: 'empty', full: 'full', free: '{pct} % free', some: 'available', unknown: 'unknown',
+    order: 'please order', nearlyFull: 'almost full', empty: 'empty', full: 'full', free: '{pct} % free', some: 'available', low: 'low', unknown: 'unknown',
     unreachable: 'currently not reachable', pages: 'Pages printed (total)', pagesLeft: 'about {n} pages left',
     period: { daily: 'Pages since yesterday', weekly: 'Pages in the last 7 days', monthly: 'Pages in the last 30 days' }, state: 'State', ok: 'fine', attention: 'Action needed',
     volume: 'Storage', disks: 'Disks', temp: 'Temperature', portsUp: '{up} of {n} ports connected', none: 'No devices in this report.',
@@ -42,7 +43,11 @@ const T = {
 };
 const fill = (s, v) => String(s).replace(/\{(\w+)\}/g, (_, k) => (k in v ? String(v[k]) : `{${k}}`));
 const SUPPLY_DE = { toner: 'Toner', wasteToner: 'Resttonerbehälter', ink: 'Tinte', inkCartridge: 'Tintenpatrone', drum: 'Trommel', fuser: 'Fixiereinheit', transferUnit: 'Transfereinheit', tonerCartridge: 'Tonerkartusche', wasteInk: 'Resttintenbehälter' };
-const COLOR = { black: '#2b2f36', cyan: '#12a7d8', magenta: '#d4237a', yellow: '#e0b400' };
+// The same colours as on the device page: toner in its colour, waste toner brown, everything else (fuser, transfer
+// unit, drum) in the accent blue - not grey, which read as "empty"
+const COLOR = { black: '#2b2f36', cyan: '#12a7d8', magenta: '#d4237a', yellow: '#e0b400', waste: '#8a7f6e', other: '#0071e3' };
+/** A colour mixed with white (share 0..1 of the colour) - for "present, level unknown" (mail programs know no stripes) */
+const pale = (hex, share = 0.3) => `#${[1, 3, 5].map((i) => Math.round(255 - (255 - parseInt(hex.slice(i, i + 2), 16)) * share).toString(16).padStart(2, '0')).join('')}`;
 
 export function isoWeek(d = new Date()) {
   const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -125,12 +130,17 @@ export function createReports({ db, settings, mailer }) {
       const row = db.prepare('SELECT * FROM printer_status WHERE device_id=?').get(d.id);
       const data = parse(row?.data, {});
       const supplies = (data.supplies || []).map((s) => {
-        const low = s.state === 'empty' || (s.pct !== null && s.pct !== undefined && s.pct <= threshold);
+        const low = supplyLow(s, threshold);
         const label = s.description && s.description !== s.type ? s.description : (L === T.de ? SUPPLY_DE[s.type] : null) || s.type;
-        let value = s.state === 'empty' ? (s.receptacle ? L.full : L.empty) : s.pct !== null && s.pct !== undefined ? (s.receptacle ? fill(L.free, { pct: s.pct }) : `${s.pct} %`) : s.state === 'some' ? L.some : L.unknown;
+        const known = s.pct !== null && s.pct !== undefined;
+        let value = s.state === 'empty' ? (s.receptacle ? L.full : L.empty) : known ? (s.receptacle ? fill(L.free, { pct: s.pct }) : `${s.pct} %`)
+          : s.state === 'low' ? (s.receptacle ? L.nearlyFull : L.low) : s.state === 'some' ? L.some : L.unknown;
         // Toner counted in pages (unit impressions or sheets): how many pages it still lasts
         if (!s.receptacle && s.level !== null && s.level !== undefined && s.level > 0 && (s.unit === 7 || s.unit === 8)) value += ` · ${fill(L.pagesLeft, { n: c.num(s.level) })}`;
-        return { label, value, pct: s.pct, fill: s.pct === null || s.pct === undefined ? null : (s.receptacle ? 100 - s.pct : s.pct), color: COLOR[s.color] || '#5b6b7a', low, lowText: L.order };
+        const color = COLOR[s.color] || (s.receptacle ? COLOR.waste : COLOR.other);
+        // no level: "present" as a pale full bar, "low" (the printer says so) as a short one
+        const bar = known ? (s.receptacle ? 100 - s.pct : s.pct) : s.state === 'empty' ? (s.receptacle ? 100 : 0) : s.state === 'low' ? (s.receptacle ? 90 : 10) : s.state === 'some' ? 100 : null;
+        return { label, value, pct: s.pct, fill: bar, color: !known && s.state === 'some' ? pale(color) : color, low, lowText: L.order };
       });
       const errs = (data.errors || []).map((e) => ({ jammed: L.jam, noPaper: L.noPaper, doorOpen: L.doorOpen, serviceRequested: L.service, offline: L.offline }[e])).filter(Boolean);
       const unreachable = !row || !row.ok;

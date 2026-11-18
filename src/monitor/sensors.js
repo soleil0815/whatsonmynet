@@ -182,6 +182,8 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
   switch (o.metric) {
     case 'supply': { const x = (s.data.supplies || []).find((y) => y.key === o.key); if (!x) return { ok: false, ms: null, message: `${label}: not found` };
       if (x.state === 'empty') return { ok: false, ms: 0, message: `${label}: empty` };
+      // no level, but the printer says it runs low (its own alert)
+      if (x.state === 'low') return { ok: false, ms: null, message: `${label}: ${x.receptacle ? 'almost full' : 'low'} (printer reports)` };
       if (x.pct === null || x.pct === undefined) return { ok: true, ms: null, message: `${label}: ${x.state}` };
       val = num(x.pct, '%', x.receptacle ? { free: true } : {}); break; }
     case 'pages': val = num(s.data.pages); break;

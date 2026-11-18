@@ -5,7 +5,7 @@ import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state } from '../app.js';
 import { historyText } from './device.js';
-import { supplyName } from './printer.js';
+import { supplyName, supplyValue } from './printer.js';
 import { stText } from './snmpdev.js';
 
 /** One line of "Needs attention": icon, what, details, one action */
@@ -58,7 +58,7 @@ export async function renderDashboard(main) {
       canScan ? { href: d.lastScan ? `/scan/${d.lastScan.id}` : '/scan', label: t('dash.adopt') } : null));
   }
   for (const s of d.printersLow || []) {
-    const value = s.state === 'empty' ? (s.receptacle ? t('sup.full') : t('sup.empty')) : s.receptacle ? t('sup.freePct', { pct: s.pct }) : `${s.pct} %`;
+    const value = supplyValue(s);
     items.push(todo('new', 'printer', t('dash.supply', { name: supplyName(s), value }), s.device,
       { href: `/devices/${s.deviceId}`, label: t('dash.toDevice') },
       s.pct !== null && s.pct !== undefined && !s.receptacle ? h('div', { class: 'todo-bar' }, h('i', { style: { width: `${Math.max(2, s.pct)}%` } })) : null));

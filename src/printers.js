@@ -9,6 +9,9 @@ import { localDay } from './scan/nightly.js';
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
 const REARM = 10; // a supply is "replaced" when it rises this many points above the threshold
 
+/** Low or empty: by its level, or - without one - because the printer itself says so (state 'low' from its alerts) */
+export const supplyLow = (s, threshold) => s.state === 'empty' || s.state === 'low' || (s.pct !== null && s.pct !== undefined && s.pct <= threshold);
+
 /**
  * Decides which supplies to report. alerts: { supplyKey: 'low' | 'empty' } of earlier reports.
  * Returns { events, alerts } - events: [{ supply, empty }]
@@ -18,12 +21,13 @@ export function supplyAlerts(supplies, previous, threshold) {
   const events = [];
   for (const s of supplies) {
     const empty = s.state === 'empty';
-    const low = empty || (s.pct !== null && s.pct <= threshold);
+    const low = supplyLow(s, threshold);
     const had = alerts[s.key];
     if (low) {
       if (empty && had !== 'empty') { events.push({ supply: s, empty: true }); alerts[s.key] = 'empty'; }
       else if (!had) { events.push({ supply: s, empty: false }); alerts[s.key] = 'low'; }
-    } else if (had && s.pct !== null && s.pct > threshold + REARM) {
+    } else if (had && ((s.pct !== null && s.pct !== undefined) ? s.pct > threshold + REARM : s.state === 'some')) {
+      // replaced: the level is well above the threshold again - or, without a level, the printer no longer calls it low
       delete alerts[s.key];
     }
   }
@@ -124,7 +128,7 @@ export function createPrinters({ db, settings, channels }) {
       for (const row of db.prepare(`SELECT p.*, d.name FROM printer_status p JOIN devices d ON d.id=p.device_id WHERE d.type='printer'`).all()) {
         const data = parse(row.data);
         for (const s of data.supplies || []) {
-          if (s.state === 'empty' || (s.pct !== null && s.pct <= threshold)) out.push({ deviceId: row.device_id, device: row.name, ...s });
+          if (supplyLow(s, threshold)) out.push({ deviceId: row.device_id, device: row.name, ...s });
         }
       }
       return out.sort((a, b) => (a.pct ?? 0) - (b.pct ?? 0)).slice(0, 12);

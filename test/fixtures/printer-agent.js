@@ -3,7 +3,7 @@ import snmp from 'net-snmp';
 const RO = snmp.MaxAccess['read-only'];
 const I = snmp.ObjectType.Integer, S = snmp.ObjectType.OctetString;
 
-export function startPrinterAgent(port, { supplies = [], pages = 12345, errBytes = [0x00, 0x00], status = 3, display = 'Bereit', model = 'Fake Laser 4000 series', serial = 'E12345A6N789012' } = {}) {
+export function startPrinterAgent(port, { supplies = [], pages = 12345, errBytes = [0x00, 0x00], status = 3, display = 'Bereit', model = 'Fake Laser 4000 series', serial = 'E12345A6N789012', alerts = [] } = {}) {
   const agent = snmp.createAgent({ port, address: '127.0.0.1' }, () => {});
   agent.getAuthorizer().addCommunity('public');
   const mib = agent.getMib();
@@ -25,6 +25,9 @@ export function startPrinterAgent(port, { supplies = [], pages = 12345, errBytes
     tableColumns: [{ number: 3, name: 'hIdx', type: I, maxAccess: RO }, { number: 1, name: 'hStatus', type: I, maxAccess: RO }, { number: 2, name: 'hErr', type: S, maxAccess: RO }],
     tableIndex: [{ columnName: 'hIdx' }] });
   mib.addTableRow('hrPrinter', [1, status, Buffer.from(errBytes)]);
+  // prtAlertTable: { group, index (supply), code } - e.g. 11 / 2 / 1104 = supply 2 "toner almost empty"
+  table('alerts', '1.3.6.1.2.1.43.18.1.1', [[3, 'aDev', I], [1, 'aIdx', I], [2, 'aSev', I], [4, 'aGroup', I], [5, 'aGroupIdx', I], [7, 'aCode', I]]);
+  alerts.forEach((a, i) => mib.addTableRow('alerts', [1, i + 1, 4, a.group ?? 11, a.index, a.code]));
   table('display', '1.3.6.1.2.1.43.16.5.1', [[3, 'dDev', I], [1, 'dIdx', I], [2, 'dText', S]]);
   mib.addTableRow('display', [1, 1, display]);
   // hrDeviceDescr (model) and prtGeneralSerialNumber, both for device index 1

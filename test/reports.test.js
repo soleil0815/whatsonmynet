@@ -135,3 +135,22 @@ test('API: reports on/off from the list - administrators only', async () => {
     assert.equal((await call('POST', '/api/reports/9999/enabled', { enabled: true })).status, 404);
   } finally { await app.close(); }
 });
+
+test('report mail: supplies without a level - "present" pale over the whole width, "low" (the printer says so) short and marked; fuser in blue, not grey', () => {
+  const { db, reports } = setup();
+  const ts = new Date().toISOString();
+  const p = db.prepare("INSERT INTO devices(name,type,created_at,updated_at) VALUES('PRINTER3','printer',?,?)").run(ts, ts).lastInsertRowid;
+  db.prepare('INSERT INTO printer_status(device_id,at,ok,data) VALUES(?,?,1,?)').run(p, ts, JSON.stringify({ supplies: [
+    { key: '1.2', description: 'Cyan Cartridge', type: 'toner', color: 'cyan', pct: null, state: 'some' },
+    { key: '1.3', description: 'Magenta Cartridge', type: 'toner', color: 'magenta', pct: null, state: 'low' },
+    { key: '1.5', description: 'Fuser', type: 'fuser', color: '', pct: 100, state: 'ok' }] }));
+  const r = reports.create({ name: 'Toner', sections: ['printers'], recipients: 'buero@firma.local', schedule: { time: '08:00' } });
+  const m = reports.render(r, at(2026, 11, 16, 8, 0));
+  assert.match(m.text, /Cyan Cartridge: vorhanden\n/);
+  assert.match(m.text, /Magenta Cartridge: wenig\s+← bitte nachbestellen/);
+  const row = (name) => m.html.slice(m.html.indexOf(name), m.html.indexOf('</tr>', m.html.indexOf(name)));
+  assert.match(row('Cyan Cartridge'), /background:#b8e5f3;width:100%/);
+  assert.match(row('Magenta Cartridge'), /background:#d4237a;width:10%/);
+  assert.match(row('Fuser'), /background:#0071e3;width:100%/);
+  assert.ok(!m.html.includes('#5b6b7a'));
+});

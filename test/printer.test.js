@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { memoryDb } from './helpers.js';
 import { startPrinterAgent } from './fixtures/printer-agent.js';
-import { readPrinter, decodeErrors, supplyColor, parseSupplies } from '../src/scan/printer.js';
+import { readPrinter, decodeErrors, supplyColor, parseSupplies, supplyAlertStates } from '../src/scan/printer.js';
 import { createPrinters, supplyAlerts } from '../src/printers.js';
 import { createSettings } from '../src/settings.js';
 import { eventText } from '../src/monitor/notify.js';
@@ -30,19 +30,57 @@ test('supplies: percent, unknown level, empty', () => {
   assert.equal(s.find((x) => x.key === '1.3').state, 'empty');
 });
 
+test('supplies without a level: low or empty as the own alerts of the printer say (prtAlertTable), a level always wins', () => {
+  const m = new Map([['5.1.1', 3], ['6.1.1', Buffer.from('Black')], ['8.1.1', 100], ['9.1.1', 41],
+    ['5.1.2', 3], ['6.1.2', Buffer.from('Cyan')], ['8.1.2', -2], ['9.1.2', -3],
+    ['5.1.3', 3], ['6.1.3', Buffer.from('Magenta')], ['8.1.3', -2], ['9.1.3', -3],
+    ['5.1.4', 3], ['6.1.4', Buffer.from('Yellow')], ['8.1.4', -2], ['9.1.4', -3]]);
+  // group 11 (supplies): 2 almost empty (1104), 3 subunit empty (14), 1 almost empty too but has a level;
+  // group 8 (input tray) index 4 - another unit, not supply 4; code 1 (other) means nothing
+  const alerts = new Map([['4.1.1', 11], ['5.1.1', 2], ['7.1.1', 1104], ['4.1.2', 11], ['5.1.2', 3], ['7.1.2', 14],
+    ['4.1.3', 11], ['5.1.3', 1], ['7.1.3', 1104], ['4.1.4', 8], ['5.1.4', 4], ['7.1.4', 1104], ['4.1.5', 11], ['5.1.5', 4], ['7.1.5', 1]]);
+  const states = supplyAlertStates(alerts);
+  assert.deepEqual([...states].sort(), [['1.1', 'low'], ['1.2', 'low'], ['1.3', 'empty']]);
+  const s = parseSupplies(m, new Map(), states);
+  const by = (k) => s.find((x) => x.key === k);
+  assert.equal(by('1.1').pct, 41);
+  assert.equal(by('1.1').state, 'ok');
+  assert.equal(by('1.2').state, 'low');
+  assert.equal(by('1.3').state, 'empty');
+  assert.equal(by('1.4').state, 'some');
+  assert.equal(supplyAlertStates().size, 0);
+});
+
+test('supply alerts without a level: reported once when the printer says low, re-armed when it no longer does', () => {
+  const sup = (state) => [{ key: '1.2', description: 'Cyan', pct: null, state }];
+  let r = supplyAlerts(sup('some'), {}, 15);
+  assert.equal(r.events.length, 0);
+  r = supplyAlerts(sup('low'), r.alerts, 15);
+  assert.equal(r.events.length, 1);
+  assert.equal(r.events[0].empty, false);
+  r = supplyAlerts(sup('low'), r.alerts, 15);
+  assert.equal(r.events.length, 0);
+  r = supplyAlerts(sup('some'), r.alerts, 15);
+  assert.deepEqual(r.alerts, {});
+  r = supplyAlerts(sup('low'), r.alerts, 15);
+  assert.equal(r.events.length, 1);
+});
+
 test('reads a printer via SNMP (fake agent)', async () => {
   const agent = startPrinterAgent(16161, { supplies: [
     { colorant: 1, type: 3, descr: 'Black Toner', max: 100, level: 12 },
     { colorant: 2, type: 3, descr: 'Cyan Toner', max: 6000, level: 4500 },
     { cls: 4, type: 4, descr: 'Waste Toner Box', max: 100, level: 80 },
-  ], errBytes: [0x04, 0x00], pages: 4711 });
+    { colorant: 3, type: 3, descr: 'Magenta Toner', max: -2, level: -3 },
+    { colorant: 4, type: 3, descr: 'Yellow Toner', max: -2, level: -3 },
+  ], errBytes: [0x04, 0x00], pages: 4711, alerts: [{ index: 4, code: 1104 }] });
   try {
     const r = await readPrinter('127.0.0.1', ['public'], { port: 16161 });
     assert.equal(r.pages, 4711);
     assert.equal(r.status, 'idle');
     assert.deepEqual(r.errors, ['jammed']);
-    assert.deepEqual(r.supplies.map((s) => [s.color, s.pct]), [['black', 12], ['cyan', 75], ['', 80]]);
-    assert.equal(r.supplies[2].receptacle, true);
+    assert.deepEqual(r.supplies.map((s) => [s.color, s.pct, s.state]), [['black', 12, 'ok'], ['cyan', 75, 'ok'], ['magenta', null, 'low'], ['yellow', null, 'some'], ['', 80, 'ok']]);
+    assert.equal(r.supplies[4].receptacle, true);
     assert.deepEqual(r.display, ['Bereit']);
     assert.equal(r.serial, 'E12345A6N789012');
     assert.equal(r.model, 'Fake Laser 4000 series');
@@ -99,6 +137,8 @@ test('printer service: stores status, daily pages, notifies once', async () => {
 test('notification texts for supplies and new devices', () => {
   assert.match(eventText({ kind: 'supply', device: { name: 'Laser' }, supply: { description: 'Black', pct: 9 } }, 'de'), /Laser: Black nur noch 9 %/);
   assert.match(eventText({ kind: 'supply', device: { name: 'Laser' }, supply: { description: 'Waste', receptacle: true }, empty: true }, 'en'), /Waste is full/);
+  assert.match(eventText({ kind: 'supply', device: { name: 'Laser' }, supply: { description: 'Cyan', pct: null } }, 'de'), /Laser: Cyan wird knapp \(meldet der Drucker\)/);
+  assert.match(eventText({ kind: 'supply', device: { name: 'Laser' }, supply: { description: 'Waste', pct: null, receptacle: true } }, 'en'), /Waste almost full \(the printer reports\)/);
   assert.match(eventText({ kind: 'newDevices', devices: [{ ip: '10.0.0.5', vendor: 'HP' }] }, 'de'), /Neues Gerät im Netz: 10\.0\.0\.5 HP/);
   assert.match(eventText({ kind: 'newDevices', devices: [{ ip: '1' }, { ip: '2' }] }, 'en'), /2 new devices/);
 });

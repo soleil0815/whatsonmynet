@@ -6,6 +6,11 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Printers: toner without a level ("available") no longer looks full - a striped bar in its colour on the device page, a pale one in the report. When the printer itself reports "low" or "empty" (e.g. Lexmark for cyan and magenta), it says so there with "please order", a notice is sent and a sensor goes off
+- Printer report: fuser, transfer unit and drum in blue as on the device page instead of grey, which looked empty
+
+## 0.45.0 - 2026-11-18
+
 - Groups for monitors and sensors (as in Uptime Kuma): a group of its own in the form or for several at once, else the location of the device. New view "By group" with a summary per group; groups with something down come first and stay open
 - Group alarm: new monitor kind "Group" – down when one member is down, or only when all are; with channels, escalation and maintenance windows of its own. So a group sends one alarm instead of one per monitor
 - Maintenance windows: the monitors of a group can be chosen together with one tick

@@ -15,15 +15,24 @@ export function supplyName(s) {
 /** One supply as a bar. Waste toner: the bar shows how full it is. */
 export function supplyBar(s, threshold = 15) {
   const known = s.pct !== null && s.pct !== undefined;
-  const fill = known ? (s.receptacle ? 100 - s.pct : s.pct) : s.state === 'some' ? 50 : 0;
-  const low = s.state === 'empty' || (known && s.pct <= threshold);
-  const value = s.state === 'empty' ? (s.receptacle ? t('sup.full') : t('sup.empty'))
-    : known ? (s.receptacle ? t('sup.freePct', { pct: s.pct }) : `${s.pct} %`)
-      : s.state === 'some' ? t('sup.some') : t('sup.unknown');
+  // no level: "present" (level unknown, striped) or "low" as the printer itself reports (a short bar)
+  const fill = known ? (s.receptacle ? 100 - s.pct : s.pct) : s.state === 'low' ? (s.receptacle ? 90 : 10) : s.state === 'some' ? 100 : 0;
+  const low = s.state === 'empty' || s.state === 'low' || (known && s.pct <= threshold);
+  const value = supplyValue(s);
+  const cls = known || s.state === 'low' || s.state === 'empty' ? '' : s.state === 'some' ? 'some' : 'unknown';
   return h('div', { class: `supply${low ? ' low' : ''}`, 'data-color': s.color || (s.receptacle ? 'waste' : 'other') },
     h('div', { class: 'supply-head' }, h('span', { class: 'supply-name' }, supplyName(s)), h('span', { class: 'supply-val mono' }, value)),
-    h('div', { class: 'supply-track', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': known ? fill : null, 'aria-label': supplyName(s) },
-      h('i', { style: { width: `${Math.max(0, Math.min(100, fill))}%` }, class: known ? '' : 'unknown' })));
+    h('div', { class: 'supply-track', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': known ? fill : null, 'aria-valuetext': value, 'aria-label': supplyName(s) },
+      h('i', { style: { width: `${Math.max(0, Math.min(100, fill))}%` }, class: cls })));
+}
+
+/** What a supply shows as text: level, "empty"/"full", "low" (the printer says so), "present" or "unknown" */
+export function supplyValue(s) {
+  const known = s.pct !== null && s.pct !== undefined;
+  if (s.state === 'empty') return s.receptacle ? t('sup.full') : t('sup.empty');
+  if (known) return s.receptacle ? t('sup.freePct', { pct: s.pct }) : `${s.pct} %`;
+  if (s.state === 'low') return s.receptacle ? t('sup.nearlyFull') : t('sup.low');
+  return s.state === 'some' ? t('sup.some') : t('sup.unknown');
 }
 
 export function printerPanel(device, onChange) {
@@ -70,6 +79,6 @@ export function lowSuppliesPanel(list) {
     h('ul', { class: 'feed' }, list.map((s) => h('li', {},
       h('a', { href: `/devices/${s.deviceId}`, 'data-link': true }, s.device),
       h('span', { class: `badge ${s.state === 'empty' ? 'badge-bad' : 'badge-new'}`, style: { justifySelf: 'end' } },
-        s.state === 'empty' ? (s.receptacle ? t('sup.full') : t('sup.empty')) : s.receptacle ? t('sup.freePct', { pct: s.pct }) : `${s.pct} %`),
+        supplyValue(s)),
       h('span', { class: 'what' }, supplyName(s))))));
 }

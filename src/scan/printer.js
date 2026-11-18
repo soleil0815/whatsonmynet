@@ -9,6 +9,7 @@ const DISPLAY = '1.3.6.1.2.1.43.16.5.1.2';      // prtConsoleDisplayBufferText
 const HR_PRINTER = '1.3.6.1.2.1.25.3.5.1';      // hrPrinterStatus (.1), hrPrinterDetectedErrorState (.2)
 const SERIAL = '1.3.6.1.2.1.43.5.1.1.17.1';     // prtGeneralSerialNumber
 const HR_DESCR = '1.3.6.1.2.1.25.3.2.1.3';       // hrDeviceDescr - for the printer: its model
+const ALERTS = '1.3.6.1.2.1.43.18.1.1';         // prtAlertEntry: .4 group, .5 group index, .7 code
 
 // prtMarkerSuppliesType
 const SUPPLY_TYPES = {
@@ -48,11 +49,40 @@ export function supplyColor(colorant, description) {
   return '';
 }
 
+// prtAlertCode for one supply (group markerSupplies = 11, group index = prtMarkerSuppliesIndex). Many printers give no
+// level for colour toner (only "some remaining") but raise these alerts - as on their own display ("Cyan low").
+const ALERT_LOW = new Set([7, 13, 1104, 1105, 1106, 1107, 1108, 1111, 1113]);   // life almost over, almost empty / full
+const ALERT_EMPTY = new Set([8, 14, 1101, 1102, 1103, 1109, 1110, 1112, 1114]); // life over, empty / receptacle full
+const GROUP_SUPPLIES = 11;
+
+/**
+ * Supplies the printer itself calls low or empty, from its alert table.
+ * alerts: Map("<column>.<hrDeviceIndex>.<alertIndex>" → value) → Map("<hrDeviceIndex>.<supplyIndex>" → 'low' | 'empty')
+ */
+export function supplyAlertStates(alerts = new Map()) {
+  const rows = new Map();
+  for (const [suffix, value] of alerts) {
+    const [col, dev, idx] = suffix.split('.');
+    if (!idx) continue;
+    const k = `${dev}.${idx}`;
+    if (!rows.has(k)) rows.set(k, { dev });
+    rows.get(k)[Number(col)] = Number(value);
+  }
+  const out = new Map();
+  for (const r of rows.values()) {
+    if (r[4] !== GROUP_SUPPLIES || !(r[5] > 0)) continue;
+    const state = ALERT_EMPTY.has(r[7]) ? 'empty' : ALERT_LOW.has(r[7]) ? 'low' : null;
+    const key = `${r.dev}.${r[5]}`;
+    if (state && out.get(key) !== 'empty') out.set(key, state);
+  }
+  return out;
+}
+
 /**
  * Turns the raw SNMP tables into a list of supplies.
  * supplies: Map("<column>.<hrDeviceIndex>.<index>" → value), colorants: Map("<hrDeviceIndex>.<index>" → value)
  */
-export function parseSupplies(supplies, colorants = new Map()) {
+export function parseSupplies(supplies, colorants = new Map(), alerted = new Map()) {
   const rows = new Map();
   for (const [suffix, value] of supplies) {
     const [col, dev, idx] = suffix.split('.');
@@ -74,6 +104,8 @@ export function parseSupplies(supplies, colorants = new Map()) {
     else if (level === -3) state = 'some';        // "some remaining", no exact level
     else state = 'unknown';
     if (pct === 0 || (max === -2 && level === 0)) state = 'empty';
+    // No level known: what the printer says about it (a known level always wins)
+    if (pct === null && state !== 'empty' && alerted.has(r.key)) state = alerted.get(r.key);
     const colorant = r[3] ? text(colorants.get(`${r.key.split('.')[0]}.${r[3]}`), 40) : '';
     // level/max with unit (prtMarkerSuppliesSupplyUnit): 7 = impressions, 8 = sheets → "about n pages left"
     out.push({ key: r.key, description: description || type, type, color: supplyColor(colorant, description), receptacle, pct, state,
@@ -96,7 +128,7 @@ export async function readPrinter(ip, communities, { port = 161 } = {}) {
   const s = await openSnmp(ip, communities, { port });
   if (!s) throw new Error('snmp');
   try {
-    const [supplies, colorants, counts, display, hr, single, descr] = await Promise.all([
+    const [supplies, colorants, counts, display, hr, single, descr, alerts] = await Promise.all([
       walk(s, SUPPLIES, { max: 600 }),
       walk(s, COLORANTS, { max: 60 }),
       walk(s, LIFE_COUNT, { max: 10 }),
@@ -104,6 +136,9 @@ export async function readPrinter(ip, communities, { port = 161 } = {}) {
       walk(s, HR_PRINTER, { max: 20 }),
       getValues(s, [SERIAL]),
       walk(s, HR_DESCR, { max: 20 }),
+      // only the three columns needed (group, group index, code) - the table can be long on a busy printer
+      Promise.all([4, 5, 7].map((c) => walk(s, `${ALERTS}.${c}`, { max: 100 }).catch(() => new Map())))
+        .then((cols) => new Map(cols.flatMap((m, i) => [...m].map(([k, v]) => [`${[4, 5, 7][i]}.${k}`, v])))),
     ]);
     if (!supplies.size && !counts.size && !hr.size) throw new Error('noPrinterMib');
     let status = '';
@@ -114,7 +149,7 @@ export async function readPrinter(ip, communities, { port = 161 } = {}) {
     }
     const pages = [...counts.values()].map(Number).filter((n) => Number.isFinite(n) && n >= 0);
     return {
-      supplies: parseSupplies(supplies, colorants),
+      supplies: parseSupplies(supplies, colorants, supplyAlertStates(alerts)),
       pages: pages.length ? Math.max(...pages) : null,
       status,
       errors,
