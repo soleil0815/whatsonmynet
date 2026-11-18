@@ -6,6 +6,8 @@
 
 Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans your network, recognises devices by itself, watches websites, services, servers and hypervisors and tells you before someone calls. Runs locally, loads nothing from the internet, only reads other systems.
 
+> **Built for my own use - use at your own responsibility.** I built WhatsOnMyNet primarily for myself, because I wanted exactly this kind of tool for my own environment: as easy to start with as Uptime Kuma, but with inventory, messages, sensors and failover when you dig deeper. I run it in production myself, so I usually notice bugs quickly and fix them promptly. If you would like to use WhatsOnMyNet too: you are welcome to - at your own responsibility. There is no warranty and no liability (sections 15 and 16 of the [license](LICENSE)). Try it in a test environment first and keep backups. Bug reports and suggestions for improvement are welcome - preferably as an [issue](https://github.com/soleil0815/whatsonmynet/issues); please report security vulnerabilities privately, as described in [SECURITY.md](SECURITY.md). I cannot promise support or response times.
+
 ![Search messages and narrow them in time](.github/readme/logsearch-en.webp)
 
 <p>
