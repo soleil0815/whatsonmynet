@@ -720,7 +720,8 @@ export const MIGRATIONS = [
   `INSERT OR IGNORE INTO settings(key, value) SELECT 'lightscan.enabled', 'true' WHERE EXISTS (SELECT 1 FROM users);`,
   // 39: groups of monitors (like Uptime Kuma): a name of its own ("Websites", "Telephony" …). Empty: the location of
   // the device, else "no group" - in the list by group, in maintenance windows, on status pages
-  `ALTER TABLE monitors ADD COLUMN group_name TEXT NOT NULL DEFAULT '';`,
+  // (a database brought back to an older schema number - a restored copy, the tests - may have the column already)
+  { sql: "ALTER TABLE monitors ADD COLUMN group_name TEXT NOT NULL DEFAULT '';", unless: "SELECT 1 FROM pragma_table_info('monitors') WHERE name = 'group_name'" },
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached
@@ -927,7 +928,8 @@ export function migrate(db, { quiet = false } = {}) {
     if (m.foreignKeysOff) db.pragma('foreign_keys = OFF');
     try {
       db.transaction(() => {
-        db.exec(sql);
+        // a step whose result is there already (a column added before) is not done twice
+        if (!(m.unless && db.prepare(m.unless).get())) db.exec(sql);
         if (m.foreignKeysOff) {
           const bad = db.pragma('foreign_key_check');
           if (bad.length) throw new Error(`Schema update ${v + 1}: ${bad.length} broken reference(s)`);
