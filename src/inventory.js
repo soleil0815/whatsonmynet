@@ -470,7 +470,8 @@ export function createInventory(db) {
     return n;
   }
 
-  function stats({ allowed = null } = {}) {
+  /** quiet: ids of devices in a maintenance window - away there is the plan, not "missing" */
+  function stats({ allowed = null, quiet = null } = {}) {
     const devices = list({ allowed });
     const byType = {};
     for (const d of devices) byType[d.type] = (byType[d.type] || 0) + 1;
@@ -481,7 +482,7 @@ export function createInventory(db) {
     return {
       devices: devices.length,
       online: devices.filter((d) => d.presence === 'online').length,
-      missing: devices.filter((d) => d.presence === 'missing').length,
+      missing: devices.filter((d) => d.presence === 'missing' && !quiet?.has(d.id)).length,
       telematik: devices.filter((d) => d.telematik).length,
       byType,
       waiting,

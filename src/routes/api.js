@@ -230,7 +230,8 @@ export function createApi(ctx) {
   r.get('/dashboard', (req, res) => {
     // Limited users: only monitors of their devices
     const mon = ctx.monitoring.summary(req.scope ? (m) => seeDeviceId(req, m.device_id) : null);
-    res.json({ ...inventory.stats({ allowed: req.scope }), monitoring: mon,
+    const quiet = new Set(Object.keys(ctx.monitoring.deviceMaintenance()).map(Number));
+    res.json({ ...inventory.stats({ allowed: req.scope, quiet }), monitoring: mon,
       printersLow: ctx.printers.low().filter((x) => seeDeviceId(req, x.deviceId)),
       nasProblems: ctx.snmpDevices.problems().filter((x) => seeDeviceId(req, x.deviceId)) });
   });
@@ -253,8 +254,9 @@ export function createApi(ctx) {
   // Devices
   r.get('/devices', (req, res) => {
     const mon = ctx.monitoring.deviceStatus();
+    const maint = ctx.monitoring.deviceMaintenance();
     res.json(inventory.list({ q: str(req.query.q, 100), type: str(req.query.type, 30), location: str(req.query.location, 12), tag: str(req.query.tag, 60), allowed: req.scope })
-      .map((d) => ({ ...d, monitor: mon[d.id] || null })));
+      .map((d) => ({ ...d, monitor: mon[d.id] || null, maint: maint[d.id] || null })));
   });
   r.get('/devices/suggestions', (req, res) => res.json(inventory.suggestions(req.scope)));
   r.post('/devices/bulk', editor, (req, res) => {

@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Wartungsfenster sichtbar: Ein Monitor im Wartungsfenster zeigt „Wartung bis morgen 10:00 · Backup-Nacht“, die Geräteseite oben einen Hinweis, das Inventar dasselbe statt „Monitor gestört“ oder „fehlt“. Solche Geräte zählen nicht als Problem und auf der Übersicht nicht als fehlend; dort stehen sie still unter Monitoring. Unter Wartungsfenster ist das gerade laufende markiert
+
+## 0.50.1 - 2026-11-18
+
 - Ausfallsicherung: Das Nachholen der Meldungen am Standby belastete die CPU stark (jede Meldung wurde einzeln auf Doppelte geprüft). Jetzt geht die Prüfung je Zeitabschnitt in einem Durchgang - in einem Netz mit vielen Meldungen pro Sekunde etwa fünfmal schneller - und das Nachholen nimmt sich höchstens 8 Sekunden pro Minute. Ein großer Bestand braucht so etwas länger, die Seite zeigt, wie viel noch offen ist
 
 ## 0.50.0 - 2026-11-18

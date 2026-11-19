@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Maintenance windows visible: a monitor in a maintenance window shows "Maintenance until tomorrow 10:00 · Backup night", the device page a note at the top, the inventory the same instead of "Monitor down" or "missing". Such devices do not count as a problem nor as missing on the overview; there they are listed quietly under Monitoring. Under Maintenance windows the one running now is marked
+
+## 0.50.1 - 2026-11-18
+
 - Failover: catching up the messages on the standby loaded the CPU heavily (each message was checked for twins on its own). Now the check runs once per time slice - about five times faster in a network with many messages per second - and catching up takes at most 8 seconds per minute. A large stock takes a bit longer then; the page shows how much is still to come
 
 ## 0.50.0 - 2026-11-18

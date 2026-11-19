@@ -23,6 +23,19 @@ export function windowActive(w, monitorId, now = new Date()) {
   return (days.includes(today) && hm >= w.time_from) || (days.includes(yesterday) && hm < w.time_to);
 }
 
+/** When the occurrence of an active window that `at` lies in ends (Date) - "in maintenance until 10:00" */
+export function windowEnd(w, at = new Date()) {
+  if (w.kind === 'once') return new Date(w.ends_at);
+  const [h, m] = String(w.time_to).split(':').map(Number);
+  const end = new Date(at); end.setHours(h, m, 0, 0);
+  // crosses midnight and started today: ends tomorrow
+  if (w.time_from > w.time_to) {
+    const hm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+    if (hm >= w.time_from) end.setDate(end.getDate() + 1);
+  }
+  return end;
+}
+
 export function createMaintenance(db) {
   const now = () => new Date().toISOString();
   const shape = (r) => ({ ...r, weekdays: parse(r.weekdays, []), monitor_ids: parse(r.monitor_ids, []), enabled: !!r.enabled });
@@ -50,24 +63,57 @@ export function createMaintenance(db) {
     return out;
   }
 
+  // The windows are read once a second at most - a list of 500 monitors asks for each of them
+  let cache = null; let cacheAt = 0;
+  const windows = () => {
+    if (!cache || Date.now() - cacheAt > 1000) { cache = db.prepare('SELECT * FROM maintenance WHERE enabled=1').all(); cacheAt = Date.now(); }
+    return cache;
+  };
+  const changed = () => { cache = null; };
+
   return {
     list: () => db.prepare('SELECT * FROM maintenance ORDER BY name').all().map(shape),
     create(input) {
       const v = clean(input);
       const keys = Object.keys(v);
       const r = db.prepare(`INSERT INTO maintenance(${keys.join(',')},created_at) VALUES(${keys.map(() => '?').join(',')},?)`).run(...keys.map((k) => v[k]), now());
+      changed();
       return shape(db.prepare('SELECT * FROM maintenance WHERE id=?').get(r.lastInsertRowid));
     },
     update(id, input) {
       const v = clean(input);
       const keys = Object.keys(v);
       if (!db.prepare(`UPDATE maintenance SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`).run(...keys.map((k) => v[k]), id).changes) throw new HttpError(404, 'err.notFound');
+      changed();
       return shape(db.prepare('SELECT * FROM maintenance WHERE id=?').get(id));
     },
-    remove(id) { if (!db.prepare('DELETE FROM maintenance WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound'); },
+    remove(id) { if (!db.prepare('DELETE FROM maintenance WHERE id=?').run(id).changes) throw new HttpError(404, 'err.notFound'); changed(); },
     /** Active window for a monitor right now (or null) */
     activeFor(monitorId, at = new Date()) {
-      return db.prepare('SELECT * FROM maintenance WHERE enabled=1').all().find((w) => windowActive(w, monitorId, at)) || null;
+      return windows().find((w) => windowActive(w, monitorId, at)) || null;
     },
+    /**
+     * For the pages: which window holds the monitor and until when. With several, the one that lasts longest -
+     * that is when the monitor is out of maintenance.
+     */
+    infoFor(monitorId, at = new Date()) {
+      let best = null;
+      for (const w of windows()) {
+        if (!windowActive(w, monitorId, at)) continue;
+        const until = windowEnd(w, at);
+        if (!best || until > best.until) best = { id: w.id, name: w.name, until };
+      }
+      return best && { id: best.id, name: best.name, until: best.until.toISOString() };
+    },
+    /** Windows active right now (with their end), for the list of windows */
+    activeNow(at = new Date()) {
+      const out = {};
+      for (const w of windows()) {
+        if (!w.enabled) continue;
+        if (windowActive({ ...w, monitor_ids: '[]' }, 0, at)) out[w.id] = windowEnd(w, at).toISOString();
+      }
+      return out;
+    },
+    _changed: changed,
   };
 }
