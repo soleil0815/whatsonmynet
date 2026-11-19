@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Wartungsfenster sichtbar: Ein Monitor im Wartungsfenster zeigt „Wartung bis morgen 10:00 · Backup-Nacht“, die Geräteseite oben einen Hinweis, das Inventar dasselbe statt „Monitor gestört“ oder „fehlt“. Solche Geräte zählen nicht als Problem und auf der Übersicht nicht als fehlend; dort stehen sie still unter Monitoring. Unter Wartungsfenster ist das gerade laufende markiert',
+  ], en: [
+    'Maintenance windows visible: a monitor in a maintenance window shows "Maintenance until tomorrow 10:00 · Backup night", the device page a note at the top, the inventory the same instead of "Monitor down" or "missing". Such devices do not count as a problem nor as missing on the overview; there they are listed quietly under Monitoring. Under Maintenance windows the one running now is marked',
+  ] },
+  { version: '0.50.1', date: '2026-11-18', de: [
     'Ausfallsicherung: Das Nachholen der Meldungen am Standby belastete die CPU stark (jede Meldung wurde einzeln auf Doppelte geprüft). Jetzt geht die Prüfung je Zeitabschnitt in einem Durchgang - in einem Netz mit vielen Meldungen pro Sekunde etwa fünfmal schneller - und das Nachholen nimmt sich höchstens 8 Sekunden pro Minute. Ein großer Bestand braucht so etwas länger, die Seite zeigt, wie viel noch offen ist',
   ], en: [
     'Failover: catching up the messages on the standby loaded the CPU heavily (each message was checked for twins on its own). Now the check runs once per time slice - about five times faster in a network with many messages per second - and catching up takes at most 8 seconds per minute. A large stock takes a bit longer then; the page shows how much is still to come',

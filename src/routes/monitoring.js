@@ -434,7 +434,7 @@ export function createMonitoringApi(ctx) {
     res.json({ ok: true });
   });
 
-  r.get('/maintenance', (_req, res) => res.json(maintenance.list()));
+  r.get('/maintenance', (_req, res) => { const active = maintenance.activeNow(); res.json(maintenance.list().map((w) => ({ ...w, active_until: active[w.id] || null }))); });
   r.post('/maintenance', editor, unscoped, (req, res) => { const w = maintenance.create(req.body); audit(req, 'maintenance.create', w.name); res.status(201).json(w); });
   r.put('/maintenance/:id', editor, unscoped, (req, res) => { const w = maintenance.update(idParam(req), req.body); audit(req, 'maintenance.update', w.name); res.json(w); });
   r.delete('/maintenance/:id', editor, unscoped, (req, res) => { maintenance.remove(idParam(req)); audit(req, 'maintenance.delete', req.params.id); res.json({ ok: true }); });

@@ -11,6 +11,7 @@ import { checkText } from '../checktext.js';
 import { historyChart, duration } from './monchart.js';
 import { renderStatusPages } from './statuspages.js';
 import { groupSlots } from '../groupslots.js';
+import { maintBadge, untilText } from '../maint.js';
 
 
 export function statusPill(status) {
@@ -275,6 +276,7 @@ export async function renderMonitoring(main, id, sub) {
       h('td', { class: 'mon-name' }, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
         h('div', { style: { minWidth: 0 } }, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
           h('div', { class: 'sub' }, ipMoved(m) ? h('span', { class: 'tone-bad' }, t('mon.ipMoved', ipMoved(m)))
+            : m.maint ? maintBadge(m.maint, { long: true })
             : m.status === 'down' && m.last_message ? h('span', { class: 'tone-bad' }, checkText(m.last_message, getLang()))
             : m.status === 'unreachable' ? h('span', {}, t('mon.behind', { name: byId.get(m.parent_id)?.name || '?' }))
               : h('span', { class: 'mono' }, `${t(`mon.type.${m.type}`)} · ${targetText(m)}`))))),
@@ -296,7 +298,9 @@ export async function renderMonitoring(main, id, sub) {
       store.set('mon.folded', [...folded].slice(-200)); draw();
     } }, h('span', { class: 'grp-caret', 'aria-hidden': 'true', html: icon(open ? 'chevron-down' : 'chevron-right') }));
     const state = gm ? gm.status : bad ? 'down' : checked ? 'up' : 'pending';
-    const count = bad ? t('mon.grpBad', { n: bad, total: part.length }) : checked ? t('mon.grpOk', { n: checked, total: part.length }) : t('mon.grpCount', { n: part.length });
+    const inMaint = part.filter((m) => m.status === 'maintenance').length;
+    const count = [bad ? t('mon.grpBad', { n: bad, total: part.length }) : checked ? t('mon.grpOk', { n: checked, total: part.length }) : t('mon.grpCount', { n: part.length }),
+      inMaint ? t('mon.grpMaint', { n: inMaint }) : ''].filter(Boolean).join(' · ');
     const ups = part.map((m) => m.uptime24).filter((v) => v !== null && v !== undefined);
     const mean = ups.length ? Math.round((ups.reduce((a, b) => a + b, 0) / ups.length) * 100) / 100 : null;
     const name = gm ? h('a', { href: `/monitoring/${gm.id}`, 'data-link': true, class: 'name' }, g) : h('span', { class: 'name' }, g || t('mon.noGroup'));
@@ -480,7 +484,8 @@ async function renderDetail(main, id) {
       m.status === 'down' ? h('div', { class: 'note bad' }, t('mon.downSince', { when: fmtAgo(m.status_since, t), message: checkText(m.last_message, getLang()) })) : null,
       m.status === 'unreachable' && m.parent ? h('div', { class: 'note' }, h('span', {}, t('mon.unreachableNote', { when: fmtAgo(m.status_since, t) }), ' ',
         h('a', { href: `/monitoring/${m.parent.id}`, 'data-link': true }, m.parent.name))) : null,
-      m.maintenance ? h('div', { class: 'note ti' }, t('mon.inMaintenance')) : null,
+      m.maintenance ? h('div', { class: 'note maint' }, h('span', { class: 'ico', 'aria-hidden': 'true', html: icon('wrench') }),
+        h('div', {}, h('strong', {}, m.maint ? t('maint.noteTitle', { name: m.maint.name, time: untilText(m.maint.until) }) : t('mon.status.maintenance')), h('div', {}, t('mon.inMaintenance')))) : null,
       h('div', { class: 'figures' },
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.h24.pct)), h('span', {}, t('mon.uptime24'))),
         h('div', { class: 'figure' }, h('b', {}, pct(m.uptime.d7.pct)), h('span', {}, t('mon.uptime7'))),
@@ -1155,7 +1160,8 @@ async function renderMaintenance(main) {
     h('section', { class: 'panel' }, list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, h('th', {}, t('maint.name')), h('th', {}, t('maint.when')), h('th', {}, t('maint.scope')), h('th', {}))),
       h('tbody', {}, list.map((w) => h('tr', {},
-        h('td', {}, h('span', { class: 'name' }, w.name), w.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('mon.status.paused'))),
+        h('td', {}, h('span', { class: 'name' }, w.name), w.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('mon.status.paused')),
+          w.active_until ? h('div', { style: { marginTop: '4px' } }, maintBadge({ until: w.active_until }), h('span', { class: 'muted small' }, ` ${t('maint.runningNow')}`)) : null),
         h('td', {}, when(w)),
         h('td', { title: w.monitor_ids.map((i) => names[i] || `#${i}`).join('\n') }, w.monitor_ids.length
           ? `${w.monitor_ids.slice(0, 3).map((i) => names[i] || `#${i}`).join(', ')}${w.monitor_ids.length > 3 ? ` ${t('maint.more', { n: w.monitor_ids.length - 3 })}` : ''}` : t('maint.all')),

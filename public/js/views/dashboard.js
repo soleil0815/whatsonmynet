@@ -7,6 +7,7 @@ import { state } from '../app.js';
 import { historyText } from './device.js';
 import { supplyName, supplyValue } from './printer.js';
 import { stText } from './snmpdev.js';
+import { maintBadge } from '../maint.js';
 
 /** One line of "Needs attention": icon, what, details, one action */
 function todo(kind, ico, title, detail, action, extra = null) {
@@ -87,7 +88,12 @@ export async function renderDashboard(main) {
   const lowN = (d.printersLow || []).length;
   const stateCard = h('section', { class: 'panel state-card', 'aria-label': t('dash.state') },
     devicesRow(d),
-    mon.total ? stateRow('/monitoring', mon.down.length ? 'bad' : 'ok', t('nav.monitoring'), mon.total, mon.down.length ? t('dash.downN', { n: mon.down.length }) : t('dash.allUp')) : null,
+    mon.total ? stateRow('/monitoring', mon.down.length ? 'bad' : 'ok', t('nav.monitoring'), mon.total,
+      mon.down.length ? t('dash.downN', { n: mon.down.length }) : t('dash.allUp')) : null,
+    // what is in a maintenance window right now, calmly: name and until when
+    mon.inMaintenance?.length ? h('div', { class: 'dash-maint' }, mon.inMaintenance.slice(0, 6).map((m) => h('a', { href: `/monitoring/${m.id}`, 'data-link': true, title: m.name },
+      h('span', { class: 'name' }, m.name), ' ', maintBadge({ name: m.window, until: m.until }))),
+      mon.inMaintenance.length > 6 ? h('span', { class: 'muted small' }, t('dash.more', { n: mon.inMaintenance.length - 6 })) : null) : null,
     d.byType?.printer ? stateRow('/inventory?type=printer', lowN ? 'new' : 'ok', t('type.printer'), d.byType.printer, lowN ? t('dash.lowN', { n: lowN }) : t('dash.suppliesOk')) : null,
     d.telematik ? stateRow('/inventory?type=telematik', 'ti', t('dash.telematik'), d.telematik, t('dash.telematikNote')) : null);
 

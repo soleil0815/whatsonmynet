@@ -11,6 +11,7 @@ import { isReadOnly } from './failover.js';
 import { hardwarePanel } from './hardware.js';
 import { switchPanel, nasPanel, upsPanel, pluggedLine } from './snmpdev.js';
 import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
+import { maintBadge, untilText } from '../maint.js';
 
 const FIELD_LABEL = (f) => t(`f.${f}`) !== `f.${f}` ? t(`f.${f}`) : f;
 
@@ -196,7 +197,7 @@ export async function renderDevice(main, id) {
         } }, 'pulse') : null)),
     d.monitors?.length ? h('div', { class: 'history-list' }, d.monitors.map((m) => h('button', { type: 'button', onclick: () => navigate(`/monitoring/${m.id}`) },
       h('span', {}, monitorDot(m.status), ' ', h('strong', {}, m.name), h('span', { class: 'muted small mono', style: { display: 'block' } }, `${t(`mon.type.${m.type}`)} · ${m.type === 'tcp' ? `${m.target}:${m.port}` : m.target}`)),
-      statusPill(m.status))))
+      m.maint ? maintBadge(m.maint) : statusPill(m.status))))
       : h('p', { class: 'muted', style: { margin: 0 } }, t('mon.deviceNone')));
 
   const meta = h('section', { class: 'panel panel-pad' },
@@ -236,6 +237,8 @@ export async function renderDevice(main, id) {
     h('dl', { class: 'kv' }, pluggedLine(d.plugged), val('mac', d.mac),
       f.ports?.length ? [h('dt', {}, t('dev.ports')), h('dd', {}, portList(f.ports, services))] : null, webRow));
 
+  // the window that holds this device longest (several monitors may sit in different ones)
+  const maintNow = (d.monitors || []).map((m) => m.maint).filter(Boolean).sort((a, b) => (a.until < b.until ? 1 : -1))[0] || null;
   const TABS = [['state', t('dev.tab.state')], ['details', t('dev.tab.details')], ['monitors', `${t('dev.tab.monitors')}${d.monitors?.length ? ` ${d.monitors.length}` : ''}`],
     ['network', t('dev.tab.network')], ['history', t('dev.tab.history')]];
   const content = h('div');
@@ -277,6 +280,9 @@ export async function renderDevice(main, id) {
         edit ? btn(t('edit'), { onclick: () => show('details', true) }, 'edit') : null,
         more)),
     ti ? h('div', { class: 'note ti' }, t('dev.deepTi')) : null,
+    // in a maintenance window (e.g. a backup system switched off at night): say so at the top - not a fault
+    maintNow ? h('div', { class: 'note maint' }, h('span', { class: 'ico', 'aria-hidden': 'true', html: icon('wrench') }),
+      h('div', {}, h('strong', {}, t('maint.deviceTitle', { name: maintNow.name, time: untilText(maintNow.until) })), h('div', {}, t('maint.deviceText')))) : null,
     tabBar,
     content));
   show(location.hash.slice(1) || 'state');

@@ -644,7 +644,10 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     if (!m) return null;
     const certDays = m.cert_valid_to ? Math.floor((Date.parse(m.cert_valid_to) - now().getTime()) / 86400000) : null;
     const { secret, data, ...rest } = m;
-    return { ...rest, status: shownStatus(m), data: parse(data, {}), channels: parse(m.channels, []), escalate_channels: parse(m.escalate_channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
+    const status = shownStatus(m);
+    // in a maintenance window: which one and until when ("in maintenance until 10:00") - so nobody gets a fright
+    const maint = status === 'maintenance' ? maintenance?.infoFor?.(m.id, now()) || null : null;
+    return { ...rest, status, maint, data: parse(data, {}), channels: parse(m.channels, []), escalate_channels: parse(m.escalate_channels, []), options: parse(m.options, {}), has_password: !!secret, enabled: !!m.enabled, tls_verify: !!m.tls_verify,
       cert_check: !!m.cert_check, cert_days_left: certDays, has_limit: hasLimit(m),
       docker_host: m.docker_host_id ? db.prepare('SELECT id, name FROM docker_hosts WHERE id=?').get(m.docker_host_id) || null : null };
   }
@@ -702,8 +705,23 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
       pending: rows.filter((m) => m.status === 'pending' && m.enabled).length,
       paused: rows.filter((m) => !m.enabled).length,
       maintenance: rows.filter((m) => m.status === 'maintenance').length,
+      inMaintenance: rows.filter((m) => m.status === 'maintenance').slice(0, 20).map((m) => {
+        const i = maintenance?.infoFor?.(m.id, now());
+        return { id: m.id, name: m.name, window: i?.name || '', until: i?.until || null };
+      }),
       certs: soon,
     };
+  }
+
+  /** Devices with a monitor in a maintenance window right now: { device_id: { name, until } } (the longest) */
+  function deviceMaintenance() {
+    const map = {};
+    for (const row of db.prepare('SELECT id, device_id, status, enabled FROM monitors WHERE device_id IS NOT NULL AND enabled=1').all()) {
+      if (shownStatus(row) !== 'maintenance') continue;
+      const i = maintenance?.infoFor?.(row.id, now());
+      if (i && (!map[row.device_id] || i.until > map[row.device_id].until)) map[row.device_id] = { name: i.name, until: i.until };
+    }
+    return map;
   }
 
   /** Status per inventory device (worst of its monitors): up | down | unreachable | pending | maintenance | paused */
@@ -912,7 +930,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   }
 
   return {
-    create, update, remove, bulk, get, list, detail, summary, deviceStatus, shownStatus: (m) => shownStatus(m), suggestionFor, checkNow, childCandidates, adoptChildren,
+    create, update, remove, bulk, get, list, detail, summary, deviceStatus, deviceMaintenance, shownStatus: (m) => shownStatus(m), suggestionFor, checkNow, childCandidates, adoptChildren,
     pause: (id) => setEnabled(id, false),
     resume: (id) => setEnabled(id, true),
     record,

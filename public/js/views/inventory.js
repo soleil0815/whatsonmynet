@@ -5,6 +5,7 @@ import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { pageHead, select, input, field, typeOptions, formData, btn, suggestionLists, wireModelAutofill } from './common.js';
+import { maintBadge } from '../maint.js';
 
 const VIEW_KEY = 'womn-inv-view';
 
@@ -38,7 +39,8 @@ export async function renderInventory(main) {
   const jsonLink = h('a', { href: '/api/devices/export.json', download: true }, t('inv.exportJson'));
   const exportMenu = h('details', { class: 'menu' }, h('summary', { class: 'btn' }, h('span', { html: icon('download') }), t('inv.export')), h('div', { class: 'menu-list' }, csvLink, jsonLink));
 
-  const problem = (d) => d.monitor === 'down' || d.presence === 'missing';
+  // a device in a maintenance window is not a problem: away or down there is the plan (backup system at night)
+  const problem = (d) => !d.maint && (d.monitor === 'down' || d.presence === 'missing');
   function renderChips() {
     if (!counts) return;
     const chip = (key, label, n, onclick, on, dot) => h('button', { type: 'button', class: `fchip${on ? ' on' : ''}`, 'aria-pressed': String(on), onclick },
@@ -101,7 +103,7 @@ export async function renderInventory(main) {
     const box = edit ? h('input', { type: 'checkbox', checked: selected.has(d.id), 'aria-label': `${t('inv.select')}: ${d.name}`,
       onchange: (e) => { if (e.target.checked) selected.add(d.id); else selected.delete(d.id); e.target.closest('tr').classList.toggle('sel', e.target.checked); renderBulk(); } }) : null;
     // State in words: what a person wants to know at a glance
-    const st = d.monitor === 'down' ? ['bad', t('inv.st.monitorDown')] : d.presence === 'missing' ? ['bad', t('inv.st.missing')]
+    const st = d.maint ? ['maint', null] : d.monitor === 'down' ? ['bad', t('inv.st.monitorDown')] : d.presence === 'missing' ? ['bad', t('inv.st.missing')]
       : d.monitor === 'unreachable' ? ['muted', t('mon.status.unreachable')] : d.monitor === 'paused' ? ['muted', t('mon.status.paused')] : d.presence === 'online' || d.monitor === 'up' ? ['ok', t('inv.st.ok')] : ['muted', t(`presence.${d.presence}`)];
     const sub = [t(`type.${d.type}`), d.model && d.model !== d.name ? d.model : d.vendor && d.vendor !== d.name ? d.vendor : ''].filter(Boolean).join(' · ');
     return h('tr', { class: `click${selected.has(d.id) ? ' sel' : ''}`, onclick: (e) => { if (!e.target.closest('a,input,label')) open(); } },
@@ -111,7 +113,7 @@ export async function renderInventory(main) {
           h('div', { class: 'sub' }, sub)))),
       h('td', { class: 'mono', title: d.mac || '' }, d.ip || '–'),
       h('td', { class: 'hide-sm' }, d.location_name || h('span', { class: 'muted' }, '–')),
-      h('td', {}, h('span', { class: `inv-st tone-${st[0]}` }, st[1])),
+      h('td', {}, st[0] === 'maint' ? maintBadge(d.maint) : h('span', { class: `inv-st tone-${st[0]}` }, st[1])),
       h('td', { class: 'hide-sm muted', title: d.last_seen ? fmtDate(d.last_seen, getLang()) : '' }, fmtAgo(d.last_seen, t)),
       h('td', { class: 'min' }, d.web_url ? h('a', { class: 'icon-btn', href: d.web_url, target: '_blank', rel: 'noopener noreferrer', title: t('open.web'), 'aria-label': `${t('open.web')}: ${d.name}`, html: icon('open') }) : null));
   }
