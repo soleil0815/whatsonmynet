@@ -25,7 +25,7 @@ export const HELP_HEADINGS = {
   failover: ['Ausfallsicherung: Master und Standby', 'Failover: master and standby'],
   diag: ['Fehlerbehebung', 'Troubleshooting'],
   audit: null,
-  about: null,
+  about: ['Sicherung und Updates', 'Backup and updates'],
 };
 
 /** The box for a section: what it is for, and where to read more (opens the help beside, so the settings stay open) */

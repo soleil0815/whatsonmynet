@@ -86,6 +86,11 @@ export const DEFAULTS = {
   'events.winAllow': '',          // Windows event ids taken ("1116, 4740, 865-868"); empty = all
   'events.winDeny': WIN_NOISE,    // Windows event ids never taken; existing installations keep theirs (migration 35)
   'events.maxGb': 2,              // the messages file (data/events.sqlite) at most - less when the disk gets short
+  // Update check (Settings → About): off - WhatsOnMyNet asks GitHub only when an administrator wants it
+  'update.auto': false,           // once a day: is there a newer version?
+  'update.notify': false,         // report a new version once to the channels
+  'update.channels': [],          // empty = default channels
+  'update.last': {},              // { checkedAt, latest, url, published, notes, error, notified } - the last answer
   // Prometheus keys: [{ id, name, hash, prefix, created_at, created_by }] - only the SHA-256 of a key is kept
   'api.tokens': [],
 };

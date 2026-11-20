@@ -40,6 +40,7 @@ const TEXT = {
     test: '✅ Testnachricht von WhatsOnMyNet - dieser Kanal funktioniert.',
     foTakeover: '🛟 Ausfallsicherung: Der Master {master} ist seit {min} Min. nicht erreichbar - dieses System (Standby) hat die Überwachung übernommen.',
     foBack: '✅ Ausfallsicherung: Der Master {master} ist wieder da - er überwacht wieder, dieses System ist wieder Standby.',
+    update: '⬆️ WhatsOnMyNet {version} ist erschienen (hier läuft {here}). Was neu ist und wie du aktualisierst: Einstellungen → Über.',
     foVersions: '🔄 Ausfallsicherung: Der Master {master} läuft mit Version {masterVersion}, dieses System (Standby) mit {here}. {update} Beide sollten immer dieselbe Version haben, damit der Standby im Notfall genauso arbeitet.',
     foVersionsSchema: '⚠️ Ausfallsicherung: Der Master {master} läuft mit Version {masterVersion}, dieses System (Standby) mit {here} - so kann der Standby die Daten des Masters nicht mehr übernehmen (zuletzt: {lastSync}). {update}',
     foUpdateMaster: 'Bitte den Master auf {to} aktualisieren.', foUpdateStandby: 'Bitte diesen Standby auf {to} aktualisieren.', foUpdateBoth: 'Bitte beide auf dieselbe Version bringen.',
@@ -88,6 +89,7 @@ const TEXT = {
     test: '✅ Test message from WhatsOnMyNet - this channel works.',
     foTakeover: '🛟 Failover: the master {master} has not answered for {min} min - this server (standby) has taken over monitoring.',
     foBack: '✅ Failover: the master {master} is back - it monitors again, this server is standby again.',
+    update: '⬆️ WhatsOnMyNet {version} is out (this is {here}). What is new and how to update: Settings → About.',
     foVersions: '🔄 Failover: the master {master} runs version {masterVersion}, this server (standby) {here}. {update} Both should always run the same version, so that the standby works the same way when it has to take over.',
     foVersionsSchema: '⚠️ Failover: the master {master} runs version {masterVersion}, this server (standby) {here} - like this the standby cannot take the data of the master any more (last: {lastSync}). {update}',
     foUpdateMaster: 'Please update the master to {to}.', foUpdateStandby: 'Please update this standby to {to}.', foUpdateBoth: 'Please bring both to the same version.',
@@ -162,6 +164,7 @@ export function eventText(ev, lang = 'de') {
       }
       return fill(ev.what === 'back' ? T.foBack : T.foTakeover, { master: ev.master || '', min: ev.min ?? '' });
     }
+    case 'update': return fill(T.update, { version: ev.version || '', here: ev.here || '' });
     case 'logRule': {
       const rule = ev.rule?.name || '';
       const list = ev.events || [];
@@ -189,6 +192,7 @@ const ruleWhat = (e, T, n) => {
 
 function details(ev, lang) {
   const T = TEXT[lang === 'en' ? 'en' : 'de'];
+  if (ev.kind === 'update') return ev.url || '';
   if (ev.kind === 'newDevices') {
     return [...(ev.devices || []).slice(0, 30).map((d) => `• ${d.ip}  ${d.mac || ''}  ${d.vendor || ''}  ${d.hostname || ''}`.replace(/\s+$/, '')), '', T.inbox].join('\n');
   }

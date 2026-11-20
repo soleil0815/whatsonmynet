@@ -342,7 +342,7 @@ docker compose exec whatsonmynet womn-admin loadtest            # wie viele Meld
 
 Was neu ist, steht in [CHANGELOG.md](CHANGELOG.md) (dieselben Texte wie im Programm unter *Über WhatsOnMyNet*) und bei jeder Version auf GitHub.
 
-- Updates holen Dockhand oder Watchtower automatisch, oder von Hand: `docker compose pull && docker compose up -d`.
+- Updates holen Dockhand oder Watchtower automatisch, oder von Hand: `docker compose pull && docker compose up -d`. Ob es eine neue Version gibt, zeigt *Einstellungen → Über → Jetzt nach Updates sehen* (auf Wunsch einmal am Tag, mit Hinweis im Menü und Nachricht an einen Kanal) - WhatsOnMyNet fragt dafür nur GitHub nach der Versionsnummer, und erst, wenn du es einschaltest.
 - Sicherheitsupdates erscheinen am Patchday (zweiter Dienstag im Monat) als `<version>-s<n>`: dasselbe Programm mit neuem Basis-Image sowie aktualisierten Alpine- und npm-Paketen, gebaut, getestet und mit Trivy geprüft. Hat sich nichts geändert, wird nichts veröffentlicht.
 - Jeden Tag prüft Trivy das veröffentlichte Image. Gibt es behebbare Lücken, öffnet sich ein Issue, und das Sicherheitsupdate am Patchday behebt sie.
 - In der Woche vor dem Patchday greift ein ZAP-Scan das Programm in einem Wegwerf-Container ohne Anmeldung an. Das Ergebnis wertet der monatliche Code-Audit aus.

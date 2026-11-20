@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Check for updates: under Settings → About, "Check for updates now" shows whether there is a newer version – with what it brings and the command to update. Once a day if you like, then with a hint at the bottom left of the menu and a message to a channel. Off until you switch it on; only GitHub is asked for the version number, nothing is sent along, and nothing is installed by itself
+
+## 0.51.0 - 2026-11-19
+
 - Maintenance windows visible: a monitor in a maintenance window shows "Maintenance until tomorrow 10:00 · Backup night", the device page a note at the top, the inventory the same instead of "Monitor down" or "missing". Such devices do not count as a problem nor as missing on the overview; there they are listed quietly under Monitoring. Under Maintenance windows the one running now is marked
 
 ## 0.50.1 - 2026-11-18

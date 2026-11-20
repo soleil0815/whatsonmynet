@@ -106,6 +106,9 @@ function sidebar(active) {
         link('/account', 'account', 'user'),
         h('a', { href: '#', onclick: async (e) => { e.preventDefault(); await post('/logout').catch(() => {}); state.user = null; navigate('/login'); } },
           h('span', { html: icon('logout') }), t('nav.logout'))),
+      // a newer version is out (only known when an administrator lets WhatsOnMyNet ask - Settings → About)
+      u.isAdmin && state.boot.update?.version ? h('a', { class: 'update-hint', href: '/settings/about', 'data-link': true, title: t('upd.hintTitle') },
+        h('span', { html: icon('refresh') }), t('upd.hint', { v: state.boot.update.version })) : null,
       // For everyone: version, source code (AGPL), what is new
       h('div', { class: 'foot-links' },
         h('button', { type: 'button', class: 'version', title: t('about.title'), onclick: openAbout }, `WhatsOnMyNet ${state.boot.version}`),
@@ -233,6 +236,8 @@ export async function afterLogin(user) {
   setUser(user);
   state.boot.setupRequired = false;
   state.meta = await get('/meta');
+  // what only a signed-in user gets (a newer version, for administrators)
+  try { state.boot.update = (await get('/bootstrap')).update || null; } catch { /* the hint comes on the next load */ }
   await Promise.all([refreshBadge(), loadFailoverState()]);
   navigate('/', { replace: true });
 }

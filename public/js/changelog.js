@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Nach Updates sehen: Unter Einstellungen → Über zeigt „Jetzt nach Updates sehen“, ob es eine neuere Version gibt – mit dem, was sie bringt, und dem Befehl zum Aktualisieren. Auf Wunsch einmal am Tag, dann mit Hinweis unten links im Menü und einer Nachricht an einen Kanal. Aus, bis du es einschaltest; gefragt wird nur GitHub nach der Versionsnummer, ohne etwas mitzuschicken, und installiert wird nichts von selbst',
+  ], en: [
+    'Check for updates: under Settings → About, "Check for updates now" shows whether there is a newer version – with what it brings and the command to update. Once a day if you like, then with a hint at the bottom left of the menu and a message to a channel. Off until you switch it on; only GitHub is asked for the version number, nothing is sent along, and nothing is installed by itself',
+  ] },
+  { version: '0.51.0', date: '2026-11-19', de: [
     'Wartungsfenster sichtbar: Ein Monitor im Wartungsfenster zeigt „Wartung bis morgen 10:00 · Backup-Nacht“, die Geräteseite oben einen Hinweis, das Inventar dasselbe statt „Monitor gestört“ oder „fehlt“. Solche Geräte zählen nicht als Problem und auf der Übersicht nicht als fehlend; dort stehen sie still unter Monitoring. Unter Wartungsfenster ist das gerade laufende markiert',
   ], en: [
     'Maintenance windows visible: a monitor in a maintenance window shows "Maintenance until tomorrow 10:00 · Backup night", the device page a note at the top, the inventory the same instead of "Monitor down" or "missing". Such devices do not count as a problem nor as missing on the overview; there they are listed quietly under Monitoring. Under Maintenance windows the one running now is marked',

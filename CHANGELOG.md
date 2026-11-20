@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Nach Updates sehen: Unter Einstellungen → Über zeigt „Jetzt nach Updates sehen“, ob es eine neuere Version gibt – mit dem, was sie bringt, und dem Befehl zum Aktualisieren. Auf Wunsch einmal am Tag, dann mit Hinweis unten links im Menü und einer Nachricht an einen Kanal. Aus, bis du es einschaltest; gefragt wird nur GitHub nach der Versionsnummer, ohne etwas mitzuschicken, und installiert wird nichts von selbst
+
+## 0.51.0 - 2026-11-19
+
 - Wartungsfenster sichtbar: Ein Monitor im Wartungsfenster zeigt „Wartung bis morgen 10:00 · Backup-Nacht“, die Geräteseite oben einen Hinweis, das Inventar dasselbe statt „Monitor gestört“ oder „fehlt“. Solche Geräte zählen nicht als Problem und auf der Übersicht nicht als fehlend; dort stehen sie still unter Monitoring. Unter Wartungsfenster ist das gerade laufende markiert
 
 ## 0.50.1 - 2026-11-18

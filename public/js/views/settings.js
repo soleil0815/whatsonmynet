@@ -1559,7 +1559,69 @@ async function audit(body) {
 }
 
 async function about(body) {
-  mount(body, panel(t('set.about'), aboutContent()));
+  const upd = await updatePanel();
+  mount(body, upd, panel(t('set.about'), aboutContent()));
+  // a standby: what the master found (the settings come from it), nothing to switch here
+  lockForEditing(upd);
+}
+
+const UPDATE_CMD = 'docker compose pull && docker compose up -d';
+
+/** Is there a newer version? Asks GitHub only on the button or, when switched on, once a day - nothing is installed */
+async function updatePanel() {
+  let st;
+  try { st = await get('/update'); } catch { return null; }
+  const chans = await loadChannels();
+  const picker = channelPicker(chans, st.channels);
+  const result = h('div', {});
+  const show = (s) => {
+    const when = s.checkedAt ? fmtDate(s.checkedAt, getLang()) : '';
+    const err = s.error ? h('p', { class: 'muted small' }, t('upd.failed', { when, why: t(`upd.err.${s.error}`) })) : null;
+    const notes = s.notes?.[getLang() === 'en' ? 'en' : 'de'] || [];
+    if (s.available) {
+      // the new version: what it brings (plain text from the release), how to get it
+      state.boot.update = { version: s.latest, url: s.url };
+      mount(result, h('div', { class: 'note update-box' },
+        h('div', {},
+          h('strong', {}, t('upd.available', { v: s.latest, here: s.running })),
+          s.published ? h('span', { class: 'muted small' }, ` · ${fmtDate(s.published, getLang(), false)}`) : null,
+          notes.length ? h('ul', { class: 'changes' }, notes.map((x) => h('li', {}, x))) : null,
+          s.url ? h('p', { style: { margin: '6px 0' } }, h('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer' }, t('upd.allNews'))) : null,
+          h('p', { style: { margin: '10px 0 4px' } }, t('upd.how')),
+          cmdBox([UPDATE_CMD]),
+          h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, t('upd.howHint')))), err);
+    } else if (s.latest && !s.error) {
+      state.boot.update = null;
+      mount(result, h('p', {}, h('span', { class: 'pill pill-up' }, t('upd.upToDate')), ' ', t('upd.current', { v: s.running }), ' ', h('span', { class: 'muted small' }, t('upd.checked', { when }))));
+    } else if (s.error) {
+      mount(result, err);
+    } else {
+      mount(result, h('p', { class: 'muted' }, t('upd.never', { v: s.running })));
+    }
+  };
+  show(st);
+  const checkBtn = h('button', { class: 'btn', type: 'button', onclick: async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try { show(await post('/update/check', {})); } catch (ex) { fail(ex); }
+    b.disabled = false;
+  } }, h('span', { html: icon('refresh') }), t('upd.checkNow'));
+  if (!st.supported) {
+    return panel(t('upd.title'), h('div', {}, h('p', { class: 'muted' }, t('upd.unsupported')), result));
+  }
+  const form = h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    const d = formData(form);
+    try { await put('/settings/update', { auto: d.auto, notify: d.notify, channels: picker.value() }); toast(t('saved')); } catch (ex) { fail(ex); }
+  } },
+  result,
+  h('div', { class: 'actions', style: { justifyContent: 'flex-start', marginBottom: '8px' } }, checkBtn),
+  h('p', { class: 'muted small' }, t('upd.privacy')),
+  field(t('upd.auto'), h('input', { type: 'checkbox', name: 'auto', checked: st.auto }), t('upd.autoHint')),
+  field(t('upd.notify'), h('input', { type: 'checkbox', name: 'notify', checked: st.notify }), t('upd.notifyHint')),
+  picker.el,
+  saveBtn());
+  return panel(t('upd.title'), form);
 }
 
 // Notification services: grouped for the picker, with the fields each one needs

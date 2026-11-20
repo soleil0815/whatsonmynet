@@ -51,6 +51,8 @@ export function createApi(ctx) {
       title: settings.get('general.title'),
       sourceUrl: config.sourceUrl,
       user: req.user ? userOut(req.user) : null,
+      // a newer version (only known when an administrator lets WhatsOnMyNet ask) - for administrators only
+      update: req.user && can(req.user, 'admin') ? ctx.updateCheck.hint() : null,
     });
   });
 
@@ -630,6 +632,21 @@ export function createApi(ctx) {
     settings.set('autowatch.enabled', !!req.body.enabled);
     audit(req, 'settings.autowatch', req.body.enabled ? 'on' : 'off');
     res.json(settings.publicGroup('autowatch'));
+  });
+  // Is there a newer version? (Settings → About) - asks GitHub only from here or once a day when switched on
+  r.get('/update', admin, (_req, res) => res.json(ctx.updateCheck.status()));
+  r.post('/update/check', admin, async (req, res) => {
+    const s = await ctx.updateCheck.check();
+    audit(req, 'update.check', s.error || s.latest || '');
+    res.json(s);
+  });
+  r.put('/settings/update', admin, (req, res) => {
+    const b = req.body;
+    if ('auto' in b) settings.set('update.auto', !!b.auto);
+    if ('notify' in b) settings.set('update.notify', !!b.notify);
+    if ('channels' in b) settings.set('update.channels', channelIds(b.channels));
+    audit(req, 'settings.update', `${settings.get('update.auto') ? 'daily' : 'off'}${settings.get('update.notify') ? ', notify' : ''}`);
+    res.json(ctx.updateCheck.status());
   });
   r.put('/settings/general', admin, (req, res) => {
     settings.set('general.title', line(req.body.title, 60) || 'WhatsOnMyNet');
