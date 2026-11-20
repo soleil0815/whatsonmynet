@@ -17,6 +17,7 @@ import { createChannels } from './monitor/notify.js';
 import { createMaintenance } from './monitor/maintenance.js';
 import { createMonitoring } from './monitor/index.js';
 import { createNightly } from './scan/nightly.js';
+import { createUpdateCheck } from './updatecheck.js';
 import { createPrinters } from './printers.js';
 import { createDockerHosts } from './monitor/docker.js';
 import { createSnmpDevices } from './snmpdevices.js';
@@ -121,9 +122,12 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   const autoWatch = createAutoWatch({ db, settings, monitoring });
   // Event rules: chosen messages to chosen channels (mail, ticket system, webhook) - apart from the monitors
   const eventRules = createEventRules({ db, channels, settings });
+  // Is there a newer version? Only when an administrator wants it (button, or once a day while active)
+  const updateCheck = createUpdateCheck({ settings, version: config.version, sourceUrl: config.sourceUrl,
+    notify: (ids, ev) => channels.notifyIds(ids, { ...ev, at: new Date().toISOString() }) });
   // Failover: what only runs on the installation that is active (alone, master, or a standby that has taken over)
   const failover = createFailover({ db, settings, dataDir,
-    engines: [monitoring, nightly, printers, snmpDevices, reports, proxmox, autoWatch, eventRules],
+    engines: [monitoring, nightly, printers, snmpDevices, reports, proxmox, autoWatch, eventRules, updateCheck],
     notify: (ev) => channels.notifyIds([], { ...ev, at: new Date().toISOString() }),
     certPem: () => tls?.current()?.cert || '',
     snapshot: () => backups.snapshot(), discard: (f) => backups.discard(f),
@@ -151,7 +155,7 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   } });
   const apiTokens = createApiTokens({ settings });
   diagnostics.useSources({ events, eventRules, apiTokens });
-  const ctx = { db, settings, events, eventRules, apiTokens, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups, statusPages,
+  const ctx = { db, settings, events, eventRules, apiTokens, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups, statusPages, updateCheck,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 

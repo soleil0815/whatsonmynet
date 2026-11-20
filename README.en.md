@@ -342,7 +342,7 @@ docker compose exec whatsonmynet womn-admin loadtest        # how many messages 
 
 What is new is in [CHANGELOG.en.md](CHANGELOG.en.md) (the same texts as in the program under *About WhatsOnMyNet*) and with every release on GitHub.
 
-- Dockhand or Watchtower fetch updates automatically, or by hand: `docker compose pull && docker compose up -d`.
+- Dockhand or Watchtower fetch updates automatically, or by hand: `docker compose pull && docker compose up -d`. Whether there is a new version, *Settings → About → Check for updates now* tells you (once a day if you like, with a hint in the menu and a message to a channel) - WhatsOnMyNet only asks GitHub for the version number, and only once you switch it on.
 - Security updates are published on patch day (second Tuesday of the month) as `<version>-s<n>`: the same program with a new base image and updated Alpine and npm packages, built, tested and checked with Trivy. If nothing changed, nothing is published.
 - Trivy checks the published image every day. Fixable vulnerabilities open an issue; the security update on patch day fixes them.
 - In the week before patch day a ZAP scan attacks the program in a throwaway container without login. The monthly code audit evaluates the result.

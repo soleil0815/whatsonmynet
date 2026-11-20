@@ -937,3 +937,14 @@ dialog.modal.wide:has(.ev-noise) { width: min(980px, calc(100vw - 24px)); }
 .history-list button .badge-maint { flex: none; align-self: center; }
 .dash-maint a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
 .dash-maint a:hover .name { text-decoration: underline; }
+
+/* Update check: the new version under Settings → About, and the hint at the version number in the menu */
+.note.update-box { background: var(--ok-soft); color: var(--ink); }
+.note.update-box > div { min-width: 0; flex: 1; }
+.note.update-box ul.changes { margin: 8px 0 4px; padding-left: 18px; }
+.note.update-box ul.changes li { margin: 2px 0; }
+.note.update-box .cmd-box pre { margin: 0; flex: 1; min-width: 0; overflow-x: auto; }
+.update-hint { display: inline-flex; align-self: flex-start; width: fit-content; align-items: center; gap: 5px; margin: 4px 10px 0; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  background: var(--ok-soft); color: var(--ok); text-decoration: none; }
+.update-hint:hover, .update-hint:focus-visible { text-decoration: underline; }
+.update-hint svg { width: 12px; height: 12px; display: block; }

@@ -873,6 +873,17 @@ Beim Koppeln übernimmt der Standby **alle Daten des Masters** (Geräte, Monitor
 
 **Was ist neu?** Ein Klick auf die Versionsnummer unten links im Menü zeigt *Über WhatsOnMyNet*: die Änderungen der letzten Versionen, den Link zum Quellcode, die Website und einen Kaffee-Link. Den Kaffee-Link gibt es auch direkt unten im Menü. Das geht für alle Benutzer, nicht nur für Administratoren.
 
+**Gibt es eine neue Version?** Wer seinen Container nicht von selbst aktualisieren lässt, sieht unter *Einstellungen → Über → Updates* nach: **Jetzt nach Updates sehen** fragt GitHub nach der Nummer der neuesten Version. Gibt es eine neuere, steht dort, was sie bringt, ein Link zu allen Neuigkeiten und der Befehl zum Aktualisieren (`docker compose pull && docker compose up -d`, im Ordner mit der `docker-compose.yml`). Daten und Einstellungen bleiben dabei erhalten.
+
+![Nach Updates sehen](img/update-de.png)
+
+- Von sich aus fragt WhatsOnMyNet **nicht** - erst mit dem Knopf oder mit *Einmal am Tag nachsehen*. Dann steht eine neue Version unten links im Menü („0.52.0 ist da“, nur für Administratoren); ein Klick führt zu den Einzelheiten.
+- *Neue Version melden* schickt einmal je Version eine Nachricht an die gewählten Kanäle (ohne Auswahl an die Standard-Kanäle).
+- Gefragt wird nur `api.github.com` (Port 443), und es wird nichts mitgeschickt - keine Kennung, keine Statistik. Installiert wird nichts von selbst.
+- Klappt das Nachsehen nicht, steht dort warum (kein Internet, ein Proxy bricht TLS auf …); die zuletzt gefundene Version bleibt stehen. Die monatlichen Sicherheits-Updates (`…-s1`) zählen nicht als neue Version - die holen Dockhand, Watchtower oder derselbe Befehl.
+- Auf einem Standby der Ausfallsicherung steht, was der Master gefunden hat; nachgesehen wird nur auf dem aktiven System. Master und Standby sollten immer dieselbe Version haben.
+- Nennt eine veränderte Fassung über `WOMN_SOURCE_URL` keine GitHub-Seite als Quellcode, sieht sie nicht nach Updates.
+
 ## Fehlerbehebung
 
 - **Oberfläche nicht erreichbar**: Firewall des Hosts für den HTTPS-Port öffnen. Mit Host-Netzwerk zeigt Docker/Dockhand keine Port-Zuordnung - das ist richtig so.

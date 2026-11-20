@@ -874,6 +874,17 @@ When pairing, the standby takes **all data of the master** (devices, monitors, u
 
 **What's new?** A click on the version number at the bottom left of the menu shows *About WhatsOnMyNet*: the changes of the latest versions, the link to the source code, the website and a coffee link. The coffee link is also right at the bottom of the menu. This works for every user, not only for administrators.
 
+**Is there a new version?** If your container is not updated by itself, look under *Settings → About → Updates*: **Check for updates now** asks GitHub for the number of the newest version. If there is a newer one, you see what it brings, a link to all news and the command to update (`docker compose pull && docker compose up -d`, in the folder with the `docker-compose.yml`). Data and settings stay.
+
+![Check for updates](img/update-en.png)
+
+- WhatsOnMyNet does **not** ask by itself - only with the button or with *Check once a day*. Then a new version is shown at the bottom left of the menu ("0.52.0 is out", for administrators only); a click leads to the details.
+- *Report a new version* sends a message once per version to the chosen channels (none chosen: the default channels).
+- Only `api.github.com` (port 443) is asked, and nothing is sent along - no id, no statistics. Nothing is installed by itself.
+- If checking does not work, the page says why (no internet, a proxy breaks up TLS …); the version found last stays shown. The monthly security updates (`…-s1`) do not count as a new version - Dockhand, Watchtower or the same command fetch them.
+- On a standby of the failover you see what the master found; only the active server checks. Master and standby should always run the same version.
+- A changed version whose `WOMN_SOURCE_URL` names no GitHub page as its source code does not check for updates.
+
 ## Troubleshooting
 
 - **Interface not reachable**: open the host firewall for the HTTPS port. With host networking Docker/Dockhand shows no port mapping - that is correct.
