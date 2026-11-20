@@ -36,11 +36,12 @@ export function releaseApi(sourceUrl) {
   return `https://api.github.com/repos/${owner}/${repo.replace(/\.git$/, '')}/releases/latest`;
 }
 
-const clean = (t) => t
+// any tag goes, with what it holds; an unclosed "<" takes the rest of the line (no "<" can be left - shown as text anyway)
+const noTags = (t) => t.split('<').map((part, i) => (i === 0 ? part : part.slice(part.includes('>') ? part.indexOf('>') + 1 : part.length))).join('').replace(/>/g, '');
+const clean = (t) => noTags(t)
   .replace(/!\[[^\]]*\]\([^)]*\)/g, '')            // images
   .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')         // links: the text only
   .replace(/[*_`]+/g, '')                          // emphasis, code
-  .replace(/<[^>]*>/g, '').replace(/[<>]/g, '')    // any tag, and what is left of one (shown as text anyway)
   .replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim();
 
 /**
