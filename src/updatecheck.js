@@ -40,7 +40,7 @@ const clean = (t) => t
   .replace(/!\[[^\]]*\]\([^)]*\)/g, '')            // images
   .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')         // links: the text only
   .replace(/[*_`]+/g, '')                          // emphasis, code
-  .replace(/<[^>]*>/g, '')                         // any tag
+  .replace(/<[^>]*>/g, '').replace(/[<>]/g, '')    // any tag, and what is left of one (shown as text anyway)
   .replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim();
 
 /**

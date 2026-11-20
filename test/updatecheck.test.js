@@ -49,6 +49,7 @@ test('release notes: the own lists per language as plain text - not the list of 
   assert.equal(releaseNotes(Array.from({ length: 30 }, (_, i) => `- Punkt ${i}`).join('\n')).de.length, 15);
   assert.ok(releaseNotes(`- ${'x'.repeat(500)}`).de[0].length <= 300);
   assert.deepEqual(releaseNotes(null), { de: [], en: [] });
+  assert.deepEqual(releaseNotes('- a <<script>script> b <x'), { de: ['a script b x'], en: ['a script b x'] });
 });
 
 test('off by default: nothing asked, no hint; only administrators may look', async () => {
