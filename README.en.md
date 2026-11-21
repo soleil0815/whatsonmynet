@@ -28,7 +28,7 @@ Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans y
 | 🔍 **Scan and inventory** | Gentle scan with radar, manufacturer and device type by itself (Telematik too), inventory by ticking, MAC as identity, network map from the switches |
 | 📈 **Monitoring** | New devices are watched right away (monitor and first sensors by themselves); web, TCP, ping, network drives, Docker, MariaDB/PostgreSQL/Redis, certificates - with escalation, dependencies, groups (one alarm per group), maintenance windows, a year of history and status pages without login (as in Uptime Kuma) |
 | 🌡️ **Sensors like PRTG** | Toner, disks, ports, UPS, every temperature, CPU, RAM, VMs and backups - with limit, alarm and a chart that shows outages with start, end and length |
-| 🖥️ **Virtualization and hardware** | Proxmox VE/Backup Server (clusters too), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity via Redfish |
+| 🖥️ **Virtualization and hardware** | Proxmox VE/Backup Server (clusters too), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity via Redfish. If nodes or VMs run the script, updates, restart, services and disks are shown right along |
 | 🧪 **More checks** | Mail servers (SMTP/IMAP/POP3 with TLS and certificate), DNS, LDAP/Active Directory, time servers (NTP), Microsoft SQL Server |
 | 🔔 **Messages** | Receive SNMP traps, syslog (UDP, TCP, TLS) and Windows events (NXLog, Fluent Bit), match them to the device, alarm at once; event rules send chosen messages by mail or to the ticket system |
 | 📈 **Prometheus & Grafana** | /metrics with a key, ready-made Grafana dashboard |

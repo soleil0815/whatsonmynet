@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Virtualization and script together: if a Proxmox node, a VM or a container runs the script, the virtualization page shows right there what needs a look – pending updates, restart needed, failed services, full drives, disks and storage pools. "Everything from the script" unfolds the whole system view, VMs with the script lead to the inventory with a click, and the overview shows the most important things with names (also in the "Problems" filter)
+
+## 0.52.0 - 2026-11-20
+
 - Check for updates: under Settings → About, "Check for updates now" shows whether there is a newer version – with what it brings and the command to update. Once a day if you like, then with a hint at the bottom left of the menu and a message to a channel. Off until you switch it on; only GitHub is asked for the version number, nothing is sent along, and nothing is installed by itself
 
 ## 0.51.0 - 2026-11-19

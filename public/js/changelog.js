@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Virtualisierung und Skript zusammen: Läuft auf einem Proxmox-Knoten oder in einer VM bzw. einem Container das Skript, steht unter Virtualisierung gleich dabei, was einen Blick braucht – offene Updates, Neustart nötig, ausgefallene Dienste, volle Laufwerke, Festplatten und Speicherpools. „Alles aus dem Skript“ klappt die ganze Systemansicht auf, VMs mit Skript führen per Klick ins Inventar, und die Übersicht zeigt das Wichtigste mit Namen (auch im Filter „Probleme“)',
+  ], en: [
+    'Virtualization and script together: if a Proxmox node, a VM or a container runs the script, the virtualization page shows right there what needs a look – pending updates, restart needed, failed services, full drives, disks and storage pools. "Everything from the script" unfolds the whole system view, VMs with the script lead to the inventory with a click, and the overview shows the most important things with names (also in the "Problems" filter)',
+  ] },
+  { version: '0.52.0', date: '2026-11-20', de: [
     'Nach Updates sehen: Unter Einstellungen → Über zeigt „Jetzt nach Updates sehen“, ob es eine neuere Version gibt – mit dem, was sie bringt, und dem Befehl zum Aktualisieren. Auf Wunsch einmal am Tag, dann mit Hinweis unten links im Menü und einer Nachricht an einen Kanal. Aus, bis du es einschaltest; gefragt wird nur GitHub nach der Versionsnummer, ohne etwas mitzuschicken, und installiert wird nichts von selbst',
   ], en: [
     'Check for updates: under Settings → About, "Check for updates now" shows whether there is a newer version – with what it brings and the command to update. Once a day if you like, then with a hint at the bottom left of the menu and a message to a channel. Off until you switch it on; only GitHub is asked for the version number, nothing is sent along, and nothing is installed by itself',

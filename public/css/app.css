@@ -948,3 +948,15 @@ dialog.modal.wide:has(.ev-noise) { width: min(980px, calc(100vw - 24px)); }
   background: var(--ok-soft); color: var(--ok); text-decoration: none; }
 .update-hint:hover, .update-hint:focus-visible { text-decoration: underline; }
 .update-hint svg { width: 12px; height: 12px; display: block; }
+
+/* Virtualization: what the script of a node or guest says, next to what the interface of the hypervisor says */
+.node-list li { flex-wrap: wrap; }
+.script-glance { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.script-more { flex-basis: 100%; margin: 2px 0 4px; }
+.script-more > summary { cursor: pointer; font-size: 12.5px; color: var(--accent); width: fit-content; }
+.script-more-body > .panel { margin-top: 8px; box-shadow: none; border: 1px solid var(--line); }
+a.guest-script { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; position: relative; }
+a.guest-script:hover, a.guest-script:focus-visible { text-decoration: underline; }
+.guest-script-icon svg { width: 11px; height: 11px; display: block; opacity: .75; }
+.guest-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--new-fill); box-shadow: 0 0 0 1px rgba(0,0,0,.25); display: inline-block; }
+.script-more a, .script-more + a { color: var(--accent); }

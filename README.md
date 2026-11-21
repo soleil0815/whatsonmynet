@@ -28,7 +28,7 @@ Netzwerk-Inventar, Monitoring und Sensoren in einem Container: WhatsOnMyNet scan
 | 🔍 **Scan und Inventar** | Schonender Scan mit Radar, Hersteller und Gerätetyp von selbst (auch Telematik), Inventar per Häkchen, MAC als Ausweis, Netzplan aus den Switches |
 | 📈 **Monitoring** | Neue Geräte sind gleich überwacht (Monitor und erste Sensoren von selbst); Web, TCP, Ping, Netzlaufwerke, Docker, MariaDB/PostgreSQL/Redis, Zertifikate - mit Eskalation, Abhängigkeiten, Gruppen (ein Alarm je Gruppe), Wartungsfenstern, Verlauf über ein Jahr und Statusseiten ohne Anmeldung (wie in Uptime Kuma) |
 | 🌡️ **Sensoren wie bei PRTG** | Toner, Festplatten, Ports, USV, jede Temperatur, CPU, RAM, VMs und Sicherungen - mit Grenzwert, Alarm und Diagramm, das Ausfälle mit Beginn, Ende und Dauer zeigt |
-| 🖥️ **Virtualisierung und Hardware** | Proxmox VE/Backup Server (auch Cluster), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity per Redfish |
+| 🖥️ **Virtualisierung und Hardware** | Proxmox VE/Backup Server (auch Cluster), VMware, Hyper-V, XCP-ng, Nutanix, oVirt, KVM; UniFi, Omada, MikroTik; iDRAC, iLO, XClarity per Redfish. Läuft auf Knoten oder VMs das Skript, stehen Updates, Neustart, Dienste und Festplatten gleich mit dabei |
 | 🧪 **Weitere Prüfungen** | Mailserver (SMTP/IMAP/POP3 mit TLS und Zertifikat), DNS, LDAP/Active Directory, Zeitserver (NTP), Microsoft SQL Server |
 | 🔔 **Meldungen** | SNMP-Traps, Syslog (UDP, TCP, TLS) und Windows-Ereignisse (NXLog, Fluent Bit) empfangen, dem Gerät zuordnen, sofort alarmieren; Ereignisregeln schicken ausgewählte Meldungen per Mail oder ans Ticketsystem |
 | 📈 **Prometheus & Grafana** | /metrics mit Schlüssel, fertiges Grafana-Dashboard |

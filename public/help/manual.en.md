@@ -491,6 +491,13 @@ WhatsOnMyNet reads Proxmox VE and the Proxmox Backup Server through their built-
 
 **Cluster:** entering one node is enough. WhatsOnMyNet asks the cluster which nodes there are, at which address they are reachable and which certificate they have (again every 6 hours). If the entered node does not answer, the next node is asked - with the same token (it is valid in the whole cluster) and only after its certificate has been checked. The virtualisation page then shows "read through node pve2". The Proxmox Backup Server knows no cluster: each one is entered on its own.
 
+**What the script reports is shown under Virtualization too:** if a node, a VM or a container runs the Linux or Windows script, WhatsOnMyNet joins both - the interface of the hypervisor and the script of the system. They are matched by name as for the temperatures (node or guest `fileserver` ↔ machine `fileserver` or `fileserver.firma.local`).
+
+- **At the node**, next to "online" and CPU/RAM, you see what needs a look: pending updates (red with security updates), *restart needed*, failed services, a storage pool not fine, a drive 90 % full or more, a disk with a warning, own checks not OK - or *Script: all fine*. **Everything from the script** unfolds the whole system view, as in the inventory; the node's name leads to the device.
+- **VMs and containers** with the script have a small computer icon and lead to the inventory with a click; a dot means "needs a look". Below, only the guests whose script reports something are listed - the others stay quiet.
+- **In the overview**, the row of the host shows the most important things with names: *Service failed: fileserver*, *Storage/disk: …*, *Security updates: pve01*, *Restart needed: …*, *Script silent: …*. So the *Problems* filter finds such hosts as well.
+- A script that has not reported for 15 minutes is shown as "not reporting"; after a day without a report it drops out of the view.
+
 **Temperatures of the nodes:** the Proxmox interface knows no temperatures. If a node also runs the Linux script (see *Windows and Linux machines by script*), its highest temperature is shown at the node on the virtualisation page. A sensor for it: at the Proxmox host or at the device **Add sensor** → *Temperature: the highest of all sensors* (alarm from 85 °C, can be changed; single sensors with the chip's warning limit); single sensors (CPU, NVMe …) are in the same list under "Node pve1". They are matched by name: node `pve1` ↔ machine `pve1` or `pve1.firma.local`.
 
 ### Step 1: prepare Proxmox (once)

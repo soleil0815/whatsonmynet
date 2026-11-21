@@ -238,23 +238,62 @@ export function hostTempsByName(db) {
   return out;
 }
 
-/** Short names of the machines whose script reports (current reports only) */
-export function reportingHostNames(db) {
-  const out = new Set();
-  for (const r of db.prepare('SELECT d.name, d.hostname, h.at, h.data FROM host_reports h JOIN devices d ON d.id=h.device_id').all()) {
-    if (Date.now() - Date.parse(r.at) > STALE_MIN * 60 * 1000) continue;
+/**
+ * What matters at a glance from a script report - for the page of a hypervisor, where the node or guest is shown
+ * without its own inventory page: updates, restart, failed services, pools, disks, own checks. Only counts and names,
+ * never more than the inventory shows anyway.
+ */
+export function hostGlance(x) {
+  const fullDisks = (x.disks || []).filter((d) => d.pct >= 90).map((d) => ({ name: d.name, pct: d.pct })).slice(0, 5);
+  const badPools = (x.pools || []).filter((p) => !p.good).map((p) => ({ name: p.name, state: p.state })).slice(0, 5);
+  return {
+    os: x.os || '', uptime: x.uptime || 0, cpu: x.cpu ?? null, mem: x.mem ?? null,
+    updates: x.updates ? { pending: x.updates.pending ?? null, security: x.updates.security ?? null } : null,
+    reboot: !!x.updates?.reboot,
+    failed: (x.services || []).filter((s) => s.failed).map((s) => s.display || s.name).slice(0, 5),
+    failedCount: (x.services || []).filter((s) => s.failed).length,
+    pools: badPools, disks: fullDisks,
+    pdisks: (x.pdisks || []).filter((d) => d.health === 'failed' || d.health === 'warning').length,
+    checks: (x.checks || []).filter((c) => c.status > 0).length,
+  };
+}
+
+/**
+ * Machines whose script reports (not gone), by short name → { deviceId, at, stale, glance }; the newest report wins
+ * when two machines share a name. One query, each report read once - also with many machines.
+ */
+const reportingCache = new WeakMap();
+/** Tests: read the reports anew on the next call */
+export const forgetReporting = (db) => reportingCache.delete(db);
+export function reportingHosts(db) {
+  // one page lists many hypervisors: read the reports once for all of them (a few seconds are new enough)
+  const hit = reportingCache.get(db);
+  if (hit && Date.now() - hit.at < 3000) return hit.map;
+  const out = new Map();
+  for (const r of db.prepare('SELECT d.id, d.name, d.hostname, h.at, h.data FROM host_reports h JOIN devices d ON d.id=h.device_id WHERE h.at >= ? ORDER BY h.at')
+    .all(goneBefore())) {
     let x = {};
     try { x = JSON.parse(r.data) || {}; } catch { /* name of the device only */ }
-    for (const n of [x.hostname, r.hostname, r.name]) { const k = String(n || '').toLowerCase().split('.')[0].trim(); if (k) out.add(k); }
+    const v = { deviceId: r.id, at: r.at, stale: Date.now() - Date.parse(r.at) > STALE_MIN * 60 * 1000, glance: hostGlance(x) };
+    for (const n of [x.hostname, r.hostname, r.name]) { const k = String(n || '').toLowerCase().split('.')[0].trim(); if (k) out.set(k, v); }
   }
+  reportingCache.set(db, { at: Date.now(), map: out });
   return out;
 }
 
-/** Node list of a hypervisor: which nodes run the script (the interface offers it for the others) */
+/**
+ * Node and guest list of a hypervisor joined with the script of the same machine: which nodes run it (the interface
+ * offers it for the others) and, for nodes and guests with a report, what it says at a glance and where it is in
+ * the inventory.
+ */
 export function nodeScriptsInto(db, data) {
-  if (!Array.isArray(data?.nodes) || !data.nodes.length) return data;
-  const names = reportingHostNames(db);
-  return { ...data, nodes: data.nodes.map((n) => ({ ...n, script: names.has(String(n.name || '').toLowerCase().split('.')[0]) })) };
+  const hasNodes = Array.isArray(data?.nodes) && data.nodes.length;
+  const hasGuests = Array.isArray(data?.guests) && data.guests.length;
+  if (!hasNodes && !hasGuests) return data;
+  const hosts = reportingHosts(db);
+  const of = (name) => hosts.get(String(name || '').toLowerCase().split('.')[0].trim());
+  const join = (n) => { const r = of(n.name); return r ? { ...n, script: !r.stale, report: r } : { ...n, script: false }; };
+  return { ...data, ...(hasNodes ? { nodes: data.nodes.map(join) } : {}), ...(hasGuests ? { guests: data.guests.map(join) } : {}) };
 }
 
 /** Node list of a hypervisor with the temperature of each node that runs the Linux script (current reports only) */
