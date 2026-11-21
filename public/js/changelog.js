@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Virtualisierung, Server-Hardware, Netzwerk-Controller und Cloud: Fehlermeldungen der Verbindungen stehen jetzt auf Deutsch (z. B. „seit über 15 Minuten keine Daten vom Host-Skript - läuft die geplante Aufgabe?“ statt englischem Text)',
+  ], en: [
+    'Virtualization, server hardware, network controllers and cloud: connection errors are now shown in German in the German interface (they used to be English)',
+  ] },
+  { version: '0.53.0', date: '2026-11-21', de: [
     'Virtualisierung und Skript zusammen: Läuft auf einem Proxmox-Knoten oder in einer VM bzw. einem Container das Skript, steht unter Virtualisierung gleich dabei, was einen Blick braucht – offene Updates, Neustart nötig, ausgefallene Dienste, volle Laufwerke, Festplatten und Speicherpools. „Alles aus dem Skript“ klappt die ganze Systemansicht auf, VMs mit Skript führen per Klick ins Inventar, und die Übersicht zeigt das Wichtigste mit Namen (auch im Filter „Probleme“)',
   ], en: [
     'Virtualization and script together: if a Proxmox node, a VM or a container runs the script, the virtualization page shows right there what needs a look – pending updates, restart needed, failed services, full drives, disks and storage pools. "Everything from the script" unfolds the whole system view, VMs with the script lead to the inventory with a click, and the overview shows the most important things with names (also in the "Problems" filter)',

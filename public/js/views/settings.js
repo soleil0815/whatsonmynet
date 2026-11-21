@@ -483,7 +483,7 @@ function proxmoxDetail(x) {
   // never reached yet: only the error and what to do, no empty sections
   const sensor = () => openMonitorForm(null, () => {}, { type: 'sensor', name: `${x.name} - Sensor`, interval_s: 300, fail_threshold: 1, options: { host: x.id } });
   const head = h('div', { class: 'actions', style: { marginBottom: '10px' } },
-    !x.last_ok ? h('span', { class: 'note warn', style: { margin: 0 } }, x.last_error) : h('span', { class: 'muted small' }, `${PUSH.includes(x.kind) ? t('virt.lastPush') : t('prn.checked')}: ${fmtDate(x.last_at, getLang())}`),
+    !x.last_ok ? h('span', { class: 'note warn', style: { margin: 0 } }, checkText(x.last_error, getLang())) : h('span', { class: 'muted small' }, `${PUSH.includes(x.kind) ? t('virt.lastPush') : t('prn.checked')}: ${fmtDate(x.last_at, getLang())}`),
     btn(t('sens.add'), { class: 'btn btn-sm', onclick: sensor }, 'plus'));
   // Token without read rights: Proxmox shows almost nothing instead of refusing - say what is missing and how to fix it
   const user = String(x.token_id || '').split('!')[0];
@@ -699,7 +699,7 @@ function editVirt(x, kind, reload) {
       const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d);
       m.close();
       if (push && !x) { showScript(r, reload); return; }
-      toast(push || r.last_ok ? t('saved') : r.last_error, push || r.last_ok ? undefined : 'error');
+      toast(push || r.last_ok ? t('saved') : checkText(r.last_error, getLang()), push || r.last_ok ? undefined : 'error');
       reload();
     } catch (ex) { fail(ex); }
   }, actions: [
@@ -771,7 +771,7 @@ function editCloud(x, kind, reload) {
     try {
       const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d);
       m.close();
-      toast(r.last_ok ? t('cl.connected') : r.last_error, r.last_ok ? undefined : 'error');
+      toast(r.last_ok ? t('cl.connected') : checkText(r.last_error, getLang()), r.last_ok ? undefined : 'error');
       reload();
     } catch (ex) { fail(ex); }
   }, actions: [
@@ -942,7 +942,7 @@ async function proxmox(body, _s, reload, scope = 'virt') {
     const m = modal(x ? x.name : t('px.add'), form, { wide: true, onSubmit: async () => {
       const d = formData(form);
       if (!d.secret) delete d.secret;
-      try { const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d); m.close(); toast(r.last_ok ? t('px.connected') : r.last_error, r.last_ok ? undefined : 'error'); reload(); } catch (ex) { fail(ex); }
+      try { const r = x ? await put(`/proxmox/${x.id}`, d) : await post('/proxmox', d); m.close(); toast(r.last_ok ? t('px.connected') : checkText(r.last_error, getLang()), r.last_ok ? undefined : 'error'); reload(); } catch (ex) { fail(ex); }
     }, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
       h('button', { class: 'btn btn-primary', type: 'submit' }, t('pxs.save'))] });
@@ -1042,7 +1042,7 @@ function hostSummary(x) {
   const warn = (text) => issues.push({ tone: 'warn', text });
   const deep = [];
   if (!x.last_at) figures.push(PUSH.includes(x.kind) ? t('virt.waiting') : t('prn.none'));
-  else if (!x.last_ok) bad(x.last_error || t('vo.error'));
+  else if (!x.last_ok) bad(x.last_error ? checkText(x.last_error, getLang()) : t('vo.error'));
   if (x.last_ok && (d.missing || []).length) warn(t('vo.rights'));
   // Cluster: the entered node does not answer, another one did
   if (x.last_ok && d.via) warn(t('vo.via', { node: d.via.node }));

@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Virtualisierung, Server-Hardware, Netzwerk-Controller und Cloud: Fehlermeldungen der Verbindungen stehen jetzt auf Deutsch (z. B. „seit über 15 Minuten keine Daten vom Host-Skript - läuft die geplante Aufgabe?“ statt englischem Text)
+
+## 0.53.0 - 2026-11-21
+
 - Virtualisierung und Skript zusammen: Läuft auf einem Proxmox-Knoten oder in einer VM bzw. einem Container das Skript, steht unter Virtualisierung gleich dabei, was einen Blick braucht – offene Updates, Neustart nötig, ausgefallene Dienste, volle Laufwerke, Festplatten und Speicherpools. „Alles aus dem Skript“ klappt die ganze Systemansicht auf, VMs mit Skript führen per Klick ins Inventar, und die Übersicht zeigt das Wichtigste mit Namen (auch im Filter „Probleme“)
 
 ## 0.52.0 - 2026-11-20

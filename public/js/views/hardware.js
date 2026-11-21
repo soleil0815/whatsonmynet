@@ -1,5 +1,6 @@
 // What the management chip (iDRAC, iLO, XClarity …) says about its server: overall health, power, fans, temperatures,
 // power supplies, RAID controller, volumes and drives. Shown on the page "Server hardware" and on the device page.
+import { checkText } from '../checktext.js';
 import { h, fmtDate } from '../dom.js';
 import { t, getLang } from '../i18n.js';
 
@@ -61,6 +62,6 @@ export function hardwarePanel(hw) {
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } },
       h('h2', { class: 'section-title', style: { margin: 0 } }, t('hw.panel')),
       h('a', { href: '/hardware', 'data-link': true, class: 'muted small' }, hw.last_at ? `${hw.name} · ${fmtDate(hw.last_at, getLang())}` : hw.name)),
-    hw.last_ok ? null : h('div', { class: 'note warn' }, hw.last_error),
+    hw.last_ok ? null : h('div', { class: 'note warn' }, checkText(hw.last_error, getLang())),
     hardwareDetail(hw.data));
 }
