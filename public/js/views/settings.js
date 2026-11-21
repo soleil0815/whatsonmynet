@@ -976,6 +976,9 @@ async function proxmox(body, _s, reload, scope = 'virt') {
   let filter = 'all';
   const cloud = scope === 'cloud';
   const q = h('input', { type: 'search', placeholder: t(cloud ? 'vo.searchCloud' : 'vo.search'), 'aria-label': t(cloud ? 'vo.searchCloud' : 'vo.search') });
+  // from the search over everything (?q=name): that host, opened
+  const fromSearch = new URLSearchParams(location.search).get('q') || '';
+  q.value = fromSearch;
   const qBox = h('label', { class: 'search' }, h('span', { class: 'ico', html: icon('search') }), q);
   const kindsHere = [...new Set(list.map((x) => x.kind))];
   const problems = rows.filter((r) => r.s.state === 'bad' || r.s.state === 'warn').length;
@@ -988,7 +991,7 @@ async function proxmox(body, _s, reload, scope = 'virt') {
     mount(chips, chip('all', t('all'), rows.length), problems ? chip('problems', t('vo.problems'), problems) : null,
       kindsHere.length > 1 ? kindsHere.map((k) => chip(k, t(`vo.k.${k}`) === `vo.k.${k}` ? t(`virt.k.${k}`) : t(`vo.k.${k}`), list.filter((x) => x.kind === k).length)) : null);
     const shown = rows.filter((r) => (filter === 'all' || (filter === 'problems' ? r.s.state === 'bad' || r.s.state === 'warn' : r.x.kind === filter)) && matches(r, needle));
-    mount(listBox, shown.length ? shown.map((r) => hostRow(r, compact ? open.has(r.x.id) || (needle && r.s.deep.includes(needle) && shown.length <= 3) : true)) : h('p', { class: 'muted panel panel-pad', style: { margin: 0 } }, t('vo.noMatch')));
+    mount(listBox, shown.length ? shown.map((r) => hostRow(r, compact ? open.has(r.x.id) || (needle && r.s.deep.includes(needle) && shown.length <= 3) || (fromSearch && needle === fromSearch.toLowerCase() && shown.length === 1) : true)) : h('p', { class: 'muted panel panel-pad', style: { margin: 0 } }, t('vo.noMatch')));
   }
   function hostRow({ x, s }, isOpen) {
     const det = h('details', { class: `host-row panel hs-${s.state}` });

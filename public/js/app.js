@@ -18,6 +18,7 @@ import { renderAccount } from './views/account.js';
 import { renderMonitoring } from './views/monitoring.js';
 import { openAbout, COFFEE } from './views/about.js';
 import { loadFailoverState, failoverBar } from './views/failover.js';
+import { openSearch, shortcutLabel } from './search.js';
 
 export const state = { user: null, boot: null, meta: null, waiting: 0, down: 0 };
 const root = document.getElementById('app');
@@ -79,6 +80,9 @@ function sidebar(active) {
     'aria-current': active === key ? 'page' : null }, h('span', { html: icon(ico) }), t(`nav.${key}`), extra);
   return h('aside', { class: 'side', id: 'side' },
     h('a', { class: 'brand', href: '/', 'data-link': true, 'aria-label': 'WhatsOnMyNet' }, h('span', { html: LOGO_MARK }), wordmark()),
+    // search over everything: devices, monitors, pages, settings, manual (also Ctrl+K / ⌘K and "/")
+    h('button', { type: 'button', class: 'side-search', onclick: () => openSearch(state.user, navigate), 'aria-keyshortcuts': 'Control+K Meta+K /' },
+      h('span', { html: icon('search') }), h('span', { class: 'grow' }, t('gs.button')), h('kbd', {}, shortcutLabel())),
     // Grouped: what you look at (network) and what watches for you (monitoring); settings and help at the bottom
     h('nav', { class: 'nav', 'aria-label': t('nav.menu') },
       link('/', 'dashboard', 'dashboard'),
@@ -129,6 +133,17 @@ function setMenu(open, { restoreFocus = false } = {}) {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && document.getElementById('side')?.classList.contains('open') && !document.querySelector('dialog[open]')) setMenu(false, { restoreFocus: true });
 });
+// Ctrl+K / ⌘K anywhere, "/" when not typing: the search over everything (signed in, no other dialog open)
+document.addEventListener('keydown', (e) => {
+  if (!state.user || e.defaultPrevented) return;
+  const typing = e.target.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
+  const combo = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k';
+  const slash = e.key === '/' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey;
+  if (!combo && !slash) return;
+  if (document.querySelector('dialog[open]:not(.gs)')) return;
+  e.preventDefault();
+  openSearch(state.user, navigate);
+});
 
 async function refreshBadge() {
   try {
@@ -162,7 +177,8 @@ export async function render() {
   main.tabIndex = -1;
   const menuBtn = h('button', { class: 'icon-btn menu-btn', type: 'button', 'aria-label': t('nav.menu'), 'aria-controls': 'side', 'aria-expanded': 'false',
     onclick: () => setMenu(!side.classList.contains('open')), html: icon('menu') });
-  const topbar = h('div', { class: 'topbar' }, menuBtn, h('span', { html: LOGO_MARK }), wordmark());
+  const topbar = h('div', { class: 'topbar' }, menuBtn, h('span', { html: LOGO_MARK }), wordmark(),
+    h('button', { class: 'icon-btn topbar-search', type: 'button', 'aria-label': t('gs.button'), onclick: () => openSearch(state.user, navigate), html: icon('search') }));
   const skip = h('a', { class: 'skip-link', href: '#main', onclick: (e) => { e.preventDefault(); main.focus(); } }, t('nav.skip'));
   // failover: a bar while this server is a standby (or has taken over / was replaced)
   mount(root, h('div', { class: 'shell' }, skip, side, h('div', {}, topbar, failoverBar(), main)));

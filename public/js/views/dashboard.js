@@ -1,6 +1,6 @@
 // Overview: what needs attention first, then the state of everything at a glance.
 import { h, mount, fmtAgo, fmtDate } from '../dom.js';
-import { get } from '../api.js';
+import { get, put } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state } from '../app.js';
@@ -8,6 +8,33 @@ import { historyText } from './device.js';
 import { supplyName, supplyValue } from './printer.js';
 import { stText } from './snmpdev.js';
 import { maintBadge } from '../maint.js';
+import { shortcutLabel } from '../search.js';
+
+// First steps of a new installation, in the order that makes sense; each one is ticked by the data itself
+const STEPS = [
+  ['location', 'location', '/locations'], ['scan', 'radar', '/scan'], ['devices', 'inventory', '/scan'],
+  ['channel', 'bell', '/settings/notify'], ['monitor', 'pulse', '/monitoring'], ['totp', 'lock', '/account'],
+];
+
+/** "First steps" (administrators, until all is done or hidden): what to do next stands out, done steps are ticked */
+function firstSteps(start, onHide) {
+  const steps = STEPS.filter(([k]) => start[k] !== null && start[k] !== undefined);
+  const done = steps.filter(([k]) => start[k]).length;
+  if (done === steps.length) return null;
+  const next = steps.find(([k]) => !start[k])?.[0];
+  return h('section', { class: 'panel start-card', 'aria-labelledby': 'start-title' },
+    h('div', { class: 'start-head' },
+      h('div', {}, h('h2', { id: 'start-title' }, t('start.title')), h('p', { class: 'muted', style: { margin: '2px 0 0' } }, t('start.lead', { done, n: steps.length }))),
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: onHide }, t('start.hide'))),
+    h('div', { class: 'start-bar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': steps.length, 'aria-valuenow': done, 'aria-label': t('start.title') },
+      h('i', { style: { width: `${Math.round((done / steps.length) * 100)}%` } })),
+    h('ol', { class: 'start-list' }, steps.map(([k, ico, href]) => h('li', { class: start[k] ? 'done' : k === next ? 'next' : '' },
+      h('span', { class: 'start-ico', html: icon(start[k] ? 'check' : ico) }),
+      h('div', { class: 'start-text' }, h('div', { class: 'start-name' }, t(`start.${k}`)), start[k] ? null : h('div', { class: 'muted small' }, t(`start.${k}Hint`))),
+      start[k] ? h('span', { class: 'muted small' }, t('start.done'))
+        : h('a', { class: `btn btn-sm${k === next ? ' btn-primary' : ''}`, href, 'data-link': true }, t(`start.${k}Do`))))),
+    h('p', { class: 'muted small start-tip' }, h('span', { html: icon('search') }), t('start.searchTip', { key: shortcutLabel() })));
+}
 
 /** One line of "Needs attention": icon, what, details, one action */
 function todo(kind, ico, title, detail, action, extra = null) {
@@ -76,7 +103,12 @@ export async function renderDashboard(main) {
   }
 
   const empty = !d.devices;
-  const attention = empty
+  const start = d.start ? firstSteps(d.start, async () => {
+    try { await put('/settings/start', { hidden: true }); } catch { /* shown again next time */ }
+    renderDashboard(main);
+  }) : null;
+  // a new installation: the first steps say what to do (instead of the empty "scan now" panel)
+  const attention = empty && start ? null : empty
     ? h('section', { class: 'panel empty' }, h('h2', {}, t('dash.emptyTitle')), h('p', {}, canScan ? t('dash.emptyText') : t('dash.noScanViewer')),
       canScan ? h('a', { class: 'btn btn-primary btn-big', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('dash.scanNow')) : null)
     : h('section', { class: 'panel', 'aria-labelledby': 'todo-title' },
@@ -115,6 +147,7 @@ export async function renderDashboard(main) {
       h('div', {}, h('h1', {}, state.boot.title && state.boot.title !== 'WhatsOnMyNet' ? state.boot.title : t('dash.title')),
         empty ? null : h('p', { class: 'lead' }, n ? t(n === 1 ? 'dash.lead1' : 'dash.leadN', { n }) : t('dash.leadNone'))),
       canScan && !empty ? h('div', { class: 'actions' }, h('a', { class: 'btn', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('dash.scanNow'))) : null),
+    start,
     h('div', { class: 'dash' },
       attention,
       empty ? null : h('div', { class: 'stack' }, stateCard, recent, scanLine))));

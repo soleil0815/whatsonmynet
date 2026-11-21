@@ -6,6 +6,12 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Suche über alles: Strg K (⌘K), „/“ oder „Suchen …“ oben im Menü findet von jeder Seite Geräte (auch per IP, MAC oder Seriennummer), Monitore und Sensoren mit Zustand, Standorte, Hypervisoren, Benutzer, die Seiten, die Bereiche der Einstellungen und Kapitel im Handbuch – jeder nur, was er sehen darf
+- Erste Schritte: Auf einer neuen Installation zeigt die Übersicht Administratoren eine Liste – Standort anlegen, scannen, Geräte übernehmen, Kanal einrichten, ersten Monitor anlegen, Zwei-Faktor-Anmeldung. Was erledigt ist, hakt WhatsOnMyNet selbst ab; danach verschwindet die Liste
+- Kleinigkeiten an der Oberfläche: Wartungsfenster und Statusseiten tragen ihren eigenen Titel, „Mehr“-Menüs zeigen einen Pfeil, Reiter brechen auf dem Handy um statt abgeschnitten zu werden, Kapitel im Handbuch werden beim Öffnen kurz hervorgehoben
+
+## 0.53.1 - 2026-11-21
+
 - Virtualisierung, Server-Hardware, Netzwerk-Controller und Cloud: Fehlermeldungen der Verbindungen stehen jetzt auf Deutsch (z. B. „seit über 15 Minuten keine Daten vom Host-Skript - läuft die geplante Aufgabe?“ statt englischem Text)
 
 ## 0.53.0 - 2026-11-21

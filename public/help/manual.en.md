@@ -29,6 +29,14 @@ The setting survives a restart and needs no extra rights for the container. High
 
 ## First steps
 
+**The "First steps" list:** on a new installation the *Overview* shows administrators what comes next: add a location with a subnet, scan the network, adopt the devices found, set up a channel for messages, add the first monitor and - for an own account - two-factor sign-in. Each step has a button that leads right to the place; WhatsOnMyNet ticks off what is done by itself. Once everything is done, the list goes away; **Hide** hides it earlier for all administrators.
+
+![First steps on a new installation](img/start-en.png)
+
+**Search everything:** with **Ctrl K** (Mac: **⌘K**), with **/** or with *Search …* at the top of the menu you find from every page devices (name, IP, MAC - also without separators -, host name, serial number, owner, tag), monitors and sensors (with their state), locations, hypervisors and other hosts, users, the pages of the menu, the sections of the settings (also by their topic, e.g. "mail") and chapters of this manual. Arrow keys choose, Enter opens, Esc closes. Everybody finds only what they may see - a user limited to locations only the devices of those locations.
+
+![Search everything](img/search-en.png)
+
 Every section under *Settings* starts with a short note on what it is for and a link to the matching part of this manual.
 
 1. **Add a location** (*Locations*): name and subnets, e.g. "Main building" with `192.168.10.0/24`.

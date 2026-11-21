@@ -960,3 +960,71 @@ a.guest-script:hover, a.guest-script:focus-visible { text-decoration: underline;
 .guest-script-icon svg { width: 11px; height: 11px; display: block; opacity: .75; }
 .guest-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--new-fill); box-shadow: 0 0 0 1px rgba(0,0,0,.25); display: inline-block; }
 .script-more a, .script-more + a { color: var(--accent); }
+
+/* ---------- Search over everything (Ctrl+K) ---------- */
+.side-search { display: flex; align-items: center; gap: 9px; margin: 0 10px 6px; padding: 7px 10px; border-radius: var(--r-s); border: 1px solid var(--rack-line);
+  background: var(--rack-2); color: var(--rack-ink); font: inherit; font-size: 13.5px; cursor: pointer; text-align: left; }
+.side-search:hover, .side-search:focus-visible { color: var(--rack-strong); border-color: var(--rack-accent); }
+.side-search .grow { flex: 1; opacity: .8; }
+.side-search svg { width: 16px; height: 16px; display: block; opacity: .8; }
+.side-search kbd, .gs kbd { font: 600 11px/1 var(--mono, ui-monospace, monospace); padding: 3px 5px; border-radius: 5px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+.side-search kbd { border-color: var(--rack-line); background: transparent; color: inherit; opacity: .75; }
+.topbar-search { margin-left: auto; }
+dialog.gs { border: 1px solid var(--line); border-radius: 16px; padding: 0; width: min(640px, calc(100vw - 24px)); max-height: min(560px, calc(100dvh - 80px));
+  margin-top: max(8vh, 12px); background: var(--panel); color: var(--ink); box-shadow: var(--shadow-2); display: flex; flex-direction: column; overflow: hidden; }
+dialog.gs:not([open]) { display: none; }
+dialog.gs::backdrop { background: rgba(0, 0, 0, .28); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.gs-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.gs-ico svg { width: 18px; height: 18px; display: block; color: var(--muted); }
+dialog.gs .gs-input { flex: 1; border: 0; outline: 0; background: transparent; height: auto; border-radius: 0; font: inherit; font-size: 16px; color: var(--ink); padding: 4px 0; min-width: 0; box-shadow: none; }
+dialog.gs .gs-input:focus, dialog.gs .gs-input:focus-visible { border: 0; outline: 0; box-shadow: none; }
+.gs-input::-webkit-search-cancel-button { display: none; }
+.gs-head:focus-within { box-shadow: inset 0 -2px 0 var(--accent); }
+.gs-list { overflow-y: auto; padding: 6px; flex: 1; overscroll-behavior: contain; }
+.gs-group { font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 10px 4px; }
+.gs-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; color: var(--ink); text-decoration: none; }
+.gs-item.sel { background: var(--accent-soft, rgba(0, 113, 227, .1)); }
+.gs-item-ico svg { width: 16px; height: 16px; display: block; color: var(--muted); }
+.gs-item.sel .gs-item-ico svg { color: var(--accent); }
+.gs-item-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.gs-item-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-item-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-empty { padding: 18px 12px; margin: 0; }
+.gs-foot { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 14px; border-top: 1px solid var(--line); }
+.gs-foot kbd { margin-right: 2px; }
+.flash { animation: loc-flash 1.8s ease-out 1; border-radius: 8px; }
+@keyframes loc-flash { from { background: var(--accent-soft, rgba(0, 113, 227, .14)); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .flash { animation: none; outline: 2px solid var(--accent); } }
+
+/* ---------- First steps (overview of a new installation) ---------- */
+.start-card { padding: 20px 22px; margin-bottom: 18px; }
+.start-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.start-head h2 { margin: 0; }
+.start-bar { height: 6px; border-radius: 99px; background: var(--bg-2); margin: 14px 0 6px; overflow: hidden; }
+.start-bar i { display: block; height: 100%; background: var(--ok); border-radius: inherit; transition: width .3s; }
+.start-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.start-list li { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--line); }
+.start-list li:last-child { border-bottom: 0; }
+.start-ico { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-2); color: var(--muted); }
+.start-ico svg { width: 16px; height: 16px; display: block; }
+.start-list li.done .start-ico { background: var(--ok-soft); color: var(--ok); }
+.start-list li.done .start-name { color: var(--muted); }
+.start-list li.next .start-ico { background: var(--accent-soft); color: var(--accent); }
+.start-list li.next .start-name { font-weight: 600; }
+.start-text { flex: 1; min-width: 0; }
+.start-tip { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; }
+.start-tip svg { width: 14px; height: 14px; display: block; }
+@media (max-width: 620px) { .start-list li { flex-wrap: wrap; } .start-list li .btn { margin-left: 42px; } }
+@media (max-width: 620px) { .gs-foot { display: none; } dialog.gs { margin-top: 12px; } }
+
+/* Phones: tabs wrap instead of hiding the last ones; a location card puts its buttons under the name; first steps get the full width for their text */
+@media (max-width: 620px) {
+  .tabs { flex-wrap: wrap; width: auto; overflow: visible; }
+  .loc-card { flex-wrap: wrap; }
+  .loc-card .actions { width: 100%; padding-left: 56px; }
+  .start-text { flex-basis: calc(100% - 42px); }
+  .start-list li.done > .muted.small { display: none; }
+}
+/* "More": a small arrow says that a menu opens */
+.menu > summary.btn::after { content: ''; width: 6px; height: 6px; margin-left: 2px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: translateY(-2px) rotate(45deg); opacity: .7; transition: transform .15s; }
+.menu[open] > summary.btn::after { transform: translateY(1px) rotate(-135deg); }

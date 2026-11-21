@@ -21,5 +21,6 @@ export async function renderHelp(main) {
       body)));
   // Opened at a section (/help#…, e.g. "What does the script bring?" in a dialog): go there
   const id = decodeURIComponent(location.hash.slice(1));
-  if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView());
+  // from a link or the search: that chapter or paragraph, shown briefly
+  if (id) requestAnimationFrame(() => { const el = document.getElementById(id); el?.scrollIntoView({ block: 'center' }); el?.classList.add('flash'); });
 }

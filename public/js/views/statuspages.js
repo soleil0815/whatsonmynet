@@ -18,7 +18,7 @@ export async function renderStatusPages(main, tabBar) {
   const reload = () => renderStatusPages(main, tabBar);
   const what = (p) => p.items.map((x) => (x.type === 'group' ? x.label || x.group : x.label || monitors.find((m) => m.id === x.id)?.name || `#${x.id}`));
   mount(main, h('div', { class: 'page' },
-    pageHead(t('mon.title'), t('sp.lead'), admin ? btn(t('sp.add'), { class: 'btn btn-primary', onclick: () => pageForm(null, monitors, reload) }, 'plus') : null),
+    pageHead(t('mon.tab.status'), t('sp.lead'), admin ? btn(t('sp.add'), { class: 'btn btn-primary', onclick: () => pageForm(null, monitors, reload) }, 'plus') : null),
     tabBar('status'),
     !admin ? h('section', { class: 'panel panel-pad' }, h('p', { class: 'muted', style: { margin: 0 } }, t('sp.adminOnly')))
       : h('section', { class: 'panel' }, list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },

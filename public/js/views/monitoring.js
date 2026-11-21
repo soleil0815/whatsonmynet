@@ -1155,7 +1155,7 @@ async function renderMaintenance(main) {
     ? `${fmtDate(w.starts_at, getLang())} - ${fmtDate(w.ends_at, getLang())}`
     : `${w.weekdays.slice().sort((a, b) => DAYS.indexOf(a) - DAYS.indexOf(b)).map((d) => t(`day.${d}`)).join(', ')} · ${w.time_from}–${w.time_to}`);
   mount(main, h('div', { class: 'page' },
-    pageHead(t('mon.title'), t('maint.lead'), edit ? btn(t('maint.add'), { class: 'btn btn-primary', onclick: () => maintenanceForm(null, monitors, reload) }, 'plus') : null),
+    pageHead(t('mon.tab.maintenance'), t('maint.lead'), edit ? btn(t('maint.add'), { class: 'btn btn-primary', onclick: () => maintenanceForm(null, monitors, reload) }, 'plus') : null),
     tabBar('maintenance'),
     h('section', { class: 'panel' }, list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, h('th', {}, t('maint.name')), h('th', {}, t('maint.when')), h('th', {}, t('maint.scope')), h('th', {}))),

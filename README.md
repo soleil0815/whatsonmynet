@@ -65,6 +65,7 @@ Netzwerk-Inventar, Monitoring und Sensoren in einem Container: WhatsOnMyNet scan
 - **Nur übernehmen, was du willst** - Scan-Ergebnis in vier Reitern: *Neu*, *Geändert*, *Bekannt*, *Ignoriert*. Neue Geräte per Häkchen übernehmen oder dauerhaft ignorieren. Übernehmen und Ignorieren geht aus dem neuesten Scan eines Subnetzes; ältere Scans bleiben lesbar, „Nicht mehr ignorieren“ geht auch dort.
 - **MAC-Adresse als Ausweis** - ändert sich die IP eines bekannten Geräts, übernimmt der nächste Scan die neue Adresse automatisch, mit Eintrag im Verlauf. Einen von Hand eingetragenen Rechnernamen lässt der Scan stehen; er füllt den Namen nur, solange er leer ist oder vom Scan stammt.
 - **Inventar** - Suche über alles, Filter nach Typ und Standort, Ansicht als Liste, nach Subnetz oder nach Typ, Status „beim letzten Scan gesehen“, Export als CSV (Excel) und JSON.
+- **Suche über alles und Erste Schritte** - Strg K (⌘K) findet von jeder Seite Geräte (auch per IP oder MAC), Monitore, Sensoren, Einstellungen und Kapitel im Handbuch. Auf einer neuen Installation führt die Liste „Erste Schritte“ auf der Übersicht vom Standort über den ersten Scan bis zum ersten Monitor.
 - **Schnellzugriff** - ein Klick öffnet die Weboberfläche des Geräts (Proxmox auf 8006, Synology auf 5001, Drucker …). Die Adresse schlägt der Scan vor.
 - **Kauf, Garantie, Wartung** - optionale Felder mit Hinweis auf der Übersicht, wenn die Garantie bald endet.
 - **Tiefenprüfung** - für einzelne unklare Geräte, von Hand gestartet: rund 110 Ports und alle Weboberflächen.

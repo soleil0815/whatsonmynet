@@ -10,6 +10,8 @@ function inline(s) {
     .replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>');
 }
 
+/** The bold lead of a paragraph without its colon: "**Wartungsfenster:** …" → "Wartungsfenster" */
+export const leadOf = (line) => { const m = /^\*\*([^*]{2,90})\*\*/.exec(String(line).trim()); return m ? m[1].replace(/[:.]\s*$/, '').trim() : ''; };
 export const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-|-$/g, '');
 
 /** Markdown → HTML string. imgBase is put in front of relative image paths. */
@@ -17,7 +19,13 @@ export function mdToHtml(text, { imgBase = '' } = {}) {
   const out = [];
   let list = null;
   let para = [];
-  const flushPara = () => { if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; } };
+  // a paragraph that starts with a bold lead ("**Maintenance windows:** …") can be linked to (search over everything)
+  const flushPara = () => {
+    if (!para.length) return;
+    const lead = leadOf(para[0]);
+    out.push(`<p${lead ? ` id="${slug(lead)}"` : ''}>${inline(para.join(' '))}</p>`);
+    para = [];
+  };
   const flushList = () => {
     if (!list) return;
     out.push(`<${list.tag}${list.start > 1 ? ` start="${list.start}"` : ''}>${list.items.map((i) => `<li>${inline(i)}</li>`).join('')}</${list.tag}>`);

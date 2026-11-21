@@ -6,6 +6,12 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Search everything: Ctrl K (⌘K), "/" or "Search …" at the top of the menu finds devices (also by IP, MAC or serial number), monitors and sensors with their state, locations, hypervisors, users, the pages, the sections of the settings and chapters of the manual from every page – everybody only what they may see
+- First steps: on a new installation the overview shows administrators a list – add a location, scan, adopt devices, set up a channel, add the first monitor, two-factor sign-in. WhatsOnMyNet ticks off what is done; then the list goes away
+- Small things in the interface: maintenance windows and status pages have their own title, "More" menus show an arrow, tabs wrap on phones instead of being cut off, chapters of the manual are highlighted briefly when opened
+
+## 0.53.1 - 2026-11-21
+
 - Virtualization, server hardware, network controllers and cloud: connection errors are now shown in German in the German interface (they used to be English)
 
 ## 0.53.0 - 2026-11-21

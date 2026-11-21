@@ -3,6 +3,15 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Suche über alles: Strg K (⌘K), „/“ oder „Suchen …“ oben im Menü findet von jeder Seite Geräte (auch per IP, MAC oder Seriennummer), Monitore und Sensoren mit Zustand, Standorte, Hypervisoren, Benutzer, die Seiten, die Bereiche der Einstellungen und Kapitel im Handbuch – jeder nur, was er sehen darf',
+    'Erste Schritte: Auf einer neuen Installation zeigt die Übersicht Administratoren eine Liste – Standort anlegen, scannen, Geräte übernehmen, Kanal einrichten, ersten Monitor anlegen, Zwei-Faktor-Anmeldung. Was erledigt ist, hakt WhatsOnMyNet selbst ab; danach verschwindet die Liste',
+    'Kleinigkeiten an der Oberfläche: Wartungsfenster und Statusseiten tragen ihren eigenen Titel, „Mehr“-Menüs zeigen einen Pfeil, Reiter brechen auf dem Handy um statt abgeschnitten zu werden, Kapitel im Handbuch werden beim Öffnen kurz hervorgehoben',
+  ], en: [
+    'Search everything: Ctrl K (⌘K), "/" or "Search …" at the top of the menu finds devices (also by IP, MAC or serial number), monitors and sensors with their state, locations, hypervisors, users, the pages, the sections of the settings and chapters of the manual from every page – everybody only what they may see',
+    'First steps: on a new installation the overview shows administrators a list – add a location, scan, adopt devices, set up a channel, add the first monitor, two-factor sign-in. WhatsOnMyNet ticks off what is done; then the list goes away',
+    'Small things in the interface: maintenance windows and status pages have their own title, "More" menus show an arrow, tabs wrap on phones instead of being cut off, chapters of the manual are highlighted briefly when opened',
+  ] },
+  { version: '0.53.1', date: '2026-11-21', de: [
     'Virtualisierung, Server-Hardware, Netzwerk-Controller und Cloud: Fehlermeldungen der Verbindungen stehen jetzt auf Deutsch (z. B. „seit über 15 Minuten keine Daten vom Host-Skript - läuft die geplante Aufgabe?“ statt englischem Text)',
   ], en: [
     'Virtualization, server hardware, network controllers and cloud: connection errors are now shown in German in the German interface (they used to be English)',
