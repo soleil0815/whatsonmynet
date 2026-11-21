@@ -6,7 +6,7 @@ import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker, onOffSwitch } from './common.js';
 import { openMonitorForm } from './monitoring.js';
-import { scriptDialog, hostScriptsSettings, helpLink, poolsBlock } from './hostscripts.js';
+import { scriptDialog, hostScriptsSettings, helpLink, poolsBlock, scriptGlance, scriptDetails, glanceProblems } from './hostscripts.js';
 import { aboutContent } from './about.js';
 import { hardwareDetail } from './hardware.js';
 import { SECTIONS, settingsNav } from './settingsnav.js';
@@ -456,6 +456,27 @@ function nodeScriptTip(x, d) {
       } }))));
 }
 
+/** A VM or container; with the script it leads to its inventory entry (a dot when its script reports something) */
+function guestChip(g, pve) {
+  const title = [g.node, t(`val.state.${g.status}`), g.cpu !== null && g.cpu !== undefined ? `CPU ${g.cpu} %` : ''].filter(Boolean);
+  const label = pve ? `${g.vmid} ${g.name}` : g.name;
+  const cls = `badge ${g.status === 'running' ? 'badge-ok' : ''}`;
+  if (!g.report) return h('span', { class: cls, title: title.join(' · ') }, label);
+  const problems = g.report.stale ? [] : glanceProblems(g.report.glance || {});
+  return h('a', { class: `${cls} guest-script`, href: `/devices/${g.report.deviceId}`, 'data-link': true,
+    title: [...title, t('sg.withScript'), ...problems.map((p) => p[2])].join(' · ') },
+  h('span', { class: 'guest-script-icon', html: icon('computer') }), label, problems.length || g.report.stale ? h('i', { class: 'guest-dot', 'aria-label': t('sg.needsLook') }) : null);
+}
+
+/** Guests whose script reports something that needs a look: one line each (the others are fine and stay quiet) */
+function guestReports(guests) {
+  const list = (guests || []).filter((g) => g.report && (g.report.stale || glanceProblems(g.report.glance || {}).length));
+  if (!list.length) return null;
+  return h('ul', { class: 'port-macs node-list', style: { marginTop: '8px' } }, list.map((g) => h('li', {},
+    h('a', { href: `/devices/${g.report.deviceId}`, 'data-link': true }, h('strong', {}, g.name)),
+    scriptGlance(g.report))));
+}
+
 function proxmoxDetail(x) {
   const d = x.data || {};
   if (!x.last_at) return h('p', { class: 'muted' }, PUSH.includes(x.kind) ? t('virt.waiting') : t('prn.none'));
@@ -486,17 +507,22 @@ function proxmoxDetail(x) {
     const pve = d.kind === 'pve';
     return h('div', {}, head, via, rights,
       h('h3', { class: 'sub-title' }, pve ? t('px.nodes') : t('virt.hosts')), pve ? others : null,
-      h('ul', { class: 'port-macs' }, (d.nodes || []).map((n) => h('li', {}, h('strong', {}, n.name),
+      h('ul', { class: 'port-macs node-list' }, (d.nodes || []).map((n) => h('li', {},
+        // a node with the script: its name leads to the inventory, the script says what needs a look
+        n.report ? h('a', { href: `/devices/${n.report.deviceId}`, 'data-link': true, title: t('sg.inventory') }, h('strong', {}, n.name)) : h('strong', {}, n.name),
         h('span', { class: `badge ${n.online ? 'badge-ok' : 'badge-bad'}` }, n.stale ? t('virt.silent') : n.online ? 'online' : 'offline'),
         n.online && (n.cpu !== null || n.mem !== null) ? h('span', { class: 'muted small mono' }, `CPU ${n.cpu ?? '–'} % · RAM ${n.mem ?? '–'} %`) : null,
         n.temp ? h('span', { class: `badge ${n.temp.c >= n.temp.warn ? 'badge-new' : ''}`, title: t('vo.tempTitle', { name: n.temp.name, warn: n.temp.warn }) }, `${n.temp.c} °C`) : null,
-        n.seen ? h('span', { class: 'muted small' }, t('virt.seen', { when: fmtDate(n.seen, getLang()) })) : null))),
+        n.seen ? h('span', { class: 'muted small' }, t('virt.seen', { when: fmtDate(n.seen, getLang()) })) : null,
+        n.report ? scriptGlance(n.report) : null,
+        n.report && !n.report.stale ? scriptDetails(n.report) : null))),
       nodeScriptTip(x, d),
       h('h3', { class: 'sub-title' }, t('px.storages')),
       h('div', { class: 'supplies' }, (d.storages || []).filter((s) => s.total).map((s) => meter(s.node ? `${s.name} · ${s.node}` : s.name, s.pct, `${bytes(s.used)} / ${bytes(s.total)} · `))),
       (d.pools || []).length ? [h('h3', { class: 'sub-title' }, t('pool.title')), poolsBlock(d.pools, { title: false })] : null,
       h('h3', { class: 'sub-title' }, pve ? t('px.guests', { running, n: (d.guests || []).length }) : t('virt.guests', { running, n: (d.guests || []).length })),
-      h('div', { class: 'chips' }, (d.guests || []).map((g) => h('span', { class: `badge ${g.status === 'running' ? 'badge-ok' : ''}`, title: [g.node, t(`val.state.${g.status}`), g.cpu !== null && g.cpu !== undefined ? `CPU ${g.cpu} %` : ''].filter(Boolean).join(' · ') }, pve ? `${g.vmid} ${g.name}` : g.name))),
+      h('div', { class: 'chips' }, (d.guests || []).map((g) => guestChip(g, pve))),
+      guestReports(d.guests),
       !pve ? null : h('h3', { class: 'sub-title' }, t('px.backups')),
       !pve ? null : (d.backups || []).length ? h('ul', { class: 'port-macs' }, d.backups.slice(0, 8).map((b) => h('li', {},
         h('span', { class: `badge ${b.ok ? 'badge-ok' : b.end ? 'badge-bad' : ''}` }, b.ok ? 'OK' : b.status), h('span', { class: 'mono small' }, b.vmid ? `VM ${b.vmid}` : t('px.allGuests')),
@@ -1116,6 +1142,21 @@ function hostSummary(x) {
     // ZFS pools of the nodes, Ceph: degraded, a disk or OSD gone
     const badPools = (d.pools || []).filter((p) => !p.good).length;
     if (badPools) bad(tn('vo.poolsBad', { n: badPools }));
+    // what the scripts of nodes and guests say: only what needs a look, with the names
+    const withScript = [...nodes, ...guests].filter((y) => y.report);
+    const names = (list) => { const all = list.map((y) => y.name); return all.length > 3 ? `${all.slice(0, 3).join(', ')} +${all.length - 3}` : all.join(', '); };
+    const live = withScript.filter((y) => !y.report.stale); const g = (y) => y.report.glance || {};
+    const sFailed = live.filter((y) => g(y).failedCount);
+    if (sFailed.length) bad(t('vo.scFailed', { names: names(sFailed) }));
+    // (pools of the nodes come from the hypervisor itself - counted above, not twice)
+    const sStore = live.filter((y) => (!nodes.includes(y) && (g(y).pools || []).length) || g(y).pdisks || (g(y).disks || []).some((k) => k.pct >= 95));
+    if (sStore.length) bad(t('vo.scStorage', { names: names(sStore) }));
+    const sSec = live.filter((y) => g(y).updates?.security);
+    if (sSec.length) warn(t('vo.scSecurity', { names: names(sSec) }));
+    const sReboot = live.filter((y) => g(y).reboot);
+    if (sReboot.length) warn(t('vo.scReboot', { names: names(sReboot) }));
+    const sSilent = withScript.filter((y) => y.report.stale);
+    if (sSilent.length) warn(t('vo.scSilent', { names: names(sSilent) }));
     let backupIssues = 0;
     if (d.kind === 'pve') {
       const failed = (d.backups || []).filter((b) => !b.ok && b.end && Date.now() / 1000 - b.start < 86400).length;

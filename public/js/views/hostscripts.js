@@ -278,3 +278,50 @@ export async function hostScriptsSettings(body, reload) {
     h('div', { class: 'actions' }, [['windows', 'Windows'], ['linux', 'Linux'], ['hyperv', 'Hyper-V'], ['libvirt', 'KVM']].map(([k, label]) =>
       btn(label, { class: 'btn btn-sm', onclick: () => uninstall(k) }, 'download')))));
 }
+
+/**
+ * What the script of a node or guest says at a glance (on the page of its hypervisor): only what needs a look -
+ * updates, restart, failed services, pools, full drives, disks, own checks; "all fine" when nothing does.
+ * r = { deviceId, at, stale, glance } from the server.
+ */
+export function glanceProblems(g) {
+  const out = [];
+  if (g.updates?.pending > 0) out.push(['', g.updates.security ? 'bad' : 'new', g.updates.security ? t('sg.updatesSec', { n: g.updates.pending, s: g.updates.security }) : t('sg.updates', { n: g.updates.pending })]);
+  if (g.reboot) out.push(['', 'new', t('sg.reboot')]);
+  if (g.failedCount) out.push([g.failed.join(', '), 'bad', t('sg.failed', { n: g.failedCount })]);
+  for (const p of g.pools || []) out.push(['', 'bad', `${p.name}: ${p.state}`]);
+  for (const d of g.disks || []) out.push(['', d.pct >= 95 ? 'bad' : 'new', t('sg.full', { name: d.name, pct: d.pct })]);
+  if (g.pdisks) out.push(['', 'bad', t('sg.pdisks', { n: g.pdisks })]);
+  if (g.checks) out.push(['', 'new', t('sg.checks', { n: g.checks })]);
+  return out;
+}
+
+export function scriptGlance(r) {
+  if (r.stale) return h('span', { class: 'script-glance' }, badge('bad', t('hs.silent', { when: fmtAgo(r.at, t) })));
+  const g = r.glance || {};
+  const problems = glanceProblems(g);
+  return h('span', { class: 'script-glance' },
+    problems.length ? problems.map(([title, tone, text]) => h('span', { class: `badge badge-${tone}`, title: title || null }, text))
+      : h('span', { class: 'badge badge-ok', title: t('sg.allFineHint') }, t('sg.allFine')),
+    g.updates && g.updates.pending === 0 && problems.length ? h('span', { class: 'badge badge-ok' }, t('sg.noUpdates')) : null);
+}
+
+/**
+ * Everything the script of a node knows, folded: loaded only when opened (the same panel as in the inventory)
+ */
+export function scriptDetails(r) {
+  const box = h('div', { class: 'script-more-body' });
+  let loaded = false;
+  return h('details', { class: 'script-more', ontoggle: async (e) => {
+    if (!e.currentTarget.open || loaded) return;
+    loaded = true;
+    mount(box, h('p', { class: 'muted small' }, t('loading')));
+    try {
+      const d = await get(`/devices/${r.deviceId}`);
+      mount(box, d.host ? systemPanel(d.host) : h('p', { class: 'muted small' }, t('sg.none')));
+    } catch (ex) { loaded = false; mount(box, h('p', { class: 'muted small' }, ex.message)); }
+  } },
+  h('summary', {}, t('sg.more')),
+  box,
+  h('p', { class: 'small', style: { margin: '6px 0 0' } }, h('a', { href: `/devices/${r.deviceId}`, 'data-link': true }, t('sg.inventory'))));
+}

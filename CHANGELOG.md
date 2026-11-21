@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Virtualisierung und Skript zusammen: Läuft auf einem Proxmox-Knoten oder in einer VM bzw. einem Container das Skript, steht unter Virtualisierung gleich dabei, was einen Blick braucht – offene Updates, Neustart nötig, ausgefallene Dienste, volle Laufwerke, Festplatten und Speicherpools. „Alles aus dem Skript“ klappt die ganze Systemansicht auf, VMs mit Skript führen per Klick ins Inventar, und die Übersicht zeigt das Wichtigste mit Namen (auch im Filter „Probleme“)
+
+## 0.52.0 - 2026-11-20
+
 - Nach Updates sehen: Unter Einstellungen → Über zeigt „Jetzt nach Updates sehen“, ob es eine neuere Version gibt – mit dem, was sie bringt, und dem Befehl zum Aktualisieren. Auf Wunsch einmal am Tag, dann mit Hinweis unten links im Menü und einer Nachricht an einen Kanal. Aus, bis du es einschaltest; gefragt wird nur GitHub nach der Versionsnummer, ohne etwas mitzuschicken, und installiert wird nichts von selbst
 
 ## 0.51.0 - 2026-11-19

@@ -490,6 +490,13 @@ WhatsOnMyNet liest Proxmox VE und den Proxmox Backup Server über deren eingebau
 
 **Cluster:** Einen Knoten einzutragen genügt. WhatsOnMyNet fragt den Cluster, welche Knoten es gibt, unter welcher Adresse sie erreichbar sind und welches Zertifikat sie haben (alle 6 Stunden neu). Antwortet der eingetragene Knoten nicht, wird der nächste Knoten gefragt - mit demselben Token (er gilt im ganzen Cluster) und erst nachdem dessen Zertifikat geprüft ist. Die Seite Virtualisierung zeigt dann „über Knoten pve2 gelesen“. Der Proxmox Backup Server kennt keinen Cluster: jeder wird einzeln eingetragen.
 
+**Was das Skript meldet, steht auch unter Virtualisierung:** Läuft auf einem Knoten oder in einer VM bzw. einem Container das Linux- oder Windows-Skript, führt WhatsOnMyNet beides zusammen - die Schnittstelle des Hypervisors und das Skript des Systems. Zugeordnet wird wie bei den Temperaturen über den Namen (Knoten bzw. Gast `fileserver` ↔ Rechner `fileserver` bzw. `fileserver.firma.local`).
+
+- **Am Knoten** steht neben „online“ und CPU/RAM, was einen Blick braucht: offene Updates (rot mit Sicherheits-Updates), *Neustart nötig*, ausgefallene Dienste, ein Speicherpool nicht in Ordnung, ein Laufwerk ab 90 % voll, eine Festplatte mit Warnung, eigene Prüfungen nicht OK - oder *Skript: alles in Ordnung*. **Alles aus dem Skript** klappt die ganze Systemansicht auf, wie im Inventar; der Name des Knotens führt zum Gerät.
+- **VMs und Container** mit Skript haben ein kleines Rechner-Symbol und führen per Klick ins Inventar; ein Punkt heißt „braucht einen Blick“. Darunter stehen nur die Gäste, deren Skript etwas meldet - die übrigen bleiben ruhig.
+- **In der Übersicht** zeigt die Zeile des Hosts das Wichtigste mit Namen: *Dienst ausgefallen: fileserver*, *Speicher/Festplatte: …*, *Sicherheits-Updates: pve01*, *Neustart nötig: …*, *Skript schweigt: …*. Damit findet auch der Filter *Probleme* solche Hosts.
+- Ein Skript, das sich seit 15 Minuten nicht meldet, steht als „meldet sich nicht“ da; nach einem Tag ohne Meldung fällt es aus der Ansicht.
+
 **Temperaturen der Knoten:** Die Proxmox-Schnittstelle kennt keine Temperaturen. Läuft auf einem Knoten zusätzlich das Linux-Skript (siehe *Windows- und Linux-Rechner per Skript*), steht seine höchste Temperatur auf der Seite Virtualisierung am Knoten. Ein Sensor dafür: am Proxmox-Host oder am Gerät **Sensor anlegen** → *Temperatur: die höchste aller Fühler* (Alarm ab 85 °C, änderbar; einzelne Fühler mit der Warnschwelle des Chips); einzelne Fühler (CPU, NVMe …) stehen in derselben Liste unter „Knoten pve1“. Zugeordnet wird über den Namen: Knoten `pve1` ↔ Rechner `pve1` bzw. `pve1.firma.local`.
 
 ### Schritt 1: Proxmox vorbereiten (einmalig)
