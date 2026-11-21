@@ -1,4 +1,5 @@
 // REST API of the web interface.
+import { searchAll } from '../search.js';
 import crypto from 'node:crypto';
 import express from 'express';
 import { SCRIPT_KINDS, uninstallScript } from '../hostscripts.js';
@@ -229,11 +230,31 @@ export function createApi(ctx) {
       nasThreshold: Number(settings.get('nas.threshold')) || 90, escalateMin: Number(settings.get('escalate.min')) || 0, escalateChannels: (settings.get('escalate.channels') || []).length });
   });
 
+  // "First steps" of a new installation (administrators): what is done already, read from the data itself
+  const firstSteps = (req) => {
+    if (req.user.role !== 'admin' || settings.get('ui.startHidden')) return null;
+    const n = (sql) => db.prepare(sql).get().n;
+    return {
+      location: n('SELECT COUNT(*) n FROM subnets') > 0,
+      scan: n('SELECT COUNT(*) n FROM scans') > 0,
+      devices: n('SELECT COUNT(*) n FROM devices') > 0,
+      channel: n('SELECT COUNT(*) n FROM channels WHERE enabled=1') > 0,
+      monitor: n('SELECT COUNT(*) n FROM monitors') > 0,
+      // only for own accounts (a directory account signs in with its own rules)
+      totp: req.user.source === 'local' ? !!req.user.totp_enabled : null,
+    };
+  };
+  r.put('/settings/start', admin, (req, res) => {
+    settings.set('ui.startHidden', !!req.body.hidden);
+    res.json({ hidden: settings.get('ui.startHidden') });
+  });
+  // Search over everything (Ctrl+K): only what this user may see
+  r.get('/search', (req, res) => res.json(searchAll(db, str(req.query.q, 100), { user: req.user, scope: req.scope })));
   r.get('/dashboard', (req, res) => {
     // Limited users: only monitors of their devices
     const mon = ctx.monitoring.summary(req.scope ? (m) => seeDeviceId(req, m.device_id) : null);
     const quiet = new Set(Object.keys(ctx.monitoring.deviceMaintenance()).map(Number));
-    res.json({ ...inventory.stats({ allowed: req.scope, quiet }), monitoring: mon,
+    res.json({ ...inventory.stats({ allowed: req.scope, quiet }), monitoring: mon, start: firstSteps(req),
       printersLow: ctx.printers.low().filter((x) => seeDeviceId(req, x.deviceId)),
       nasProblems: ctx.snmpDevices.problems().filter((x) => seeDeviceId(req, x.deviceId)) });
   });

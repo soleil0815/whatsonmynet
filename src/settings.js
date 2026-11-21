@@ -86,6 +86,8 @@ export const DEFAULTS = {
   'events.winAllow': '',          // Windows event ids taken ("1116, 4740, 865-868"); empty = all
   'events.winDeny': WIN_NOISE,    // Windows event ids never taken; existing installations keep theirs (migration 35)
   'events.maxGb': 2,              // the messages file (data/events.sqlite) at most - less when the disk gets short
+  // "First steps" on the overview (administrators): hidden for good once someone clicks "Hide"
+  'ui.startHidden': false,
   // Update check (Settings → About): off - WhatsOnMyNet asks GitHub only when an administrator wants it
   'update.auto': false,           // once a day: is there a newer version?
   'update.notify': false,         // report a new version once to the channels

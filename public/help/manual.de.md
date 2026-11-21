@@ -29,6 +29,14 @@ Die Einstellung bleibt nach einem Neustart erhalten und braucht keine zusätzlic
 
 ## Erste Schritte
 
+**Die Liste „Erste Schritte“:** Auf einer neuen Installation zeigt die *Übersicht* Administratoren, was als Nächstes dran ist: Standort mit Subnetz anlegen, Netzwerk scannen, gefundene Geräte übernehmen, Kanal für Meldungen einrichten, ersten Monitor anlegen und - für ein eigenes Konto - die Zwei-Faktor-Anmeldung. Jeder Schritt hat einen Knopf, der direkt an die richtige Stelle führt; was erledigt ist, hakt WhatsOnMyNet selbst ab. Ist alles erledigt, verschwindet die Liste; **Ausblenden** blendet sie vorher für alle Administratoren aus.
+
+![Erste Schritte auf einer neuen Installation](img/start-de.png)
+
+**Suche über alles:** Mit **Strg K** (Mac: **⌘K**), mit **/** oder über *Suchen …* oben im Menü findest du von jeder Seite aus Geräte (Name, IP, MAC - auch ohne Trennzeichen -, Rechnername, Seriennummer, Verantwortlicher, Schlagwort), Monitore und Sensoren (mit ihrem Zustand), Standorte, Hypervisoren und andere Hosts, Benutzer, die Seiten des Menüs, die Bereiche der Einstellungen (auch über ihr Thema, z. B. „Mail“) und Kapitel dieses Handbuchs. Pfeiltasten wählen, Enter öffnet, Esc schließt. Jeder findet nur, was er auch sehen darf - ein Benutzer mit Standort-Einschränkung nur die Geräte seiner Standorte.
+
+![Suche über alles](img/search-de.png)
+
 Jeder Bereich unter *Einstellungen* beginnt mit einem kurzen Hinweis, wozu er da ist, und einem Link zum passenden Abschnitt dieses Handbuchs.
 
 1. **Standort anlegen** (*Standorte*): Name und Subnetze, z. B. „Hauptgebäude“ mit `192.168.10.0/24`.

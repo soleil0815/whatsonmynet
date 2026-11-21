@@ -11,7 +11,7 @@ export async function renderLocations(main) {
   const admin = state.user.isAdmin;
   const reload = () => renderLocations(main);
 
-  const body = list.length ? list.map((l) => h('div', { class: 'loc-card' },
+  const body = list.length ? list.map((l) => h('div', { class: 'loc-card', id: `loc-${l.id}` },
     h('span', { class: 'device-icon', style: { width: '40px', height: '40px' }, html: icon('location') }),
     h('div', { class: 'grow' },
       h('h2', {}, l.name),
@@ -31,6 +31,9 @@ export async function renderLocations(main) {
   mount(main, h('div', { class: 'page' },
     pageHead(t('loc.title'), t('loc.lead'), admin && list.length ? btn(t('loc.add'), { class: 'btn btn-primary', onclick: () => editor(null, net, reload) }, 'plus') : null),
     h('section', { class: 'panel' }, body)));
+  // from the search: show the location that was looked for
+  const target = location.hash && document.getElementById(location.hash.slice(1));
+  if (target) { target.scrollIntoView({ block: 'center' }); target.classList.add('flash'); }
 }
 
 function editor(loc, net, done) {

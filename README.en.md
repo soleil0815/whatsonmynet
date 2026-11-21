@@ -65,6 +65,7 @@ Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans y
 - **Adopt only what you want** - scan results in four tabs: *New*, *Changed*, *Known*, *Ignored*. Tick new devices to adopt them or ignore them for good. Adopt and ignore work from the newest scan of a subnet; older scans stay readable, and "Stop ignoring" works there too.
 - **MAC address as identity** - when a known device gets a new IP, the next scan takes it over automatically, with an entry in the history. A host name typed by hand stays; the scan only fills the name while it is empty or came from the scan.
 - **Inventory** - search across everything, filter by type and location, view as list, by subnet or by type, "seen in the last scan" status, export as CSV (Excel) and JSON.
+- **Search everything and first steps** - Ctrl K (⌘K) finds devices (also by IP or MAC), monitors, sensors, settings and chapters of the manual from every page. On a new installation the "First steps" list on the overview leads from the location through the first scan to the first monitor.
 - **Quick access** - one click opens the device's web interface (Proxmox on 8006, Synology on 5001, printers …). The scan suggests the address.
 - **Purchase, warranty, maintenance** - optional fields, with a notice on the overview when a warranty ends soon.
 - **Deep check** - for single unclear devices, started by hand: about 110 ports and all web interfaces.
