@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Virtualization, server hardware, network controllers and cloud: connection errors are now shown in German in the German interface (they used to be English)
+
+## 0.53.0 - 2026-11-21
+
 - Virtualization and script together: if a Proxmox node, a VM or a container runs the script, the virtualization page shows right there what needs a look – pending updates, restart needed, failed services, full drives, disks and storage pools. "Everything from the script" unfolds the whole system view, VMs with the script lead to the inventory with a click, and the overview shows the most important things with names (also in the "Problems" filter)
 
 ## 0.52.0 - 2026-11-20
