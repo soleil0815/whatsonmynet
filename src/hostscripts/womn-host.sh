@@ -236,6 +236,84 @@ if [ -d "$CHK" ]; then
   fi
 fi
 
+# Plugins written in WhatsOnMyNet (Settings → Plugins), put into the plugins folder by the administrators. A plugin
+# runs only when WhatsOnMyNet named exactly this file for this machine in its answer to the last report: id, version
+# and fingerprint (SHA-256) - a changed file, an old version or a plugin meant for other machines does not run. The
+# same rights rules as for the checks; at most 50. Lines in the check format or "Name: value unit" (e.g.
+# "Backup-Alter: 26 h") are sent with the report. WOMN_PLUGINS only for the tests.
+if [ "$(id -u)" = 0 ]; then PLG=/etc/whatsonmynet/plugins; else PLG=${XDG_CONFIG_HOME:-$HOME/.config}/whatsonmynet/plugins; fi
+PLG=${WOMN_PLUGINS:-$PLG}
+ALLOW=$CACHE/plugins.txt
+plj=""
+pline() { plj="$plj${plj:+,}{\"file\":\"$(esc "$1")\",\"id\":${2:-null},\"version\":${3:-null},\"state\":\"$4\",\"text\":\"$(esc "$5")\"}"; }
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 -r "$1" | awk '{print $1}'
+  fi
+}
+if [ -d "$PLG" ]; then
+  me=$(id -u)
+  if [ -L "$PLG" ] || [ -z "$(find "$PLG" -maxdepth 0 \( -user "$me" -o -user 0 \) ! -perm -g+w ! -perm -o+w 2>/dev/null)" ]; then
+    pline "" "" "" unsafe "folder $PLG may be changed by others - plugins not run"
+  elif ! command -v timeout >/dev/null 2>&1; then
+    pline "" "" "" error "the command timeout is missing - plugins not run"
+  else
+    tmpd=$(mktemp -d 2>/dev/null) || tmpd=""
+    if [ -n "$tmpd" ]; then
+      find "$PLG" -maxdepth 1 -name '*.sh' -type f 2>/dev/null | sort | head -n 50 > "$tmpd/list"
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        base=${f##*/}
+        hv=$(head -c 600 "$f" | sed -n 's/^# womn-plugin id=\([0-9][0-9]*\) version=\([0-9][0-9]*\).*/\1 \2/p' | head -n 1)
+        if [ -z "$hv" ]; then pline "$base" "" "" noHeader "not a plugin of WhatsOnMyNet - not run"; continue; fi
+        pid=${hv% *}; pver=${hv#* }
+        if [ -L "$f" ] || [ -z "$(find "$f" -maxdepth 0 -type f \( -user "$me" -o -user 0 \) ! -perm -g+w ! -perm -o+w 2>/dev/null)" ]; then
+          pline "$base" "$pid" "$pver" unsafe "owner or rights not safe - not run (owner must be root)"; continue
+        fi
+        a=""; [ -s "$ALLOW" ] && a=$(awk -v id="$pid" '{ for (i = 1; i <= NF; i++) { n = split($i, x, ":"); if (n == 4 && x[1] == id && length(x[3]) == 64 && x[3] ~ /^[0-9a-f]+$/ && x[4] ~ /^[0-9]+$/) { print x[2], x[3], x[4]; exit } } }' "$ALLOW")
+        if [ -z "$a" ]; then pline "$base" "$pid" "$pver" notAssigned "not meant for this machine (or switched off) - not run"; continue; fi
+        av=${a%% *}; rest=${a#* }; asha=${rest% *}; at=${rest#* }
+        fsha=$(sha256 "$f")
+        if [ -z "$fsha" ]; then pline "$base" "$pid" "$pver" error "no sha256sum, shasum or openssl to check the file - not run"; continue; fi
+        if [ "$fsha" != "$asha" ]; then
+          if [ "$pver" -lt "$av" ]; then pline "$base" "$pid" "$pver" outdated "version $pver - WhatsOnMyNet has version $av: download it again"
+          else pline "$base" "$pid" "$pver" changed "the file is not the one from WhatsOnMyNet - download it again"; fi
+          continue
+        fi
+        # an executable file starts with its own interpreter line, any other with sh; stdin from /dev/null
+        if [ -x "$f" ]; then timeout "$at" "$f" < /dev/null > "$tmpd/out" 2>/dev/null; rc=$?
+        else timeout "$at" sh "$f" < /dev/null > "$tmpd/out" 2>/dev/null; rc=$?; fi
+        if [ "$rc" = 124 ]; then pline "$base" "$pid" "$pver" timeout "timeout ($at s)"; continue; fi
+        parsed=$(head -c 20000 "$tmpd/out" | awk -v file="$base" -v plugin="$pid" '
+          function esc(v) { gsub(/[\001-\037\177]/, " ", v); gsub(/\\/, "\\\\", v); gsub(/"/, "\\\"", v); return substr(v, 1, 300) }
+          function out(name, st, text, val, unit) { printf "%s{\"name\":\"%s\",\"status\":%d,\"text\":\"%s\",\"value\":%s,\"file\":\"%s\",\"plugin\":%d,\"unit\":\"%s\"}", (n++ ? "," : ""), esc(name), st, esc(text), val, esc(file), plugin, esc(unit) }
+          $1 ~ /^[0-3]$/ && NF >= 3 {
+            val = "null"
+            if ($3 != "-") { split($3, m, "|"); split(m[1], kv, "="); split(kv[2], v, ";"); if (v[1] ~ /^-?[0-9]+(\.[0-9]+)?$/) val = v[1] }
+            text = ""; for (i = 4; i <= NF; i++) text = text (i > 4 ? " " : "") $i
+            out($2, $1, text, val, ""); next
+          }
+          {
+            i = index($0, ":"); if (i < 2 || i > 61) next
+            nm = substr($0, 1, i - 1); rest = substr($0, i + 1)
+            gsub(/^[ \t]+|[ \t]+$/, "", nm); gsub(/^[ \t]+|[ \t]+$/, "", rest)
+            if (nm == "" || !match(rest, /^-?[0-9]+([.,][0-9]+)?/)) next
+            num = substr(rest, 1, RLENGTH); unit = substr(rest, RLENGTH + 1); gsub(/^[ \t]+/, "", unit)
+            if (unit ~ /[ \t]/ || unit ~ /^[0-9]/ || length(unit) > 12) next
+            gsub(/,/, ".", num); gsub(/[ \t]+/, "_", nm)
+            out(nm, 0, rest, num, unit)
+          }')
+        if [ -n "$parsed" ]; then
+          cj="$cj${cj:+,}$parsed"
+          pline "$base" "$pid" "$pver" ok "$(printf '%s' "$parsed" | grep -o '"name":' | wc -l | tr -d ' ') value(s)"
+        else pline "$base" "$pid" "$pver" error "no line in a known format (exit code $rc)"; fi
+      done < "$tmpd/list"
+      rm -rf "$tmpd"
+    fi
+  fi
+fi
+
 macs=""
 for a in /sys/class/net/*/address; do
   [ -r "$a" ] || continue
@@ -245,10 +323,17 @@ for a in /sys/class/net/*/address; do
 done
 ips=$( (ip -o -4 addr show scope global 2>/dev/null || true) | awk '{split($4,a,"/"); printf "%s\"%s\"", (n++?",":""), a[1]}')
 
-body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\"}"
+body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"plugins\":[$plj],\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\"}"
 if [ -n "$PIN" ]; then TLS="-k --pinnedpubkey $PIN"; else TLS=""; fi
+# The answer names the plugins this machine may run ("id:version:sha256:timeout …") - kept for the next run
+mkdir -p "$CACHE" && chmod 700 "$CACHE"
 # shellcheck disable=SC2086
-printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer $TOKEN" -H 'X-WOMN-Request: 1' -H 'Content-Type: application/json' --data-binary @- "$URL" >/dev/null
+if printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer $TOKEN" -H 'X-WOMN-Request: 1' -H 'Content-Type: application/json' --data-binary @- "$URL" > "$CACHE/answer.json"; then
+  if grep -q '"plugins":"' "$CACHE/answer.json" 2>/dev/null; then
+    sed -n 's/.*"plugins":"\([0-9a-f: ]*\)".*/\1/p' "$CACHE/answer.json" | head -c 20000 > "$ALLOW"
+  fi
+fi
+rm -f "$CACHE/answer.json"
 
 # After the report: search for updates again when the last search is older than 6 hours (not on the first call -
 # the setup should be quick). Only looks, never installs.

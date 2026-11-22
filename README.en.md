@@ -32,7 +32,7 @@ Network inventory, monitoring and sensors in one container: WhatsOnMyNet scans y
 | 🧪 **More checks** | Mail servers (SMTP/IMAP/POP3 with TLS and certificate), DNS, LDAP/Active Directory, time servers (NTP), Microsoft SQL Server |
 | 🔔 **Messages** | Receive SNMP traps, syslog (UDP, TCP, TLS) and Windows events (NXLog, Fluent Bit), match them to the device, alarm at once; event rules send chosen messages by mail or to the ticket system |
 | 📈 **Prometheus & Grafana** | /metrics with a key, ready-made Grafana dashboard |
-| 🧩 **Own checks** | Own scripts in the Checkmk format (local checks) on Windows and Linux machines - only files nobody else can change |
+| 🧩 **Own checks and plugins** | Own scripts in the Checkmk format (local checks) on Windows and Linux machines; plugins written right in WhatsOnMyNet, handed out for all or single machines - only exactly the approved file runs, its values become sensors |
 | 💾 **Veeam** | Jobs with last result, repositories - Veeam Backup & Replication 12+ (REST, read only) |
 | ☁️ **Cloud** | AWS, Azure, Google Cloud, Microsoft 365 (service health, incidents, licences): VMs with the checks of the provider, databases, load balancers, alarms, costs - read only |
 | 💻 **Machines without agent** | Windows and Linux report through a small script: CPU, RAM, drives, services, updates, antivirus, temperatures |
@@ -296,6 +296,7 @@ Under *Monitoring → Reports* WhatsOnMyNet sends reports by e-mail at set times
 
 - **/metrics** for Prometheus with the state of all monitors and sensors - only with a key, read only; a ready-made **Grafana dashboard** to import under *Settings → Prometheus & Grafana*.
 - **Own checks** (local checks in the Checkmk format): scripts in the `checks` folder on Windows and Linux computers report OK, warning, critical or unknown - only files nobody else may change run, each with a time limit.
+- **Plugins for the host script**: write them under *Settings → Plugins* (PowerShell or sh), approve them for all machines, tags, locations or single devices, download them and put them into the plugins folder. Lines like `Backup age: 26 h` become values with an alarm limit of their own. A machine runs exactly the file WhatsOnMyNet approves for it over the secured connection (version and SHA-256) - changed, outdated or foreign plugins do not run; the list shows where a plugin runs, is missing or outdated.
 - **More kinds of checks**: mail servers (SMTP, IMAP, POP3 with STARTTLS/TLS and certificate expiry), DNS at a given server, LDAP/Active Directory, time servers (NTP), Microsoft SQL Server; load of every switch port.
 
 Details on all of it are in the manual.

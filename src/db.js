@@ -740,6 +740,23 @@ export const MIGRATIONS = [
      created_at TEXT NOT NULL,
      updated_at TEXT NOT NULL
    );`,
+  // 41: plugins of the host script - own small scripts written in WhatsOnMyNet, downloaded as a file and run by the host
+  // script of the machines they are meant for (targets: all of the system, tags, locations, devices); a machine runs a
+  // plugin only with the fingerprint (SHA-256) WhatsOnMyNet names for it
+  `CREATE TABLE IF NOT EXISTS plugins (
+     id INTEGER PRIMARY KEY,
+     name TEXT NOT NULL,
+     description TEXT NOT NULL DEFAULT '',
+     os TEXT NOT NULL CHECK (os IN ('windows','linux')),
+     code TEXT NOT NULL,
+     version INTEGER NOT NULL DEFAULT 1,
+     targets TEXT NOT NULL DEFAULT '{"all":true}',
+     timeout_s INTEGER NOT NULL DEFAULT 30,
+     enabled INTEGER NOT NULL DEFAULT 1,
+     created_at TEXT NOT NULL,
+     updated_at TEXT NOT NULL,
+     updated_by TEXT NOT NULL DEFAULT ''
+   );`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

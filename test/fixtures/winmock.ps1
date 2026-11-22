@@ -81,11 +81,20 @@ function New-Object { param([string]$ComObject, [Parameter(Position = 0)][string
 # The setup calls icacls and schtasks: noted in $env:WOMN_CALLS (when set), nothing changed
 function Note-Call([string]$Line) { if ($env:WOMN_CALLS) { Add-Content -LiteralPath $env:WOMN_CALLS -Value $Line }; $global:LASTEXITCODE = 0 }
 # Rights of the folder as the setup finds them: SYSTEM, Administrators and one account given access by hand
+# With $env:WOMN_ACL_SAFE: owned by Administrators, only SYSTEM and Administrators may write (for the plugins folder);
+# a file whose name contains "unsafe" may be written by Users
 function Get-Acl { param([string]$LiteralPath)
-  $acl = [pscustomobject]@{}
+  $acl = [pscustomobject]@{ Path = $LiteralPath }
+  $acl | Add-Member ScriptMethod GetOwner { param($t) [pscustomobject]@{ Value = 'S-1-5-32-544' } }
   $acl | Add-Member ScriptMethod GetAccessRules { param($a, $b, $c)
-    foreach ($sid in 'S-1-5-18', 'S-1-5-32-544', 'S-1-5-21-1000-2000-3000-1104') { [pscustomobject]@{ IdentityReference = [pscustomobject]@{ Value = $sid } } } }
+    $sids = if ($env:WOMN_ACL_SAFE) { @('S-1-5-18', 'S-1-5-32-544') + $(if ($this.Path -like '*unsafe*') { @('S-1-5-32-545') } else { @() }) } else { @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-21-1000-2000-3000-1104') }
+    foreach ($sid in $sids) { [pscustomobject]@{ IdentityReference = [pscustomobject]@{ Value = $sid }; AccessControlType = 'Allow'; FileSystemRights = 0x1F01FF } } }
   $acl }
+# certutil -hashfile <file> SHA256: the fingerprint as the real one prints it (old Windows: bytes with spaces)
+function certutil.exe {
+  $File = $args[1]
+  $h = (Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $File -Algorithm SHA256).Hash.ToLower()
+  "SHA256 hash of ${File}:"; (($h -split '(..)' | Where-Object { $_ }) -join ' '); 'CertUtil: -hashfile command completed successfully.' }
 function icacls.exe { Note-Call ('icacls ' + ($args -join ' ')) }
 function schtasks.exe { Note-Call ('schtasks ' + ($args -join ' ')) }
 # The report goes to $env:WOMN_BODY instead of the network: an alias wins over the function the script defines

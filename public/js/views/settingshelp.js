@@ -17,6 +17,7 @@ export const HELP_HEADINGS = {
   ignored: ['Erste Schritte', 'First steps'],
   docker: ['Monitoring', 'Monitoring'],
   hostscripts: ['Windows- und Linux-Rechner per Skript (ohne Agent)', 'Windows and Linux machines by script (without agent)'],
+  plugins: ['Plugins für das Rechner-Skript', 'Plugins for the host script'],
   notify: ['Monitoring', 'Monitoring'],
   smtp: ['Monitoring', 'Monitoring'],
   api: ['Prometheus und Grafana', 'Prometheus and Grafana'],

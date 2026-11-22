@@ -146,6 +146,14 @@ const PATTERNS = [
   [/^the command timeout is missing - checks not run$/, 'der Befehl timeout fehlt - Prüfungen nicht ausgeführt'],
   [/^owner or rights not safe - not run \(owner must be Administrators\)$/, 'Besitzer oder Rechte nicht sicher - nicht ausgeführt (Besitzer muss „Administratoren“ sein)'],
   [/^could not start: (.*)$/, 'konnte nicht starten: $1'],
+  // plugins of the host script
+  [/^no line in a known format \(exit code (-?\d+)\)$/, 'keine Zeile in einem bekannten Format (Exit-Code $1)'],
+  [/^timeout \((\d+) s\)$/, 'Zeitüberschreitung ($1 s)'],
+  [/^(\d+) value\(s\)$/, '$1 Wert(e)'],
+  [/^folder (.*) may be changed by others - plugins not run$/, 'Ordner $1 ist für andere änderbar - Plugins nicht ausgeführt'],
+  [/^the command timeout is missing - plugins not run$/, 'der Befehl timeout fehlt - Plugins nicht ausgeführt'],
+  [/^no sha256sum, shasum or openssl to check the file - not run$/, 'kein sha256sum, shasum oder openssl zum Prüfen der Datei - nicht ausgeführt'],
+  [/^owner or rights not safe - not run \(owner must be root\)$/, 'Besitzer oder Rechte nicht sicher - nicht ausgeführt (Besitzer muss root sein)'],
   // switch ports
   [/^no traffic \(port (\w+)\)$/, (_, st) => `kein Verkehr (Port ${WORDS[st] || st})`],
   [/^measuring - value after the next query$/, 'wird gemessen - Wert nach der nächsten Abfrage'],

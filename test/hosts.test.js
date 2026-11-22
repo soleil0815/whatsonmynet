@@ -37,7 +37,7 @@ test('device key: report stored for that device, OS filled in, sensors on CPU, d
 
   assert.throws(() => hosts.push('x'.repeat(43), report()), { code: 'err.unauthorized' });
   // The device key wins over name/MAC: even another host name lands on this device
-  assert.deepEqual(hosts.push(t.token, report({ hostname: 'renamed' })), { ok: true, device: dev });
+  assert.deepEqual(hosts.push(t.token, report({ hostname: 'renamed' })), { ok: true, device: dev, plugins: '' });
   const r = hosts.report(dev);
   assert.deepEqual([r.cpu, r.mem, r.stale, r.disks[0].pct, r.macs[0]], [12, 38, false, 90, '00:15:5d:01:02:03']);
   assert.equal(db.prepare('SELECT os FROM devices WHERE id=?').get(dev).os, 'Microsoft Windows Server 2022 Standard 10.0.20348');
@@ -223,7 +223,7 @@ test('Windows script: reports hardware, disks, updates, protection, events and c
   assert.ok(fs.existsSync(path.join(home, 'womn-updates.json')));
   r = run();
   assert.deepEqual([r.updates.pending, r.updates.security, r.updates.lastInstalled], [3, 2, '2026-11-01T03:00:00.000Z']);
-  assert.ok(uninstallScript('windows').text.includes("@('womn-host.ps1', 'womn-host-send.json', 'womn-updates.json')"), 'uninstall removes the update and send status too');
+  assert.ok(uninstallScript('windows').text.includes("@('womn-host.ps1', 'womn-host-send.json', 'womn-updates.json', 'womn-plugins.txt')"), 'uninstall removes the update, send status and plugin list too');
   // the version of the script goes with the report (WhatsOnMyNet shows machines with an older script)
   assert.equal(JSON.parse(fs.readFileSync(body, 'utf8')).script, SCRIPT_VERSIONS.windows);
   assert.equal(r.script, SCRIPT_VERSIONS.windows);

@@ -179,11 +179,15 @@ export function cleanChecks(raw) {
   return list(raw, 50).map((c) => {
     const x = obj(c);
     if (!x) return null;
-    const name = clip(x.name, 64).replace(/[^\w.:@-]/g, '_');
+    const name = clip(x.name, 64).replace(/[^\p{L}\p{N}_.:@-]/gu, '_');
     const status = Number(x.status);
     if (!name || seen.has(name.toLowerCase()) || !Number.isInteger(status) || status < 0 || status > 3) return null;
     seen.add(name.toLowerCase());
     const v = num(x.value);
-    return { name, status, text: clip(x.text, 300), value: v !== null && Math.abs(v) < 1e15 ? v : null, file: clip(x.file, 80) };
+    const plugin = Number(x.plugin);
+    const unit = clip(x.unit, 12);
+    return { name, status, text: clip(x.text, 300), value: v !== null && Math.abs(v) < 1e15 ? v : null, file: clip(x.file, 80),
+      // from a plugin of WhatsOnMyNet (its id) and the unit of the value ("h", "%", "GB" …)
+      ...(Number.isInteger(plugin) && plugin > 0 ? { plugin } : {}), ...(unit ? { unit } : {}) };
   }).filter(Boolean);
 }

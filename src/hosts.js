@@ -11,6 +11,7 @@ import { hostScript, SCRIPT_VERSIONS } from './hostscripts.js';
 import { zfsFromScript, mdFromMdstat, spacesFromScript } from './pools.js';
 import { fillDevice } from './devicefill.js';
 import { cleanUps } from './scan/ups.js';
+import { cleanPluginReport } from './plugins.js';
 import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts, cleanTemps, cleanChecks } from './hostfacts.js';
 
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
@@ -27,6 +28,8 @@ export const reportGone = (at, now = Date.now()) => !(now - Date.parse(at) <= GO
 /** ISO time before which a report counts as gone - for SQL (ISO times compare as text) */
 export const goneBefore = (now = Date.now()) => new Date(now - GONE_HOURS * 3600 * 1000).toISOString();
 
+/** windows or linux from what the machine says about itself */
+export const hostOs = (os) => (/windows/i.test(String(os || '')) ? 'windows' : 'linux');
 const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
 /** What a script sends, checked and cut to size: never trusted more than a form */
@@ -60,8 +63,10 @@ export function cleanReport(body) {
     events: cleanEvents(b.events), certs: cleanCerts(b.certs),
     // Temperatures (Linux script from version 0.11 on: hwmon)
     temps: cleanTemps(b.temps),
-    // own checks from the checks folder of the machine (scripts from version 0.27 on)
+    // own checks from the checks folder of the machine (scripts from version 0.27 on) and the values of the plugins
     checks: cleanChecks(b.checks),
+    // the files in the plugins folder and what became of them (scripts from 0.56 on; null: the script knows no plugins)
+    plugins: Array.isArray(b.plugins) ? cleanPluginReport(b.plugins) : null,
     // ZFS pools and software RAID (Linux script), Storage Spaces (Windows script) - from 0.42 on
     pools: [...zfsFromScript(typeof b.zfs?.list === 'string' ? b.zfs.list.slice(0, 20000) : '', zfsStatus(b.zfs?.status)),
       ...mdFromMdstat(typeof b.mdstat === 'string' ? b.mdstat.slice(0, 20000) : ''), ...spacesFromScript(b.spaces)].slice(0, 64),
@@ -86,7 +91,7 @@ export function serverBase(server) {
   return `${u.protocol}//${u.host}`;
 }
 
-export function createHosts({ db }) {
+export function createHosts({ db, plugins = null }) {
   const now = () => new Date().toISOString();
   const tokenRow = (id) => db.prepare('SELECT * FROM host_tokens WHERE id=?').get(id);
   const shapeToken = (t) => (t ? { id: t.id, name: t.name, os: t.os, device_id: t.device_id, device_name: t.device_id ? db.prepare('SELECT name FROM devices WHERE id=?').get(t.device_id)?.name || '' : null,
@@ -168,7 +173,9 @@ export function createHosts({ db }) {
     const hw = r.hw || {};
     // A match by name or address alone is not sure enough to declare the hardware exchanged (MAC dropped, serial replaced)
     fillDevice(db, deviceId, { os: r.os, hostname: r.hostname, vendor: hw.vendor, model: hw.model, serial: hw.serial, type: hw.virtual ? 'vm' : undefined }, 'script', { mayReplace: found.sure });
-    return { ok: true, device: deviceId };
+    // which plugins this machine may run (id, version, fingerprint) - the script keeps the list for its next run
+    const allowed = plugins ? plugins.allowedFor(deviceId, hostOs(r.os)) : [];
+    return { ok: true, device: deviceId, plugins: plugins ? plugins.allowString(allowed) : '' };
   }
 
   /** Last report of a device with "stale" if it is older than 15 minutes; null if it never reported */
@@ -179,7 +186,10 @@ export function createHosts({ db }) {
     // a Windows script older than the one WhatsOnMyNet hands out now (none sent: before 0.42)
     const windows = /windows/i.test(String(data.os || ''));
     const scriptOld = windows ? !data.script || older(data.script, SCRIPT_VERSIONS.windows) : false;
-    return { ...data, at: row.at, stale: Date.now() - Date.parse(row.at) > STALE_MIN * 60 * 1000, gone: reportGone(row.at), scriptOld, scriptNow: windows ? SCRIPT_VERSIONS.windows : null };
+    // plugins: what is meant to run here and what the machine says about its plugins folder
+    const pluginState = plugins ? plugins.overview(deviceId, hostOs(data.os), data.plugins) : null;
+    return { ...data, at: row.at, stale: Date.now() - Date.parse(row.at) > STALE_MIN * 60 * 1000, gone: reportGone(row.at), scriptOld, scriptNow: windows ? SCRIPT_VERSIONS.windows : null,
+      plugins: pluginState?.items.length ? pluginState : null };
   }
 
   /**

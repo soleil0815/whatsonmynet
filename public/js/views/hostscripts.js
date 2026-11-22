@@ -4,7 +4,8 @@ import { h, mount, toast, modal, confirmDialog, fmtDate, fmtAgo } from '../dom.j
 import { get, post, del } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
-import { fail } from '../app.js';
+import { fail, state } from '../app.js';
+import { pluginsBlock } from './plugins.js';
 import { field, input, select, btn } from './common.js';
 import { upsBlock } from './snmpdev.js';
 import { checkText } from '../checktext.js';
@@ -112,6 +113,7 @@ export function systemPanel(x) {
     poolsBlock(x.pools),
     pdisksBlock(x.pdisks),
     checksBlock(x.checks),
+    pluginsBlock(x.plugins, !!state.user?.isAdmin),
     eventsBlock(x.events),
     certsBlock(x.certs),
     hwBlock(x.hw));
@@ -151,7 +153,7 @@ function checksBlock(checks) {
     badge(tone[c.status], t(`val.state.${ST[c.status]}`)),
     h('b', { class: 'small' }, c.name),
     h('span', { class: 'small' }, checkText(c.text, getLang()) || ''),
-    c.value !== null && c.value !== undefined ? h('span', { class: 'muted small mono' }, String(c.value)) : null,
+    c.value !== null && c.value !== undefined && !c.plugin ? h('span', { class: 'muted small mono' }, String(c.value)) : null,
     c.file ? h('span', { class: 'muted small mono' }, c.file) : null)))];
 }
 

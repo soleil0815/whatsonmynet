@@ -785,6 +785,34 @@ Status `0` = OK, `1` = Warnung, `2` = kritisch, `3` = unbekannt. Der Name hat ke
 
 Auf der Geräteseite stehen die Prüfungen unter *Eigene Prüfungen*; als Sensor *Eigene Prüfung …* alarmiert alles außer OK (auch Warnung und unbekannt). Neue Rechner bekommen die Sensoren gleich mit. Dafür das Rechner-Skript ab dieser Version einmal neu ausrollen.
 
+### Plugins für das Rechner-Skript
+
+Ein **Plugin** ist ein kleines Skript, das du in WhatsOnMyNet schreibst und das das Rechner-Skript bei jeder Meldung mit ausführt - wie die eigenen Prüfungen, aber an einer Stelle gepflegt, mit Version und mit der Angabe, für welche Rechner es ist. So hinterlegt jeder Administrator seine eigenen Prüfungen: für alle Rechner gemeinsam oder gezielt für einzelne Systeme.
+
+1. *Einstellungen → Plugins → Neues Plugin*: Name, Beschreibung, System (**Windows** = PowerShell, **Linux** = sh), dazu der Code. „Beispiel einfügen“ gibt ein fertiges Beispiel (Alter der neuesten Sicherung).
+2. **Für wen?** *Alle Rechner dieses Systems* - oder nur bestimmte: **Schlagwörter** aus dem Inventar (z. B. `dateiserver` - gilt auch für Rechner, die später das Schlagwort bekommen), **Standorte** oder einzelne **Geräte**.
+3. **Speichern** und **Herunterladen**. Die Datei (z. B. `womn-plugin-3-backup-alter.ps1`) kommt in den Plugin-Ordner - per Softwareverteilung, GPO, Ansible oder von Hand:
+   - Windows: `C:\ProgramData\WhatsOnMyNet\plugins\`
+   - Linux: `/etc/whatsonmynet/plugins/` (Skript als root) bzw. `~/.config/whatsonmynet/plugins/`
+4. Ab der übernächsten Meldung (spätestens nach 10 Minuten) laufen die Werte ein.
+
+![Plugins](img/plugins-de.png)
+
+**Was ein Plugin ausgibt:** Zeilen `Name: Wert Einheit` - z. B. `Backup-Alter: 26 h`, `Offene Tickets: 12`, `Freier Speicher: 1,5 GB` (Punkt oder Komma) - oder Zeilen im Prüf-Format wie bei den eigenen Prüfungen (`0 Backup count=12 Text`, Status 0 bis 3). Andere Zeilen werden übergangen. Auf der Geräteseite stehen die Werte unter *Eigene Prüfungen*; als Sensor *Wert …* bekommt jeder eine eigene Alarmgrenze (z. B. „größer oder gleich 30 h“), Zeilen im Prüf-Format alarmieren wie gewohnt als *Eigene Prüfung …*.
+
+**Nur genau diese Datei läuft.** WhatsOnMyNet nennt dem Rechner-Skript in der Antwort auf jede Meldung, welche Plugins dieser Rechner ausführen darf - mit Version und Fingerabdruck (SHA-256) der Datei. Die Antwort kommt über die Verbindung, der das Skript vertraut (festgelegtes Zertifikat). Das Skript führt ein Plugin nur aus, wenn die Datei genau diese ist:
+
+- eine **veränderte** Datei läuft nicht („verändert“ - die Datei neu herunterladen),
+- eine **alte Version** läuft nicht („veraltet“ - nach dem Speichern einer neuen Version die Datei ersetzen),
+- ein Plugin **für andere Rechner** oder ein **ausgeschaltetes** läuft nicht („nicht für hier“),
+- eine Datei ohne den Kopf von WhatsOnMyNet läuft nicht („kein Plugin“).
+
+Eine neue Version entsteht nur, wenn sich die Datei ändert (Code, Name, System). Wer das Plugin bekommt, die Beschreibung oder das Zeitlimit lassen sich ändern, ohne neu zu verteilen. Gelöscht oder ausgeschaltet läuft es sofort nirgends mehr - auch wo die Datei noch liegt.
+
+**Überblick:** Die Liste zeigt je Plugin, auf wie vielen der gemeinten Rechner es läuft („läuft auf 3 von 4“); im Plugin steht unter *Wo es noch nicht läuft*, welcher Rechner es noch nicht hat, eine alte Version, eine veränderte Datei oder ein zu altes Rechner-Skript. Auf der Geräteseite stehen unter *Plugins* alle Plugins für diesen Rechner mit ihrem Zustand und was zu tun ist.
+
+**Sicherheit:** Plugins laufen mit den Rechten des Rechner-Skripts (Windows: SYSTEM). Deshalb gelten zusätzlich dieselben Regeln wie für die eigenen Prüfungen: Ordner und Datei dürfen nur Administratoren bzw. root ändern, keine Verknüpfung; je Plugin ein Zeitlimit (5 bis 120 Sekunden), höchstens 50. Plugins anlegen, ändern und herunterladen dürfen nur Administratoren; jede Änderung und jeder Download steht im Protokoll. Das Rechner-Skript lädt weiterhin nichts selbst - die Datei bringst du. Für Plugins braucht es das Rechner-Skript ab Version 0.56.0 (Windows) bzw. das aktuelle Linux-Skript - einmal neu ausrollen; ein älteres zeigt auf der Geräteseite „Skript zu alt“.
+
 ## Prometheus und Grafana
 
 Wer schon Prometheus und Grafana betreibt, kann den Zustand aller Monitore und Sensoren dorthin holen: *Einstellungen → Prometheus & Grafana*.

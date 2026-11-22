@@ -17,6 +17,7 @@ import { createChannels } from './monitor/notify.js';
 import { createMaintenance } from './monitor/maintenance.js';
 import { createMonitoring } from './monitor/index.js';
 import { createNightly } from './scan/nightly.js';
+import { createPlugins } from './plugins.js';
 import { createUpdateCheck } from './updatecheck.js';
 import { createPrinters } from './printers.js';
 import { createDockerHosts } from './monitor/docker.js';
@@ -93,7 +94,8 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   const printers = createPrinters({ db, settings, channels });
   const dockerHosts = createDockerHosts(db);
   const snmpDevices = createSnmpDevices({ db, settings, channels });
-  const hosts = createHosts({ db });
+  const plugins = createPlugins({ db });
+  const hosts = createHosts({ db, plugins });
   // Serial numbers etc. already polled before this version knew how to take them over
   try { const n = syncStoredFacts(db); if (n) log.info(`Device details taken over from earlier polls: ${n} device(s)`); } catch (e) { log.warn(`Device details: ${e.message}`); }
   // Monitors/sensors that watch the same thing twice: merged once (the one that runs stays)
@@ -155,7 +157,7 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   } });
   const apiTokens = createApiTokens({ settings });
   diagnostics.useSources({ events, eventRules, apiTokens });
-  const ctx = { db, settings, events, eventRules, apiTokens, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups, statusPages, updateCheck,
+  const ctx = { db, settings, events, eventRules, apiTokens, sensorChoices, failover, autoWatch, diagnostics, sessions, users, inventory, locations, scanner, mailer, limiter, setup, tls, channels, maintenance, monitoring, nightly, printers, dockerHosts, snmpDevices, hosts, directory, agents, reports, proxmox, backups, statusPages, updateCheck, plugins,
     // replaced by server.js: loads a new certificate into the running HTTPS server
     applyTls: () => {} };
 

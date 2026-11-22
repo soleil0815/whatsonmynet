@@ -21,7 +21,9 @@ test('every section of the settings has its text in German and English', () => {
 test('the links go to headings of the manual that exist', async () => {
   const { HELP_HEADINGS } = await import('../public/js/views/settingshelp.js').catch(() => ({ HELP_HEADINGS: null })) || {};
   const map = HELP_HEADINGS || Object.fromEntries([...helpSrc.matchAll(/\n {2}([a-z]+): \['([^']+)', '([^']+)'\]/g)].map((m) => [m[1], [m[2], m[3]]]));
-  const ids = { de: new Set(toc(src('help/manual.de.md')).map((x) => x.id)), en: new Set(toc(src('help/manual.en.md')).map((x) => x.id)) };
+  // chapters (##) and their sections (###) - every heading has an anchor
+  const heads = (md) => new Set([...toc(md).map((x) => x.id), ...md.split('\n').map((l) => /^###\s+(.*)$/.exec(l)).filter(Boolean).map((m) => slug(m[1]))]);
+  const ids = { de: heads(src('help/manual.de.md')), en: heads(src('help/manual.en.md')) };
   let n = 0;
   for (const [s, head] of Object.entries(map)) {
     if (!head) continue;

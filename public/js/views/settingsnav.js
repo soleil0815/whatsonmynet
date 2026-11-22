@@ -7,7 +7,7 @@ import { icon } from '../icons.js';
 export const GROUPS = [
   ['access', [['general', 'settings'], ['users', 'users'], ['ad', 'user']]],
   ['scan', [['scan', 'radar'], ['printers', 'printer'], ['snmpdev', 'switch'], ['agents', 'location'], ['ignored', 'eyeoff']]],
-  ['connect', [['docker', 'server'], ['hostscripts', 'computer'], ['notify', 'bell'], ['smtp', 'mail'], ['api', 'gauge']]],
+  ['connect', [['docker', 'server'], ['hostscripts', 'computer'], ['plugins', 'wrench'], ['notify', 'bell'], ['smtp', 'mail'], ['api', 'gauge']]],
   ['system', [['https', 'lock'], ['backup', 'download'], ['failover', 'shield'], ['diag', 'pulse'], ['audit', 'history'], ['about', 'shield']]],
 ];
 export const SECTIONS = GROUPS.flatMap(([, list]) => list);

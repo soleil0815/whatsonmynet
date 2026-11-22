@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Plugins for the host script: under Settings → Plugins you write small scripts of your own (PowerShell or sh) – for all machines, for tags, locations or single devices –, download them and put them into the plugins folder. Lines like "Backup age: 26 h" become values with an alarm limit of their own. A machine runs exactly the approved file only (version and fingerprint come over the secured connection): changed, outdated or foreign plugins do not run. List and device page show where a plugin runs, is missing or outdated. Roll out the host script once again for this (Windows 0.56.0)
+
+## 0.55.0 - 2026-11-22
+
 - SNMPv3: under Settings → Scan you can store up to five SNMPv3 users – with authentication (SHA, MD5) and encryption (AES, DES), passwords encrypted and never in the browser. WhatsOnMyNet tries the communities first, then the users, and remembers per device what works. Applies to scan, printers, switches, NAS, UPS, routers and SNMP sensors; "Test access" shows which access a device answers to
 
 ## 0.54.0 - 2026-11-21

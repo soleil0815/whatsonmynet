@@ -198,13 +198,76 @@ if (Test-Path -LiteralPath $ChkDir) {
   }
 }
 
+# Plugins written in WhatsOnMyNet (Settings → Plugins), put into the plugins folder by the administrators. A plugin
+# runs only when WhatsOnMyNet named exactly this file for this machine in its answer to the last report: id, version
+# and fingerprint (SHA-256) - a changed file, an old version or a plugin meant for other machines does not run. The
+# same rights rules as for the checks; at most 50. Lines in the check format or "Name: value unit" (e.g.
+# "Backup-Alter: 26 h") are sent with the report.
+$plugins = @()
+$PlugDir = Join-Path $Dir 'plugins'
+$AllowFile = Join-Path $Dir 'womn-plugins.txt'
+$allow = @{}
+if (Test-Path -LiteralPath $AllowFile) {
+  foreach ($a in ([string](Try-Get { [IO.File]::ReadAllText($AllowFile) }) -split '\s+')) {
+    if ($a -match '^(\d{1,9}):(\d{1,9}):([0-9a-f]{64}):(\d{1,3})$') { $allow[[int]$Matches[1]] = @{ v = [int]$Matches[2]; sha = $Matches[3]; t = [int]$Matches[4] } }
+  }
+}
+function Plugin-Entry($File, $Id, $Version, $State, $Text) { @{ file = $File; id = $Id; version = $Version; state = $State; text = $Text } }
+if (Test-Path -LiteralPath $PlugDir) {
+  if (-not (Test-Safe $PlugDir)) { $plugins = @(Plugin-Entry '' $null $null 'unsafe' "folder $PlugDir may be changed by others - plugins not run") }
+  else {
+    # The fingerprint by certutil (on every Windows): the .NET hash classes are words PowerShell logs as "suspicious"
+    # (event 4104 on every run)
+    function Get-Sha256([string]$Path) {
+      foreach ($l in @(& certutil.exe -hashfile $Path SHA256)) { $x = ([string]$l -replace '\s', '').ToLower(); if ($x -match '^[0-9a-f]{64}$') { return $x } }
+      return ''
+    }
+    foreach ($f in @(@(Get-ChildItem -LiteralPath $PlugDir -File | Where-Object { $_.Extension -ieq '.ps1' } | Sort-Object Name)[0..49])) {
+      $bytes = [IO.File]::ReadAllBytes($f.FullName)
+      $head = [Text.Encoding]::UTF8.GetString($bytes, 0, [Math]::Min($bytes.Length, 600))
+      if ($head -notmatch '# womn-plugin id=(\d{1,9}) version=(\d{1,9})') { $plugins += Plugin-Entry $f.Name $null $null 'noHeader' 'not a plugin of WhatsOnMyNet - not run'; continue }
+      $id = [int]$Matches[1]; $ver = [int]$Matches[2]
+      if (-not (Test-Safe $f.FullName)) { $plugins += Plugin-Entry $f.Name $id $ver 'unsafe' 'owner or rights not safe - not run (owner must be Administrators)'; continue }
+      $sha = Get-Sha256 $f.FullName
+      $a = $allow[$id]
+      if (-not $a) { $plugins += Plugin-Entry $f.Name $id $ver 'notAssigned' 'not meant for this machine (or switched off) - not run'; continue }
+      if ($a.sha -ne $sha) {
+        if ($ver -lt $a.v) { $plugins += Plugin-Entry $f.Name $id $ver 'outdated' "version $ver - WhatsOnMyNet has version $($a.v): download it again" }
+        else { $plugins += Plugin-Entry $f.Name $id $ver 'changed' 'the file is not the one from WhatsOnMyNet - download it again' }
+        continue
+      }
+      try { Unblock-File -LiteralPath $f.FullName } catch { $null = $_ }
+      $p = New-Object System.Diagnostics.Process
+      $p.StartInfo.FileName = 'powershell.exe'; $p.StartInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File `"$($f.FullName)`""
+      $p.StartInfo.UseShellExecute = $false; $p.StartInfo.RedirectStandardOutput = $true; $p.StartInfo.RedirectStandardInput = $true; $p.StartInfo.CreateNoWindow = $true
+      try { [void]$p.Start(); $p.StandardInput.Close(); $read = $p.StandardOutput.ReadToEndAsync() } catch { $plugins += Plugin-Entry $f.Name $id $ver 'error' "could not start: $($_.Exception.Message)"; continue }
+      if (-not $p.WaitForExit($a.t * 1000)) { try { $p.Kill() } catch { $null = $_ }; $plugins += Plugin-Entry $f.Name $id $ver 'timeout' "timeout ($($a.t) s)"; continue }
+      $out = [string]$read.Result; if ($out.Length -gt 20000) { $out = $out.Substring(0, 20000) }
+      $found = 0
+      foreach ($line in ($out -split "`r?`n")) {
+        if ($line -match '^([0-3])\s+(\S+)\s+(\S+)\s*(.*)$') {
+          $st = [int]$Matches[1]; $nm = $Matches[2]; $perf = $Matches[3]; $txt = $Matches[4]; $val = $null
+          if ($perf -ne '-' -and $perf -match '^[^=|]+=(-?\d+(?:\.\d+)?)') { $val = [double]::Parse($Matches[1], [Globalization.CultureInfo]::InvariantCulture) }
+          $checks += @{ name = $nm; status = $st; text = $txt; value = $val; file = $f.Name; plugin = $id; unit = '' }; $found++
+        } elseif ($line -match '^\s*([^:]{1,60}?)\s*:\s*(-?\d+(?:[.,]\d+)?)\s*([^\s\d]\S{0,11})?\s*$') {
+          $nm = ($Matches[1].Trim() -replace '\s+', '_'); $unit = [string]$Matches[3]
+          $val = [double]::Parse(($Matches[2] -replace ',', '.'), [Globalization.CultureInfo]::InvariantCulture)
+          $checks += @{ name = $nm; status = 0; text = "$($Matches[2]) $unit".Trim(); value = $val; file = $f.Name; plugin = $id; unit = $unit }; $found++
+        }
+      }
+      if ($found) { $plugins += Plugin-Entry $f.Name $id $ver 'ok' "$found value(s)" }
+      else { $plugins += Plugin-Entry $f.Name $id $ver 'error' "no line in a known format (exit code $($p.ExitCode))" }
+    }
+  }
+}
+
 $net = @(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE')
 $body = @{
   hostname = $env:COMPUTERNAME; os = "$($os.Caption) $($os.Version)".Trim(); cpu = [int]$cpu
   memTotal = [int64]$os.TotalVisibleMemorySize * 1024; memUsed = ([int64]$os.TotalVisibleMemorySize - [int64]$os.FreePhysicalMemory) * 1024
   uptime = [int]((Get-Date) - $os.LastBootUpTime).TotalSeconds; disks = $disks; services = $services
   macs = @($net | ForEach-Object { $_.MACAddress } | Where-Object { $_ }); ips = @($net | ForEach-Object { $_.IPAddress } | Where-Object { $_ -match '^\d+\.' }); ups = $ups
-  hw = $hw; pdisks = $pdisks; updates = $updates; av = $av; firewall = $fw; events = $events; certs = $certs; checks = $checks; spaces = $spaces; script = $ScriptVersion
+  hw = $hw; pdisks = $pdisks; updates = $updates; av = $av; firewall = $fw; events = $events; certs = $certs; checks = $checks; plugins = $plugins; spaces = $spaces; script = $ScriptVersion
 } | ConvertTo-Json -Depth 6 -Compress
 Send-Report $body
 

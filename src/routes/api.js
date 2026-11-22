@@ -251,6 +251,35 @@ export function createApi(ctx) {
     settings.set('ui.startHidden', !!req.body.hidden);
     res.json({ hidden: settings.get('ui.startHidden') });
   });
+  // Plugins of the host script (administrators only: they run with the rights of the host script on the machines)
+  r.get('/plugins', admin, (_req, res) => res.json(ctx.plugins.list()));
+  r.get('/plugins/choices', admin, (_req, res) => res.json(ctx.plugins.choices()));
+  r.get('/plugins/:id', admin, (req, res) => res.json(ctx.plugins.get(int(req.params.id))));
+  r.post('/plugins', admin, (req, res) => {
+    const p = ctx.plugins.create(req.body, req.user.username);
+    audit(req, 'plugin.create', `${p.name} (${p.os})`);
+    res.status(201).json(p);
+  });
+  r.put('/plugins/:id', admin, (req, res) => {
+    const p = ctx.plugins.update(int(req.params.id), req.body, req.user.username);
+    audit(req, 'plugin.update', `${p.name} v${p.version}`);
+    res.json(p);
+  });
+  r.delete('/plugins/:id', admin, (req, res) => {
+    const p = ctx.plugins.get(int(req.params.id));
+    ctx.plugins.remove(p.id);
+    audit(req, 'plugin.delete', p.name);
+    res.json({ ok: true });
+  });
+  r.get('/plugins/:id/download', admin, (req, res) => {
+    const f = ctx.plugins.download(int(req.params.id));
+    audit(req, 'plugin.download', f.file);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${f.file}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Content-SHA256', f.sha);
+    res.send(f.bytes);
+  });
   // Search over everything (Ctrl+K): only what this user may see
   r.get('/search', (req, res) => res.json(searchAll(db, str(req.query.q, 100), { user: req.user, scope: req.scope })));
   r.get('/dashboard', (req, res) => {
