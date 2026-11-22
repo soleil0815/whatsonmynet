@@ -16,6 +16,7 @@ import { findSame } from './dedupe.js';
 import { explain } from './explain.js';
 import { isIP } from 'node:net';
 import { DNS_TYPES, MAIL_PORTS } from './protocols.js';
+import { snmpCredentials } from '../snmpcreds.js';
 
 const HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 const MAX_PARALLEL = 25;
@@ -88,10 +89,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     dockerUrl: (id) => (id ? db.prepare('SELECT url FROM docker_hosts WHERE id=?').get(id)?.url : null),
     secret: (m) => { if (!m.secret) return ''; try { return decrypt(m.secret); } catch { return ''; } },
     db,
-    communities: () => {
-      const list = String(settings?.get('scan.snmpCommunities') || '').split(/[\n,]/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
-      return list.length ? list : ['public'];
-    },
+    communities: () => (settings ? snmpCredentials(settings) : ['public']),
     group: (m) => groupCheck(m),
   };
   // The group a monitor is shown in: its own, else the location of its device

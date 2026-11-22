@@ -7,6 +7,7 @@ import https from 'node:https';
 import net from 'node:net';
 import { execFile } from 'node:child_process';
 import snmp from 'net-snmp';
+import { orderFor, rememberAccess, v3Session, accessLabel } from '../snmpcreds.js';
 import { config } from '../config.js';
 import { normalizeMac } from '../lib/net.js';
 
@@ -156,14 +157,15 @@ function snmpGetOnce(ip, community, version, timeout) {
   return new Promise((resolve) => {
     let session;
     try {
-      session = snmp.createSession(ip, community, { version, timeout, retries: 0, port: 161 });
+      session = version === 3 ? v3Session(ip, community, { timeout, retries: 0, port: 161 })
+        : snmp.createSession(ip, community, { version, timeout, retries: 0, port: 161 });
     } catch { return resolve(null); }
     let done = false;
     const end = (v) => { if (!done) { done = true; try { session.close(); } catch { /* closed */ } resolve(v); } };
     session.on('error', () => end(null));
     const keys = Object.keys(SYS);
     session.get(keys.map((k) => SYS[k]), (err, vbs) => {
-      if (err || !vbs) return end(null);
+      if (err || !vbs) return end(err instanceof snmp.RequestTimedOutError ? null : false);
       const out = {};
       vbs.forEach((vb, i) => {
         if (snmp.isVarbindError(vb)) return;
@@ -178,13 +180,23 @@ function snmpGetOnce(ip, community, version, timeout) {
   });
 }
 
-/** sysDescr, sysObjectID, sysName ... with the first community that answers (v2c, then v1). */
+/**
+ * sysDescr, sysObjectID, sysName ... with the first access that answers: communities (v2c, then v1), then SNMPv3
+ * users; the one that worked last time for this address first. A host silent to v3 is not asked with every user.
+ */
 export async function snmpSystem(ip, communities = ['public'], timeout = 900) {
-  for (const c of communities) {
-    const v2 = await snmpGetOnce(ip, c, snmp.Version2c, timeout);
-    if (v2) return { ...v2, version: '2c' };
-    const v1 = await snmpGetOnce(ip, c, snmp.Version1, timeout);
-    if (v1) return { ...v1, version: '1' };
+  let v3Silent = false;
+  for (const c of orderFor(ip, communities)) {
+    if (typeof c === 'string') {
+      const v2 = await snmpGetOnce(ip, c, snmp.Version2c, timeout);
+      if (v2) { rememberAccess(ip, c); return { ...v2, version: '2c', access: accessLabel(c, '2c') }; }
+      const v1 = await snmpGetOnce(ip, c, snmp.Version1, timeout);
+      if (v1) { rememberAccess(ip, c); return { ...v1, version: '1', access: accessLabel(c, '1') }; }
+    } else if (!v3Silent) {
+      const v3 = await snmpGetOnce(ip, c, 3, timeout);
+      if (v3) { rememberAccess(ip, c); return { ...v3, version: '3', access: accessLabel(c, '3') }; }
+      if (v3 === null) v3Silent = true; // no answer at all (not: user or key refused)
+    }
   }
   return null;
 }

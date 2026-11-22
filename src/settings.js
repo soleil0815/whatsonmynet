@@ -1,5 +1,6 @@
 // Settings that are changed in the web interface (key/value, JSON). Secrets are stored encrypted.
 import { encrypt, decrypt } from './lib/crypto.js';
+import { v3Public } from './snmpcreds.js';
 
 // Windows events that come by the thousand and say nothing worth keeping: not taken on a new installation (Messages →
 // Receiving settings → never take). Logon/logoff and special logon, process start/end, object access, token and group
@@ -16,6 +17,7 @@ export const DEFAULTS = {
   'scan.ping': true,              // ICMP echo (if the host allows unprivileged ping)
   'scan.snmp': true,              // ask devices via SNMP (read-only, sysDescr etc.)
   'scan.snmpCommunities': '',     // encrypted; empty = "public"
+  'scan.snmpV3': '',              // encrypted JSON: SNMPv3 users (name, level, procedures, keys) - the keys never leave the server
   'scan.rate': 40,                // new connection attempts per second (gentle)
   'scan.httpTitles': true,        // read the title of web interfaces
   'scan.keepScans': 20,           // how many scans are kept
@@ -97,7 +99,7 @@ export const DEFAULTS = {
   'api.tokens': [],
 };
 
-const SECRET = new Set(['smtp.password', 'scan.snmpCommunities', 'ad.bindPassword', 'events.communities']);
+const SECRET = new Set(['smtp.password', 'scan.snmpCommunities', 'scan.snmpV3', 'ad.bindPassword', 'events.communities']);
 
 export function createSettings(db) {
   const getRow = db.prepare('SELECT value FROM settings WHERE key=?');
@@ -132,6 +134,8 @@ export function createSettings(db) {
       const out = {};
       for (const k of Object.keys(DEFAULTS).filter((x) => x.startsWith(`${prefix}.`))) {
         const name = k.slice(prefix.length + 1);
+        // v3 users: names, levels and procedures for the form - never the keys
+        if (k === 'scan.snmpV3') { out[name] = v3Public(get(k)); continue; }
         out[name] = SECRET.has(k) ? { set: !!get(k) } : get(k);
       }
       return out;

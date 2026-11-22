@@ -1028,3 +1028,11 @@ dialog.gs .gs-input:focus, dialog.gs .gs-input:focus-visible { border: 0; outlin
 /* "More": a small arrow says that a menu opens */
 .menu > summary.btn::after { content: ''; width: 6px; height: 6px; margin-left: 2px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: translateY(-2px) rotate(45deg); opacity: .7; transition: transform .15s; }
 .menu[open] > summary.btn::after { transform: translateY(1px) rotate(-135deg); }
+
+/* SNMPv3 users (Settings → Scan) */
+.field.v3 { display: flex; flex-direction: column; gap: 4px; }
+.v3-list { display: grid; gap: 10px; margin-bottom: 8px; }
+.v3-row { border: 1px solid var(--line); border-radius: var(--r-s, 10px); padding: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.v3-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; width: 100%; }
+.v3-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.v3-field[hidden] { display: none; }

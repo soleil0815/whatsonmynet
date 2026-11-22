@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- SNMPv3: under Settings → Scan you can store up to five SNMPv3 users – with authentication (SHA, MD5) and encryption (AES, DES), passwords encrypted and never in the browser. WhatsOnMyNet tries the communities first, then the users, and remembers per device what works. Applies to scan, printers, switches, NAS, UPS, routers and SNMP sensors; "Test access" shows which access a device answers to
+
+## 0.54.0 - 2026-11-21
+
 - Search everything: Ctrl K (⌘K), "/" or "Search …" at the top of the menu finds devices (also by IP, MAC or serial number), monitors and sensors with their state, locations, hypervisors, users, the pages, the sections of the settings and chapters of the manual from every page – everybody only what they may see
 - First steps: on a new installation the overview shows administrators a list – add a location, scan, adopt devices, set up a channel, add the first monitor, two-factor sign-in. WhatsOnMyNet ticks off what is done; then the list goes away
 - Small things in the interface: maintenance windows and status pages have their own title, "More" menus show an arrow, tabs wrap on phones instead of being cut off, chapters of the manual are highlighted briefly when opened

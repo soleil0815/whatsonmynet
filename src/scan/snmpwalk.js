@@ -1,6 +1,7 @@
 // Read-only SNMP helpers for the device pollers (printers, later switches and NAS): open a session with the first
 // community that answers, read single values and whole tables. Only GET/GETNEXT/GETBULK - never SET.
 import snmp from 'net-snmp';
+import { orderFor, rememberAccess, v3Session, accessLabel } from '../snmpcreds.js';
 
 const SYS_DESCR = '1.3.6.1.2.1.1.1.0';
 
@@ -8,25 +9,31 @@ function tryGet(session, oids, timeout) {
   return new Promise((resolve) => {
     let done = false;
     const end = (v) => { if (!done) { done = true; resolve(v); } };
-    session.get(oids, (err, vbs) => end(err || !vbs ? null : vbs));
-    setTimeout(() => end(null), timeout + 500).unref();
+    session.get(oids, (err, vbs) => end({ vbs: err || !vbs ? null : vbs, silent: !!err && err instanceof snmp.RequestTimedOutError }));
+    setTimeout(() => end({ vbs: null, silent: true }), timeout + 500).unref();
   });
 }
 
 /**
- * Opens a session with the first community that answers (v2c, then v1).
- * Returns { session, version, close() } or null. The community never leaves this module.
+ * Opens a session with the first access that answers: communities (v2c, then v1), then SNMPv3 users. The access that
+ * worked last time for this device is tried first. A device silent to v3 is not asked again with every other user.
+ * Returns { session, version, access, close() } or null. Community and keys never leave this module.
  */
 export async function openSnmp(ip, communities = ['public'], { timeout = 1500, port = 161 } = {}) {
-  for (const c of communities) {
-    for (const version of [snmp.Version2c, snmp.Version1]) {
+  let v3Silent = false;
+  for (const c of orderFor(ip, communities)) {
+    const tries = typeof c === 'string' ? [[snmp.Version2c, '2c'], [snmp.Version1, '1']] : [[null, '3']];
+    for (const [version, label] of tries) {
+      if (label === '3' && v3Silent) continue;
       let session;
-      try { session = snmp.createSession(ip, c, { version, timeout, retries: 1, port }); } catch { continue; }
+      try { session = label === '3' ? v3Session(ip, c, { timeout, retries: 1, port }) : snmp.createSession(ip, c, { version, timeout, retries: 1, port }); } catch { continue; }
       session.on('error', () => {});
-      const vbs = await tryGet(session, [SYS_DESCR], timeout);
-      if (vbs && !snmp.isVarbindError(vbs[0])) {
-        return { session, version: version === snmp.Version2c ? '2c' : '1', close: () => { try { session.close(); } catch { /* closed */ } } };
+      const r = await tryGet(session, [SYS_DESCR], timeout);
+      if (r.vbs && !snmp.isVarbindError(r.vbs[0])) {
+        rememberAccess(ip, c);
+        return { session, version: label, access: accessLabel(c, label), close: () => { try { session.close(); } catch { /* closed */ } } };
       }
+      if (label === '3' && r.silent) v3Silent = true;
       try { session.close(); } catch { /* closed */ }
     }
   }

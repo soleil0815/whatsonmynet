@@ -429,7 +429,15 @@ Count half of it for every day - in the morning everybody signs in at once, and 
 
 ## Printers, switches and NAS
 
-Devices of type *Printer*, *Switch* and *NAS* are queried via SNMP (read-only). Set the community under *Settings → Scan*; SNMP v1/v2c has to be on at the device.
+Devices of type *Printer*, *Switch* and *NAS* are queried via SNMP (read-only). Set the community under *Settings → Scan*; SNMP has to be on at the device - v1/v2c or v3.
+
+**SNMPv3 (authentication and encryption):** if a device no longer speaks v1/v2c - or you want sign-in and encryption -, add up to five users under *Settings → Scan → SNMPv3 accesses*: name, security level (*authPriv* = authentication and encryption, *authNoPriv* = authentication only, *noAuthNoPriv*), procedures (SHA-1/224/256/384/512 or MD5; AES-128, AES-256 or DES) and the two passwords (8 to 128 characters), rarely a context. On the device, add the same user with *read only*.
+
+- WhatsOnMyNet tries the communities first, then the v3 users, and remembers per device what answered - next time it asks with that one right away. If a device does not answer v3 at all, not every user is tried one after another.
+- This applies wherever SNMP is asked: scan, printers, switches, NAS, UPS, ARP tables of routers and sensors of type *SNMP value*. The scan agents get the accesses too.
+- **Test access** asks one device with all stored accesses and shows which one answers (e.g. "v3 · womn-read · authPriv") - save first.
+- The passwords are stored encrypted and never sent to the browser: the field stays empty and keeps the stored password; what you type replaces it. The diagnostics package only says "(set)".
+- Traps are still accepted with a community (v1/v2c).
 
 ![Printer](img/printer-en.png)
 
