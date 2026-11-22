@@ -5,6 +5,7 @@ import { fillDevice } from './devicefill.js';
 import { HttpError } from './lib/http.js';
 import { log } from './lib/log.js';
 import { localDay } from './scan/nightly.js';
+import { snmpCredentials } from './snmpcreds.js';
 
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
 const REARM = 10; // a supply is "replaced" when it rises this many points above the threshold
@@ -36,10 +37,8 @@ export function supplyAlerts(supplies, previous, threshold) {
 }
 
 export function createPrinters({ db, settings, channels }) {
-  const communities = () => {
-    const list = String(settings.get('scan.snmpCommunities') || '').split(/[\n,]/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
-    return list.length ? list : ['public'];
-  };
+  // communities and SNMPv3 users of the scan
+  const communities = () => snmpCredentials(settings);
   const busy = new Set();
   let timer = null;
   let reader = readPrinter; // replaced in tests

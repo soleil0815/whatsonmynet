@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'SNMPv3: Unter Einstellungen → Scan lassen sich bis zu fünf SNMPv3-Benutzer hinterlegen – mit Authentifizierung (SHA, MD5) und Verschlüsselung (AES, DES), Passwörter verschlüsselt und nie im Browser. WhatsOnMyNet probiert erst die Communities, dann die Benutzer, und merkt sich je Gerät, was passt. Gilt für Scan, Drucker, Switches, NAS, USV, Router und SNMP-Sensoren; „Zugang testen“ zeigt, welcher Zugang an einem Gerät antwortet',
+  ], en: [
+    'SNMPv3: under Settings → Scan you can store up to five SNMPv3 users – with authentication (SHA, MD5) and encryption (AES, DES), passwords encrypted and never in the browser. WhatsOnMyNet tries the communities first, then the users, and remembers per device what works. Applies to scan, printers, switches, NAS, UPS, routers and SNMP sensors; "Test access" shows which access a device answers to',
+  ] },
+  { version: '0.54.0', date: '2026-11-21', de: [
     'Suche über alles: Strg K (⌘K), „/“ oder „Suchen …“ oben im Menü findet von jeder Seite Geräte (auch per IP, MAC oder Seriennummer), Monitore und Sensoren mit Zustand, Standorte, Hypervisoren, Benutzer, die Seiten, die Bereiche der Einstellungen und Kapitel im Handbuch – jeder nur, was er sehen darf',
     'Erste Schritte: Auf einer neuen Installation zeigt die Übersicht Administratoren eine Liste – Standort anlegen, scannen, Geräte übernehmen, Kanal einrichten, ersten Monitor anlegen, Zwei-Faktor-Anmeldung. Was erledigt ist, hakt WhatsOnMyNet selbst ab; danach verschwindet die Liste',
     'Kleinigkeiten an der Oberfläche: Wartungsfenster und Statusseiten tragen ihren eigenen Titel, „Mehr“-Menüs zeigen einen Pfeil, Reiter brechen auf dem Handy um statt abgeschnitten zu werden, Kapitel im Handbuch werden beim Öffnen kurz hervorgehoben',

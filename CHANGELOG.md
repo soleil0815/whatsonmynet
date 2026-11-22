@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- SNMPv3: Unter Einstellungen → Scan lassen sich bis zu fünf SNMPv3-Benutzer hinterlegen – mit Authentifizierung (SHA, MD5) und Verschlüsselung (AES, DES), Passwörter verschlüsselt und nie im Browser. WhatsOnMyNet probiert erst die Communities, dann die Benutzer, und merkt sich je Gerät, was passt. Gilt für Scan, Drucker, Switches, NAS, USV, Router und SNMP-Sensoren; „Zugang testen“ zeigt, welcher Zugang an einem Gerät antwortet
+
+## 0.54.0 - 2026-11-21
+
 - Suche über alles: Strg K (⌘K), „/“ oder „Suchen …“ oben im Menü findet von jeder Seite Geräte (auch per IP, MAC oder Seriennummer), Monitore und Sensoren mit Zustand, Standorte, Hypervisoren, Benutzer, die Seiten, die Bereiche der Einstellungen und Kapitel im Handbuch – jeder nur, was er sehen darf
 - Erste Schritte: Auf einer neuen Installation zeigt die Übersicht Administratoren eine Liste – Standort anlegen, scannen, Geräte übernehmen, Kanal einrichten, ersten Monitor anlegen, Zwei-Faktor-Anmeldung. Was erledigt ist, hakt WhatsOnMyNet selbst ab; danach verschwindet die Liste
 - Kleinigkeiten an der Oberfläche: Wartungsfenster und Statusseiten tragen ihren eigenen Titel, „Mehr“-Menüs zeigen einen Pfeil, Reiter brechen auf dem Handy um statt abgeschnitten zu werden, Kapitel im Handbuch werden beim Öffnen kurz hervorgehoben

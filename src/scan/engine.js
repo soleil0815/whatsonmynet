@@ -18,6 +18,7 @@ import { tcpProbe, ping, pingAvailable, netbios, reverseDns, snmpSystem, httpPro
 import { lookupVendor } from './oui.js';
 import { readRouterArp } from './routerarp.js';
 import { classify, isTelematik, isTelematikVendor } from './classify.js';
+import { snmpCredentials } from '../snmpcreds.js';
 
 export const MAX_TOTAL_HOSTS = 16384;
 const MAX_WEB_PROBES = 4;
@@ -99,11 +100,9 @@ export function createScanner({ db, settings, inventory, probe = tcpProbe }) {
   const insertResult = db.prepare(`INSERT INTO scan_results(scan_id,ip,mac,hostname,vendor,detected_type,confidence,facts,status,location_id)
     VALUES(@scan_id,@ip,@mac,@hostname,@vendor,@detected_type,@confidence,@facts,'pending',@location_id)`);
 
-  function communities() {
-    const raw = String(settings.get('scan.snmpCommunities') || '');
-    const list = raw.split(/[\n,]/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
-    return list.length ? list : ['public'];
-  }
+  // communities and SNMPv3 users
+  function communities() { return snmpCredentials(settings); }
+
 
   /**
    * Routed subnets have no ARP here - ask the routers/firewalls of the inventory for their ARP table instead.

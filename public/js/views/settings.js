@@ -104,12 +104,14 @@ async function general(body, s) {
 async function scan(body, s) {
   const sc = s.scan;
   const comm = h('textarea', { name: 'snmpCommunities', rows: 3, class: 'mono', placeholder: sc.snmpCommunities.set ? '••••••' : 'public', autocomplete: 'off', spellcheck: 'false' });
+  const v3 = v3Editor(sc.snmpV3 || []);
   const form = h('form', { class: 'form', onsubmit: async (e) => {
     e.preventDefault();
     const d = formData(form);
     const payload = { ping: d.ping, snmp: d.snmp, httpTitles: d.httpTitles, routerArp: d.routerArp, rate: d.rate, keepScans: d.keepScans };
     if (d.snmpCommunities.trim() || d.clearCommunities) payload.snmpCommunities = d.clearCommunities ? '' : d.snmpCommunities;
-    try { await put('/settings/scan', payload); toast(t('saved')); } catch (ex) { fail(ex); }
+    payload.snmpV3 = v3.value();
+    try { const r = await put('/settings/scan', payload); v3.saved(r.snmpV3); toast(t('saved')); } catch (ex) { fail(ex); }
   } },
   field(t('set.ping'), h('input', { type: 'checkbox', name: 'ping', checked: sc.ping })),
   field(t('set.snmp'), h('input', { type: 'checkbox', name: 'snmp', checked: sc.snmp })),
@@ -117,6 +119,8 @@ async function scan(body, s) {
   field(t('set.routerArp'), h('input', { type: 'checkbox', name: 'routerArp', checked: sc.routerArp !== false }), t('set.routerArpHint')),
   field(t('set.communities'), comm, sc.snmpCommunities.set ? t('set.communitiesSet') : t('set.communitiesHint')),
   sc.snmpCommunities.set ? field('public', h('input', { type: 'checkbox', name: 'clearCommunities' })) : null,
+  v3.el,
+  snmpTester(),
   h('div', { class: 'form-grid' },
     field(t('set.rate'), input('rate', sc.rate, { type: 'number', min: 5, max: 200 }), t('set.rateHint')),
     field(t('set.keepScans'), input('keepScans', sc.keepScans, { type: 'number', min: 3, max: 500 }))),
@@ -124,6 +128,67 @@ async function scan(body, s) {
   const ports = state.meta?.gentlePorts || [];
   mount(body, panel(t('set.scan'), form), await lightPanel(s.lightscan),
     panel(t('set.ports'), h('div', { class: 'ports' }, ports.map((p) => h('span', { class: 'port', title: state.meta.services[p] || '' }, `${p} ${state.meta.services[p] ? `· ${state.meta.services[p]}` : ''}`)))));
+}
+
+/**
+ * SNMPv3 users (for devices that no longer speak v1/v2c): name, level, procedures and passwords. Stored passwords never
+ * come back - the field stays empty and keeps them; typing replaces them.
+ */
+function v3Editor(initial) {
+  let rows = [];
+  const list = h('div', { class: 'v3-list' });
+  const sel = (name, opts, value, label) => h('label', { class: 'v3-field' }, h('span', { class: 'small muted' }, label),
+    h('select', { 'data-k': name }, opts.map(([v, txt]) => h('option', { value: v, selected: v === value }, txt))));
+  const pw = (name, stored, label) => h('label', { class: 'v3-field' }, h('span', { class: 'small muted' }, label),
+    h('input', { type: 'password', 'data-k': name, autocomplete: 'new-password', minlength: 8, maxlength: 128, placeholder: stored ? t('v3.keepKey') : t('v3.key') }));
+  const AUTH = [['sha', 'SHA-1'], ['sha256', 'SHA-256'], ['sha512', 'SHA-512'], ['sha224', 'SHA-224'], ['sha384', 'SHA-384'], ['md5', 'MD5']];
+  const PRIV = [['aes', 'AES-128'], ['aes256b', 'AES-256 (Blumenthal)'], ['aes256r', 'AES-256 (Reeder, Cisco)'], ['des', 'DES']];
+  function row(u = {}, stored = false) {
+    const el = h('div', { class: 'v3-row' },
+      h('div', { class: 'v3-grid' },
+        h('label', { class: 'v3-field' }, h('span', { class: 'small muted' }, t('v3.user')),
+          h('input', { type: 'text', 'data-k': 'user', value: u.user || '', maxlength: 64, autocomplete: 'off', spellcheck: 'false', placeholder: 'womn-read' })),
+        sel('level', [['authPriv', t('v3.authPriv')], ['authNoPriv', t('v3.authNoPriv')], ['noAuthNoPriv', t('v3.noAuthNoPriv')]], u.level || 'authPriv', t('v3.level')),
+        sel('authProtocol', AUTH, u.authProtocol || 'sha', t('v3.authProto')), pw('authKey', stored && u.authProtocol, t('v3.authKey')),
+        sel('privProtocol', PRIV, u.privProtocol || 'aes', t('v3.privProto')), pw('privKey', stored && u.privProtocol, t('v3.privKey')),
+        h('label', { class: 'v3-field' }, h('span', { class: 'small muted' }, t('v3.context')), h('input', { type: 'text', 'data-k': 'context', value: u.context || '', maxlength: 64, autocomplete: 'off', placeholder: t('v3.contextHint') }))),
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost danger', onclick: () => { rows = rows.filter((r) => r !== el); el.remove(); } }, t('v3.remove')));
+    const show = () => {
+      const lv = el.querySelector('[data-k=level]').value;
+      for (const k of ['authProtocol', 'authKey']) el.querySelector(`[data-k=${k}]`).closest('.v3-field').hidden = lv === 'noAuthNoPriv';
+      for (const k of ['privProtocol', 'privKey']) el.querySelector(`[data-k=${k}]`).closest('.v3-field').hidden = lv !== 'authPriv';
+    };
+    el.querySelector('[data-k=level]').addEventListener('change', show);
+    show();
+    rows.push(el);
+    list.append(el);
+  }
+  const fill = (users) => { rows = []; mount(list); for (const u of users) row(u, true); };
+  fill(initial);
+  const add = h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { if (rows.length < 5) row(); } }, h('span', { html: icon('plus') }), t('v3.add'));
+  return {
+    el: h('div', { class: 'field v3' }, h('span', {}, t('v3.title')), h('p', { class: 'muted small', style: { margin: '0 0 8px' } }, t('v3.hint')), list, add),
+    value: () => rows.map((el) => Object.fromEntries([...el.querySelectorAll('[data-k]')].map((x) => [x.dataset.k, x.value.trim ? (x.type === 'password' ? x.value : x.value.trim()) : x.value]))),
+    saved: (users) => fill(users || []),
+  };
+}
+
+/** Which of the stored accesses does a device answer to? (only reads its name and description) */
+function snmpTester() {
+  const ip = h('input', { type: 'text', placeholder: '10.0.10.1', maxlength: 64, class: 'mono', 'aria-label': t('v3.testIp') });
+  const out = h('span', { class: 'small', role: 'status' });
+  const go = async () => {
+    if (!ip.value.trim()) return;
+    mount(out, h('span', { class: 'muted' }, t('v3.testing')));
+    try {
+      const r = await post('/settings/scan/snmp-test', { ip: ip.value.trim() });
+      mount(out, r.ok ? h('span', {}, h('span', { class: 'badge badge-ok' }, r.access), ` ${r.name || ''}${r.descr ? ` · ${r.descr}` : ''}`)
+        : h('span', { class: 'badge badge-bad' }, t('v3.testNone')));
+    } catch (ex) { mount(out, h('span', { class: 'badge badge-bad' }, ex.message)); }
+  };
+  ip.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+  return field(t('v3.test'), h('div', { class: 'row', style: { gap: '8px', alignItems: 'center', flexWrap: 'wrap' } }, ip,
+    h('button', { type: 'button', class: 'btn btn-sm', onclick: go }, t('v3.testDo')), out), t('v3.testHint'));
 }
 
 async function loadChannels() {

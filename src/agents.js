@@ -44,7 +44,7 @@ export function createAgents({ db, settings, inventory, scanner }) {
     return {
       agent: { id: agent.id, name: agent.name },
       subnets: subnetsOf(agent.location_id),
-      scan: { ping: !!settings.get('scan.ping'), snmp: !!settings.get('scan.snmp'), httpTitles: !!settings.get('scan.httpTitles'), rate: settings.get('scan.rate'), snmpCommunities: comm },
+      scan: { ping: !!settings.get('scan.ping'), snmp: !!settings.get('scan.snmp'), httpTitles: !!settings.get('scan.httpTitles'), rate: settings.get('scan.rate'), snmpCommunities: comm, snmpV3: String(settings.get('scan.snmpV3') || '') },
       nightly: { enabled: !!settings.get('lightscan.enabled'), time: settings.get('lightscan.time') },
       jobs,
     };

@@ -428,7 +428,15 @@ Für den Alltag die Hälfte rechnen - morgens melden sich alle gleichzeitig an, 
 
 ## Drucker, Switches und NAS
 
-Geräte vom Typ *Drucker*, *Switch* und *NAS* werden per SNMP gefragt (nur lesend). Die Community stellst du unter *Einstellungen → Scan* ein; am Gerät muss SNMP v1/v2c an sein.
+Geräte vom Typ *Drucker*, *Switch* und *NAS* werden per SNMP gefragt (nur lesend). Die Community stellst du unter *Einstellungen → Scan* ein; am Gerät muss SNMP an sein - v1/v2c oder v3.
+
+**SNMPv3 (Authentifizierung und Verschlüsselung):** Spricht ein Gerät kein v1/v2c mehr - oder willst du Anmeldung und Verschlüsselung -, legst du unter *Einstellungen → Scan → SNMPv3-Zugänge* bis zu fünf Benutzer an: Name, Sicherheitsstufe (*authPriv* = Authentifizierung und Verschlüsselung, *authNoPriv* = nur Authentifizierung, *noAuthNoPriv*), Verfahren (SHA-1/224/256/384/512 oder MD5; AES-128, AES-256 oder DES) und die beiden Passwörter (8 bis 128 Zeichen), selten ein Kontext. Am Gerät legst du denselben Benutzer mit *nur Lesen* an.
+
+- WhatsOnMyNet probiert zuerst die Communities, dann die v3-Benutzer, und merkt sich je Gerät, was geantwortet hat - beim nächsten Mal wird gleich damit gefragt. Antwortet ein Gerät auf v3 gar nicht, werden nicht alle Benutzer nacheinander probiert.
+- Das gilt überall, wo SNMP gefragt wird: Scan, Drucker, Switches, NAS, USV, ARP-Tabellen der Router und Sensoren vom Typ *SNMP-Wert*. Auch die Scan-Agenten bekommen die Zugänge.
+- **Zugang testen** fragt ein Gerät mit allen gespeicherten Zugängen und zeigt, welcher antwortet (z. B. „v3 · womn-read · authPriv“) - vorher speichern.
+- Die Passwörter werden verschlüsselt gespeichert und nie an den Browser geschickt: Das Feld bleibt leer und behält das gespeicherte Passwort; was du eintippst, ersetzt es. Im Diagnosepaket steht nur „(gesetzt)“.
+- Traps werden weiter mit Community angenommen (v1/v2c).
 
 ![Drucker](img/printer-de.png)
 
