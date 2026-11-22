@@ -12,6 +12,8 @@ import { HttpError, line } from './lib/http.js';
 
 export const MAX_CODE = 64 * 1024;
 export const OS = ['windows', 'linux'];
+// how often a plugin may run (minutes) - the host script reports every 5 minutes and reuses the last result in between
+export const INTERVALS = [5, 10, 15, 30, 60, 120, 360, 720, 1440];
 export const DIRS = { windows: 'C:\\ProgramData\\WhatsOnMyNet\\plugins\\', linux: '/etc/whatsonmynet/plugins/' };
 const now = () => new Date().toISOString();
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
@@ -67,7 +69,7 @@ export function pluginFile(p) {
 }
 
 /** What a machine reports about the files in its plugins folder: [{ file, id, version, state, text }] */
-const STATES = ['ok', 'error', 'timeout', 'changed', 'outdated', 'notAssigned', 'noHeader', 'unsafe'];
+const STATES = ['ok', 'error', 'timeout', 'changed', 'outdated', 'notAssigned', 'noHeader', 'unsafe', 'deferred'];
 export function cleanPluginReport(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.slice(0, 50).map((x) => {
@@ -84,7 +86,7 @@ export function cleanPluginReport(raw) {
 export function createPlugins({ db }) {
   const files = new Map(); // id → { key, file } - built once per version
   const shape = (r) => ({ id: r.id, name: r.name, description: r.description, os: r.os, version: r.version, targets: parse(r.targets, { all: true }),
-    timeout: r.timeout_s, enabled: !!r.enabled, created_at: r.created_at, updated_at: r.updated_at, updated_by: r.updated_by });
+    timeout: r.timeout_s, interval: r.interval_min, enabled: !!r.enabled, created_at: r.created_at, updated_at: r.updated_at, updated_by: r.updated_by });
   function fileOf(r) {
     const key = `${r.version}|${r.updated_at}`;
     const hit = files.get(r.id);
@@ -103,7 +105,9 @@ export function createPlugins({ db }) {
     if (typeof code !== 'string' || !code.trim()) throw new HttpError(400, 'err.pluginCode');
     if (Buffer.byteLength(code) > MAX_CODE || code.includes('\0')) throw new HttpError(400, 'err.pluginTooLarge');
     const timeout = Math.min(120, Math.max(5, Number(b.timeout ?? old?.timeout_s ?? 30) || 30));
-    return { name, os, code, timeout, description: String(b.description ?? old?.description ?? '').replace(/[\x00-\x08\x0b-\x1f]/g, ' ').trim().slice(0, 300),
+    const interval = Number(b.interval ?? old?.interval_min ?? 5);
+    if (!INTERVALS.includes(interval)) throw new HttpError(400, 'err.badRequest');
+    return { name, os, code, timeout, interval, description: String(b.description ?? old?.description ?? '').replace(/[\x00-\x08\x0b-\x1f]/g, ' ').trim().slice(0, 300),
       targets: cleanTargets(b.targets ?? parse(old?.targets, { all: true })), enabled: 'enabled' in b ? !!b.enabled : old ? !!old.enabled : true };
   }
 
@@ -162,8 +166,8 @@ export function createPlugins({ db }) {
     create(b, who) {
       const v = validate(b || {});
       const at = now();
-      const id = db.prepare(`INSERT INTO plugins(name,description,os,code,version,targets,timeout_s,enabled,created_at,updated_at,updated_by)
-        VALUES(?,?,?,?,1,?,?,?,?,?,?)`).run(v.name, v.description, v.os, v.code, JSON.stringify(v.targets), v.timeout, v.enabled ? 1 : 0, at, at, String(who || '')).lastInsertRowid;
+      const id = db.prepare(`INSERT INTO plugins(name,description,os,code,version,targets,timeout_s,interval_min,enabled,created_at,updated_at,updated_by)
+        VALUES(?,?,?,?,1,?,?,?,?,?,?,?)`).run(v.name, v.description, v.os, v.code, JSON.stringify(v.targets), v.timeout, v.interval, v.enabled ? 1 : 0, at, at, String(who || '')).lastInsertRowid;
       return this.get(Number(id));
     },
     /** A new version only when the file changes (code, name, system) - other changes need no new download */
@@ -172,8 +176,8 @@ export function createPlugins({ db }) {
       if (!old) throw new HttpError(404, 'err.notFound');
       const v = validate(b || {}, old);
       const fileChanged = v.code !== old.code || v.name !== old.name || v.os !== old.os;
-      db.prepare(`UPDATE plugins SET name=?, description=?, os=?, code=?, version=version+?, targets=?, timeout_s=?, enabled=?, updated_at=?, updated_by=? WHERE id=?`)
-        .run(v.name, v.description, v.os, v.code, fileChanged ? 1 : 0, JSON.stringify(v.targets), v.timeout, v.enabled ? 1 : 0, now(), String(who || ''), id);
+      db.prepare(`UPDATE plugins SET name=?, description=?, os=?, code=?, version=version+?, targets=?, timeout_s=?, interval_min=?, enabled=?, updated_at=?, updated_by=? WHERE id=?`)
+        .run(v.name, v.description, v.os, v.code, fileChanged ? 1 : 0, JSON.stringify(v.targets), v.timeout, v.interval, v.enabled ? 1 : 0, now(), String(who || ''), id);
       return { ...this.get(id), newVersion: fileChanged };
     },
     remove(id) {
@@ -191,10 +195,10 @@ export function createPlugins({ db }) {
       if (!d || !OS.includes(os)) return [];
       return db.prepare('SELECT * FROM plugins WHERE enabled=1 AND os=? ORDER BY id').all(os)
         .filter((r) => targetsMatch(parse(r.targets, null), d))
-        .map((r) => ({ id: r.id, version: r.version, sha: fileOf(r).sha, timeout: r.timeout_s }));
+        .map((r) => ({ id: r.id, version: r.version, sha: fileOf(r).sha, timeout: r.timeout_s, interval: r.interval_min }));
     },
-    /** The list the host script reads: "id:version:sha256:timeout" separated by spaces (no JSON needed in sh) */
-    allowString(list) { return list.map((x) => `${x.id}:${x.version}:${x.sha}:${x.timeout}`).join(' '); },
+    /** The list the host script reads: "id:version:sha256:timeout:interval" separated by spaces (no JSON needed in sh) */
+    allowString(list) { return list.map((x) => `${x.id}:${x.version}:${x.sha}:${x.timeout}:${x.interval}`).join(' '); },
     /**
      * Per device: what is meant to run there and what the machine reports - running, missing, outdated, changed, not
      * meant for it. reported: the plugins of its last report (null: script too old to report plugins).

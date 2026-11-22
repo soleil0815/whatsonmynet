@@ -209,7 +209,7 @@ $AllowFile = Join-Path $Dir 'womn-plugins.txt'
 $allow = @{}
 if (Test-Path -LiteralPath $AllowFile) {
   foreach ($a in ([string](Try-Get { [IO.File]::ReadAllText($AllowFile) }) -split '\s+')) {
-    if ($a -match '^(\d{1,9}):(\d{1,9}):([0-9a-f]{64}):(\d{1,3})$') { $allow[[int]$Matches[1]] = @{ v = [int]$Matches[2]; sha = $Matches[3]; t = [int]$Matches[4] } }
+    if ($a -match '^(\d{1,9}):(\d{1,9}):([0-9a-f]{64}):(\d{1,3}):(\d{1,4})$') { $allow[[int]$Matches[1]] = @{ v = [int]$Matches[2]; sha = $Matches[3]; t = [int]$Matches[4]; every = [int]$Matches[5] } }
   }
 }
 function Plugin-Entry($File, $Id, $Version, $State, $Text) { @{ file = $File; id = $Id; version = $Version; state = $State; text = $Text } }
@@ -222,6 +222,7 @@ if (Test-Path -LiteralPath $PlugDir) {
       foreach ($l in @(& certutil.exe -hashfile $Path SHA256)) { $x = ([string]$l -replace '\s', '').ToLower(); if ($x -match '^[0-9a-f]{64}$') { return $x } }
       return ''
     }
+    $PlugStart = Get-Date
     foreach ($f in @(@(Get-ChildItem -LiteralPath $PlugDir -File | Where-Object { $_.Extension -ieq '.ps1' } | Sort-Object Name)[0..49])) {
       $bytes = [IO.File]::ReadAllBytes($f.FullName)
       $head = [Text.Encoding]::UTF8.GetString($bytes, 0, [Math]::Min($bytes.Length, 600))
@@ -236,6 +237,19 @@ if (Test-Path -LiteralPath $PlugDir) {
         else { $plugins += Plugin-Entry $f.Name $id $ver 'changed' 'the file is not the one from WhatsOnMyNet - download it again' }
         continue
       }
+      # Not every run: a plugin that runs every 60 minutes gives its last output again in between (same file only)
+      $cache = Join-Path $Dir "womn-plugin-$id.out"
+      $out = $null; $cachedAt = $null
+      if (Test-Path -LiteralPath $cache) {
+        $c = [string](Try-Get { [IO.File]::ReadAllText($cache) })
+        if ($c -match '^([0-9a-f]{64}) (\d{1,20})\r?\n') {
+          $then = [datetime]::FromFileTimeUtc([int64]$Matches[2])
+          if ($Matches[1] -eq $sha -and ((Get-Date).ToUniversalTime() - $then).TotalMinutes -lt ($a.every - 1)) { $out = $c.Substring($Matches[0].Length); $cachedAt = $then }
+        }
+      }
+      if ($null -eq $out) {
+        # at most 3 minutes for all plugins of a run, so the report still goes out every 5 minutes - the rest runs next time
+        if (((Get-Date) - $PlugStart).TotalSeconds -gt 180) { $plugins += Plugin-Entry $f.Name $id $ver 'deferred' 'time budget of this run used up - runs next time'; continue }
       try { Unblock-File -LiteralPath $f.FullName } catch { $null = $_ }
       $p = New-Object System.Diagnostics.Process
       $p.StartInfo.FileName = 'powershell.exe'; $p.StartInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File `"$($f.FullName)`""
@@ -243,6 +257,8 @@ if (Test-Path -LiteralPath $PlugDir) {
       try { [void]$p.Start(); $p.StandardInput.Close(); $read = $p.StandardOutput.ReadToEndAsync() } catch { $plugins += Plugin-Entry $f.Name $id $ver 'error' "could not start: $($_.Exception.Message)"; continue }
       if (-not $p.WaitForExit($a.t * 1000)) { try { $p.Kill() } catch { $null = $_ }; $plugins += Plugin-Entry $f.Name $id $ver 'timeout' "timeout ($($a.t) s)"; continue }
       $out = [string]$read.Result; if ($out.Length -gt 20000) { $out = $out.Substring(0, 20000) }
+      if ($a.every -gt 5) { try { [IO.File]::WriteAllText($cache, "$sha $((Get-Date).ToUniversalTime().ToFileTimeUtc())`n$out") } catch { $null = $_ } }
+      }
       $found = 0
       foreach ($line in ($out -split "`r?`n")) {
         if ($line -match '^([0-3])\s+(\S+)\s+(\S+)\s*(.*)$') {
@@ -255,7 +271,8 @@ if (Test-Path -LiteralPath $PlugDir) {
           $checks += @{ name = $nm; status = 0; text = "$($Matches[2]) $unit".Trim(); value = $val; file = $f.Name; plugin = $id; unit = $unit }; $found++
         }
       }
-      if ($found) { $plugins += Plugin-Entry $f.Name $id $ver 'ok' "$found value(s)" }
+      if ($found -and $cachedAt) { $plugins += Plugin-Entry $f.Name $id $ver 'ok' "$found value(s), runs every $($a.every) min - last run $([int]((Get-Date).ToUniversalTime() - $cachedAt).TotalMinutes) min ago" }
+      elseif ($found) { $plugins += Plugin-Entry $f.Name $id $ver 'ok' "$found value(s)" }
       else { $plugins += Plugin-Entry $f.Name $id $ver 'error' "no line in a known format (exit code $($p.ExitCode))" }
     }
   }

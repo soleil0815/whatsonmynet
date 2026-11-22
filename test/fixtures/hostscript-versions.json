@@ -1,10 +1,14 @@
 {
   "windows": {
     "version": "0.56.0",
-    "sha256": "ade1553a5133d79250d69478868aa14dff3d4e04751ba607f67a4f6f5420ed44"
+    "sha256": "35d18d5d379ff551de3aa1de04eee069b353190742200a3f11ca4714618cf3fc"
   },
   "hyperv": {
     "version": "0.56.0",
     "sha256": "81910a3eaadc3535d916829bba7319d3e01ab19162fb7c85cf35f9d107d3b29b"
+  },
+  "linux": {
+    "version": "0.56.0",
+    "sha256": "4bd8b680247ada1b359a9a9c791995d81d0d0c14779aab8dcda345ced820b4bb"
   }
 }

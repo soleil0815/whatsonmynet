@@ -91,15 +91,16 @@ const uptime = (s) => { const hrs = Math.floor((s || 0) / 3600); return hrs >= 4
 export function systemPanel(x) {
   const failed = (x.services || []).filter((s) => s.failed);
   const running = (x.services || []).filter((s) => s.state === 'running').length;
+  const win = /windows/i.test(String(x.os || ''));
   return h('section', { class: 'panel panel-pad' },
     h('div', { class: 'panel-head', style: { padding: 0, marginBottom: '8px' } }, h('h2', { class: 'section-title', style: { margin: 0 } }, t('hs.system')),
       x.stale ? h('span', { class: 'badge badge-bad' }, t('hs.silent', { when: fmtAgo(x.at, t) })) : h('span', { class: 'muted small', title: fmtDate(x.at, getLang()) }, t('hs.reported', { when: fmtAgo(x.at, t) }))),
     h('dl', { class: 'kv', style: { marginBottom: '12px' } },
       x.os ? [h('dt', {}, t('f.os')), h('dd', {}, x.os)] : null,
       h('dt', {}, t('hs.uptime')), h('dd', {}, uptime(x.uptime)),
-      // the version of the Windows script: an older one is marked (roll out the new one, e.g. by software distribution)
-      x.scriptNow ? [h('dt', {}, t('hs.script')), h('dd', {}, x.script || t('hs.scriptNone'), ' ',
-        x.scriptOld ? h('span', { class: 'badge badge-warn', title: t('hs.scriptOldHint', { v: x.scriptNow }) }, t('hs.scriptOld')) : null)] : null),
+      // the version of the script: an older one is marked (roll out the new one - software distribution, Ansible …)
+      x.scriptNow ? [h('dt', {}, t('hs.script')), h('dd', {}, x.script || t(win ? 'hs.scriptNone' : 'hs.scriptNoneLinux'), ' ',
+        x.scriptOld ? h('span', { class: 'badge badge-warn', title: t(win ? 'hs.scriptOldHint' : 'hs.scriptOldHintLinux', { v: x.scriptNow }) }, t('hs.scriptOld')) : null)] : null),
     h('div', { class: 'supplies' },
       meter('CPU', x.cpu),
       meter('RAM', x.mem, x.memTotal ? `${bytes(x.memUsed)} / ${bytes(x.memTotal)}` : ''),

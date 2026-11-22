@@ -150,6 +150,8 @@ const PATTERNS = [
   [/^no line in a known format \(exit code (-?\d+)\)$/, 'keine Zeile in einem bekannten Format (Exit-Code $1)'],
   [/^timeout \((\d+) s\)$/, 'Zeitüberschreitung ($1 s)'],
   [/^(\d+) value\(s\)$/, '$1 Wert(e)'],
+  [/^(\d+) value\(s\), runs every (\d+) min - last run (\d+) min ago$/, '$1 Wert(e), läuft alle $2 min - zuletzt vor $3 min'],
+  [/^time budget of this run used up - runs next time$/, 'Zeitbudget dieses Laufs aufgebraucht - läuft beim nächsten Mal'],
   [/^folder (.*) may be changed by others - plugins not run$/, 'Ordner $1 ist für andere änderbar - Plugins nicht ausgeführt'],
   [/^the command timeout is missing - plugins not run$/, 'der Befehl timeout fehlt - Plugins nicht ausgeführt'],
   [/^no sha256sum, shasum or openssl to check the file - not run$/, 'kein sha256sum, shasum oder openssl zum Prüfen der Datei - nicht ausgeführt'],
