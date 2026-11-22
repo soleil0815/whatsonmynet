@@ -91,9 +91,14 @@ export function walk(s, base, { max = 2000, timeout = 8000 } = {}) {
     let done = false;
     const end = (complete = false) => { if (!done) { done = true; out.complete = complete; resolve(out); } };
     const prefix = `${base}.`;
+    let last = '';
     const feed = (vbs) => {
       for (const vb of vbs) {
-        if (snmp.isVarbindError(vb) || !vb.oid.startsWith(prefix)) continue;
+        // end of the table: past its end, "no such object" or end of the MIB. Some agents answer a GETBULK past the end
+        // of their MIB with the asked OID again - net-snmp would then ask the same thing in a tight loop until the time
+        // runs out (load on the device and on WhatsOnMyNet), so a repeated OID ends the walk too.
+        if (snmp.isVarbindError(vb) || !vb.oid.startsWith(prefix) || vb.oid === last) { end(true); return true; }
+        last = vb.oid;
         out.set(vb.oid.slice(prefix.length), vbValue(vb));
         if (out.size >= max) { end(true); return true; }
       }

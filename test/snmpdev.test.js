@@ -183,7 +183,10 @@ test('UPS: on a Synology NAS, on its own network card (UPS-MIB, APC), as sensors
   try {
     const n = await readNas('127.0.0.1', ['public'], { port: 16171 });
     assert.deepEqual(n.ups, { source: 'synology', vendor: 'American Power Conversion', model: 'Back-UPS ES 700G', serial: '', firmware: '', status: 'online', low: false, replace: false, charge: 96, runtime: 2610, load: 9 });
+    // the tables a plain NAS does not have end at once - no waiting for the time limit, no asking the same in a loop
+    const t0 = Date.now();
     assert.equal((await readNas('127.0.0.1', ['public'], { port: 16174 })).ups, null, 'no UPS on this NAS');
+    assert.ok(Date.now() - t0 < 3000, `a walk past the end of the MIB ends at once (${Date.now() - t0} ms)`);
     const e = await readUpsDevice('127.0.0.1', ['public'], { port: 16172 });
     assert.deepEqual([e.ups.source, e.ups.status, e.ups.low, e.ups.charge, e.ups.runtime, e.ups.load, e.model, e.vendor, e.firmware], ['ups-mib', 'battery', true, 18, 420, 42, '9PX 2200', 'EATON', 'INV: 01.14.0026']);
     const a = await readUpsDevice('127.0.0.1', ['public'], { port: 16173 });

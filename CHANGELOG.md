@@ -8,6 +8,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 - Plugins für das Rechner-Skript: Unter Einstellungen → Plugins schreibst du eigene kleine Skripte (PowerShell oder sh) – für alle Rechner, für Schlagwörter, Standorte oder einzelne Geräte –, lädst sie herunter und legst sie in den Plugin-Ordner. Zeilen wie „Backup-Alter: 26 h“ werden Werte mit eigener Alarmgrenze. Ein Rechner führt nur genau die freigegebene Datei aus (Version und Fingerabdruck kommen über die gesicherte Verbindung): veränderte, veraltete oder fremde Plugins laufen nicht. Liste und Geräteseite zeigen, wo ein Plugin läuft, fehlt oder veraltet ist. Dafür das Rechner-Skript einmal neu ausrollen (Windows 0.56.0)
 - Rechner-Skript 0.56.0 (Windows und Linux) – einmal neu ausrollen: Plugins laufen auf Wunsch seltener (alle 10 Minuten bis einmal am Tag, dazwischen bleibt das letzte Ergebnis), alle Plugins eines Laufs haben zusammen höchstens 3 Minuten, unter Linux startet kein zweiter Lauf, solange der vorige arbeitet, und auch das Linux-Skript meldet jetzt seine Version – die Geräteseite markiert ein älteres als „veraltet“
+- SNMP: Fehlt einem Gerät eine Tabelle (z. B. ein NAS ohne Synology- oder QNAP-Werte), endet die Abfrage sofort – vorher wartete WhatsOnMyNet bis zum Zeitlimit und fragte manche Geräte dabei immer wieder dasselbe
 
 ## 0.55.0 - 2026-11-22
 
