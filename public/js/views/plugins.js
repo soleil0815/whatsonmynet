@@ -74,7 +74,7 @@ export async function pluginsSettings(body, reload) {
         h('tbody', {}, list.map((p) => h('tr', {},
           h('td', {}, h('a', { href: '#', class: 'name', onclick: (e) => { e.preventDefault(); edit(p); } }, p.name), h('span', { class: 'muted small' }, ` v${p.version}`),
             p.description ? h('div', { class: 'muted small' }, p.description) : null),
-          h('td', {}, p.os === 'windows' ? 'Windows' : 'Linux'),
+          h('td', {}, p.os === 'windows' ? 'Windows' : 'Linux', p.interval > 5 ? h('div', { class: 'muted small' }, t('plg.every', { n: everyText(p.interval) })) : null),
           h('td', { class: 'hide-sm' }, targetText(p.targets, choices)),
           h('td', {}, state(p)),
           h('td', { class: 'min' }, h('div', { class: 'actions' },
@@ -95,13 +95,18 @@ function formatHelp(choices) {
     h('p', { class: 'muted small', style: { margin: '8px 0 0' } }, t('plg.where', { win: choices.dirs.windows, linux: choices.dirs.linux })));
 }
 
+// how often a plugin runs (minutes) - the same steps the server accepts
+const INTERVALS = [5, 10, 15, 30, 60, 120, 360, 720, 1440];
+const everyText = (n) => (n < 60 ? `${n} min` : `${n / 60} h`);
+
 /** Writing or changing a plugin: name, system, for whom, time limit, code */
 function editor(body, p, choices, reload) {
-  const v = p || { name: '', description: '', os: 'windows', targets: { all: true }, timeout: 30, enabled: true, code: '' };
+  const v = p || { name: '', description: '', os: 'windows', targets: { all: true }, timeout: 30, interval: 5, enabled: true, code: '' };
   const name = input('name', v.name, { required: true, maxlength: 80, placeholder: t('plg.namePh') });
   const desc = input('description', v.description, { maxlength: 300, placeholder: t('plg.descPh') });
   const os = select('os', [['windows', osName('windows')], ['linux', osName('linux')]], v.os);
   const timeout = input('timeout', v.timeout, { type: 'number', min: 5, max: 120 });
+  const interval = select('interval', INTERVALS.map((n) => [String(n), n === 5 ? t('plg.everyRun') : t('plg.every', { n: everyText(n) })]), String(v.interval || 5));
   const enabled = h('input', { type: 'checkbox', name: 'enabled', checked: v.enabled });
   const code = h('textarea', { name: 'code', class: 'mono plg-code', rows: 18, spellcheck: 'false', autocomplete: 'off', wrap: 'off', 'aria-label': t('plg.code') });
   code.value = p ? p.code || '' : EXAMPLES.windows;
@@ -148,7 +153,7 @@ function editor(body, p, choices, reload) {
   const result = h('div', { role: 'status' });
   const form = h('form', { class: 'form', onsubmit: async (e) => {
     e.preventDefault();
-    const payload = { name: name.value, description: desc.value, os: os.value, timeout: Number(timeout.value), enabled: enabled.checked, code: code.value, targets: targets() };
+    const payload = { name: name.value, description: desc.value, os: os.value, timeout: Number(timeout.value), interval: Number(interval.value), enabled: enabled.checked, code: code.value, targets: targets() };
     try {
       const r = p ? await put(`/plugins/${p.id}`, payload) : await post('/plugins', payload);
       toast(t('saved'));
@@ -169,7 +174,8 @@ function editor(body, p, choices, reload) {
       if (code.value.trim() && !Object.values(EXAMPLES).includes(code.value) && !await confirmDialog(t('plg.example'), t('plg.exampleConfirm'), t('plg.example'), t('cancel'))) return;
       code.value = EXAMPLES[os.value];
     } })), code, h('span', { class: 'hint' }, t('plg.codeHint'))),
-  h('div', { class: 'form-grid' }, field(t('plg.timeout'), timeout, t('plg.timeoutHint')), field(t('plg.enabled'), enabled, t('plg.enabledHint'))),
+  h('div', { class: 'form-grid' }, field(t('plg.interval'), interval, t('plg.intervalHint')), field(t('plg.timeout'), timeout, t('plg.timeoutHint'))),
+  h('div', { class: 'form-grid' }, field(t('plg.enabled'), enabled, t('plg.enabledHint'))),
   result,
   h('div', { class: 'actions', style: { justifyContent: 'space-between' } },
     p ? btn(t('delete'), { class: 'btn btn-ghost danger', onclick: async () => {
@@ -191,13 +197,14 @@ function editor(body, p, choices, reload) {
 /** Device page: the plugins meant for this machine and what its host script says about them */
 export function pluginsBlock(pl, isAdmin) {
   if (!pl?.items?.length) return null;
-  const tone = { ok: 'ok', missing: 'new', outdated: 'new', notAssigned: '', changed: 'bad', error: 'bad', timeout: 'bad', unsafe: 'bad', noHeader: '' };
+  const tone = { ok: 'ok', missing: 'new', outdated: 'new', notAssigned: '', changed: 'bad', error: 'bad', timeout: 'bad', deferred: 'new', unsafe: 'bad', noHeader: '' };
   return [h('h3', { class: 'sub-title' }, t('plg.onDevice', { n: pl.items.length })),
     !pl.scriptKnows ? h('p', { class: 'note warn small', style: { margin: '0 0 6px' } }, t('plg.scriptOld')) : null,
     h('ul', { class: 'ev-list' }, pl.items.map((x) => h('li', {},
       h('span', { class: `badge ${tone[x.state] ? `badge-${tone[x.state]}` : ''}` }, t(`plg.st.${x.state}`)),
       h('b', { class: 'small' }, x.name || x.file),
       x.version ? h('span', { class: 'muted small' }, `v${x.version}${x.reportedVersion && x.reportedVersion !== x.version ? ` (${t('plg.here', { v: x.reportedVersion })})` : ''}`) : null,
-      x.state === 'ok' ? null : h('span', { class: 'small' }, t(`plg.do.${x.state}`, { text: checkText(x.text, getLang()) })),
+      x.state === 'ok' ? (x.text ? h('span', { class: 'muted small' }, checkText(x.text, getLang())) : null)
+        : h('span', { class: 'small' }, t(`plg.do.${x.state}`, { text: checkText(x.text, getLang()) })),
       isAdmin && x.id ? h('a', { class: 'small', href: '/settings/plugins', 'data-link': true }, t('plg.manage')) : null)))];
 }

@@ -185,10 +185,12 @@ export function createHosts({ db, plugins = null }) {
     const data = parse(row.data, {});
     // a Windows script older than the one WhatsOnMyNet hands out now (none sent: before 0.42)
     const windows = /windows/i.test(String(data.os || ''));
-    const scriptOld = windows ? !data.script || older(data.script, SCRIPT_VERSIONS.windows) : false;
+    // Linux scripts carry a version from 0.56 on (older ones: none - "outdated" too)
+    const now = SCRIPT_VERSIONS[windows ? 'windows' : 'linux'];
+    const scriptOld = !data.script || older(data.script, now);
     // plugins: what is meant to run here and what the machine says about its plugins folder
     const pluginState = plugins ? plugins.overview(deviceId, hostOs(data.os), data.plugins) : null;
-    return { ...data, at: row.at, stale: Date.now() - Date.parse(row.at) > STALE_MIN * 60 * 1000, gone: reportGone(row.at), scriptOld, scriptNow: windows ? SCRIPT_VERSIONS.windows : null,
+    return { ...data, at: row.at, stale: Date.now() - Date.parse(row.at) > STALE_MIN * 60 * 1000, gone: reportGone(row.at), scriptOld, scriptNow: now,
       plugins: pluginState?.items.length ? pluginState : null };
   }
 

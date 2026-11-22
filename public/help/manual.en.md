@@ -808,11 +808,15 @@ A **plugin** is a small script you write in WhatsOnMyNet and that the host scrip
 - a plugin **for other machines** or one **switched off** does not run ("not for here"),
 - a file without the header of WhatsOnMyNet does not run ("no plugin").
 
-A new version comes only when the file changes (code, name, system). Who gets the plugin, the description or the time limit can change without handing it out again. Deleted or switched off, it runs nowhere at once - also where the file still is.
+A new version comes only when the file changes (code, name, system). Who gets the plugin, the description, how often it runs or the time limit can change without handing it out again.
+
+**How often it runs:** by default with every report (every 5 minutes). For slow queries (backup catalogues, licence servers, big folders) choose less often under **Runs** - every 10 minutes up to once a day. In between the machine keeps reporting the last result (the device page says "runs every 60 min - last run 12 min ago"), so sensors and history have no gaps. The kept result is only for exactly this file; a changed file does not run at all, as always.
+
+**A run stays short:** all plugins of one run together have at most 3 minutes. Whatever would come after that runs next time ("postponed") - the report itself still goes out on time. On Linux a new run does not start while the previous one is still working (on Windows the scheduled task does that anyway). Deleted or switched off, it runs nowhere at once - also where the file still is.
 
 **Overview:** the list shows per plugin on how many of the machines it is meant for it runs ("runs on 3 of 4"); in the plugin, *Where it does not run yet* names the machines without it, with an old version, a changed file or a host script too old. On the device page, *Plugins* lists all plugins for this machine with their state and what to do.
 
-**Security:** plugins run with the rights of the host script (Windows: SYSTEM). So the same rules as for the own checks apply on top: only administrators or root may change folder and file, no link; a time limit per plugin (5 to 120 seconds), at most 50. Only administrators may add, change and download plugins; every change and every download is in the audit log. The host script still loads nothing by itself - you bring the file. Plugins need the host script from version 0.56.0 (Windows) or the current Linux script - roll it out once again; an older one shows "script too old" on the device page.
+**Security:** plugins run with the rights of the host script (Windows: SYSTEM). So the same rules as for the own checks apply on top: only administrators or root may change folder and file, no link; a time limit per plugin (5 to 120 seconds), at most 50. Only administrators may add, change and download plugins; every change and every download is in the audit log. The host script still loads nothing by itself - you bring the file. Plugins need the host script from version 0.56.0 (Windows and Linux) - roll it out once again; an older one shows "script too old" on the device page. From 0.56.0 the Linux script reports its version too (first line and report), and the device page marks an older one as *outdated*.
 
 ## Prometheus and Grafana
 

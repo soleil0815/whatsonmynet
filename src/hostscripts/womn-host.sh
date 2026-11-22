@@ -1,5 +1,5 @@
 #!/bin/sh
-# WhatsOnMyNet - Linux report (read only). Sends CPU, RAM, file systems, uptime and the state of the services
+# WhatsOnMyNet @VERSIONTEXT@ - Linux report (read only). Sends CPU, RAM, file systems, uptime and the state of the services
 # (systemd) every 5 minutes to WhatsOnMyNet - plus hardware (model, CPU, network cards; as root also serial number
 # and memory modules), the disks (with smartctl as root: health, temperature, wear), pending updates and restart,
 # firewall and critical journal entries of the last 24 hours. No agent, no open port, nothing installed, root not needed: run it once
@@ -8,8 +8,21 @@
 URL=@URL@
 TOKEN=@TOKEN@
 PIN=@PIN@
+# The version of this script (sent with every report - WhatsOnMyNet shows machines with an older one)
+SCRIPT_VERSION=@VERSIONTEXT@
 export LC_ALL=C
 @SETUP@
+
+# One run at a time: plugins or a slow disk may make a run longer than 5 minutes, and cron would start the next one
+if [ "$(id -u)" = 0 ]; then CACHE=/var/cache/whatsonmynet; else CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/whatsonmynet; fi
+mkdir -p "$CACHE" && chmod 700 "$CACHE"
+LOCK=$CACHE/run.lock
+if ! mkdir "$LOCK" 2>/dev/null; then
+  # left over from a run that was killed (power cut): older than 30 minutes
+  if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ]; then rm -rf "$LOCK"; mkdir "$LOCK" 2>/dev/null || exit 0; else exit 0; fi
+fi
+trap 'rm -rf "$LOCK"' EXIT
+trap 'exit 1' INT TERM HUP
 
 esc() { printf '%s' "$1" | tr -d '\001-\010\013-\037\177' | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/," "); if (NR>1) print " "; print}'; }
 # the same, keeping lines and tabs (for text the server reads itself: zpool status, /proc/mdstat)
@@ -142,7 +155,6 @@ md=""
 
 # Updates: the package search runs after the report at most every 6 hours (apt: simulated upgrade, dnf: cache only);
 # the report sends the last result. A pending restart (Debian/Ubuntu) is read every time.
-if [ "$(id -u)" = 0 ]; then CACHE=/var/cache/whatsonmynet; else CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/whatsonmynet; fi
 UPD=$CACHE/updates.json
 uc=null; [ -s "$UPD" ] && uc=$(cat "$UPD")
 case "$uc" in "{"*"}") ;; *) uc=null ;; esac
@@ -261,6 +273,7 @@ if [ -d "$PLG" ]; then
   else
     tmpd=$(mktemp -d 2>/dev/null) || tmpd=""
     if [ -n "$tmpd" ]; then
+      plstart=$(date +%s)
       find "$PLG" -maxdepth 1 -name '*.sh' -type f 2>/dev/null | sort | head -n 50 > "$tmpd/list"
       while IFS= read -r f; do
         [ -n "$f" ] || continue
@@ -271,9 +284,11 @@ if [ -d "$PLG" ]; then
         if [ -L "$f" ] || [ -z "$(find "$f" -maxdepth 0 -type f \( -user "$me" -o -user 0 \) ! -perm -g+w ! -perm -o+w 2>/dev/null)" ]; then
           pline "$base" "$pid" "$pver" unsafe "owner or rights not safe - not run (owner must be root)"; continue
         fi
-        a=""; [ -s "$ALLOW" ] && a=$(awk -v id="$pid" '{ for (i = 1; i <= NF; i++) { n = split($i, x, ":"); if (n == 4 && x[1] == id && length(x[3]) == 64 && x[3] ~ /^[0-9a-f]+$/ && x[4] ~ /^[0-9]+$/) { print x[2], x[3], x[4]; exit } } }' "$ALLOW")
+        a=""; [ -s "$ALLOW" ] && a=$(awk -v id="$pid" '{ for (i = 1; i <= NF; i++) { n = split($i, x, ":"); if (n == 5 && x[1] == id && length(x[3]) == 64 && x[3] ~ /^[0-9a-f]+$/ && x[4] ~ /^[0-9]+$/ && x[5] ~ /^[0-9]+$/) { print x[2], x[3], x[4], x[5]; exit } } }' "$ALLOW")
         if [ -z "$a" ]; then pline "$base" "$pid" "$pver" notAssigned "not meant for this machine (or switched off) - not run"; continue; fi
-        av=${a%% *}; rest=${a#* }; asha=${rest% *}; at=${rest#* }
+        read -r av asha at every <<EOA
+$a
+EOA
         fsha=$(sha256 "$f")
         if [ -z "$fsha" ]; then pline "$base" "$pid" "$pver" error "no sha256sum, shasum or openssl to check the file - not run"; continue; fi
         if [ "$fsha" != "$asha" ]; then
@@ -281,10 +296,24 @@ if [ -d "$PLG" ]; then
           else pline "$base" "$pid" "$pver" changed "the file is not the one from WhatsOnMyNet - download it again"; fi
           continue
         fi
-        # an executable file starts with its own interpreter line, any other with sh; stdin from /dev/null
-        if [ -x "$f" ]; then timeout "$at" "$f" < /dev/null > "$tmpd/out" 2>/dev/null; rc=$?
-        else timeout "$at" sh "$f" < /dev/null > "$tmpd/out" 2>/dev/null; rc=$?; fi
-        if [ "$rc" = 124 ]; then pline "$base" "$pid" "$pver" timeout "timeout ($at s)"; continue; fi
+        # Not every run: a plugin that runs every 60 minutes gives its last output again in between (same file only)
+        pc=$CACHE/plugin-$pid.out; nowt=$(date +%s); ago=""
+        if [ -s "$pc" ] && [ "$every" -gt 5 ]; then
+          hd=$(head -n 1 "$pc"); hts=${hd#* }
+          case $hts in ''|*[!0-9]*) hts=0 ;; esac
+          if [ "${hd% *}" = "$fsha" ] && [ $((nowt - hts)) -ge 0 ] && [ $((nowt - hts)) -lt $(( (every - 1) * 60 )) ]; then
+            tail -n +2 "$pc" > "$tmpd/out"; rc=0; ago=$(( (nowt - hts) / 60 ))
+          fi
+        fi
+        if [ -z "$ago" ]; then
+          # at most 3 minutes for all plugins of a run, so the report still goes out every 5 minutes - the rest runs next time
+          if [ $((nowt - plstart)) -gt 180 ]; then pline "$base" "$pid" "$pver" deferred "time budget of this run used up - runs next time"; continue; fi
+          # an executable file starts with its own interpreter line, any other with sh; stdin from /dev/null
+          if [ -x "$f" ]; then timeout "$at" "$f" < /dev/null > "$tmpd/out" 2>/dev/null; rc=$?
+          else timeout "$at" sh "$f" < /dev/null > "$tmpd/out" 2>/dev/null; rc=$?; fi
+          if [ "$rc" = 124 ]; then pline "$base" "$pid" "$pver" timeout "timeout ($at s)"; continue; fi
+          if [ "$every" -gt 5 ]; then { printf '%s %s\n' "$fsha" "$nowt"; head -c 20000 "$tmpd/out"; } > "$pc"; fi
+        fi
         parsed=$(head -c 20000 "$tmpd/out" | awk -v file="$base" -v plugin="$pid" '
           function esc(v) { gsub(/[\001-\037\177]/, " ", v); gsub(/\\/, "\\\\", v); gsub(/"/, "\\\"", v); return substr(v, 1, 300) }
           function out(name, st, text, val, unit) { printf "%s{\"name\":\"%s\",\"status\":%d,\"text\":\"%s\",\"value\":%s,\"file\":\"%s\",\"plugin\":%d,\"unit\":\"%s\"}", (n++ ? "," : ""), esc(name), st, esc(text), val, esc(file), plugin, esc(unit) }
@@ -306,7 +335,9 @@ if [ -d "$PLG" ]; then
           }')
         if [ -n "$parsed" ]; then
           cj="$cj${cj:+,}$parsed"
-          pline "$base" "$pid" "$pver" ok "$(printf '%s' "$parsed" | grep -o '"name":' | wc -l | tr -d ' ') value(s)"
+          nv=$(printf '%s' "$parsed" | grep -o '"name":' | wc -l | tr -d ' ')
+          if [ -n "$ago" ]; then pline "$base" "$pid" "$pver" ok "$nv value(s), runs every $every min - last run $ago min ago"
+          else pline "$base" "$pid" "$pver" ok "$nv value(s)"; fi
         else pline "$base" "$pid" "$pver" error "no line in a known format (exit code $rc)"; fi
       done < "$tmpd/list"
       rm -rf "$tmpd"
@@ -323,10 +354,9 @@ for a in /sys/class/net/*/address; do
 done
 ips=$( (ip -o -4 addr show scope global 2>/dev/null || true) | awk '{split($4,a,"/"); printf "%s\"%s\"", (n++?",":""), a[1]}')
 
-body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"plugins\":[$plj],\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\"}"
+body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"plugins\":[$plj],\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\",\"script\":\"$SCRIPT_VERSION\"}"
 if [ -n "$PIN" ]; then TLS="-k --pinnedpubkey $PIN"; else TLS=""; fi
 # The answer names the plugins this machine may run ("id:version:sha256:timeout …") - kept for the next run
-mkdir -p "$CACHE" && chmod 700 "$CACHE"
 # shellcheck disable=SC2086
 if printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer $TOKEN" -H 'X-WOMN-Request: 1' -H 'Content-Type: application/json' --data-binary @- "$URL" > "$CACHE/answer.json"; then
   if grep -q '"plugins":"' "$CACHE/answer.json" 2>/dev/null; then

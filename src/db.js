@@ -757,6 +757,8 @@ export const MIGRATIONS = [
      updated_at TEXT NOT NULL,
      updated_by TEXT NOT NULL DEFAULT ''
    );`,
+  // 42: how often a plugin runs (minutes; the host script reports every 5 and reuses the last result in between)
+  { sql: 'ALTER TABLE plugins ADD COLUMN interval_min INTEGER NOT NULL DEFAULT 5;', unless: "SELECT 1 FROM pragma_table_info('plugins') WHERE name = 'interval_min'" },
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

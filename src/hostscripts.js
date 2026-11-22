@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 
 const KINDS = {
-  windows: { file: 'womn-host.ps1', ps: true, task: 'WhatsOnMyNet-Host', old: [], extra: ['womn-updates.json', 'womn-plugins.txt'] },
+  windows: { file: 'womn-host.ps1', ps: true, task: 'WhatsOnMyNet-Host', old: [], extra: ['womn-updates.json', 'womn-plugins.txt', 'womn-plugin-*.out'] },
   linux: { file: 'womn-host.sh', ps: false, cron: 'whatsonmynet-host', old: [] },
   hyperv: { file: 'womn-hyperv.ps1', ps: true, task: 'WhatsOnMyNet-HyperV', old: ['WhatsOnMyNet'] },
   libvirt: { file: 'womn-libvirt.sh', ps: false, cron: 'whatsonmynet-kvm', old: ['whatsonmynet'] },
@@ -15,7 +15,7 @@ export const SCRIPT_KINDS = Object.keys(KINDS);
 // that an update of WhatsOnMyNet does not make every machine "outdated". Written into the script (first line, registry
 // HKLM\SOFTWARE\WhatsOnMyNet) and sent with every report. test/hostscriptversion.test.js fails when a script changes
 // and its number stays.
-export const SCRIPT_VERSIONS = { windows: '0.56.0', hyperv: '0.56.0' };
+export const SCRIPT_VERSIONS = { windows: '0.56.0', hyperv: '0.56.0', linux: '0.56.0' };
 // the value under HKLM\SOFTWARE\WhatsOnMyNet (software distribution and inventory tools filter on it)
 const REG_NAMES = { windows: 'HostScript', hyperv: 'HyperVScript' };
 
@@ -38,6 +38,8 @@ export function hostScript(kind, { url, token, pin = {} }) {
     ? read('setup.ps1.part').replace('@TASK@', () => psQuote(k.task)).replace('@FILE@', () => psQuote(k.file)).replace('@OLD@', () => psList(k.old))
     : read('setup.sh.part').replace('@FILE@', () => shQuote(k.file)).replace('@CRON@', () => shQuote(k.cron)).replace('@OLD@', () => shList(k.old));
   let text = read(k.file).replace('@SETUP@', () => setup.trimEnd());
+  // the Linux script carries its version too (first lines, report) - WhatsOnMyNet shows machines with an older one
+  if (!k.ps && SCRIPT_VERSIONS[kind]) text = text.replace(/@VERSIONTEXT@/g, () => SCRIPT_VERSIONS[kind]);
   if (k.ps) {
     text = text.replace('@PINCHECK@', () => read('pin.ps1.part').trimEnd()).replace('@SEND@', () => read('send.ps1.part').trimEnd())
       .replace(/@VERSION@/g, () => psQuote(SCRIPT_VERSIONS[kind])).replace(/@VERSIONTEXT@/g, () => SCRIPT_VERSIONS[kind]).replace(/@REGNAME@/g, () => psQuote(REG_NAMES[kind]));

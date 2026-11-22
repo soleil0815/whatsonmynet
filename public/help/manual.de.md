@@ -807,11 +807,15 @@ Ein **Plugin** ist ein kleines Skript, das du in WhatsOnMyNet schreibst und das 
 - ein Plugin **für andere Rechner** oder ein **ausgeschaltetes** läuft nicht („nicht für hier“),
 - eine Datei ohne den Kopf von WhatsOnMyNet läuft nicht („kein Plugin“).
 
-Eine neue Version entsteht nur, wenn sich die Datei ändert (Code, Name, System). Wer das Plugin bekommt, die Beschreibung oder das Zeitlimit lassen sich ändern, ohne neu zu verteilen. Gelöscht oder ausgeschaltet läuft es sofort nirgends mehr - auch wo die Datei noch liegt.
+Eine neue Version entsteht nur, wenn sich die Datei ändert (Code, Name, System). Wer das Plugin bekommt, die Beschreibung, wie oft es läuft oder das Zeitlimit lassen sich ändern, ohne neu zu verteilen.
+
+**Wie oft es läuft:** Standard ist bei jeder Meldung (alle 5 Minuten). Für langsame Abfragen (Backup-Kataloge, Lizenzserver, große Ordner) unter **Läuft** seltener wählen - alle 10 Minuten bis einmal am Tag. Dazwischen meldet der Rechner das letzte Ergebnis weiter (auf der Geräteseite steht „läuft alle 60 min - zuletzt vor 12 min“), Sensoren und Verlauf bleiben also lückenlos. Das gemerkte Ergebnis gilt nur für genau diese Datei; eine geänderte Datei läuft wie immer gar nicht.
+
+**Ein Lauf bleibt kurz:** Alle Plugins eines Laufs zusammen haben höchstens 3 Minuten. Was danach noch an der Reihe wäre, läuft beim nächsten Mal („verschoben“) - die Meldung selbst geht trotzdem pünktlich raus. Unter Linux startet ein neuer Lauf nicht, solange der vorige noch arbeitet (Windows macht das über die geplante Aufgabe ohnehin so). Gelöscht oder ausgeschaltet läuft es sofort nirgends mehr - auch wo die Datei noch liegt.
 
 **Überblick:** Die Liste zeigt je Plugin, auf wie vielen der gemeinten Rechner es läuft („läuft auf 3 von 4“); im Plugin steht unter *Wo es noch nicht läuft*, welcher Rechner es noch nicht hat, eine alte Version, eine veränderte Datei oder ein zu altes Rechner-Skript. Auf der Geräteseite stehen unter *Plugins* alle Plugins für diesen Rechner mit ihrem Zustand und was zu tun ist.
 
-**Sicherheit:** Plugins laufen mit den Rechten des Rechner-Skripts (Windows: SYSTEM). Deshalb gelten zusätzlich dieselben Regeln wie für die eigenen Prüfungen: Ordner und Datei dürfen nur Administratoren bzw. root ändern, keine Verknüpfung; je Plugin ein Zeitlimit (5 bis 120 Sekunden), höchstens 50. Plugins anlegen, ändern und herunterladen dürfen nur Administratoren; jede Änderung und jeder Download steht im Protokoll. Das Rechner-Skript lädt weiterhin nichts selbst - die Datei bringst du. Für Plugins braucht es das Rechner-Skript ab Version 0.56.0 (Windows) bzw. das aktuelle Linux-Skript - einmal neu ausrollen; ein älteres zeigt auf der Geräteseite „Skript zu alt“.
+**Sicherheit:** Plugins laufen mit den Rechten des Rechner-Skripts (Windows: SYSTEM). Deshalb gelten zusätzlich dieselben Regeln wie für die eigenen Prüfungen: Ordner und Datei dürfen nur Administratoren bzw. root ändern, keine Verknüpfung; je Plugin ein Zeitlimit (5 bis 120 Sekunden), höchstens 50. Plugins anlegen, ändern und herunterladen dürfen nur Administratoren; jede Änderung und jeder Download steht im Protokoll. Das Rechner-Skript lädt weiterhin nichts selbst - die Datei bringst du. Für Plugins braucht es das Rechner-Skript ab Version 0.56.0 (Windows und Linux) - einmal neu ausrollen; ein älteres zeigt auf der Geräteseite „Skript zu alt“. Ab 0.56.0 meldet auch das Linux-Skript seine Version (erste Zeile und Bericht), die Geräteseite markiert ein älteres als *veraltet*.
 
 ## Prometheus und Grafana
 

@@ -416,7 +416,7 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       status_pages: db.prepare(`SELECT COUNT(*) n, SUM(enabled) enabled, SUM(access='link') secret_link, SUM(access='open') own_address,
         SUM(networks <> '[]') limited_to_networks, SUM(json_array_length(items)) items FROM status_pages`).get(),
       // plugins of the host script: how many, for which system, how far rolled out - never their code
-      plugins: db.prepare(`SELECT os, COUNT(*) n, SUM(enabled) enabled, MAX(version) newest_version, SUM(targets LIKE '%"all":true%') for_all FROM plugins GROUP BY os`).all(),
+      plugins: db.prepare(`SELECT os, COUNT(*) n, SUM(enabled) enabled, MAX(version) newest_version, SUM(targets LIKE '%"all":true%') for_all, SUM(interval_min > 5) less_often FROM plugins GROUP BY os`).all(),
       plugin_states: Object.fromEntries(db.prepare(`SELECT json_extract(p.value,'$.state') state, COUNT(*) n FROM host_reports h, json_each(h.data,'$.plugins') p GROUP BY 1`).all().map((r) => [r.state, r.n])),
       checks: db.prepare('SELECT m.type, COUNT(*) n, SUM(c.ok=0) failed FROM checks c JOIN monitors m ON m.id=c.monitor_id WHERE c.at >= ? GROUP BY m.type').all(since),
       events: Object.fromEntries(db.prepare('SELECT kind, COUNT(*) n FROM monitor_events WHERE at >= ? GROUP BY kind').all(since).map((r) => [r.kind, r.n])),
