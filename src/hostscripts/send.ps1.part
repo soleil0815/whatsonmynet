@@ -22,6 +22,11 @@ function Send-Report([string]$Json) {
   }
   if ($resp) {
     $code = [int]$resp.StatusCode
+    if ($code -ge 200 -and $code -lt 300) {
+      # the answer names the plugins this machine may run (id:version:sha256:timeout) - kept for the next run
+      try { $r = New-Object IO.StreamReader($resp.GetResponseStream(), [Text.Encoding]::UTF8); $text = $r.ReadToEnd(); $r.Close() } catch { $text = '' }
+      if ($AllowFile -and $text -match '"plugins"\s*:\s*"([0-9a-f: ]{0,20000})"') { try { [IO.File]::WriteAllText($AllowFile, $Matches[1]) } catch { $null = $_ } }
+    }
     if ($code -ge 300) {
       try { $r = New-Object IO.StreamReader($resp.GetResponseStream(), [Text.Encoding]::UTF8); $text = $r.ReadToEnd(); $r.Close() } catch { $text = '' }
       $msg = $text

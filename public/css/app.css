@@ -1036,3 +1036,12 @@ dialog.gs .gs-input:focus, dialog.gs .gs-input:focus-visible { border: 0; outlin
 .v3-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; width: 100%; }
 .v3-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .v3-field[hidden] { display: none; }
+
+/* Plugins (Settings → Plugins) */
+.plg-code { width: 100%; min-height: 320px; font-size: 13px; line-height: 1.5; tab-size: 2; white-space: pre; }
+.plg-code-head { display: flex; align-items: center; gap: 10px; }
+.plg-some { margin: 8px 0 0 28px; display: grid; gap: 10px; }
+.plg-checks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.plg-devs { max-height: 220px; overflow-y: auto; }
+.plg-formats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.plg-formats pre { margin: 6px 0; }

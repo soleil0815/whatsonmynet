@@ -786,6 +786,34 @@ Status `0` = OK, `1` = warning, `2` = critical, `3` = unknown. The name has no s
 
 On the device page the checks are under *Own checks*; as the sensor *Own check …* everything but OK alarms (warning and unknown too). New machines get the sensors right away. For this, roll out the machine script of this version once again.
 
+### Plugins for the host script
+
+A **plugin** is a small script you write in WhatsOnMyNet and that the host script runs with every report - like the own checks, but kept in one place, with a version and with the machines it is for. So every administrator keeps his own checks: for all machines together or for single systems.
+
+1. *Settings → Plugins → New plugin*: name, description, system (**Windows** = PowerShell, **Linux** = sh), and the code. "Insert example" gives a ready example (age of the newest backup).
+2. **For whom?** *All machines of this system* - or only some: **tags** from the inventory (e.g. `dateiserver` - also for machines that get the tag later), **locations** or single **devices**.
+3. **Save** and **Download**. The file (e.g. `womn-plugin-3-backup-age.ps1`) goes into the plugins folder - by software distribution, GPO, Ansible or by hand:
+   - Windows: `C:\ProgramData\WhatsOnMyNet\plugins\`
+   - Linux: `/etc/whatsonmynet/plugins/` (script as root) or `~/.config/whatsonmynet/plugins/`
+4. From the report after next on (at most 10 minutes) the values come in.
+
+![Plugins](img/plugins-en.png)
+
+**What a plugin prints:** lines `Name: value unit` - e.g. `Backup age: 26 h`, `Open tickets: 12`, `Free space: 1.5 GB` (point or comma) - or lines in the check format as for the own checks (`0 Backup count=12 text`, status 0 to 3). Other lines are passed over. On the device page the values are under *Own checks*; as sensor *Value …* each gets an alarm limit of its own (e.g. "greater or equal 30 h"), lines in the check format alarm as usual as *Own check …*.
+
+**Only exactly this file runs.** In its answer to every report, WhatsOnMyNet tells the host script which plugins this machine may run - with version and fingerprint (SHA-256) of the file. The answer comes over the connection the script trusts (pinned certificate). The script runs a plugin only when the file is exactly that one:
+
+- a **changed** file does not run ("changed" - download the file again),
+- an **old version** does not run ("outdated" - replace the file after saving a new version),
+- a plugin **for other machines** or one **switched off** does not run ("not for here"),
+- a file without the header of WhatsOnMyNet does not run ("no plugin").
+
+A new version comes only when the file changes (code, name, system). Who gets the plugin, the description or the time limit can change without handing it out again. Deleted or switched off, it runs nowhere at once - also where the file still is.
+
+**Overview:** the list shows per plugin on how many of the machines it is meant for it runs ("runs on 3 of 4"); in the plugin, *Where it does not run yet* names the machines without it, with an old version, a changed file or a host script too old. On the device page, *Plugins* lists all plugins for this machine with their state and what to do.
+
+**Security:** plugins run with the rights of the host script (Windows: SYSTEM). So the same rules as for the own checks apply on top: only administrators or root may change folder and file, no link; a time limit per plugin (5 to 120 seconds), at most 50. Only administrators may add, change and download plugins; every change and every download is in the audit log. The host script still loads nothing by itself - you bring the file. Plugins need the host script from version 0.56.0 (Windows) or the current Linux script - roll it out once again; an older one shows "script too old" on the device page.
+
 ## Prometheus and Grafana
 
 If you already run Prometheus and Grafana, you can bring the state of all monitors and sensors there: *Settings → Prometheus & Grafana*.

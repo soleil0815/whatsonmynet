@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Plugins für das Rechner-Skript: Unter Einstellungen → Plugins schreibst du eigene kleine Skripte (PowerShell oder sh) – für alle Rechner, für Schlagwörter, Standorte oder einzelne Geräte –, lädst sie herunter und legst sie in den Plugin-Ordner. Zeilen wie „Backup-Alter: 26 h“ werden Werte mit eigener Alarmgrenze. Ein Rechner führt nur genau die freigegebene Datei aus (Version und Fingerabdruck kommen über die gesicherte Verbindung): veränderte, veraltete oder fremde Plugins laufen nicht. Liste und Geräteseite zeigen, wo ein Plugin läuft, fehlt oder veraltet ist. Dafür das Rechner-Skript einmal neu ausrollen (Windows 0.56.0)
+
+## 0.55.0 - 2026-11-22
+
 - SNMPv3: Unter Einstellungen → Scan lassen sich bis zu fünf SNMPv3-Benutzer hinterlegen – mit Authentifizierung (SHA, MD5) und Verschlüsselung (AES, DES), Passwörter verschlüsselt und nie im Browser. WhatsOnMyNet probiert erst die Communities, dann die Benutzer, und merkt sich je Gerät, was passt. Gilt für Scan, Drucker, Switches, NAS, USV, Router und SNMP-Sensoren; „Zugang testen“ zeigt, welcher Zugang an einem Gerät antwortet
 
 ## 0.54.0 - 2026-11-21

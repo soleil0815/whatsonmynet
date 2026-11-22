@@ -6,6 +6,7 @@ import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
 import { pageHead, field, input, select, formData, btn, channelPicker, onOffSwitch } from './common.js';
 import { openMonitorForm } from './monitoring.js';
+import { pluginsSettings } from './plugins.js';
 import { scriptDialog, hostScriptsSettings, helpLink, poolsBlock, scriptGlance, scriptDetails, glanceProblems } from './hostscripts.js';
 import { aboutContent } from './about.js';
 import { hardwareDetail } from './hardware.js';
@@ -29,7 +30,7 @@ export async function renderSettings(main, section = 'general') {
       settingsNav(section, (s) => navigate(`/settings/${s}`)),
       body)));
   const all = ['general', 'scan', 'smtp', 'printers', 'snmpdev', 'notify'].includes(section) ? await get('/settings') : null;
-  const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), api: apiSettings, ad, agents, backup, failover: failoverSettings, diag: diagnosticsSettings, smtp, notify, https, users, ignored, audit, about }[section];
+  const view = { general, scan, printers, snmpdev, docker, hostscripts: (b, _s, reload) => hostScriptsSettings(b, reload), plugins: (b, _s, reload) => pluginsSettings(b, reload), api: apiSettings, ad, agents, backup, failover: failoverSettings, diag: diagnosticsSettings, smtp, notify, https, users, ignored, audit, about }[section];
   await view(body, all, () => renderSettings(main, section));
   // what this section is for, in plain words, above everything else
   const help = sectionHelp(section);

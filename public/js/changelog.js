@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Plugins für das Rechner-Skript: Unter Einstellungen → Plugins schreibst du eigene kleine Skripte (PowerShell oder sh) – für alle Rechner, für Schlagwörter, Standorte oder einzelne Geräte –, lädst sie herunter und legst sie in den Plugin-Ordner. Zeilen wie „Backup-Alter: 26 h“ werden Werte mit eigener Alarmgrenze. Ein Rechner führt nur genau die freigegebene Datei aus (Version und Fingerabdruck kommen über die gesicherte Verbindung): veränderte, veraltete oder fremde Plugins laufen nicht. Liste und Geräteseite zeigen, wo ein Plugin läuft, fehlt oder veraltet ist. Dafür das Rechner-Skript einmal neu ausrollen (Windows 0.56.0)',
+  ], en: [
+    'Plugins for the host script: under Settings → Plugins you write small scripts of your own (PowerShell or sh) – for all machines, for tags, locations or single devices –, download them and put them into the plugins folder. Lines like "Backup age: 26 h" become values with an alarm limit of their own. A machine runs exactly the approved file only (version and fingerprint come over the secured connection): changed, outdated or foreign plugins do not run. List and device page show where a plugin runs, is missing or outdated. Roll out the host script once again for this (Windows 0.56.0)',
+  ] },
+  { version: '0.55.0', date: '2026-11-22', de: [
     'SNMPv3: Unter Einstellungen → Scan lassen sich bis zu fünf SNMPv3-Benutzer hinterlegen – mit Authentifizierung (SHA, MD5) und Verschlüsselung (AES, DES), Passwörter verschlüsselt und nie im Browser. WhatsOnMyNet probiert erst die Communities, dann die Benutzer, und merkt sich je Gerät, was passt. Gilt für Scan, Drucker, Switches, NAS, USV, Router und SNMP-Sensoren; „Zugang testen“ zeigt, welcher Zugang an einem Gerät antwortet',
   ], en: [
     'SNMPv3: under Settings → Scan you can store up to five SNMPv3 users – with authentication (SHA, MD5) and encryption (AES, DES), passwords encrypted and never in the browser. WhatsOnMyNet tries the communities first, then the users, and remembers per device what works. Applies to scan, printers, switches, NAS, UPS, routers and SNMP sensors; "Test access" shows which access a device answers to',

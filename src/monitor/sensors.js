@@ -117,6 +117,10 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
     out.push(...poolMetrics(x.pools, 'host'));
     // own checks (scripts in the checks folder of the machine)
     for (const c of x.checks || []) out.push({ metric: 'localCheck', key: c.name, name: c.name, value: CHECK_STATE[c.status], unit: '', kind: 'state' });
+    // … and their values with a limit of your own (a plugin line "Backup-Alter: 26 h", a check with count=12)
+    for (const c of (x.checks || []).filter((y) => y.value !== null && y.value !== undefined)) {
+      out.push({ metric: 'localValue', key: c.name, name: c.name, value: c.value, unit: c.unit || '', kind: 'number', op: 'ge', threshold: null });
+    }
   } else if (s.kind === 'switch') {
     for (const p of (s.data.ports || []).filter((x) => !x.lag)) {
       out.push({ metric: 'port', key: String(p.ifIndex), name: `${p.name}${p.alias ? ` (${p.alias})` : ''}`, value: p.status, unit: '', kind: 'state' });
@@ -211,6 +215,11 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
       if (!c) return { ok: false, ms: null, message: `${label}: not found - the check script no longer reports it`, data: { state: 'unknown' } };
       return { ok: c.status === 0, ms: c.value === null ? null : Math.round(c.value), message: `${label}: ${CHECK_STATE[c.status].toUpperCase()}${c.text ? ` - ${c.text}` : ''}`, data: { state: CHECK_STATE[c.status] } };
     }
+    case 'localValue': {
+      const c = (s.data.checks || []).find((y) => y.name === o.key);
+      if (!c || c.value === null || c.value === undefined) return { ok: false, ms: null, message: `${label}: no value - the script no longer reports it`, data: { state: 'unknown' } };
+      val = num(c.value, c.unit || '');
+      break; }
     case 'portLoad': { const p = (s.data.ports || []).find((y) => String(y.ifIndex) === String(o.key)); if (!p) return { ok: false, ms: null, message: `${label}: not found` };
       // a port that is down carries nothing - whether it should be up, its own sensor says
       if (p.status !== 'up') return { ok: true, ms: 0, message: `${label}: no traffic (port ${p.status})`, data: valueData(0, '%', o) };

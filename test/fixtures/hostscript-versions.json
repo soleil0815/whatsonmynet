@@ -1,10 +1,10 @@
 {
   "windows": {
-    "version": "0.42.0",
-    "sha256": "997a9964c725328a0d7c65c7f7512dcfc60b7ee57795f1610370741e185bef66"
+    "version": "0.56.0",
+    "sha256": "ade1553a5133d79250d69478868aa14dff3d4e04751ba607f67a4f6f5420ed44"
   },
   "hyperv": {
-    "version": "0.42.0",
-    "sha256": "7e87e69f1fc50f461bafed43e2c42413e20964b40f79df66dd15454bb4c01399"
+    "version": "0.56.0",
+    "sha256": "81910a3eaadc3535d916829bba7319d3e01ab19162fb7c85cf35f9d107d3b29b"
   }
 }

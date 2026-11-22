@@ -126,7 +126,7 @@ const METRIC_GROUP = {
   hostTempMax: 'temps', hostTemp: 'temps', temp: 'temps', diskTemp: 'temps', rfTemp: 'temps',
   hostPdHealth: 'disks', hostPdTemp: 'disks', hostPdWear: 'disks', hostPool: 'disks', hostPoolUsed: 'drives', hostPoolScrub: 'disks', hostPoolDown: 'disks', disk: 'disks', raid: 'disks', volume: 'disks', health: 'machine',
   hostUpdates: 'care', hostUpdatesSec: 'care', hostReboot: 'care', hostAv: 'care', hostFirewall: 'care', hostEvCritical: 'care', hostEvErrors: 'care', hostCert: 'care',
-  upsPower: 'ups', upsCharge: 'ups', upsRuntime: 'ups', upsLoad: 'ups', supply: 'printer', pages: 'printer', printerErrors: 'printer', port: 'ports', portErrors: 'ports', portLoad: 'ports', localCheck: 'checks',
+  upsPower: 'ups', upsCharge: 'ups', upsRuntime: 'ups', upsLoad: 'ups', supply: 'printer', pages: 'printer', printerErrors: 'printer', port: 'ports', portErrors: 'ports', portLoad: 'ports', localCheck: 'checks', localValue: 'checks',
   // hypervisor and controller values
   nodeOnline: 'machine', nodeCpu: 'machine', nodeMem: 'machine', nodeTemp: 'temps', storage: 'drives', datastore: 'drives',
   guestRunning: 'guests', backupAge: 'backup', backupFailed: 'backup', groupAge: 'backup', tasksFailed: 'backup',

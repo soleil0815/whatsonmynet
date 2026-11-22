@@ -32,7 +32,7 @@ Netzwerk-Inventar, Monitoring und Sensoren in einem Container: WhatsOnMyNet scan
 | 🧪 **Weitere Prüfungen** | Mailserver (SMTP/IMAP/POP3 mit TLS und Zertifikat), DNS, LDAP/Active Directory, Zeitserver (NTP), Microsoft SQL Server |
 | 🔔 **Meldungen** | SNMP-Traps, Syslog (UDP, TCP, TLS) und Windows-Ereignisse (NXLog, Fluent Bit) empfangen, dem Gerät zuordnen, sofort alarmieren; Ereignisregeln schicken ausgewählte Meldungen per Mail oder ans Ticketsystem |
 | 📈 **Prometheus & Grafana** | /metrics mit Schlüssel, fertiges Grafana-Dashboard |
-| 🧩 **Eigene Prüfungen** | Eigene Skripte im Checkmk-Format (Local Checks) auf Windows- und Linux-Rechnern - nur Dateien, die niemand sonst ändern kann |
+| 🧩 **Eigene Prüfungen und Plugins** | Eigene Skripte im Checkmk-Format (Local Checks) auf Windows- und Linux-Rechnern; Plugins direkt in WhatsOnMyNet schreiben, für alle oder einzelne Rechner verteilen - es läuft nur genau die freigegebene Datei, ihre Werte werden Sensoren |
 | 💾 **Veeam** | Jobs mit letztem Ergebnis, Repositories - Veeam Backup & Replication 12+ (REST, nur lesend) |
 | ☁️ **Cloud** | AWS, Azure, Google Cloud, Microsoft 365 (Dienststatus, Störungen, Lizenzen): VMs mit den Prüfungen des Anbieters, Datenbanken, Load Balancer, Alarme, Kosten - nur lesend |
 | 💻 **Rechner ohne Agent** | Windows und Linux melden sich per kleinem Skript: CPU, RAM, Laufwerke, Dienste, Updates, Virenschutz, Temperaturen |
@@ -296,6 +296,7 @@ Unter *Überwachung → Berichte* verschickt WhatsOnMyNet zu festen Zeiten Beric
 
 - **/metrics** für Prometheus mit dem Zustand aller Monitore und Sensoren - nur mit Schlüssel, nur lesend; ein fertiges **Grafana-Dashboard** zum Importieren unter *Einstellungen → Prometheus & Grafana*.
 - **Eigene Prüfungen** (Local Checks im Checkmk-Format): Skripte im Ordner `checks` auf Windows- und Linux-Rechnern melden OK, Warnung, kritisch oder unbekannt - es laufen nur Dateien, die niemand sonst ändern kann, jede mit Zeitlimit.
+- **Plugins für das Rechner-Skript**: unter *Einstellungen → Plugins* schreiben (PowerShell oder sh), für alle Rechner, Schlagwörter, Standorte oder einzelne Geräte freigeben, herunterladen und in den Plugin-Ordner legen. Zeilen wie `Backup-Alter: 26 h` werden Werte mit eigener Alarmgrenze. Ein Rechner führt nur genau die Datei aus, die WhatsOnMyNet ihm über die gesicherte Verbindung freigibt (Version und SHA-256) - veränderte, veraltete oder fremde Plugins laufen nicht; die Liste zeigt, wo ein Plugin läuft, fehlt oder veraltet ist.
 - **Weitere Prüfarten**: Mailserver (SMTP, IMAP, POP3 mit STARTTLS/TLS und Ablauf des Zertifikats), DNS an einem bestimmten Server, LDAP/Active Directory, Zeitserver (NTP), Microsoft SQL Server; Auslastung jedes Switch-Ports.
 
 Einzelheiten zu allem stehen im Handbuch.
