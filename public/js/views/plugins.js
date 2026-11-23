@@ -125,7 +125,7 @@ function editor(body, p, choices, reload) {
   // for whom: all machines of the system, or tags / locations / devices
   const all = h('input', { type: 'radio', name: 'scope', value: 'all', checked: !!v.targets.all });
   const some = h('input', { type: 'radio', name: 'scope', value: 'some', checked: !v.targets.all });
-  const tags = input('tags', (v.targets.tags || []).join(', '), { placeholder: 'dateiserver, sql', list: 'plg-tags', autocomplete: 'off' });
+  const tags = input('tags', (v.targets.tags || []).join(', '), { placeholder: t('plg.tagsPh'), list: 'plg-tags', autocomplete: 'off' });
   const tagList = h('datalist', { id: 'plg-tags' }, choices.tags.map((x) => h('option', { value: x })));
   const locs = h('div', { class: 'plg-checks' }, choices.locations.map((l) => h('label', { class: 'check' },
     h('input', { type: 'checkbox', value: l.id, checked: (v.targets.locations || []).includes(l.id) }), h('span', {}, l.name))));

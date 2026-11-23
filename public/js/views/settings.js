@@ -1527,9 +1527,9 @@ async function ad(body, _s, reload) {
   h('h3', { class: 'ad-sec' }, t('ad.groups')),
   h('p', { class: 'muted small', style: { marginTop: 0 } }, t('ad.groupsHint')),
   h('div', { class: 'ad-grid-3' },
-    field(t('role.admin'), input('groupAdmin', c.groupAdmin, { class: 'mono', placeholder: 'WOMN-Admins' })),
-    field(t('role.editor'), input('groupEditor', c.groupEditor, { class: 'mono', placeholder: 'WOMN-Bearbeiter' })),
-    field(t('role.viewer'), input('groupViewer', c.groupViewer, { class: 'mono', placeholder: 'WOMN-Lesen' }))),
+    field(t('role.admin'), input('groupAdmin', c.groupAdmin, { class: 'mono', placeholder: t('ad.groupAdminPh') })),
+    field(t('role.editor'), input('groupEditor', c.groupEditor, { class: 'mono', placeholder: t('ad.groupEditorPh') })),
+    field(t('role.viewer'), input('groupViewer', c.groupViewer, { class: 'mono', placeholder: t('ad.groupViewerPh') }))),
   field(t('ad.nested'), h('input', { type: 'checkbox', name: 'nested', checked: c.nested })),
   h('details', { class: 'cert-manual' }, h('summary', {}, t('ad.advanced')),
     field(t('ad.filter'), input('userFilter', c.userFilter, { class: 'mono', placeholder: c.defaultFilter }), t('ad.filterHint'))),
@@ -1537,7 +1537,7 @@ async function ad(body, _s, reload) {
 
   // Test with the values in the form (also before saving): every step with ✓ or ✗ and what to do
   const out = h('div', { class: 'ad-steps' });
-  const tu = input('username', '', { autocomplete: 'off', placeholder: 'max.mustermann' });
+  const tu = input('username', '', { autocomplete: 'off', placeholder: t('ad.testUserPh') });
   const tp = input('password', '', { type: 'password', autocomplete: 'off' });
   const stepText = (st) => {
     if (st.key === 'connect') return st.ok ? t('adt.connect', { security: st.security }) : t('adt.connectFail');
