@@ -21,7 +21,7 @@ export async function diagnosticsSettings(body) {
   days.addEventListener('change', refresh);
   anon.addEventListener('change', refresh);
 
-  const q = h('input', { type: 'search', placeholder: 'GERAET-001, 10.99.0.7 …', 'aria-label': t('diag.lookup'), maxlength: 200 });
+  const q = h('input', { type: 'search', placeholder: t('diag.lookupPh'), 'aria-label': t('diag.lookup'), maxlength: 200 });
   const out = h('div', { class: 'diag-lookup', 'aria-live': 'polite' });
   async function lookup(e) {
     e?.preventDefault();

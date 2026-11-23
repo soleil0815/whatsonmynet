@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- English interface: the example values under Settings → Active Directory (groups, test account), in troubleshooting and for plugins are now English too
+
+## 0.56.0 - 2026-11-22
+
 - Plugins for the host script: under Settings → Plugins you write small scripts of your own (PowerShell or sh) – for all machines, for tags, locations or single devices –, download them and put them into the plugins folder. Lines like "Backup age: 26 h" become values with an alarm limit of their own. A machine runs exactly the approved file only (version and fingerprint come over the secured connection): changed, outdated or foreign plugins do not run. List and device page show where a plugin runs, is missing or outdated. Roll out the host script once again for this (Windows 0.56.0)
 - Host script 0.56.0 (Windows and Linux) – roll it out once: plugins can run less often (every 10 minutes up to once a day, the last result stays in between), all plugins of one run together have at most 3 minutes, on Linux no second run starts while the previous one works, and the Linux script now reports its version too – the device page marks an older one as "outdated"
 - SNMP: when a device lacks a table (e.g. a NAS without Synology or QNAP values), the query ends at once – before, WhatsOnMyNet waited for the time limit and asked some devices the same thing again and again
