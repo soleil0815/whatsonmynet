@@ -8,8 +8,16 @@ New-Item -ItemType Directory -Force -Path $Work | Out-Null
 # 1. Fluent Bit (Chocolatey checks the checksum of the package) in a fixed version: a new release must not turn this
 #    check red without a change here. Raise $FluentBitVersion by hand after trying the new one (Dependabot cannot).
 $FluentBitVersion = '4.1.0'
-& choco install fluent-bit --version $FluentBitVersion -y --no-progress | Select-Object -Last 3
-if ($LASTEXITCODE -ne 0) { "choco install fluent-bit $FluentBitVersion failed ($LASTEXITCODE)"; exit 1 }
+#    The Chocolatey feed sometimes answers "does not exist" for a version it has (seen in CI) - up to three tries.
+$code = 1
+foreach ($try in 1..3) {
+  & choco install fluent-bit --version $FluentBitVersion -y --no-progress | Select-Object -Last 3
+  $code = $LASTEXITCODE
+  if ($code -eq 0) { break }
+  "choco install fluent-bit $FluentBitVersion failed ($code), try $try of 3"
+  Start-Sleep -Seconds (20 * $try)
+}
+if ($code -ne 0) { "choco install fluent-bit $FluentBitVersion failed ($code)"; exit 1 }
 $exe = @(Get-ChildItem -Path "$env:ProgramFiles\fluent-bit", "${env:ProgramFiles(x86)}\fluent-bit" -Filter fluent-bit.exe -Recurse -ErrorAction SilentlyContinue)[0]
 if (-not $exe) { 'fluent-bit.exe not found'; exit 1 }
 $have = (& $exe.FullName --version | Out-String)
