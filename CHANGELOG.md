@@ -6,7 +6,13 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
-- Englische Oberfläche: Die Beispielwerte unter Einstellungen → Active Directory (Gruppen, Testkonto), in der Fehlersuche und bei Plugins sind jetzt auch englisch
+- Scan-Agenten: Je Agent wählbar, welche SNMP-Zugangsdaten er bekommt – keine (nur „public“), eigene nur für seinen Standort (verschlüsselt gespeichert) oder alle dieses Servers. Neue Agenten starten ohne; bestehende behalten vorerst alle und sind in der Liste markiert – am besten auf eigene umstellen
+- Monitore von Nicht-Administratoren: Hostnamen werden bei jeder Prüfung neu aufgelöst und geprüft, und die Prüfung geht genau an die geprüfte Adresse – zeigt ein Name später auf den WhatsOnMyNet-Rechner oder ein fremdes Netz (DNS-Rebinding), meldet der Monitor „Zieladresse nicht erlaubt“. Auch die Web-Adresse eines Geräts folgt dieser Regel, und automatisch angelegte Monitore gehen nie an den WhatsOnMyNet-Rechner selbst
+- Wiederherstellen einer Sicherung: Auch Rollen und Standort-Beschränkungen der Benutzer und die SNMP-Auswahl der Agenten bleiben auf dem heutigen Stand – ein seither herabgestufter Benutzer bekommt seine alten Rechte nicht zurück
+- Ereignis-Regeln: Reguläre Ausdrücke laufen in einem eigenen Thread mit festem Zeitlimit – auch ein Ausdruck, der sich trotz aller Prüfungen verrennt, kann den Server nicht mehr anhalten; die Regel wird ausgeschaltet und zeigt den Grund
+
+## 0.56.2 - 2026-11-24
+
 - Code-Audit – Sicherheit: Benutzer mit Standort-Einschränkung sehen und ändern über Scan-Zuordnung, Monitore, Wartungsfenster, Übersicht und Suche nichts mehr aus anderen Standorten; Monitore und Geräte-Adressen von Nicht-Administratoren zeigen nie auf den WhatsOnMyNet-Rechner selbst oder 169.254.x, bei Standort-Einschränkung private Adressen nur in den eigenen Subnetzen; SNMP-Monitore und Geräte-Adressen von Nicht-Administratoren nur an private Netze und Standort-Subnetze, denn dorthin gehen die hinterlegten SNMP-Zugänge
 - Code-Audit – Anmeldung: Zwei-Faktor einschalten fragt nach dem Kennwort und meldet andere Sitzungen ab; „Administratoren brauchen Zwei-Faktor“ gilt auch für die Ausfallsicherung; nach einer Kennwort-Änderung am Master endet die Sitzung auch auf dem Standby; eine Wiederherstellung bringt widerrufene Agent-, Rechner- und /metrics-Schlüssel, alte Kennwörter und gelöschte Benutzer nicht zurück
 - Code-Audit – Rechner-Skript mit gemeinsamem Schlüssel: Meldungen landen nur noch bei einem Gerät, dessen MAC sie nennen, und ändern nie Seriennummer, Modell oder MAC (ein Notebook an der Dockingstation braucht ein eigenes Skript)
@@ -14,10 +20,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 - Code-Audit – Daten: Gelöschte Monitore verschwinden von Statusseiten (vorher konnte ein neuer Monitor ihren Platz auf der öffentlichen Seite bekommen), die Seite lässt sich wieder speichern; von Hand eingegebene Hostnamen bleiben auch bei früher per Formular angelegten und zusammengeführten Geräten erhalten; „Neue Geräte überwachen“ legt für einen ZFS-Pool nur noch einen Sensor an; umbenannte Plugins gelten nicht mehr als veraltet; das Diagnosepaket blendet auch Tokens in Adressen aus
 - Code-Audit – HTTPS: Ein hochgeladenes Zertifikat wird nie mehr ohne Sicherung ersetzt (auch wenn der Schlüssel fehlt oder ein Hochladen unterbrochen wurde); HSTS nur für Namen, die das Zertifikat enthält
 - Code-Audit – Oberfläche: Übersicht zählt noch nicht geprüfte Monitore nicht als „in Ordnung“, Rückfragen vor dem Löschen gespeicherter Suchen und unbekannter Rechner, Handbuch-Links aus der Suche führen zum richtigen Abschnitt, Dialoge und Zertifikatsseite passen aufs Handy
-- Scan-Agenten: Je Agent wählbar, welche SNMP-Zugangsdaten er bekommt – keine (nur „public“), eigene nur für seinen Standort (verschlüsselt gespeichert) oder alle dieses Servers. Neue Agenten starten ohne; bestehende behalten vorerst alle und sind in der Liste markiert – am besten auf eigene umstellen
-- Monitore von Nicht-Administratoren: Hostnamen werden bei jeder Prüfung neu aufgelöst und geprüft, und die Prüfung geht genau an die geprüfte Adresse – zeigt ein Name später auf den WhatsOnMyNet-Rechner oder ein fremdes Netz (DNS-Rebinding), meldet der Monitor „Zieladresse nicht erlaubt“. Auch die Web-Adresse eines Geräts folgt dieser Regel, und automatisch angelegte Monitore gehen nie an den WhatsOnMyNet-Rechner selbst
-- Wiederherstellen einer Sicherung: Auch Rollen und Standort-Beschränkungen der Benutzer und die SNMP-Auswahl der Agenten bleiben auf dem heutigen Stand – ein seither herabgestufter Benutzer bekommt seine alten Rechte nicht zurück
-- Ereignis-Regeln: Reguläre Ausdrücke laufen in einem eigenen Thread mit festem Zeitlimit – auch ein Ausdruck, der sich trotz aller Prüfungen verrennt, kann den Server nicht mehr anhalten; die Regel wird ausgeschaltet und zeigt den Grund
+
+## 0.56.1 - 2026-11-23
+
+- Englische Oberfläche: Die Beispielwerte unter Einstellungen → Active Directory (Gruppen, Testkonto), in der Fehlersuche und bei Plugins sind jetzt auch englisch
 
 ## 0.56.0 - 2026-11-22
 

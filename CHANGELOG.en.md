@@ -6,7 +6,13 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
-- English interface: the example values under Settings → Active Directory (groups, test account), in troubleshooting and for plugins are now English too
+- Scan agents: per agent you choose which SNMP access data it gets – none (only "public"), its own for its location only (stored encrypted) or all of this server. New agents start with none; existing ones keep all for now and are marked in the list – best switch them to their own
+- Monitors of non-administrators: host names are resolved and checked again on every check, and the check contacts exactly the checked address – if a name later points at the WhatsOnMyNet host or another network (DNS rebinding), the monitor reports "target address not allowed". The web address of a device follows this rule too, and monitors made automatically never go to the WhatsOnMyNet host itself
+- Restoring a backup: the roles and location limits of users and the SNMP choice of agents stay as they are today too – a user demoted since does not get the old rights back
+- Event rules: regular expressions run in a thread of their own with a fixed time limit – even an expression that runs away despite all checks can no longer stop the server; the rule is switched off and shows why
+
+## 0.56.2 - 2026-11-24
+
 - Code audit – security: users limited to locations no longer see or change anything of other locations through scan matching, monitors, maintenance windows, the overview or search; monitors and device addresses of non-administrators never point at the WhatsOnMyNet host itself or 169.254.x, for users limited to locations private addresses only in their own subnets; SNMP monitors and device addresses of non-administrators only to private networks and location subnets, because the stored SNMP access data go there
 - Code audit – sign-in: turning on two-factor asks for the password and signs out other sessions; "administrators need two-factor" also applies to failover; after a password change on the master the session ends on the standby too; a restore does not bring back revoked agent, host or /metrics keys, old passwords or deleted users
 - Code audit – host script with a shared key: reports only land on a device whose MAC they name and never change serial number, model or MAC (a laptop at a docking station needs a script of its own)
@@ -14,10 +20,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 - Code audit – data: deleted monitors leave status pages (before, a new monitor could take their place on the public page) and the page can be saved again; host names typed by hand stay on devices created with the form earlier and on merged devices; "Watch new devices" adds only one sensor per ZFS pool; renamed plugins no longer count as outdated; the diagnostic package also hides tokens in addresses
 - Code audit – HTTPS: an uploaded certificate is never replaced without a backup (also when its key is missing or an upload was interrupted); HSTS only for names the certificate contains
 - Code audit – interface: the overview no longer counts monitors not checked yet as "OK", confirmation before deleting saved searches and unknown machines, manual links from the search lead to the right section, dialogs and the certificate page fit on phones
-- Scan agents: per agent you choose which SNMP access data it gets – none (only "public"), its own for its location only (stored encrypted) or all of this server. New agents start with none; existing ones keep all for now and are marked in the list – best switch them to their own
-- Monitors of non-administrators: host names are resolved and checked again on every check, and the check contacts exactly the checked address – if a name later points at the WhatsOnMyNet host or another network (DNS rebinding), the monitor reports "target address not allowed". The web address of a device follows this rule too, and monitors made automatically never go to the WhatsOnMyNet host itself
-- Restoring a backup: the roles and location limits of users and the SNMP choice of agents stay as they are today too – a user demoted since does not get the old rights back
-- Event rules: regular expressions run in a thread of their own with a fixed time limit – even an expression that runs away despite all checks can no longer stop the server; the rule is switched off and shows why
+
+## 0.56.1 - 2026-11-23
+
+- English interface: the example values under Settings → Active Directory (groups, test account), in troubleshooting and for plugins are now English too
 
 ## 0.56.0 - 2026-11-22
 
