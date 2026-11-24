@@ -1436,14 +1436,36 @@ async function agents(body, _s, reload) {
       h('button', { class: 'btn btn-primary', type: 'submit' }, t('agent.done'))] });
   };
   const edit = (a) => {
+    // SNMP access data of this agent: none (only "public"), its own, or all of this server (agents from before 0.57)
+    const mode = select('snmp_mode', [['none', t('agent.snmpNone')], ['own', t('agent.snmpOwn')], ['all', t('agent.snmpAll')]], a?.snmp_mode || 'none');
+    const comm = h('textarea', { name: 'snmp_communities', rows: 2, class: 'mono', placeholder: a?.snmp_communities_set ? '••••••' : 'public', autocomplete: 'off', spellcheck: 'false' });
+    const v3 = v3Editor(a?.snmp_v3 || []);
+    const own = h('div', { class: 'form' },
+      field(t('set.communities'), comm, a?.snmp_communities_set ? t('agent.communitiesSet') : t('agent.communitiesHint')),
+      a?.snmp_communities_set ? field(t('agent.clearCommunities'), h('input', { type: 'checkbox', name: 'clearCommunities' })) : null,
+      v3.el);
+    const allWarn = h('p', { class: 'note warn', style: { margin: 0 } }, t('agent.snmpAllWarn'));
+    const show = () => { own.hidden = mode.value !== 'own'; allWarn.hidden = mode.value !== 'all'; };
+    mode.addEventListener('change', show);
+    show();
     const form = h('form', { class: 'form' },
       field(t('agent.name'), input('name', a?.name || '', { required: true, maxlength: 80, placeholder: t('ph.agentName') })),
       field(t('agent.location'), select('location_id', locs.map((l) => [String(l.id), l.name]), a ? String(a.location_id) : String(locs[0]?.id || '')), t('agent.locationHint')),
+      field(t('agent.snmp'), mode, t('agent.snmpHint')), allWarn, own,
       a ? field(t('user.active'), h('input', { type: 'checkbox', name: 'enabled', checked: !!a.enabled })) : null);
-    const m = modal(a ? a.name : t('agent.add'), form, { onSubmit: async () => {
+    const payload = () => {
+      const d = formData(form);
+      const out = { name: d.name, location_id: d.location_id, snmp_mode: d.snmp_mode, ...(a ? { enabled: d.enabled } : {}) };
+      if (d.snmp_mode === 'own') {
+        if (d.snmp_communities.trim() || d.clearCommunities) out.snmp_communities = d.clearCommunities ? '' : d.snmp_communities;
+        out.snmp_v3 = v3.value();
+      }
+      return out;
+    };
+    const m = modal(a ? a.name : t('agent.add'), form, { wide: true, onSubmit: async () => {
       try {
-        if (a) { await put(`/agents/${a.id}`, formData(form)); m.close(); toast(t('saved')); reload(); }
-        else { const r = await post('/agents', formData(form)); m.close(); showToken(r); }
+        if (a) { await put(`/agents/${a.id}`, payload()); m.close(); toast(t('saved')); reload(); }
+        else { const r = await post('/agents', payload()); m.close(); showToken(r); }
       } catch (ex) { fail(ex); }
     }, actions: [
       btn(t('cancel'), { onclick: () => m.close() }),
@@ -1464,7 +1486,8 @@ async function agents(body, _s, reload) {
       h('tbody', {}, list.map((a) => h('tr', {},
         h('td', {}, h('span', { class: 'name' }, a.name), a.enabled ? null : h('span', { class: 'badge', style: { marginLeft: '6px' } }, t('user.inactive')),
           a.last_ip ? h('div', { class: 'sub mono' }, a.last_ip) : null),
-        h('td', {}, a.location_name),
+        h('td', {}, a.location_name, h('div', { class: 'sub' }, a.snmp_mode === 'all' ? h('span', { class: 'badge badge-warn', title: t('agent.snmpAllWarn') }, t('agent.snmpAllShort'))
+          : a.snmp_mode === 'own' ? h('span', { class: 'muted small' }, t('agent.snmpOwnShort')) : h('span', { class: 'muted small' }, t('agent.snmpNoneShort')))),
         h('td', {}, seen(a), a.open_jobs ? h('span', { class: 'muted small', style: { marginLeft: '6px' } }, t('agent.openJobs', { n: a.open_jobs })) : null),
         h('td', { class: 'hide-sm mono small' }, a.version || '–'),
         h('td', { class: 'min' }, h('div', { class: 'actions' },

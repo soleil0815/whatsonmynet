@@ -70,9 +70,10 @@ function talk(sock, deadline) {
     deadline,
   };
 }
-function connect(host, port, { implicitTls, verify, timeoutMs }) {
+function connect(host, port, { implicitTls, verify, timeoutMs, lookup }) {
   return new Promise((resolve, reject) => {
-    const opts = { host, port, timeout: timeoutMs };
+    // lookup: the address checked before (monitors of non-admins, see checks.js) - TLS still checks the name
+    const opts = { host, port, timeout: timeoutMs, ...(lookup ? { lookup } : {}) };
     const sock = implicitTls ? tls.connect({ ...opts, servername: servername(host), rejectUnauthorized: !!verify }) : net.connect(opts);
     sock.once(implicitTls ? 'secureConnect' : 'connect', () => { sock.setTimeout(timeoutMs); resolve(sock); });
     sock.once('timeout', () => { sock.destroy(); reject(Object.assign(new Error('timeout'), { code: 'TIMEOUT' })); });
@@ -93,13 +94,13 @@ const withDeadline = (p, ms) => Promise.race([p, new Promise((_, rej) => setTime
 export const MAIL_PORTS = { smtp: { none: 25, starttls: 587, implicit: 465 }, imap: { none: 143, starttls: 143, implicit: 993 }, pop3: { none: 110, starttls: 110, implicit: 995 } };
 const smtpDone = (b) => /(^|\r?\n)\d{3} [^\r\n]*\r?\n/.test(b);
 const SMTP_LAST = (b) => (b.trim().split(/\r?\n/).pop() || '');
-export async function mailCheck(host, port, { proto = 'smtp', tls: mode = 'starttls', verify = false } = {}, timeoutS = 10) {
+export async function mailCheck(host, port, { proto = 'smtp', tls: mode = 'starttls', verify = false, lookup } = {}, timeoutS = 10) {
   const t0 = Date.now();
   const timeoutMs = timeoutS * 1000;
   let sock;
   try {
     return await withDeadline((async () => {
-      sock = await connect(host, port, { implicitTls: mode === 'implicit', verify, timeoutMs });
+      sock = await connect(host, port, { implicitTls: mode === 'implicit', verify, timeoutMs, lookup });
       let c = talk(sock);
       let greeting;
       if (proto === 'smtp') {
@@ -158,9 +159,10 @@ const ROOT_ATTRS = ['defaultNamingContext', 'dnsHostName', 'isSynchronized', 'is
 let LdapClient = Client;
 /** Tests use a stand-in for the LDAP client */
 export function setLdapClient(c) { LdapClient = c || Client; }
-export async function ldapCheck(host, port, { tls: mode = 'ldaps', verify = false } = {}, timeoutS = 10) {
+export async function ldapCheck(host, port, { tls: mode = 'ldaps', verify = false, name = '' } = {}, timeoutS = 10) {
   const t0 = Date.now();
-  const tlsOptions = { rejectUnauthorized: !!verify, servername: servername(host) };
+  // name: the host name when host is the address checked before (TLS checks the certificate against the name)
+  const tlsOptions = { rejectUnauthorized: !!verify, servername: servername(name || host) };
   const h = net.isIPv6(host) ? `[${host}]` : host;
   const client = new LdapClient({ url: `${mode === 'ldaps' ? 'ldaps' : 'ldap'}://${h}:${port}`, timeout: timeoutS * 1000, connectTimeout: timeoutS * 1000, tlsOptions, strictDN: false });
   try {

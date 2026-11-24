@@ -3,7 +3,17 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
-    'Englische Oberfläche: Die Beispielwerte unter Einstellungen → Active Directory (Gruppen, Testkonto), in der Fehlersuche und bei Plugins sind jetzt auch englisch',
+    'Scan-Agenten: Je Agent wählbar, welche SNMP-Zugangsdaten er bekommt – keine (nur „public“), eigene nur für seinen Standort (verschlüsselt gespeichert) oder alle dieses Servers. Neue Agenten starten ohne; bestehende behalten vorerst alle und sind in der Liste markiert – am besten auf eigene umstellen',
+    'Monitore von Nicht-Administratoren: Hostnamen werden bei jeder Prüfung neu aufgelöst und geprüft, und die Prüfung geht genau an die geprüfte Adresse – zeigt ein Name später auf den WhatsOnMyNet-Rechner oder ein fremdes Netz (DNS-Rebinding), meldet der Monitor „Zieladresse nicht erlaubt“. Auch die Web-Adresse eines Geräts folgt dieser Regel, und automatisch angelegte Monitore gehen nie an den WhatsOnMyNet-Rechner selbst',
+    'Wiederherstellen einer Sicherung: Auch Rollen und Standort-Beschränkungen der Benutzer und die SNMP-Auswahl der Agenten bleiben auf dem heutigen Stand – ein seither herabgestufter Benutzer bekommt seine alten Rechte nicht zurück',
+    'Ereignis-Regeln: Reguläre Ausdrücke laufen in einem eigenen Thread mit festem Zeitlimit – auch ein Ausdruck, der sich trotz aller Prüfungen verrennt, kann den Server nicht mehr anhalten; die Regel wird ausgeschaltet und zeigt den Grund',
+  ], en: [
+    'Scan agents: per agent you choose which SNMP access data it gets – none (only "public"), its own for its location only (stored encrypted) or all of this server. New agents start with none; existing ones keep all for now and are marked in the list – best switch them to their own',
+    'Monitors of non-administrators: host names are resolved and checked again on every check, and the check contacts exactly the checked address – if a name later points at the WhatsOnMyNet host or another network (DNS rebinding), the monitor reports "target address not allowed". The web address of a device follows this rule too, and monitors made automatically never go to the WhatsOnMyNet host itself',
+    'Restoring a backup: the roles and location limits of users and the SNMP choice of agents stay as they are today too – a user demoted since does not get the old rights back',
+    'Event rules: regular expressions run in a thread of their own with a fixed time limit – even an expression that runs away despite all checks can no longer stop the server; the rule is switched off and shows why',
+  ] },
+  { version: '0.56.2', date: '2026-11-24', de: [
     'Code-Audit – Sicherheit: Benutzer mit Standort-Einschränkung sehen und ändern über Scan-Zuordnung, Monitore, Wartungsfenster, Übersicht und Suche nichts mehr aus anderen Standorten; Monitore und Geräte-Adressen von Nicht-Administratoren zeigen nie auf den WhatsOnMyNet-Rechner selbst oder 169.254.x, bei Standort-Einschränkung private Adressen nur in den eigenen Subnetzen; SNMP-Monitore und Geräte-Adressen von Nicht-Administratoren nur an private Netze und Standort-Subnetze, denn dorthin gehen die hinterlegten SNMP-Zugänge',
     'Code-Audit – Anmeldung: Zwei-Faktor einschalten fragt nach dem Kennwort und meldet andere Sitzungen ab; „Administratoren brauchen Zwei-Faktor“ gilt auch für die Ausfallsicherung; nach einer Kennwort-Änderung am Master endet die Sitzung auch auf dem Standby; eine Wiederherstellung bringt widerrufene Agent-, Rechner- und /metrics-Schlüssel, alte Kennwörter und gelöschte Benutzer nicht zurück',
     'Code-Audit – Rechner-Skript mit gemeinsamem Schlüssel: Meldungen landen nur noch bei einem Gerät, dessen MAC sie nennen, und ändern nie Seriennummer, Modell oder MAC (ein Notebook an der Dockingstation braucht ein eigenes Skript)',
@@ -12,7 +22,6 @@ export const CHANGELOG = [
     'Code-Audit – HTTPS: Ein hochgeladenes Zertifikat wird nie mehr ohne Sicherung ersetzt (auch wenn der Schlüssel fehlt oder ein Hochladen unterbrochen wurde); HSTS nur für Namen, die das Zertifikat enthält',
     'Code-Audit – Oberfläche: Übersicht zählt noch nicht geprüfte Monitore nicht als „in Ordnung“, Rückfragen vor dem Löschen gespeicherter Suchen und unbekannter Rechner, Handbuch-Links aus der Suche führen zum richtigen Abschnitt, Dialoge und Zertifikatsseite passen aufs Handy',
   ], en: [
-    'English interface: the example values under Settings → Active Directory (groups, test account), in troubleshooting and for plugins are now English too',
     'Code audit – security: users limited to locations no longer see or change anything of other locations through scan matching, monitors, maintenance windows, the overview or search; monitors and device addresses of non-administrators never point at the WhatsOnMyNet host itself or 169.254.x, for users limited to locations private addresses only in their own subnets; SNMP monitors and device addresses of non-administrators only to private networks and location subnets, because the stored SNMP access data go there',
     'Code audit – sign-in: turning on two-factor asks for the password and signs out other sessions; "administrators need two-factor" also applies to failover; after a password change on the master the session ends on the standby too; a restore does not bring back revoked agent, host or /metrics keys, old passwords or deleted users',
     'Code audit – host script with a shared key: reports only land on a device whose MAC they name and never change serial number, model or MAC (a laptop at a docking station needs a script of its own)',
@@ -20,6 +29,11 @@ export const CHANGELOG = [
     'Code audit – data: deleted monitors leave status pages (before, a new monitor could take their place on the public page) and the page can be saved again; host names typed by hand stay on devices created with the form earlier and on merged devices; "Watch new devices" adds only one sensor per ZFS pool; renamed plugins no longer count as outdated; the diagnostic package also hides tokens in addresses',
     'Code audit – HTTPS: an uploaded certificate is never replaced without a backup (also when its key is missing or an upload was interrupted); HSTS only for names the certificate contains',
     'Code audit – interface: the overview no longer counts monitors not checked yet as "OK", confirmation before deleting saved searches and unknown machines, manual links from the search lead to the right section, dialogs and the certificate page fit on phones',
+  ] },
+  { version: '0.56.1', date: '2026-11-23', de: [
+    'Englische Oberfläche: Die Beispielwerte unter Einstellungen → Active Directory (Gruppen, Testkonto), in der Fehlersuche und bei Plugins sind jetzt auch englisch',
+  ], en: [
+    'English interface: the example values under Settings → Active Directory (groups, test account), in troubleshooting and for plugins are now English too',
   ] },
   { version: '0.56.0', date: '2026-11-22', de: [
     'Plugins für das Rechner-Skript: Unter Einstellungen → Plugins schreibst du eigene kleine Skripte (PowerShell oder sh) – für alle Rechner, für Schlagwörter, Standorte oder einzelne Geräte –, lädst sie herunter und legst sie in den Plugin-Ordner. Zeilen wie „Backup-Alter: 26 h“ werden Werte mit eigener Alarmgrenze. Ein Rechner führt nur genau die freigegebene Datei aus (Version und Fingerabdruck kommen über die gesicherte Verbindung): veränderte, veraltete oder fremde Plugins laufen nicht. Liste und Geräteseite zeigen, wo ein Plugin läuft, fehlt oder veraltet ist. Dafür das Rechner-Skript einmal neu ausrollen (Windows 0.56.0)',

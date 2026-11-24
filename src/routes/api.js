@@ -1,6 +1,6 @@
 // REST API of the web interface.
 import { searchAll } from '../search.js';
-import { parseV3, V3_LEVELS, V3_AUTH, V3_PRIV, MAX_V3, snmpCredentials } from '../snmpcreds.js';
+import { parseV3, v3FromForm, communitiesFromForm, snmpCredentials } from '../snmpcreds.js';
 import { snmpSystem } from '../scan/probes.js';
 import net from 'node:net';
 import crypto from 'node:crypto';
@@ -373,9 +373,16 @@ export function createApi(ctx) {
       snmp: ['switch', 'nas', 'ups'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: pluggedFor(req, d), history: inventory.historyOf(d.id) });
   });
   // A non-admin sets only addresses he may scan: pollers and monitors of the device contact it (with the SNMP access data)
-  const deviceIpOk = async (req, oldIp = null) => {
+  // The web address of a device becomes the target of its automatic http monitor: the same rule as a monitor target
+  const deviceIpOk = async (req, old = {}) => {
     const ip = typeof req.body?.ip === 'string' ? req.body.ip.trim() : '';
-    if (ip && ip !== oldIp) await assertTargetsAllowed(db, req.user, [ip], { snmp: true });
+    if (ip && ip !== (old.ip ?? null)) await assertTargetsAllowed(db, req.user, [ip], { snmp: true });
+    const web = typeof req.body?.web_url === 'string' ? req.body.web_url.trim() : '';
+    if (web && web !== (old.web_url ?? null) && /^https?:/i.test(web)) {
+      let host = '';
+      try { host = new URL(web).hostname.replace(/^\[|\]$/g, ''); } catch { /* the inventory refuses it */ }
+      if (host) await assertTargetsAllowed(db, req.user, [host]);
+    }
   };
   r.post('/devices', editor, async (req, res) => {
     if (req.scope && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
@@ -404,7 +411,7 @@ export function createApi(ctx) {
   r.patch('/devices/:id', editor, async (req, res) => {
     visible(req, idParam(req));
     if (req.scope && 'location_id' in req.body && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
-    await deviceIpOk(req, db.prepare('SELECT ip FROM devices WHERE id=?').get(idParam(req))?.ip ?? null);
+    await deviceIpOk(req, db.prepare('SELECT ip, web_url FROM devices WHERE id=?').get(idParam(req)) || {});
     res.json(inventory.update(idParam(req), req.body, who(req)));
   });
   r.delete('/devices/:id', editor, (req, res) => {
@@ -722,37 +729,6 @@ export function createApi(ctx) {
     audit(req, 'settings.general');
     res.json(settings.publicGroup('general'));
   });
-  /** SNMPv3 users from the form, checked; empty keys taken from the stored user of the same name */
-  const v3FromForm = (list, stored) => {
-    if (list.length > MAX_V3) throw new HttpError(400, 'err.snmpV3Count');
-    const seen = new Set();
-    return list.map((u) => {
-      const user = line(u?.user, 64);
-      if (!user) throw new HttpError(400, 'err.snmpV3User');
-      if (seen.has(user)) throw new HttpError(400, 'err.snmpV3Twice');
-      seen.add(user);
-      const level = V3_LEVELS.includes(u.level) ? u.level : 'authPriv';
-      const old = stored.find((x) => x.user === user);
-      const out = { user, level, context: line(u.context, 64) };
-      const keyOf = (given, kept, field) => {
-        const k = typeof given === 'string' ? given : '';
-        if (!k) { if (kept) return kept; throw new HttpError(400, `err.snmpV3${field}Key`); }
-        if (k.length < 8 || k.length > 128) throw new HttpError(400, 'err.snmpV3KeyLength');
-        return k;
-      };
-      if (level !== 'noAuthNoPriv') {
-        if (!V3_AUTH.includes(u.authProtocol)) throw new HttpError(400, 'err.snmpV3Proto');
-        out.authProtocol = u.authProtocol;
-        out.authKey = keyOf(u.authKey, old?.authKey, 'Auth');
-      }
-      if (level === 'authPriv') {
-        if (!V3_PRIV.includes(u.privProtocol)) throw new HttpError(400, 'err.snmpV3Proto');
-        out.privProtocol = u.privProtocol;
-        out.privKey = keyOf(u.privKey, old?.privKey, 'Priv');
-      }
-      return out;
-    });
-  };
   // Which stored SNMP access does this device answer to? Reads only its name and description.
   r.post('/settings/scan/snmp-test', admin, async (req, res) => {
     const ip = line(req.body.ip, 64);
@@ -770,10 +746,7 @@ export function createApi(ctx) {
     if ('rate' in b) settings.set('scan.rate', Math.min(200, Math.max(5, int(String(b.rate)) || 40)));
     if ('keepScans' in b) settings.set('scan.keepScans', Math.min(500, Math.max(3, int(String(b.keepScans)) || 20)));
     // Communities: only replaced when a new value is sent (empty string = back to "public")
-    if (typeof b.snmpCommunities === 'string') {
-      const list = b.snmpCommunities.split(/[\n,]/).map((s) => s.trim()).filter(Boolean).slice(0, 5).map((s) => s.slice(0, 64));
-      settings.set('scan.snmpCommunities', list.join('\n'));
-    }
+    if (typeof b.snmpCommunities === 'string') settings.set('scan.snmpCommunities', communitiesFromForm(b.snmpCommunities));
     // SNMPv3 users: a key left empty keeps the one stored for this user (the form never gets the keys)
     if (Array.isArray(b.snmpV3)) settings.set('scan.snmpV3', JSON.stringify(v3FromForm(b.snmpV3, parseV3(settings.get('scan.snmpV3')))));
     audit(req, 'settings.scan');

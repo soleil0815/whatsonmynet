@@ -785,6 +785,14 @@ export const MIGRATIONS = [
        OR (h.kind IN ('edit', 'snmp') AND (NOT json_valid(h.detail) OR (json_type(h.detail, '$.fields') = 'array'
          AND EXISTS (SELECT 1 FROM json_each(h.detail, '$.fields') f WHERE f.type = 'object' AND json_extract(f.value, '$.field') = 'hostname'))))
        OR (h.kind = 'change' AND (NOT json_valid(h.detail) OR json_extract(h.detail, '$.field') IS 'hostname'))));`,
+  // 44: which SNMP access data a scan agent gets: none (only "public"), its own (encrypted here) or all of this server.
+  // Agents that exist keep "all" (as before), new ones start with "none"; the own data is empty until an admin types it.
+  { sql: `ALTER TABLE agents ADD COLUMN snmp_mode TEXT NOT NULL DEFAULT 'all' CHECK (snmp_mode IN ('none','own','all'));
+     ALTER TABLE agents ADD COLUMN snmp_communities TEXT NOT NULL DEFAULT '';
+     ALTER TABLE agents ADD COLUMN snmp_v3 TEXT NOT NULL DEFAULT '';`, unless: "SELECT 1 FROM pragma_table_info('agents') WHERE name = 'snmp_mode'" },
+  // 45: monitors whose address a non-admin set keep his rule (lib/targetguard.js) - every check run resolves the name
+  // again and contacts only an address the rule allows (DNS rebinding). Monitors from before stay unchecked (NULL).
+  { sql: 'ALTER TABLE monitors ADD COLUMN target_rule TEXT;', unless: "SELECT 1 FROM pragma_table_info('monitors') WHERE name = 'target_rule'" },
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

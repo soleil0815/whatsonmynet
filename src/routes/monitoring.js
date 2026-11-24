@@ -5,7 +5,7 @@ import { HttpError, int, str, ids } from '../lib/http.js';
 import { BULK_MAX } from '../monitor/index.js';
 import { requireRole } from '../auth/session.js';
 import { inScope } from '../auth/scope.js';
-import { assertTargetsAllowed } from '../lib/targetguard.js';
+import { assertTargetsAllowed, targetRule } from '../lib/targetguard.js';
 import { config } from '../config.js';
 import { parseEventIds, parseDenyList, formatDenyList, denies } from '../eventrules.js';
 import { WIN_NOISE, WIN_KEEP } from '../settings.js';
@@ -76,7 +76,9 @@ export function createMonitoringApi(ctx) {
   };
   // Non-admins: a monitor may not make the server contact the host itself or internal networks outside their reach;
   // an SNMP monitor (it sends the stored access data) only private ranges and location subnets - see targetguard.js
-  const targetGuard = (req) => (req.user.role === 'admin' ? null : (hosts, v) => assertTargetsAllowed(db, req.user, hosts, { snmp: v?.type === 'snmp' }));
+  // The rule goes with the guard: it is kept with the monitor and checked again on every run (DNS rebinding)
+  const targetGuard = (req) => (req.user.role === 'admin' ? null
+    : Object.assign((hosts, v) => assertTargetsAllowed(db, req.user, hosts, { snmp: v?.type === 'snmp' }), { rule: targetRule(db, req.user) }));
   r.post('/monitors', editor, async (req, res) => {
     resultOk(req);
     parentOk(req);
