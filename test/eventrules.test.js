@@ -62,7 +62,7 @@ test('rule filter: ids and ranges, source and log, unknown origin, senders, word
   assert.equal(ruleMatches(m, row({ app: 'Something-Else', channel: 'Application' })), false, 'the same id from another source');
   assert.equal(ruleMatches(m, row({ app: '', channel: '' })), true, 'NXLog without source and log: the id decides');
   assert.equal(ruleMatches(m, row({ event_id: null })), false);
-  const srp = cleanMatch({ eventIds: '865-868, 8004', from: 'pc-00, 10.0.20.', words: 'eingeschränkt, blocked', notWords: 'Test' });
+  const srp = cleanMatch({ eventIds: '865-868, 8004', from: 'pc-00*, 10.0.20.', words: 'eingeschränkt, blocked', notWords: 'Test' });
   assert.equal(ruleMatches(srp, row({ event_id: 866, app: '', channel: '', text: 'Zugriff auf x.exe wurde eingeschränkt' })), true);
   assert.equal(ruleMatches(srp, row({ event_id: 866, text: 'Zugriff auf x.exe wurde eingeschränkt (Test)' })), false, 'a word that must not be there');
   assert.equal(ruleMatches(srp, row({ event_id: 866, host: 'SRV01', text: 'wurde eingeschränkt' })), false, 'another sender');
