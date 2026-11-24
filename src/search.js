@@ -24,19 +24,23 @@ function rank(rows, q, keys) {
 /**
  * @param user  the signed-in user (role, flags from userOut)
  * @param scope Set of location ids of a limited user, null = all
+ * @param shownStatus status as the monitor list shows it (maintenance window → "maintenance"); default: the stored one
  */
-export function searchAll(db, q, { user, scope = null } = {}) {
+export function searchAll(db, q, { user, scope = null, shownStatus = null } = {}) {
   const text = String(q ?? '').trim().slice(0, 100);
   if (text.length < 2) return { q: text, devices: [], monitors: [], sensors: [], locations: [], hosts: [], users: [] };
   const like = likeOf(text);
   const esc = "ESCAPE '\\'";
+  // the location limit belongs into the query: filtered after the LIMIT, a limited user may find nothing at all
+  const locIds = scope ? [...scope].map(Number).filter(Number.isInteger) : null;
+  const inLocs = (col) => (locIds ? ` AND ${col} IN (${locIds.join(',') || 'NULL'})` : '');
 
   // devices: name, address, MAC (also without separators), host name, serial, owner, tags
   const macLike = /^[0-9a-f:.-]{4,}$/i.test(text) ? likeOf(text.replace(/[:.-]/g, '').toLowerCase()) : null;
   const devRows = db.prepare(`SELECT d.id, d.name, d.ip, d.mac, d.hostname, d.type, d.serial, d.owner, d.location_id, l.name location
     FROM devices d LEFT JOIN locations l ON l.id=d.location_id
-    WHERE d.name LIKE @like ${esc} OR d.ip LIKE @like ${esc} OR d.mac LIKE @like ${esc} OR d.hostname LIKE @like ${esc} OR d.serial LIKE @like ${esc}
-      OR d.owner LIKE @like ${esc} OR d.tags LIKE @like ${esc}${macLike ? ` OR lower(replace(replace(replace(d.mac,':',''),'-',''),'.','')) LIKE @mac ${esc}` : ''}
+    WHERE (d.name LIKE @like ${esc} OR d.ip LIKE @like ${esc} OR d.mac LIKE @like ${esc} OR d.hostname LIKE @like ${esc} OR d.serial LIKE @like ${esc}
+      OR d.owner LIKE @like ${esc} OR d.tags LIKE @like ${esc}${macLike ? ` OR lower(replace(replace(replace(d.mac,':',''),'-',''),'.','')) LIKE @mac ${esc}` : ''})${inLocs('d.location_id')}
     LIMIT 400`).all({ like, mac: macLike });
   const devices = rank(devRows.filter((d) => inScope(scope, d.location_id)), text, ['name', 'ip', 'hostname', 'mac'])
     .slice(0, PER_GROUP).map((d) => ({ id: d.id, name: d.name, ip: d.ip || '', type: d.type, location: d.location || '' }));
@@ -44,10 +48,10 @@ export function searchAll(db, q, { user, scope = null } = {}) {
   // monitors and sensors: name, target, group; a limited user sees those of his devices only
   const monRows = db.prepare(`SELECT m.id, m.name, m.type, m.target, m.status, m.enabled, m.group_name, d.location_id, d.name device
     FROM monitors m LEFT JOIN devices d ON d.id=m.device_id
-    WHERE m.name LIKE @like ${esc} OR m.target LIKE @like ${esc} OR m.group_name LIKE @like ${esc} OR d.name LIKE @like ${esc}
+    WHERE (m.name LIKE @like ${esc} OR m.target LIKE @like ${esc} OR m.group_name LIKE @like ${esc} OR d.name LIKE @like ${esc})${inLocs('d.location_id')}
     LIMIT 400`).all({ like });
   const visible = monRows.filter((m) => !scope || (m.location_id !== null && inScope(scope, m.location_id)));
-  const shape = (m) => ({ id: m.id, name: m.name, type: m.type, status: m.enabled ? m.status : 'paused', device: m.device || '', group: m.group_name || '' });
+  const shape = (m) => ({ id: m.id, name: m.name, type: m.type, status: m.enabled ? (shownStatus ? shownStatus(m) : m.status) : 'paused', device: m.device || '', group: m.group_name || '' });
   const ranked = rank(visible, text, ['name', 'target']);
   const monitors = ranked.filter((m) => !SENSOR_TYPES.includes(m.type)).slice(0, PER_GROUP).map(shape);
   const sensors = ranked.filter((m) => SENSOR_TYPES.includes(m.type)).slice(0, PER_GROUP).map(shape);
@@ -55,8 +59,8 @@ export function searchAll(db, q, { user, scope = null } = {}) {
   const locations = rank(db.prepare(`SELECT id, name FROM locations WHERE name LIKE @like ${esc} LIMIT 100`).all({ like })
     .filter((l) => inScope(scope, l.id)), text, ['name']).slice(0, PER_GROUP);
 
-  // hypervisors, backup servers, controllers, hardware, cloud: only for who may see these pages
-  const hosts = user && user.role !== 'viewer'
+  // hypervisors, backup servers, controllers, hardware, cloud: only for who may see these pages (no location limit)
+  const hosts = user && user.role !== 'viewer' && !scope
     ? rank(db.prepare(`SELECT id, name, kind FROM proxmox_hosts WHERE name LIKE @like ${esc} OR url LIKE @like ${esc} LIMIT 100`).all({ like }), text, ['name'])
       .slice(0, PER_GROUP)
     : [];

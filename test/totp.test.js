@@ -39,7 +39,7 @@ test('two-factor sign-in end to end', async () => {
     assert.match(s.svg, /^<svg/);
     assert.equal((await call('POST', '/api/me/2fa/enable', { code: '000000' })).status, 400);
     const step = Math.floor(Date.now() / 30000);
-    const en = await call('POST', '/api/me/2fa/enable', { code: totpAt(s.secret, step) });
+    const en = await call('POST', '/api/me/2fa/enable', { code: totpAt(s.secret, step), password: 'Admin-Passwort-1' });
     assert.equal(en.data.recoveryCodes.length, 10);
     // sign-in now needs the code
     const login = (body) => call('POST', '/api/login', { username: 'admin', password: 'Admin-Passwort-1', ...body }, { who: 'second' });

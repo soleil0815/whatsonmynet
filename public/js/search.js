@@ -34,7 +34,7 @@ async function manualHeadings() {
 
 /** Pages of the menu this user may open */
 function pages(user) {
-  const server = user.canEditServer ?? user.canEdit;
+  const server = !!user.serverPages;
   return [
     ['/', 'dashboard', 'dashboard'], ['/inventory', 'inventory', 'inventory'], ['/scan', 'scan', 'radar'], ['/topology', 'topology', 'switch'],
     ['/locations', 'locations', 'location'], ['/monitoring', 'monitoring', 'pulse'], ['/monitoring/sensors', 'sensors', 'gauge'],

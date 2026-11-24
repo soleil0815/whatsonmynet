@@ -48,7 +48,7 @@ function tick(ms, spanMs) {
 const stepLabel = (s) => (s < 3600 ? t('ev.step.m', { n: s / 60 }) : s < 86400 ? t('ev.step.h', { n: s / 3600 }) : t('ev.step.d', { n: s / 86400 }));
 
 export async function renderEvents(main) {
-  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
+  if (!state.user.serverPages) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   const admin = state.user.isAdmin;

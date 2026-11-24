@@ -42,7 +42,18 @@ export function createMonitoringApi(ctx) {
     if (!deviceOk(req, idParam(req))) throw new HttpError(404, 'err.notFound');
     res.json(await monitoring.suggestionFor(idParam(req)));
   });
-  r.get('/monitors/:id', (req, res) => { monitorOk(req, idParam(req)); res.json(monitoring.detail(idParam(req), int(str(req.query.hours, 4)) || 24)); });
+  r.get('/monitors/:id', (req, res) => {
+    monitorOk(req, idParam(req));
+    const d = monitoring.detail(idParam(req), int(str(req.query.hours, 4)) || 24);
+    // monitors in front of / behind it: only those of the user's locations
+    if (req.scope) {
+      const ok = (x) => x && deviceOk(req, db.prepare('SELECT device_id FROM monitors WHERE id=?').get(x.id)?.device_id);
+      d.parent = ok(d.parent) ? d.parent : null;
+      d.dependents = d.dependents.filter(ok);
+      d.candidates = monitoring.childCandidates(idParam(req)).filter((c) => deviceOk(req, c.device_id)).length;
+    }
+    res.json(d);
+  });
   // A limited user may only put a monitor behind one he can see
   const parentOk = (req) => {
     const pid = int(String(req.body?.parent_id ?? ''));
@@ -50,8 +61,20 @@ export function createMonitoringApi(ctx) {
   };
   // Docker hosts and hypervisors belong to no location: a user limited to locations cannot read them elsewhere either
   const typeOk = (req, type) => { if (req.scope && ['docker', 'proxmox'].includes(type)) throw new HttpError(403, 'err.scope'); };
+  // A limited user: the device the monitor ends up on must be his. Group monitors belong to no device (they watch a
+  // group of any location), an event monitor without a device listens to every sender - both only without a limit.
+  const resultOk = (req, old = null) => {
+    if (!req.scope) return;
+    const type = req.body?.type ?? old?.type;
+    if (type === 'group') throw new HttpError(403, 'err.scope');
+    const given = req.body?.device_id;
+    const set = given !== undefined && given !== null && given !== '';
+    // a sensor keeps its device when none is given; an event monitor sent without one listens to every sender
+    const dev = set ? Number(given) : (given !== undefined && type === 'event') ? null : old?.device_id ?? null;
+    if (!deviceOk(req, dev)) throw new HttpError(403, 'err.scope');
+  };
   r.post('/monitors', editor, async (req, res) => {
-    if (!deviceOk(req, req.body.device_id ? Number(req.body.device_id) : null)) throw new HttpError(403, 'err.scope');
+    resultOk(req);
     parentOk(req);
     typeOk(req, req.body.type);
     const m = await monitoring.create(req.body);
@@ -60,8 +83,8 @@ export function createMonitoringApi(ctx) {
   });
   r.put('/monitors/:id', editor, async (req, res) => {
     monitorOk(req, idParam(req));
-    // a sensor moved to another device: that one must be his as well
-    if (req.body?.device_id !== undefined && req.body.device_id !== null && !deviceOk(req, Number(req.body.device_id))) throw new HttpError(403, 'err.scope');
+    // a sensor moved to another device: that one must be his as well (and the monitor must keep a device of his)
+    resultOk(req, db.prepare('SELECT type, device_id FROM monitors WHERE id=?').get(idParam(req)));
     parentOk(req);
     typeOk(req, req.body.type ?? monitoring.get(idParam(req))?.type);
     const m = await monitoring.update(idParam(req), req.body);
@@ -434,7 +457,17 @@ export function createMonitoringApi(ctx) {
     res.json({ ok: true });
   });
 
-  r.get('/maintenance', (_req, res) => { const active = maintenance.activeNow(); res.json(maintenance.list().map((w) => ({ ...w, active_until: active[w.id] || null }))); });
+  r.get('/maintenance', (req, res) => {
+    const active = maintenance.activeNow();
+    let list = maintenance.list().map((w) => ({ ...w, active_until: active[w.id] || null }));
+    // A limited user: windows for all monitors, and those for his monitors (only his monitors listed in them)
+    if (req.scope) {
+      const mine = new Set(db.prepare('SELECT id, device_id FROM monitors').all().filter((m) => deviceOk(req, m.device_id)).map((m) => m.id));
+      list = list.filter((w) => !w.monitor_ids.length || w.monitor_ids.some((id) => mine.has(id)))
+        .map((w) => ({ ...w, monitor_ids: w.monitor_ids.filter((id) => mine.has(id)) }));
+    }
+    res.json(list);
+  });
   r.post('/maintenance', editor, unscoped, (req, res) => { const w = maintenance.create(req.body); audit(req, 'maintenance.create', w.name); res.status(201).json(w); });
   r.put('/maintenance/:id', editor, unscoped, (req, res) => { const w = maintenance.update(idParam(req), req.body); audit(req, 'maintenance.update', w.name); res.json(w); });
   r.delete('/maintenance/:id', editor, unscoped, (req, res) => { maintenance.remove(idParam(req)); audit(req, 'maintenance.delete', req.params.id); res.json({ ok: true }); });

@@ -41,7 +41,7 @@ export async function renderSettings(main, section = 'general') {
 
 /** Proxmox VE / Backup Server: own page under "Monitoring" (editors see it, admins change it) */
 export async function renderProxmox(main) {
-  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
+  if (!state.user.serverPages) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderProxmox(main), 'virt');
@@ -50,7 +50,7 @@ export async function renderProxmox(main) {
 
 /** UniFi, Omada, MikroTik: own page under "Monitoring" (same building blocks as the hypervisors) */
 export async function renderControllers(main) {
-  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
+  if (!state.user.serverPages) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderControllers(main), 'net');
@@ -59,7 +59,7 @@ export async function renderControllers(main) {
 
 /** Server hardware through the management chip (Redfish): own page under "Monitoring" */
 export async function renderHardware(main) {
-  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
+  if (!state.user.serverPages) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderHardware(main), 'hw');
@@ -68,7 +68,7 @@ export async function renderHardware(main) {
 
 /** AWS, Azure, Google Cloud: own page under "Monitoring" (same building blocks as the hypervisors) */
 export async function renderCloud(main) {
-  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
+  if (!state.user.serverPages) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   await proxmox(body, null, () => renderCloud(main), 'cloud');
