@@ -211,7 +211,7 @@ Event rules can do more than "a mail at every match":
 
 Windows servers and clients send their event log by syslog to WhatsOnMyNet with a small free agent. WhatsOnMyNet recognises the **event id**, **log**, **source** and **account** in it and shows them below the text of the message - as in the event viewer. Under *Messages → Receiving settings* switch on **Syslog over TCP** (port 1514); in the agents only the address of WhatsOnMyNet is entered (here `womn.firma.local`).
 
-**NXLog** ([NXLog Community Edition](https://nxlog.co), free, runs as a service). A complete `C:\Program Files\nxlog\conf\nxlog.conf` as it runs in production:
+**NXLog** (NXLog Community Edition, https://nxlog.co, free, runs as a service). A complete `C:\Program Files\nxlog\conf\nxlog.conf` as it runs in production:
 
 ```
 Panic Soft
@@ -274,7 +274,7 @@ SpoolDir  %ROOT%\data
 
 Then restart the service (`Restart-Service nxlog`). Under *Messages* each new message shows e.g. "Event 101 · Microsoft-Windows-Kernel-Cache/Operational · Microsoft-Windows-Kernel-Cache". Without the three `Exec` lines from `$Channel` on, NXLog only sends time, computer, level, id and text: rules then recognise the events by their id only, and leaving out for one source (`1@Ntfs`) does not apply. `Exec $Message = to_json(); to_syslog_ietf();` (all fields as JSON) is understood too, but makes the messages much longer.
 
-**Fluent Bit** ([fluentbit.io](https://fluentbit.io), free, Apache licence, runs as a service) works just as well. `fluent-bit.conf`:
+**Fluent Bit** (https://fluentbit.io, free, Apache licence, runs as a service) works just as well. `fluent-bit.conf`:
 
 ```
 [SERVICE]
@@ -724,7 +724,7 @@ On top comes what an administrator wants to know about a server. Everything is o
 
 Fans, power supplies, further temperatures and RAID controllers are usually unknown to the operating system. They come from the management chip of the server (see *Server hardware* above).
 
-The script installs nothing, loads nothing, opens no port and needs no account - it only sends to WhatsOnMyNet. (On Windows the update search asks the WSUS server or Windows Update, like Windows itself.) On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
+No agent package, nothing downloaded, no open port, no account: the script only sets up itself and a scheduled task (cron) and only sends to WhatsOnMyNet. (On Windows the update search asks the WSUS server or Windows Update, like Windows itself.) On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
 
 **A single machine:** *Monitoring* → **Add monitor** → **Machine by script (Windows/Linux)** → choose the machine. On the device page the same works with **Monitor** (kind of check *Machine by script*) or *More* → **Monitor with script**. Then Windows or Linux → **Create script**.
 

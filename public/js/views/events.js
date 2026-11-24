@@ -1,6 +1,6 @@
 // Messages devices sent by themselves (SNMP traps, syslog): the newest first, filtered and searched; one click turns a
 // message into an event monitor. Admins switch the receivers on here.
-import { h, mount, modal, toast, fmtDate } from '../dom.js';
+import { h, mount, modal, toast, confirmDialog, fmtDate } from '../dom.js';
 import { get, put, post, del } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
@@ -310,7 +310,10 @@ export async function renderEvents(main) {
           h('span', {}, x.name, x.shared ? h('span', { class: 'badge', style: { marginLeft: '6px' } }, x.mine ? t('ev.savedShared') : x.owner) : null),
           h('span', { class: 'small muted' }, what(x))),
         x.mine || state.user?.isAdmin ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('ev.savedDelete', { name: x.name }), title: t('ev.savedDelete', { name: x.name }),
-          onclick: async (e) => { e.stopPropagation(); try { await del(`/events/searches/${x.id}`); toast(t('ev.savedDeleted')); drawSaved(); } catch (ex) { fail(ex); } } }, '×') : null))
+          onclick: async (e) => {
+            e.stopPropagation();
+            if (!await confirmDialog(t('delete'), t('ev.savedDeleteConfirm', { name: x.name }), t('delete'), t('cancel'), { danger: true })) return;
+            try { await del(`/events/searches/${x.id}`); toast(t('ev.savedDeleted')); drawSaved(); } catch (ex) { fail(ex); } } }, '×') : null))
         : h('span', { class: 'muted small', style: { padding: '8px 10px', maxWidth: '280px' } }, t('ev.savedNone')),
       isReadOnly() ? null : h('button', { type: 'button', class: 'ev-saved-add', onclick: () => { savedMenu.open = false; saveDialog(saved); } }, h('span', { html: icon('plus') }), t('ev.savedAdd')));
   }
@@ -466,7 +469,7 @@ export async function renderEvents(main) {
     // with its source when it is known: only this number of this source, the same number of another one stays
     const label = (e) => (e.app ? `${e.id} · ${e.app.replace(/^Microsoft-Windows-/, '')}` : String(e.id));
     async function deny(e) {
-      if (e.keep && !confirm(t('ev.noise.keepAsk', { id: label(e) }))) return;
+      if (e.keep && !await confirmDialog(t('ev.noise.deny'), t('ev.noise.keepAsk', { id: label(e) }), t('ev.noise.deny'), t('cancel'))) return;
       try { await post('/events/noise/deny', { id: e.id, src: e.app || '' }); toast(t('ev.noise.denied', { id: label(e) })); changed = true; await fetchIt(); } catch (ex) { fail(ex); }
     }
     function drawIt() {
@@ -586,7 +589,7 @@ export async function renderEvents(main) {
       field(t('ev.s.keep'), input('keepDays', cfg.keepDays, { type: 'number', min: 1, max: 365 }), t('ev.s.keepHint')),
       field(t('ev.s.maxGb'), input('maxGb', cfg.maxGb, { type: 'number', min: 0.1, max: 1000, step: 0.1 }), t('ev.s.maxGbHint')),
       h('div', { class: 'note', style: { margin: 0 } }, h('div', { style: { minWidth: 0 } },
-        h('strong', {}, t('ev.s.portsTitle')), h('p', { style: { margin: '4px 0 6px' } }, t('ev.s.ports', { trap: cfg.trapPort, syslog: cfg.syslogPort })),
+        h('strong', {}, t('ev.s.portsTitle')), h('p', { style: { margin: '4px 0 6px' } }, t('ev.s.ports', { trap: cfg.trapPort, syslog: cfg.syslogPort, tls: cfg.syslogTlsPort })),
         h('pre', { class: 'mono small', style: { margin: 0, whiteSpace: 'pre-wrap' } },
           `iptables -t nat -A PREROUTING -p udp --dport 162 -j REDIRECT --to-ports ${cfg.trapPort}\niptables -t nat -A PREROUTING -p udp --dport 514 -j REDIRECT --to-ports ${cfg.syslogPort}\niptables -t nat -A PREROUTING -p tcp --dport 514 -j REDIRECT --to-ports ${cfg.syslogTcpPort}`))));
     const m = modal(t('ev.settings'), form, { wide: true, onSubmit: async () => {

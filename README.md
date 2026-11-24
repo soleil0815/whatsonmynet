@@ -160,7 +160,7 @@ Geräte vom Typ *Drucker* werden regelmäßig (Standard stündlich) per SNMP gef
 - **Meldung**, wenn ein Verbrauchsmaterial auf den Schwellwert fällt (Standard 15 %) und noch einmal, wenn es leer ist - einmal pro Kartusche, nach dem Wechsel wieder scharf
 - Die Übersicht zeigt alle Drucker, bei denen etwas zur Neige geht
 
-Einstellungen unter *Einstellungen → Drucker*. Die Community ist dieselbe wie beim Scan (*Einstellungen → Scan*). Am Drucker muss SNMP (v1 oder v2c) eingeschaltet sein.
+Einstellungen unter *Einstellungen → Drucker*. Die Community ist dieselbe wie beim Scan (*Einstellungen → Scan*). Am Drucker muss SNMP (v1/v2c oder v3) eingeschaltet sein.
 
 ## Switches und NAS per SNMP (ab Version 0.3)
 
@@ -172,7 +172,7 @@ Geräte vom Typ *Switch* und *NAS* werden regelmäßig (Standard alle 15 Minuten
 - **Ins Inventar übernommen**: Seriennummer und Modell, die Drucker, Switches und NAS per SNMP melden, bei Switches und NAS zusätzlich die Firmware (bzw. DSM-Version), landen gleich in den Angaben des Geräts und bleiben aktuell; eigene abweichende Eingaben bleiben. Meldet ein Gerät unter derselben IP eine andere Seriennummer (Tausch), kommen Seriennummer, Modell und Firmware vom neuen Gerät und der nächste Scan übernimmt die neue MAC-Adresse; der Verlauf vermerkt den Tausch.
 - **Meldung** bei einer gestörten Festplatte, einem eingeschränkten RAID, Lüfter- oder Netzteilfehler und wenn ein Volume voll läuft (Standard 90 %) - einmal beim Auftreten und einmal, wenn alles wieder in Ordnung ist. Die Übersicht zeigt offene NAS-Probleme.
 
-Einstellungen unter *Einstellungen → Switches & NAS*. Einfache Switches ohne SNMP (z. B. TP-Link „Easy Smart“) liefern keine Daten; bei LANCOM, HP/Aruba, Cisco, Netgear Smart und Co. muss SNMP v1/v2c lesend aktiv sein.
+Einstellungen unter *Einstellungen → Switches & NAS*. Einfache Switches ohne SNMP (z. B. TP-Link „Easy Smart“) liefern keine Daten; bei LANCOM, HP/Aruba, Cisco, Netgear Smart und Co. muss SNMP (v1/v2c oder v3) lesend aktiv sein.
 
 ## Netzplan (ab Version 0.3)
 
@@ -200,7 +200,7 @@ Danach verschwindet der Hinweis „Ping nicht möglich“ beim Scan, und Ping-Mo
 
 ### SNMP
 
-Standardmäßig fragt der Scan Geräte mit der Community `public` (SNMP v2c, sonst v1) nach Name, Beschreibung und Hersteller-ID - nur lesend. Eigene Communities trägst du unter *Einstellungen → Scan* ein; sie werden verschlüsselt gespeichert. Geräte ohne SNMP (z. B. einfache TP-Link-Switches) werden trotzdem erkannt, nur mit weniger Details.
+Standardmäßig fragt der Scan Geräte mit der Community `public` (SNMP v2c, sonst v1) nach Name, Beschreibung und Hersteller-ID - nur lesend. Eigene Communities trägst du unter *Einstellungen → Scan* ein; sie werden verschlüsselt gespeichert. Geräte, die nur SNMPv3 sprechen, fragt der Scan mit bis zu fünf Benutzern aus *Einstellungen → Scan → SNMPv3-Zugänge* (Authentifizierung und Verschlüsselung, Passwörter verschlüsselt gespeichert). Geräte ohne SNMP (z. B. einfache TP-Link-Switches) werden trotzdem erkannt, nur mit weniger Details.
 
 ## Anmeldung mit Active Directory (ab Version 0.3)
 
@@ -245,7 +245,7 @@ Weitere Hypervisoren auf derselben Seite: **VMware ESXi/vCenter** (vSphere-API),
 
 **Netzwerk-Controller:** UniFi Network (UniFi OS und Network-App), TP-Link Omada und MikroTik RouterOS 7 werden mit einem Lesekonto abgefragt (*Überwachung → Netzwerk-Controller*): Access Points, Switches und Gateways mit Modell, Firmware (und anstehendem Update), Clients und Zustand. Modell, Seriennummer, Firmware und Typ gehen per MAC ins Inventar; Sensoren für Online-Zustand, Clients, CPU/RAM und Firmware-Updates. Der Scan erkennt UniFi, Omada, MikroTik und Aruba Instant On an ihren Modellnamen.
 
-**Windows- und Linux-Rechner ohne Agent:** Ein kleines Skript (PowerShell bzw. POSIX sh) meldet alle 5 Minuten CPU, RAM, Laufwerke, Laufzeit und Dienste - kein Agent, kein offener Port, kein Konto, nichts installiert. Beim ersten Aufruf richtet es sich selbst ein (geplante Aufgabe bzw. cron), ein Deinstallationsskript entfernt es wieder. Meldet es sich einen Tag lang nicht, fragt die Geräteseite, ob es entfernt wurde, und der Rechner wird für neue Sensoren nicht mehr angeboten. Pro Gerät (*Geräteseite → Mehr → Per Skript überwachen*) oder gemeinsam für viele Rechner zum Verteilen (*Einstellungen → Rechner-Skripte*); Meldungen werden dem Inventar über MAC, Rechnername oder IP zugeordnet - beim gemeinsamen Skript ein Gerät mit bekannter MAC nur, wenn die Meldung diese MAC nennt (den Schlüssel haben alle Rechner), und Seriennummer, Modell und MAC eines Geräts ändert nur ein Skript mit eigenem Schlüssel. Ein Notebook, das an der Dockingstation nur deren MAC meldet, bekommt deshalb ein eigenes Skript (Geräteseite).
+**Windows- und Linux-Rechner ohne Agent:** Ein kleines Skript (PowerShell bzw. POSIX sh) meldet alle 5 Minuten CPU, RAM, Laufwerke, Laufzeit und Dienste - kein Agent-Paket, nichts wird heruntergeladen, kein offener Port, kein Konto. Beim ersten Aufruf richtet es nur sich selbst und eine geplante Aufgabe (cron) ein, ein Deinstallationsskript entfernt es wieder. Meldet es sich einen Tag lang nicht, fragt die Geräteseite, ob es entfernt wurde, und der Rechner wird für neue Sensoren nicht mehr angeboten. Pro Gerät (*Geräteseite → Mehr → Per Skript überwachen*) oder gemeinsam für viele Rechner zum Verteilen (*Einstellungen → Rechner-Skripte*); Meldungen werden dem Inventar über MAC, Rechnername oder IP zugeordnet - beim gemeinsamen Skript ein Gerät mit bekannter MAC nur, wenn die Meldung diese MAC nennt (den Schlüssel haben alle Rechner), und Seriennummer, Modell und MAC eines Geräts ändert nur ein Skript mit eigenem Schlüssel. Ein Notebook, das an der Dockingstation nur deren MAC meldet, bekommt deshalb ein eigenes Skript (Geräteseite).
 
 - **VE**: Knoten (online, CPU, RAM), Speicher mit Belegung, VMs und Container (läuft/gestoppt), die letzten Sicherungen (vzdump) mit Fehlern
 - **Backup Server**: Datastores mit Belegung, Sicherungsgruppen mit dem Alter der letzten Sicherung, fehlgeschlagene Aufgaben (Verify, GC …)
@@ -308,6 +308,7 @@ Einzelheiten zu allem stehen im Handbuch.
 - HTTP auf `WOMN_HTTP_PORT` leitet auf HTTPS um - außer für einen vertrauten Reverse Proxy (siehe unten).
 - Ersetzt WhatsOnMyNet ein hochgeladenes Zertifikat (neues hochgeladen, zurück auf selbstsigniert, Schlüssel fehlt oder passt nicht), bleiben die alten Dateien als `*.<Zeit>.bak` in `<Daten>/tls`. Ist `cert.pem` oder `key.pem` vorhanden, aber nicht lesbar (Rechte), startet WhatsOnMyNet nicht und ersetzt nichts.
 - HSTS sendet WhatsOnMyNet nur mit eigenem Zertifikat und nur für Hostnamen, die das Zertifikat enthält. Mit einem selbstsignierten Zertifikat würde HSTS dazu führen, dass der Browser die Warnung nicht mehr überspringen lässt - du kämst nicht mehr hinein.
+- Hinter dem vertrauten Reverse Proxy sendet WhatsOnMyNet HSTS nur, wenn der Proxy nicht selbst auf HTTPS umleitet und WhatsOnMyNet das übernehmen musste. `WOMN_HSTS=off` schaltet HSTS ganz ab, `WOMN_HSTS=preload` sendet es immer (mit eigenem Zertifikat oder hinter dem Proxy, nie mit dem selbstsignierten); Standard ist `on`.
 
 ### Hinter einem Reverse Proxy
 
@@ -367,4 +368,4 @@ Was sich in welcher Version geändert hat, steht im Programm selbst: Klick unten
 
 WhatsOnMyNet ist Open Source unter der [GNU Affero General Public License 3.0](LICENSE) (AGPL-3.0-or-later). Wer eine veränderte Fassung im Netz anbietet, muss deren Quellcode zugänglich machen (`WOMN_SOURCE_URL`).
 
-Schriften: IBM Plex und Barlow Semi Condensed (SIL Open Font License, `public/fonts/OFL.txt`). Herstellerliste: IEEE über das Paket `oui-data` (BSD-2-Clause).
+Schriften: Inter und IBM Plex Mono (SIL Open Font License, `public/fonts/OFL.txt`). Herstellerliste: IEEE über das Paket `oui-data` (BSD-2-Clause).

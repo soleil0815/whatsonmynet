@@ -10,7 +10,7 @@ import { systemPanel, openHostScript, helpLink } from './hostscripts.js';
 import { isReadOnly } from './failover.js';
 import { hardwarePanel } from './hardware.js';
 import { switchPanel, nasPanel, upsPanel, pluggedLine } from './snmpdev.js';
-import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
+import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips, notFoundPage } from './common.js';
 import { maintBadge, untilText } from '../maint.js';
 
 const FIELD_LABEL = (f) => t(`f.${f}`) !== `f.${f}` ? t(`f.${f}`) : f;
@@ -85,7 +85,10 @@ export function historyText(r) {
 }
 
 export async function renderDevice(main, id) {
-  const [d, locations, sugg] = await Promise.all([get(`/devices/${id}`), get('/locations'), get('/devices/suggestions').catch(() => null)]);
+  let d; let locations; let sugg;
+  try {
+    [d, locations, sugg] = await Promise.all([get(`/devices/${id}`), get('/locations'), get('/devices/suggestions').catch(() => null)]);
+  } catch (e) { if (notFoundPage(main, e, '/inventory')) return; throw e; }
   const types = state.meta?.types || [];
   const services = state.meta?.services || {};
   const edit = state.user.canEdit;

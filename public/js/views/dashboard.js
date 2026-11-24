@@ -1,9 +1,9 @@
 // Overview: what needs attention first, then the state of everything at a glance.
-import { h, mount, fmtAgo, fmtDate } from '../dom.js';
+import { h, mount, fmtAgo, fmtDate, toast } from '../dom.js';
 import { get, put } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
-import { state } from '../app.js';
+import { state, fail } from '../app.js';
 import { historyText } from './device.js';
 import { supplyName, supplyValue } from './printer.js';
 import { stText } from './snmpdev.js';
@@ -104,8 +104,13 @@ export async function renderDashboard(main) {
 
   const empty = !d.devices;
   const start = d.start ? firstSteps(d.start, async () => {
-    try { await put('/settings/start', { hidden: true }); } catch { /* shown again next time */ }
+    try { await put('/settings/start', { hidden: true }); } catch (e) { fail(e); return; }
     renderDashboard(main);
+    // hidden for good - unless undone right away
+    toast(h('span', {}, t('start.hidden'), ' ', h('button', { type: 'button', class: 'btn btn-sm', onclick: async (ev) => {
+      ev.currentTarget.disabled = true;
+      try { await put('/settings/start', { hidden: false }); if (location.pathname === '/') renderDashboard(main); } catch (e) { fail(e); }
+    } }, t('start.undo'))), 'ok', 10000);
   }) : null;
   // a new installation: the first steps say what to do (instead of the empty "scan now" panel)
   const attention = empty && start ? null : empty
@@ -120,8 +125,9 @@ export async function renderDashboard(main) {
   const lowN = (d.printersLow || []).length;
   const stateCard = h('section', { class: 'panel state-card', 'aria-label': t('dash.state') },
     devicesRow(d),
-    mon.total ? stateRow('/monitoring', mon.down.length ? 'bad' : 'ok', t('nav.monitoring'), mon.total,
-      mon.down.length ? t('dash.downN', { n: mon.down.length }) : t('dash.allUp')) : null,
+    // monitors not checked yet are neither fine nor down
+    mon.total ? stateRow('/monitoring', mon.down.length ? 'bad' : mon.pending ? 'muted' : 'ok', t('nav.monitoring'), mon.total,
+      mon.down.length ? t('dash.downN', { n: mon.down.length }) : mon.pending ? t('dash.pendingN', { n: mon.pending }) : t('dash.allUp')) : null,
     // what is in a maintenance window right now, calmly: name and until when
     mon.inMaintenance?.length ? h('div', { class: 'dash-maint' }, mon.inMaintenance.slice(0, 6).map((m) => h('a', { href: `/monitoring/${m.id}`, 'data-link': true, title: m.name },
       h('span', { class: 'name' }, m.name), ' ', maintBadge({ name: m.window, until: m.until }))),
@@ -145,7 +151,7 @@ export async function renderDashboard(main) {
   mount(main, h('div', { class: 'page' },
     h('div', { class: 'page-head' },
       h('div', {}, h('h1', {}, state.boot.title && state.boot.title !== 'WhatsOnMyNet' ? state.boot.title : t('dash.title')),
-        empty ? null : h('p', { class: 'lead' }, n ? t(n === 1 ? 'dash.lead1' : 'dash.leadN', { n }) : t('dash.leadNone'))),
+        empty ? null : h('p', { class: 'lead' }, n ? t(n === 1 ? 'dash.lead1' : 'dash.leadN', { n }) : mon.pending ? t('dash.leadPending', { n: mon.pending }) : t('dash.leadNone'))),
       canScan && !empty ? h('div', { class: 'actions' }, h('a', { class: 'btn', href: '/scan', 'data-link': true }, h('span', { html: icon('radar') }), t('dash.scanNow'))) : null),
     start,
     h('div', { class: 'dash' },

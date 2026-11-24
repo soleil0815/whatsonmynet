@@ -5,7 +5,7 @@ import { h, mount } from './dom.js';
 import { get } from './api.js';
 import { t, getLang } from './i18n.js';
 import { icon } from './icons.js';
-import { slug, leadOf } from './md.js';
+import { anchors } from './md.js';
 import { GROUPS as SETTING_GROUPS } from './views/settingsnav.js';
 
 const KIND_PAGE = { unifi: '/controllers', omada: '/controllers', mikrotik: '/controllers', redfish: '/hardware', aws: '/cloud', azure: '/cloud', gcp: '/cloud', m365: '/cloud' };
@@ -18,15 +18,8 @@ async function manualHeadings() {
   if (manual?.lang === lang) return manual.list;
   try {
     const text = await (await fetch(`/help/manual.${lang}.md`)).text();
-    // chapters (## / ###) and the bold leads of paragraphs, each with the chapter it is in
-    const list = [];
-    let chapter = '';
-    for (const l of text.split('\n')) {
-      const hd = /^#{2,3}\s+(.*)$/.exec(l);
-      if (hd) { chapter = hd[1].replace(/[*_`]/g, ''); list.push({ id: slug(hd[1]), text: chapter, sub: '' }); continue; }
-      const lead = leadOf(l);
-      if (lead) list.push({ id: slug(lead), text: lead.replace(/[*_`]/g, ''), sub: chapter });
-    }
+    // chapters (## / ###) and the bold leads of paragraphs, each with the chapter it is in - with the ids of the help page
+    const list = anchors(text).map(({ id, text: x, sub }) => ({ id, text: x, sub }));
     manual = { lang, list };
     return list;
   } catch { return []; }

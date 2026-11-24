@@ -34,7 +34,7 @@ export async function renderStatusPages(main, tabBar) {
             btn(t('edit'), { class: 'btn btn-sm', onclick: () => pageForm(p, monitors, reload) }),
             h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${p.name}`, html: icon('trash'), onclick: async () => {
               if (!await confirmDialog(t('delete'), t('sp.deleteConfirm', { name: p.name }), t('delete'), t('cancel'), { danger: true })) return;
-              try { await del(`/status-pages/${p.id}`); reload(); } catch (e) { fail(e); }
+              try { await del(`/status-pages/${p.id}`); toast(t('deleted')); reload(); } catch (e) { fail(e); }
             } }))))))))
         : h('div', { class: 'empty' }, h('p', {}, t('sp.empty')), btn(t('sp.add'), { class: 'btn btn-primary', onclick: () => pageForm(null, monitors, reload) }, 'plus')))));
 }
@@ -96,7 +96,7 @@ function pageForm(p, monitors, done) {
     field(t('sp.language'), select('language', [['de', 'Deutsch'], ['en', 'English']], v.language)),
     slugBox, linkBox,
     h('div', { class: 'full' }, field(t('sp.networks'), h('textarea', { name: 'networks', rows: 2, class: 'mono', placeholder: '10.0.10.0/24' }, v.networks.join('\n')), t('sp.networksHint'))),
-    h('div', { class: 'full field' }, t('sp.items'), items.el, h('span', { class: 'hint' }, t('sp.itemsHint'))),
+    h('div', { class: 'full field', role: 'group', 'aria-labelledby': 'sp-items-label' }, h('span', { id: 'sp-items-label' }, t('sp.items')), items.el, h('span', { class: 'hint' }, t('sp.itemsHint'))),
     h('div', { class: 'full' }, field(t('sp.description'), h('textarea', { name: 'description', rows: 2, maxlength: 1000, placeholder: t('sp.descriptionPh') }, v.description))),
     h('div', { class: 'full' }, field(t('sp.notice'), h('textarea', { name: 'notice', rows: 2, maxlength: 1000, placeholder: t('sp.noticePh') }, v.notice), t('sp.noticeHint'))),
     field(t('sp.noticeLevel'), select('notice_level', [['info', t('sp.level.info')], ['warn', t('sp.level.warn')], ['bad', t('sp.level.bad')]], v.notice_level)),

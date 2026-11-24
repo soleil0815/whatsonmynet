@@ -211,7 +211,7 @@ Ereignisregeln können mehr als „bei jedem Treffer eine Mail“:
 
 Windows-Server und -Clients schicken ihre Ereignisanzeige mit einem kleinen, kostenlosen Agenten per Syslog an WhatsOnMyNet. WhatsOnMyNet erkennt darin **Ereignisnummer**, **Protokoll**, **Quelle** und **Konto** und zeigt sie unter dem Meldungstext - so wie in der Ereignisanzeige. Unter *Meldungen → Empfang einstellen* **Syslog über TCP** einschalten (Port 1514); bei den Agenten muss nur die Adresse von WhatsOnMyNet eingetragen werden (hier `womn.firma.local`).
 
-**NXLog** ([NXLog Community Edition](https://nxlog.co), kostenlos, läuft als Dienst). Eine vollständige `C:\Program Files\nxlog\conf\nxlog.conf`, die so im Betrieb läuft:
+**NXLog** (NXLog Community Edition, https://nxlog.co, kostenlos, läuft als Dienst). Eine vollständige `C:\Program Files\nxlog\conf\nxlog.conf`, die so im Betrieb läuft:
 
 ```
 Panic Soft
@@ -274,7 +274,7 @@ SpoolDir  %ROOT%\data
 
 Danach den Dienst neu starten (`Restart-Service nxlog`). Unter *Meldungen* steht bei jeder neuen Meldung z. B. „Ereignis 101 · Microsoft-Windows-Kernel-Cache/Operational · Microsoft-Windows-Kernel-Cache“. Fehlen die drei `Exec`-Zeilen ab `$Channel`, schickt NXLog nur Zeit, Rechner, Stufe, Nummer und Text: Regeln erkennen die Ereignisse dann nur an der Nummer, und ein Ausschluss für eine Quelle (`1@Ntfs`) greift nicht. Auch `Exec $Message = to_json(); to_syslog_ietf();` (alle Felder als JSON) wird verstanden, die Meldungen werden damit aber deutlich länger.
 
-**Fluent Bit** ([fluentbit.io](https://fluentbit.io), kostenlos, Apache-Lizenz, läuft als Dienst) geht genauso. `fluent-bit.conf`:
+**Fluent Bit** (https://fluentbit.io, kostenlos, Apache-Lizenz, läuft als Dienst) geht genauso. `fluent-bit.conf`:
 
 ```
 [SERVICE]
@@ -723,7 +723,7 @@ Dazu kommt, was ein Administrator von einem Server wissen will. Alles steht auf 
 
 Lüfter, Netzteile, weitere Temperaturen und RAID-Controller kennt das Betriebssystem meist nicht. Die liefert der Management-Chip des Servers (siehe *Server-Hardware* oben).
 
-Das Skript installiert nichts, lädt nichts nach, öffnet keinen Port und braucht kein Konto - es sendet nur an WhatsOnMyNet. (Unter Windows fragt die Update-Suche, wie Windows selbst, den WSUS-Server bzw. Windows Update.) Unter Windows ist es ein PowerShell-Skript (läuft als SYSTEM), unter Linux ein POSIX-sh-Skript (braucht `sh`, `awk` und `curl`, root ist nicht nötig).
+Kein Agent-Paket, nichts wird heruntergeladen, kein offener Port, kein Konto: Das Skript richtet nur sich selbst und eine geplante Aufgabe (cron) ein und sendet nur an WhatsOnMyNet. (Unter Windows fragt die Update-Suche, wie Windows selbst, den WSUS-Server bzw. Windows Update.) Unter Windows ist es ein PowerShell-Skript (läuft als SYSTEM), unter Linux ein POSIX-sh-Skript (braucht `sh`, `awk` und `curl`, root ist nicht nötig).
 
 **Ein einzelner Rechner:** *Monitoring* → **Monitor anlegen** → **Rechner per Skript (Windows/Linux)** → Rechner wählen. Auf der Geräteseite geht es genauso über **Überwachen** (Art der Prüfung *Rechner per Skript*) oder *Mehr* → **Per Skript überwachen**. Dann Windows oder Linux → **Skript erzeugen**.
 

@@ -31,7 +31,7 @@ export function clear(el) { while (el.firstChild) el.firstChild.remove(); return
 export function mount(el, ...children) { clear(el); append(el, children); return el; }
 
 let toastBox;
-export function toast(message, kind = 'ok') {
+export function toast(message, kind = 'ok', ms = null) {
   if (!toastBox) toastBox = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
   // An open modal <dialog> makes the rest of the page inert and covers it: show the message inside the topmost dialog.
   const open = [...document.querySelectorAll('dialog[open]')].pop();
@@ -39,7 +39,7 @@ export function toast(message, kind = 'ok') {
   if (toastBox.parentNode !== host) host.append(toastBox);
   const t = h('div', { class: `toast toast-${kind}` }, message);
   toastBox.append(t);
-  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, kind === 'error' ? 6000 : 3200);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, ms ?? (kind === 'error' ? 6000 : 3200));
 }
 
 let formSeq = 0;
