@@ -135,8 +135,9 @@ test('user limited to a location without subnets: the private ranges count', asy
   assert.equal((await r({ name: 'b-snmp-pub', type: 'snmp', target: '203.0.113.43', options: snmpOpts })).status, 403);
 });
 
-test('device address set by an editor: the tcp/ping rule', async () => {
-  assert.equal((await call('POST', '/api/devices', { name: 'PC-0003', ip: '203.0.113.7' }, { who: 'ed' })).status, 201);
+test('device address set by an editor: the SNMP rule (printer and switch polls send the stored access data there)', async () => {
+  assert.equal((await call('POST', '/api/devices', { name: 'PC-0003', ip: '203.0.113.7' }, { who: 'ed' })).status, 403);
+  assert.equal((await call('POST', '/api/devices', { name: 'PC-0005', ip: '10.0.10.33' }, { who: 'ed' })).status, 201);
   assert.equal((await call('POST', '/api/devices', { name: 'PC-0004', ip: '169.254.3.4' }, { who: 'ed' })).status, 403);
 });
 

@@ -375,7 +375,7 @@ export function createApi(ctx) {
   // A non-admin sets only addresses he may scan: pollers and monitors of the device contact it (with the SNMP access data)
   const deviceIpOk = async (req, oldIp = null) => {
     const ip = typeof req.body?.ip === 'string' ? req.body.ip.trim() : '';
-    if (ip && ip !== oldIp) await assertTargetsAllowed(db, req.user, [ip]);
+    if (ip && ip !== oldIp) await assertTargetsAllowed(db, req.user, [ip], { snmp: true });
   };
   r.post('/devices', editor, async (req, res) => {
     if (req.scope && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
