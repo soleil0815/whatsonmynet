@@ -191,8 +191,68 @@ jobs:
           path: '*-${{ matrix.arch }}.txt'
           retention-days: 7
 
-  publish:
+  # The Trivy gate in a job of its own, between build and publish: when it fails, publish is skipped and
+  # cleanup-candidates removes the candidates of this run - an image with known vulnerabilities does not stay in the
+  # registry. Nothing changed: no scan (and publish does nothing either). publish takes exactly this digest.
+  candidate-scan:
     needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write      # the merged candidate is pushed (a tag of this run only)
+    outputs:
+      digest: ${{ steps.cand.outputs.digest }}
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: packages-*
+          merge-multiple: true
+      - name: Anything changed?
+        id: diff
+        run: sh .github/scripts/package-changes.sh >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: steps.diff.outputs.changed == 'true'
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: steps.diff.outputs.changed == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Merge candidate from both architectures (record digest)
+        id: cand
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          k="$IMAGE:$TAG-kandidat-$GITHUB_RUN_ID"
+          docker buildx imagetools create -t "$k" "$k-amd64" "$k-arm64"
+          digest="$(docker buildx imagetools inspect "$k" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          case "$digest" in sha256:*) ;; *) echo "::error::Cannot read the candidate digest ($digest)"; exit 1 ;; esac
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Install Trivy (fixed version, SHA-256 checked, no GitHub Action)
+        if: steps.diff.outputs.changed == 'true'
+        run: sh .github/scripts/install-trivy.sh "$RUNNER_TEMP/trivy"
+      - name: Scan candidate for vulnerabilities (amd64)
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          DIGEST: ${{ steps.cand.outputs.digest }}
+        run: sh .github/scripts/trivy-scan.sh "$IMAGE@$DIGEST" trivy-amd64.json
+      - if: steps.diff.outputs.changed == 'true'
+        run: sh .github/scripts/trivy-check.sh trivy-amd64.json
+      - name: Scan candidate for vulnerabilities (arm64)
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          DIGEST: ${{ steps.cand.outputs.digest }}
+        run: sh .github/scripts/trivy-scan.sh "$IMAGE@$DIGEST" trivy-arm64.json linux/arm64
+      - if: steps.diff.outputs.changed == 'true'
+        run: sh .github/scripts/trivy-check.sh trivy-arm64.json
+
+  publish:
+    needs: [prepare, build, candidate-scan]
     runs-on: ubuntu-24.04
     outputs:
       changed: ${{ steps.diff.outputs.changed }}   # false: nothing published (cleanup-candidates)
@@ -220,17 +280,9 @@ jobs:
       - name: Anything changed?
         id: diff
         run: |
-          : > notes.md
-          changed=false
-          for arch in amd64 arm64; do
-            rc=0; sh .github/scripts/package-diff.sh "old-$arch.txt" "new-$arch.txt" > "diff-$arch.md" || rc=$?
-            case "$rc" in
-              0) changed=true; { echo "### $arch"; cat "diff-$arch.md"; echo; } >> notes.md ;;
-              3) ;;
-              *) echo "::error title=Comparison failed::See the log of this step."; exit 1 ;;
-            esac
-          done
-          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          out="$(sh .github/scripts/package-changes.sh)"
+          echo "$out" >> "$GITHUB_OUTPUT"
+          changed="${out#changed=}"
           if [ "$changed" = false ]; then
             echo "### Security update: nothing changed – nothing to do" >> "$GITHUB_STEP_SUMMARY"
             echo "Nothing changed."
@@ -259,32 +311,17 @@ jobs:
             echo "::error::Tag v$TAG already exists ($out)"; exit 1
           fi
           case "$out" in *"Not Found"*|*"HTTP 404"*) ;; *) echo "::error::Cannot check tag v$TAG: $out"; exit 1 ;; esac
-      - name: Merge candidate from both architectures (record digest)
+      # The digest candidate-scan checked - and the candidate tag must still point to it
+      - name: The checked candidate
         id: cand
         if: steps.diff.outputs.changed == 'true'
+        env:
+          DIGEST: ${{ needs.candidate-scan.outputs.digest }}
         run: |
-          k="$IMAGE:$TAG-kandidat-$GITHUB_RUN_ID"
-          docker buildx imagetools create -t "$k" "$k-amd64" "$k-arm64"
-          digest="$(docker buildx imagetools inspect "$k" --format '{{json .Manifest.Digest}}' | tr -d '"')"
-          case "$digest" in sha256:*) ;; *) echo "::error::Cannot read the candidate digest ($digest)"; exit 1 ;; esac
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
-      - name: Install Trivy (fixed version, SHA-256 checked, no GitHub Action)
-        if: steps.diff.outputs.changed == 'true'
-        run: sh .github/scripts/install-trivy.sh "$RUNNER_TEMP/trivy"
-      - name: Scan candidate for vulnerabilities (amd64)
-        if: steps.diff.outputs.changed == 'true'
-        env:
-          DIGEST: ${{ steps.cand.outputs.digest }}
-        run: sh .github/scripts/trivy-scan.sh "$IMAGE@$DIGEST" trivy-amd64.json
-      - if: steps.diff.outputs.changed == 'true'
-        run: sh .github/scripts/trivy-check.sh trivy-amd64.json
-      - name: Scan candidate for vulnerabilities (arm64)
-        if: steps.diff.outputs.changed == 'true'
-        env:
-          DIGEST: ${{ steps.cand.outputs.digest }}
-        run: sh .github/scripts/trivy-scan.sh "$IMAGE@$DIGEST" trivy-arm64.json linux/arm64
-      - if: steps.diff.outputs.changed == 'true'
-        run: sh .github/scripts/trivy-check.sh trivy-arm64.json
+          case "$DIGEST" in sha256:*) ;; *) echo "::error::No checked candidate digest ($DIGEST)"; exit 1 ;; esac
+          now="$(docker buildx imagetools inspect "$IMAGE:$TAG-kandidat-$GITHUB_RUN_ID" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          [ "$now" = "$DIGEST" ] || { echo "::error::The candidate changed after the scan ($now, checked $DIGEST)"; exit 1; }
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
       - name: Release files (offline images + checksums)
         if: steps.diff.outputs.changed == 'true'
         env:
@@ -364,12 +401,12 @@ jobs:
           files: release/*
 
   # Candidate images of this run (<version>-kandidat-<run id>[-<arch>]): removed from the registry when the run
-  # ends - after publishing, when nothing changed, after a failed build (publish skipped) or a cancel. A failed
-  # publish job keeps them - that includes the Trivy gate on the candidate, which runs inside publish, and transient
-  # registry errors - so that "Re-run failed jobs" still finds them. Never deleted: what the registry shows as
-  # published (<version>, latest and their platform images; PUBLISHED makes a missing <version> stop the cleanup).
+  # ends - after publishing, when nothing changed, after a failed build or a failed Trivy gate (candidate-scan;
+  # publish skipped) or a cancel. A failed publish job keeps them (transient registry errors),
+  # so that "Re-run failed jobs" still finds them. Never deleted: what the registry shows as published (<version>,
+  # latest and their platform images; PUBLISHED makes a missing <version> stop the cleanup).
   cleanup-candidates:
-    needs: [prepare, build, publish]
+    needs: [prepare, build, candidate-scan, publish]
     if: always() && needs.publish.result != 'failure' && needs.prepare.result == 'success' && needs.build.result != 'skipped'
     runs-on: ubuntu-24.04
     timeout-minutes: 10

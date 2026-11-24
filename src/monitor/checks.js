@@ -11,6 +11,7 @@ import { sensorCheck, snmpCheck, proxmoxCheck } from './sensors.js';
 import { smbCheck } from './smb.js';
 import { eventCheck } from '../events.js';
 import { dnsCheck, mailCheck, ldapCheck, ntpCheck, mssqlCheck } from './protocols.js';
+import { resolveAllowed } from '../lib/targetguard.js';
 
 const UA = `WhatsOnMyNet/${config.version} (monitoring)`;
 const MAX_BODY = 1024 * 1024;
@@ -62,7 +63,7 @@ function certInfo(socket) {
  * verify: check the certificate chain (external sites); off for devices with self-signed certificates.
  * The certificate is always read, so its expiry can be watched either way.
  */
-export function httpCheck(url, { timeoutS = 10, status = '200-399', keyword = '', verify = false } = {}) {
+export function httpCheck(url, { timeoutS = 10, status = '200-399', keyword = '', verify = false, lookup = undefined } = {}) {
   return new Promise((resolve) => {
     let u;
     try { u = new URL(url); } catch { resolve({ ok: false, ms: null, message: 'invalid address' }); return; }
@@ -81,6 +82,7 @@ export function httpCheck(url, { timeoutS = 10, status = '200-399', keyword = ''
       headers: { 'User-Agent': UA, Accept: '*/*', Connection: 'close' },
       rejectUnauthorized: !!verify,
       agent: false,
+      ...(lookup ? { lookup } : {}),
     }, (res) => {
       if (u.protocol === 'https:') cert = certInfo(res.socket);
       const matches = statusMatcher(status);
@@ -122,10 +124,46 @@ function tlsMessage(e) {
   return map[e.code] || e.code || e.message;
 }
 
+/** A lookup for net/tls/http that answers with the one address checked before (no second DNS question) */
+export function pinnedLookup(address, family) {
+  return (_host, opts, cb) => {
+    const done = typeof opts === 'function' ? opts : cb;
+    if (opts && typeof opts === 'object' && opts.all) done(null, [{ address, family }]);
+    else done(null, address, family);
+  };
+}
+
+/** The one host a check contacts (as lib/targetguard.js checks it when saved): URL host, DNS server or the target */
+function contactedHost(m) {
+  if (m.type === 'http') { try { return new URL(m.target).hostname.replace(/^\[|\]$/g, ''); } catch { return ''; } }
+  if (m.type === 'dns') { try { return String(JSON.parse(m.options || '{}').server || ''); } catch { return ''; } }
+  return String(m.target || '');
+}
+
 /**
  * Runs the check of a monitor row. ctx.dockerUrl(id) gives the address of a Docker host, ctx.secret(m) the stored password.
+ * A monitor whose address a non-admin set (target_rule: his rule at that time) is checked again on every run: the name
+ * is resolved here, every answer must pass the rule, and the check contacts exactly the address checked - a DNS answer
+ * that changes later (DNS rebinding) cannot point it at the host itself or at networks the user may not reach.
  */
-export function runCheck(m, ctx = {}) {
+export async function runCheck(m, ctx = {}) {
+  if (!m.target_rule) return checkOf(m, ctx, null);
+  let rule;
+  try { rule = JSON.parse(m.target_rule); } catch { rule = null; }
+  if (!rule || typeof rule !== 'object' || !Array.isArray(rule.subnets)) return { ok: false, ms: null, message: 'target not allowed' };
+  const host = contactedHost(m);
+  if (!host) return checkOf(m, ctx, null);
+  const pin = await resolveAllowed(host, rule, { snmp: m.type === 'snmp' });
+  if (pin.error) return { ok: false, ms: null, message: pin.error };
+  return checkOf(m, ctx, { name: host, ...pin });
+}
+
+/** pin: { name, address, family } - the check contacts address (TLS still checks name); null = as typed */
+function checkOf(m0, ctx, pin) {
+  const m = pin && !['http', 'mysql', 'postgres', 'redis', 'mail', 'ldap'].includes(m0.type)
+    ? (m0.type === 'dns' ? { ...m0, options: JSON.stringify({ ...JSON.parse(m0.options || '{}'), server: pin.address }) } : { ...m0, target: pin.address })
+    : m0;
+  const lookup = pin ? pinnedLookup(pin.address, pin.family) : undefined;
   if (m.type === 'ping') return pingCheck(m.target, Math.min(m.timeout_s, 10));
   if (m.type === 'tcp') return tcpCheck(m.target, m.port, m.timeout_s);
   if (m.type === 'proxmox') return Promise.resolve(ctx.db ? proxmoxCheck(ctx.db, m) : { ok: false, ms: null, message: 'no database' });
@@ -150,8 +188,8 @@ export function runCheck(m, ctx = {}) {
     try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
     const verify = !!m.tls_verify;
     if (m.type === 'dns') return dnsCheck(m.target, { server: o.server || '', port: m.port || 53, type: o.rtype || 'A', expect: o.expect || '' }, Math.min(m.timeout_s, 30));
-    if (m.type === 'mail') return mailCheck(m.target, m.port, { proto: o.proto, tls: o.tls, verify }, m.timeout_s);
-    if (m.type === 'ldap') return ldapCheck(m.target, m.port, { tls: o.tls, verify }, m.timeout_s);
+    if (m.type === 'mail') return mailCheck(m.target, m.port, { proto: o.proto, tls: o.tls, verify, lookup }, m.timeout_s);
+    if (m.type === 'ldap') return ldapCheck(pin ? pin.address : m.target, m.port, { tls: o.tls, verify, name: pin?.name }, m.timeout_s);
     if (m.type === 'ntp') return ntpCheck(m.target, m.port || 123, { maxOffsetMs: o.maxOffsetMs || 1000 }, Math.min(m.timeout_s, 15));
     return mssqlCheck(m.target, m.port || 0, { instance: o.instance || '' }, m.timeout_s);
   }
@@ -168,10 +206,10 @@ export function runCheck(m, ctx = {}) {
   if (m.type === 'mysql' || m.type === 'postgres' || m.type === 'redis') {
     let o = {};
     try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
-    const opts = { host: m.target, port: m.port || DEFAULT_PORTS[m.type], user: o.user || '', database: o.database || '', tls: !!o.tls, verify: !!o.verify, password: ctx.secret?.(m) || '' };
+    const opts = { host: m.target, port: m.port || DEFAULT_PORTS[m.type], user: o.user || '', database: o.database || '', tls: !!o.tls, verify: !!o.verify, password: ctx.secret?.(m) || '', pin };
     if (m.type === 'mysql') return mysqlCheck(opts, m.timeout_s);
     if (m.type === 'postgres') return postgresCheck(opts, m.timeout_s);
     return redisCheck(opts, m.timeout_s);
   }
-  return httpCheck(m.target, { timeoutS: m.timeout_s, status: m.http_status, keyword: m.http_keyword, verify: !!m.tls_verify });
+  return httpCheck(m.target, { timeoutS: m.timeout_s, status: m.http_status, keyword: m.http_keyword, verify: !!m.tls_verify, lookup });
 }

@@ -477,13 +477,15 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   }
 
   // guard(hosts, v): optional check of the addresses (non-admins: lib/targetguard.js) - on a change only when the address
-  // (or the type) changed
+  // (or the type) changed; guard.rule is the user's rule, kept with the monitor so every check
+  // run checks the resolved address again (runCheck in checks.js)
+  const ruleOf = (guard, v) => (guard?.rule && monitorHosts(v).length ? JSON.stringify(guard.rule) : null);
   async function create(input, { guard = null } = {}) {
     const v = await clean(input);
     if (guard) await guard(monitorHosts(v), v);
     refuseSame(v);
     const ts = iso();
-    const cols = { ...v, created_at: ts, updated_at: ts, status: 'pending', status_since: ts };
+    const cols = { ...v, created_at: ts, updated_at: ts, status: 'pending', status_since: ts, target_rule: ruleOf(guard, v) };
     const keys = Object.keys(cols);
     const id = Number(db.prepare(`INSERT INTO monitors(${keys.join(',')}) VALUES(${keys.map(() => '?').join(',')})`).run(...keys.map((k) => cols[k])).lastInsertRowid);
     nextRun.set(id, 0);
@@ -496,6 +498,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const v = await clean(input, old);
     if (guard && hostsChanged(v, old)) await guard(monitorHosts(v), v);
     refuseSame(v, old);
+    // who set the address decides how it is checked when the check runs (an admin's change drops the rule)
+    if (hostsChanged(v, old)) v.target_rule = ruleOf(guard, v);
     // Paused because its device got a new IP (see devicechange.js): saved with a newly typed password it runs again
     // (at the address it was saved for - the dialog offers the new one)
     const ipMoved = !old.enabled && !!parse(old.data, {})?.ipMoved;
@@ -658,7 +662,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   function shape(m) {
     if (!m) return null;
     const certDays = m.cert_valid_to ? Math.floor((Date.parse(m.cert_valid_to) - now().getTime()) / 86400000) : null;
-    const { secret, data, ...rest } = m;
+    const { secret, data, target_rule: _rule, ...rest } = m;
     const status = shownStatus(m);
     // in a maintenance window: which one and until when ("in maintenance until 10:00") - so nobody gets a fright
     const maint = status === 'maintenance' ? maintenance?.infoFor?.(m.id, now()) || null : null;

@@ -2,6 +2,7 @@
 // encryption). Both are kept encrypted in the settings and never go to the browser. Which access works for a device is
 // remembered (in memory), so the next poll asks with it first and does not wait for the others to time out.
 import snmp from 'net-snmp';
+import { HttpError, line } from './lib/http.js';
 
 export const V3_LEVELS = ['noAuthNoPriv', 'authNoPriv', 'authPriv'];
 export const V3_AUTH = ['sha', 'sha256', 'sha512', 'sha224', 'sha384', 'md5'];
@@ -34,6 +35,43 @@ export function parseV3(raw) {
       privProtocol: priv ? u.privProtocol : null, privKey: priv ? u.privKey : null, context: String(u.context || '').slice(0, 64) });
   }
   return out;
+}
+
+/** SNMPv3 users from the form, checked; empty keys taken from the stored user of the same name */
+export function v3FromForm(list, stored) {
+  if (list.length > MAX_V3) throw new HttpError(400, 'err.snmpV3Count');
+  const seen = new Set();
+  return list.map((u) => {
+    const user = line(u?.user, 64);
+    if (!user) throw new HttpError(400, 'err.snmpV3User');
+    if (seen.has(user)) throw new HttpError(400, 'err.snmpV3Twice');
+    seen.add(user);
+    const level = V3_LEVELS.includes(u.level) ? u.level : 'authPriv';
+    const old = stored.find((x) => x.user === user);
+    const out = { user, level, context: line(u.context, 64) };
+    const keyOf = (given, kept, field) => {
+      const k = typeof given === 'string' ? given : '';
+      if (!k) { if (kept) return kept; throw new HttpError(400, `err.snmpV3${field}Key`); }
+      if (k.length < 8 || k.length > 128) throw new HttpError(400, 'err.snmpV3KeyLength');
+      return k;
+    };
+    if (level !== 'noAuthNoPriv') {
+      if (!V3_AUTH.includes(u.authProtocol)) throw new HttpError(400, 'err.snmpV3Proto');
+      out.authProtocol = u.authProtocol;
+      out.authKey = keyOf(u.authKey, old?.authKey, 'Auth');
+    }
+    if (level === 'authPriv') {
+      if (!V3_PRIV.includes(u.privProtocol)) throw new HttpError(400, 'err.snmpV3Proto');
+      out.privProtocol = u.privProtocol;
+      out.privKey = keyOf(u.privKey, old?.privKey, 'Priv');
+    }
+    return out;
+  });
+}
+
+/** Communities from a form: comma or line separated, at most 5, each at most 64 characters */
+export function communitiesFromForm(raw) {
+  return String(raw || '').split(/[\n,]/).map((x) => x.trim()).filter(Boolean).slice(0, 5).map((x) => x.slice(0, 64)).join('\n');
 }
 
 /** What the browser may see of the v3 users: names, levels and procedures - never the keys */

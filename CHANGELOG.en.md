@@ -14,6 +14,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 - Code audit – data: deleted monitors leave status pages (before, a new monitor could take their place on the public page) and the page can be saved again; host names typed by hand stay on devices created with the form earlier and on merged devices; "Watch new devices" adds only one sensor per ZFS pool; renamed plugins no longer count as outdated; the diagnostic package also hides tokens in addresses
 - Code audit – HTTPS: an uploaded certificate is never replaced without a backup (also when its key is missing or an upload was interrupted); HSTS only for names the certificate contains
 - Code audit – interface: the overview no longer counts monitors not checked yet as "OK", confirmation before deleting saved searches and unknown machines, manual links from the search lead to the right section, dialogs and the certificate page fit on phones
+- Scan agents: per agent you choose which SNMP access data it gets – none (only "public"), its own for its location only (stored encrypted) or all of this server. New agents start with none; existing ones keep all for now and are marked in the list – best switch them to their own
+- Monitors of non-administrators: host names are resolved and checked again on every check, and the check contacts exactly the checked address – if a name later points at the WhatsOnMyNet host or another network (DNS rebinding), the monitor reports "target address not allowed"
+- Restoring a backup: the roles and location limits of users and the SNMP choice of agents stay as they are today too – a user demoted since does not get the old rights back
+- Event rules: regular expressions run in a thread of their own with a fixed time limit – even an expression that runs away despite all checks can no longer stop the server; the rule is switched off and shows why
 
 ## 0.56.0 - 2026-11-22
 

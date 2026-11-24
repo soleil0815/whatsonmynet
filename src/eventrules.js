@@ -11,8 +11,8 @@
 //   like the other engines, so a sender that sends to both does not open two tickets.
 // - Counting: "from 5 matches in 10 minutes" (per sender if wanted) - matches are held until the number is reached, then
 //   one notification with all of them; fewer in the window are dropped without a word.
-// - Regular expression on the text (saferegex.js: checked when saved, and a rule whose expression is ever slow on a
-//   message is switched off).
+// - Regular expression on the text (saferegex.js: checked when saved, run in a thread of its own with a hard time limit,
+//   and a rule whose expression is ever slow on a message is switched off).
 // - Open events: the first match opens one (per rule, sender and key - the first group of the expression, e.g. the
 //   port), further matches only count up instead of notifying again; a user acknowledges it; the counter-message
 //   ("link up"), a click or a time without news closes it.
@@ -20,7 +20,7 @@ import { BlockList, isIP } from 'node:net';
 import { performance } from 'node:perf_hooks';
 import { HttpError, line } from './lib/http.js';
 import { log } from './lib/log.js';
-import { checkRegexStatic, checkRegexTime, compileRegex, SLOW_MS } from './lib/saferegex.js';
+import { checkRegexStatic, checkRegexTime, compileRegex, regexRun, SLOW_MS } from './lib/saferegex.js';
 
 const MAX_LIST = 20;          // words, senders per rule
 const MAX_IDS = 50;           // event id ranges per rule
@@ -178,7 +178,8 @@ export function senderIs(entry, row) {
  * Does a stored message match the filter? row: events_in (+ device_name). A message without source and log (NXLog
  * without JSON: only time, host, severity, id and text) cannot say where it came from - there the event id decides alone.
  */
-export function ruleMatches(m, row) {
+/** stats (optional): { regexMs } - how long the expression took (in its thread), for switching slow rules off */
+export function ruleMatches(m, row, stats = null) {
   if (m.kind && row.kind !== m.kind) return false;
   if (row.severity > (m.maxSeverity ?? 7)) return false;
   if (m.deviceId && row.device_id !== m.deviceId) return false;
@@ -197,17 +198,18 @@ export function ruleMatches(m, row) {
     if (m.notWords?.some((w) => text.includes(lower(w)))) return false;
   }
   if (m.regex) {
-    if (!m._re) Object.defineProperty(m, '_re', { value: compileRegex(m.regex), enumerable: false });
-    if (!m._re.test(String(row.text ?? ''))) return false;
+    let r;
+    try { r = regexRun(m.regex, row.text); } catch (e) { if (stats && e.code === 'REGEX_TIMEOUT') stats.regexMs = e.ms; throw e; }
+    if (stats) stats.regexMs = r.ms;
+    if (!r.match) return false;
   }
   return true;
 }
 
 /** The key of an open event: the first group of the expression (e.g. the port in "Port (\d+) link down"), else '' */
-function keyOf(re, text) {
-  if (!re) return '';
-  const m = re.exec(String(text ?? ''));
-  return m && m[1] !== undefined ? String(m[1]).slice(0, 120) : '';
+function keyOf(src, text) {
+  if (!src) return '';
+  try { return regexRun(src, text, { group: true }).key; } catch { return ''; }
 }
 
 const parse = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
@@ -232,8 +234,9 @@ export function createEventRules({ db, channels, settings = null, now = () => ne
       cache = db.prepare('SELECT * FROM event_rules WHERE enabled=1 ORDER BY id').all().map(shape)
         .map((r) => {
           const x = { ...r, match: { ...r.match, _ranges: parseEventIds(r.match.eventIds) || [] }, state: { ...r.state, _ranges: parseEventIds(r.state.closeIds) || [] } };
-          try { x.state._re = r.state.closeRegex ? compileRegex(r.state.closeRegex) : null; } catch { x.state._re = null; }
-          try { x._keyRe = r.match.regex ? compileRegex(r.match.regex) : null; } catch { x._keyRe = null; }
+          // expressions that do not compile are left out (they were checked when saved)
+          try { x.state._re = r.state.closeRegex && compileRegex(r.state.closeRegex) ? r.state.closeRegex : null; } catch { x.state._re = null; }
+          try { x._keyRe = r.match.regex && compileRegex(r.match.regex) ? r.match.regex : null; } catch { x._keyRe = null; }
           return x;
         });
       cacheAt = now();
@@ -290,7 +293,14 @@ export function createEventRules({ db, channels, settings = null, now = () => ne
       .all(since, m.maxSeverity);
     // a time budget too: the expression was tried before (checkTimes), this is the second belt
     const hit = []; const t0 = performance.now(); let checked = 0;
-    for (const r of rows) { if (performance.now() - t0 > 2000) break; checked++; if (ruleMatches(m, r)) hit.push(r); }
+    for (const r of rows) {
+      if (performance.now() - t0 > 2000) break;
+      checked++;
+      let ok = false;
+      // an expression stopped for taking too long: the test ends there with what it found
+      try { ok = ruleMatches(m, r); } catch (e) { if (e.code === 'REGEX_TIMEOUT') break; throw e; }
+      if (ok) hit.push(r);
+    }
     return { count: hit.length, checked, list: hit.slice(0, limit) };
   }
 
@@ -316,13 +326,18 @@ export function createEventRules({ db, channels, settings = null, now = () => ne
     return false;
   }
   /** Is this the counter-message of the rule ("link up")? */
-  function closes(rule, row) {
+  function closes(rule, row, stats = null) {
     const s = rule.state;
     if (!s?.open) return false;
     if (s._ranges?.length && row.event_id !== null && row.event_id !== undefined && s._ranges.some(([a, b]) => row.event_id >= a && row.event_id <= b)) return true;
     const text = lower(`${row.app} ${row.text}`);
     if (s.closeWords?.length && s.closeWords.some((w) => text.includes(lower(w)))) return true;
-    return !!(s._re && s._re.test(String(row.text ?? '')));
+    if (!s._re) return false;
+    try {
+      const r = regexRun(s._re, row.text);
+      if (stats) stats.regexMs = r.ms;
+      return r.match;
+    } catch (e) { if (stats && e.code === 'REGEX_TIMEOUT') stats.regexMs = e.ms; return false; }
   }
   /** Closes the open events of this sender (with this key, if the counter-message has one); entwarnung when wanted */
   function closeBy(rule, row) {
@@ -364,16 +379,16 @@ export function createEventRules({ db, channels, settings = null, now = () => ne
     for (const rule of list) {
       // the counter-message closes - and never opens anything itself
       if (rule.state?.open) {
-        const a = performance.now();
-        const isClose = closes(rule, full);
-        if (rule.state.closeRegex && performance.now() - a > SLOW_MS) { switchOffSlow(rule, performance.now() - a); continue; }
+        const cs = { regexMs: 0 };
+        const isClose = closes(rule, full, cs);
+        if (cs.regexMs > SLOW_MS) { switchOffSlow(rule, cs.regexMs); continue; }
         if (isClose) { closeBy(rule, full); continue; }
       }
       let ok = false;
-      const t0 = performance.now();
-      try { ok = ruleMatches(rule.match, full); } catch { ok = false; }
-      const took = performance.now() - t0;
-      if (rule.match.regex && took > SLOW_MS) { switchOffSlow(rule, took); continue; }
+      // the time of the expression itself (measured in its thread; one that did not finish counts with its limit)
+      const st = { regexMs: 0 };
+      try { ok = ruleMatches(rule.match, full, st); } catch { ok = false; }
+      if (st.regexMs > SLOW_MS) { switchOffSlow(rule, st.regexMs); continue; }
       if (!ok) continue;
       matched.push(rule.id);
       const at = row.at || iso();

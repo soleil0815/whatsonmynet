@@ -38,7 +38,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
       # one step: a process started in a step ends with it
       - name: Run the script (by hand, then twice as scheduled task) against a stand-in for WhatsOnMyNet
         shell: powershell
@@ -87,7 +87,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
       - name: Install dependencies
         run: npm ci --omit=dev --ignore-scripts
       # pwsh: the check writes events with umlauts (Windows PowerShell would read the file in the ANSI code page)
@@ -113,7 +113,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
       - name: Scripts as handed out
         run: node tools/wincheck/render.mjs "$RUNNER_TEMP/compat"
       - name: PSScriptAnalyzer (fixed version)

@@ -5,11 +5,16 @@ param([Parameter(Mandatory)][string]$Work)
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $Work | Out-Null
 
-# 1. Fluent Bit (Chocolatey checks the checksum of the package)
-& choco install fluent-bit -y --no-progress | Select-Object -Last 3
+# 1. Fluent Bit (Chocolatey checks the checksum of the package) in a fixed version: a new release must not turn this
+#    check red without a change here. Raise $FluentBitVersion by hand after trying the new one (Dependabot cannot).
+$FluentBitVersion = '4.1.0'
+& choco install fluent-bit --version $FluentBitVersion -y --no-progress | Select-Object -Last 3
+if ($LASTEXITCODE -ne 0) { "choco install fluent-bit $FluentBitVersion failed ($LASTEXITCODE)"; exit 1 }
 $exe = @(Get-ChildItem -Path "$env:ProgramFiles\fluent-bit", "${env:ProgramFiles(x86)}\fluent-bit" -Filter fluent-bit.exe -Recurse -ErrorAction SilentlyContinue)[0]
 if (-not $exe) { 'fluent-bit.exe not found'; exit 1 }
-& $exe.FullName --version
+$have = (& $exe.FullName --version | Out-String)
+$have
+if ($have -notmatch [regex]::Escape("v$FluentBitVersion")) { "Fluent Bit $FluentBitVersion expected"; exit 1 }
 
 # 2. the configuration of the manual (the block that starts with [SERVICE]) - only host and port for this check
 $manual = Get-Content -Raw -Encoding UTF8 -Path 'public/help/manual.en.md'

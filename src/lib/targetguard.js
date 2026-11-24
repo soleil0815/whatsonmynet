@@ -9,8 +9,9 @@
 //     user limited to locations only the subnets of his locations (no subnets: the private ranges).
 // Host names are resolved when saved. With IPv4 answers those decide (each must pass) and the IPv6 answers only must not
 // be one of the "never" addresses (dual stack with global IPv6); with IPv6 answers only, each must pass (unique local
-// fc00::/7 counts as private). The check itself resolves again later: a name whose owner changes its DNS answer
-// afterwards is not caught - see README.
+// fc00::/7 counts as private). The rule of the user is kept with the monitor (target_rule) and every check run resolves
+// the name again, checks the answers the same way and then contacts exactly the address checked (resolveAllowed): a
+// name whose DNS answer changes later (DNS rebinding) cannot point a check at an address the user may not reach.
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import { HttpError } from './http.js';
@@ -82,6 +83,30 @@ export function addressesAllowed(addrs, rule, opts = {}) {
   return v4.every((a) => addressAllowed(a, rule, opts)) && addrs.every((a) => !addressNever(a));
 }
 
+/** The addresses of a host: an IP literal itself, a name resolved (with a time limit); [] if it does not resolve */
+async function addressesOf(host) {
+  if (net.isIP(host)) return [host];
+  try {
+    const list = await Promise.race([lookup(host),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), LOOKUP_MS).unref())]);
+    return list.map((x) => x.address);
+  } catch { return []; }
+}
+
+/**
+ * When a check runs: resolves the host under the saved rule → { address, family } to contact (the first allowed IPv4
+ * answer, else the first answer), or { error } when the name does not resolve or an answer is not allowed.
+ */
+export async function resolveAllowed(raw, rule, { snmp = false } = {}) {
+  const host = String(raw || '').trim().replace(/^\[|\]$/g, '');
+  const addrs = await addressesOf(host);
+  if (!addrs.length) return { error: 'name not found (DNS)' };
+  if (!addressesAllowed(addrs, rule, { snmp })) return { error: `target address not allowed (${addrs.slice(0, 3).join(', ')})` };
+  const v4 = addrs.find((a) => normalize(a)?.v === 4 && addressAllowed(a, rule, { snmp }));
+  const address = v4 || addrs[0];
+  return { address, family: net.isIPv4(address) ? 4 : 6 };
+}
+
 /**
  * Throws 403 unless every host (IP literal or name) is allowed for this user. Names are resolved now; a name that does
  * not resolve cannot be checked and is refused. snmp: an SNMP monitor (the stored access data go there).
@@ -92,16 +117,8 @@ export async function assertTargetsAllowed(db, user, hosts, { snmp = false } = {
   for (const raw of hosts) {
     const host = String(raw || '').trim().replace(/^\[|\]$/g, '');
     if (!host) continue;
-    let addrs;
-    if (net.isIP(host)) addrs = [host];
-    else {
-      try {
-        const list = await Promise.race([lookup(host),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), LOOKUP_MS).unref())]);
-        addrs = list.map((x) => x.address);
-      } catch { addrs = []; }
-      if (!addrs.length) throw new HttpError(403, 'err.monitorTargetDns', host.slice(0, 80));
-    }
+    const addrs = await addressesOf(host);
+    if (!addrs.length) throw new HttpError(403, 'err.monitorTargetDns', host.slice(0, 80));
     if (!addressesAllowed(addrs, rule, { snmp })) throw new HttpError(403, 'err.monitorTarget', host.slice(0, 80));
   }
 }

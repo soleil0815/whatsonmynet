@@ -103,13 +103,16 @@ export const dockerError = (e) => netMessage(e);
 
 const shortVersion = (s) => String(s || '').split(/[\s,(]/).slice(0, 2).join(' ').slice(0, 60);
 
-export async function mysqlCheck({ host, port, user, password, database, tls: useTls, verify = false }, timeoutS = 10) {
+// pin: { address, family } checked before (monitors of non-admins, see checks.js): the connection goes to exactly that
+// address, TLS still checks the certificate against the host name
+export async function mysqlCheck({ host, port, user, password, database, tls: useTls, verify = false, pin = null }, timeoutS = 10) {
   const { default: mysql } = await import('mysql2/promise');
   const t0 = Date.now();
   let conn;
   try {
     conn = await withTimeout(mysql.createConnection({ host, port, user: user || undefined, password: password || undefined, database: database || undefined,
-      connectTimeout: timeoutS * 1000, ssl: useTls ? { rejectUnauthorized: !!verify } : undefined, multipleStatements: false }), timeoutS * 1000);
+      connectTimeout: timeoutS * 1000, ssl: useTls ? { rejectUnauthorized: !!verify } : undefined, multipleStatements: false,
+      ...(pin ? { stream: () => net.connect({ host: pin.address, port }) } : {}) }), timeoutS * 1000);
     const [rows] = await withTimeout(conn.query('SELECT VERSION() AS v'), timeoutS * 1000);
     const ms = Date.now() - t0;
     const v = String(rows?.[0]?.v || '');
@@ -121,11 +124,13 @@ export async function mysqlCheck({ host, port, user, password, database, tls: us
   }
 }
 
-export async function postgresCheck({ host, port, user, password, database, tls: useTls, verify = false }, timeoutS = 10) {
+export async function postgresCheck({ host, port, user, password, database, tls: useTls, verify = false, pin = null }, timeoutS = 10) {
   const { default: pg } = await import('pg');
   const t0 = Date.now();
-  const client = new pg.Client({ host, port, user: user || 'postgres', password: password || undefined, database: database || 'postgres',
-    connectionTimeoutMillis: timeoutS * 1000, query_timeout: timeoutS * 1000, ssl: useTls ? { rejectUnauthorized: !!verify } : false,
+  // pg sets the TLS name only for a name as host: with the checked address as host the name is given here
+  const client = new pg.Client({ host: pin ? pin.address : host, port, user: user || 'postgres', password: password || undefined, database: database || 'postgres',
+    connectionTimeoutMillis: timeoutS * 1000, query_timeout: timeoutS * 1000,
+    ssl: useTls ? { rejectUnauthorized: !!verify, ...(pin && !net.isIP(host) ? { servername: host } : {}) } : false,
     application_name: 'WhatsOnMyNet' });
   client.on('error', () => {});
   try {
@@ -140,11 +145,12 @@ export async function postgresCheck({ host, port, user, password, database, tls:
 }
 
 /** Redis/Valkey: (AUTH) + PING over the plain RESP protocol */
-export function redisCheck({ host, port, user, password, tls: useTls, verify = false }, timeoutS = 10) {
+export function redisCheck({ host, port, user, password, tls: useTls, verify = false, pin = null }, timeoutS = 10) {
   return new Promise((resolve) => {
     const t0 = Date.now();
     const enc = (...args) => `*${args.length}\r\n${args.map((a) => `$${Buffer.byteLength(String(a))}\r\n${a}\r\n`).join('')}`;
-    const sock = useTls ? tls.connect({ host, port, servername: net.isIP(host) ? undefined : host, rejectUnauthorized: !!verify }) : net.connect({ host, port });
+    const at = pin ? { host: pin.address, port } : { host, port };
+    const sock = useTls ? tls.connect({ ...at, servername: net.isIP(host) ? undefined : host, rejectUnauthorized: !!verify }) : net.connect(at);
     sock.setTimeout(timeoutS * 1000);
     let buf = '';
     let done = false;

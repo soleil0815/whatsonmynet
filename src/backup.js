@@ -75,8 +75,11 @@ function trialMigration(file) {
 // A backup holds the keys and passwords of its day. A key renewed or deleted since (it leaked), a changed password or
 // a removed account must not work again after a restore: for the same installation (same check value of the key) the
 // sign-in data are taken from the current database. Accounts, scan agents and host keys are the same ones only with
-// the same id AND the same creation time (ids may be given again after a delete).
-const USER_CRED = ['password_hash', 'password_changed_at', 'active', 'totp_secret', 'totp_enabled', 'totp_last_step', 'recovery_codes'];
+// the same id AND the same creation time (ids may be given again after a delete). What a person may do counts as
+// sign-in data too: today's role and location limits (a user demoted or limited since must not get the old rights
+// back), and the SNMP access data a scan agent gets (narrowed since → not widened again by a restore).
+const USER_CRED = ['password_hash', 'password_changed_at', 'active', 'role', 'totp_secret', 'totp_enabled', 'totp_last_step', 'recovery_codes'];
+const AGENT_CRED = ['token_hash', 'enabled', 'snmp_mode', 'snmp_communities', 'snmp_v3'];
 const hasTable = (d, t) => !!d.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
 const colsOf = (d, t) => (hasTable(d, t) ? d.prepare(`SELECT name FROM pragma_table_info('${t}')`).all().map((c) => c.name) : []);
 const keycheckOf = (d) => { try { return d.prepare("SELECT value FROM settings WHERE key='_keycheck'").get()?.value || ''; } catch { return ''; } };
@@ -97,7 +100,11 @@ function readCredentials(live) {
   return {
     users: rows('users', USER_CRED),
     userCols: USER_CRED.filter((c) => colsOf(live, 'users').includes(c)),
-    agents: rows('agents', ['token_hash', 'enabled']),
+    agents: rows('agents', AGENT_CRED),
+    agentCols: AGENT_CRED.filter((c) => colsOf(live, 'agents').includes(c)),
+    // location limits: user → [{ id, created_at }] of today's locations (a location is the same only with its creation time)
+    scopes: hasTable(live, 'user_locations') ? live.prepare('SELECT ul.user_id, l.id, l.created_at FROM user_locations ul JOIN locations l ON l.id=ul.location_id').all()
+      .reduce((m, r) => m.set(r.user_id, [...(m.get(r.user_id) || []), { id: r.id, created_at: r.created_at }]), new Map()) : null,
     hostTokens: rows('host_tokens', ['token_hash']),
     apiTokens: live.prepare("SELECT value FROM settings WHERE key='api.tokens'").get()?.value ?? null,
   };
@@ -110,19 +117,42 @@ function carryCredentials(r, cred) {
     if (cred.users && hasTable(r, 'users')) {
       const cols = cred.userCols.filter((c) => colsOf(r, 'users').includes(c));
       const set = r.prepare(`UPDATE users SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`);
+      const scoped = cred.scopes && hasTable(r, 'user_locations') && hasTable(r, 'locations');
       for (const u of r.prepare('SELECT id, created_at FROM users').all()) {
         const now = cred.users.get(u.id);
-        if (same(now, u)) set.run(...cols.map((c) => now[c]), u.id);
-        else r.prepare('UPDATE users SET active=0 WHERE id=?').run(u.id);
+        if (!same(now, u)) { r.prepare('UPDATE users SET active=0 WHERE id=?').run(u.id); continue; }
+        set.run(...cols.map((c) => now[c]), u.id);
+        if (!scoped) continue;
+        // today's location limits: only locations that are the same ones in the backup
+        const want = cred.scopes.get(u.id) || [];
+        r.prepare('DELETE FROM user_locations WHERE user_id=?').run(u.id);
+        let kept = 0;
+        for (const l of want) {
+          if (r.prepare('SELECT created_at FROM locations WHERE id=?').get(l.id)?.created_at !== l.created_at) continue;
+          r.prepare('INSERT INTO user_locations(user_id, location_id) VALUES(?,?)').run(u.id, l.id);
+          kept++;
+        }
+        // limited today, but none of the locations is in the backup: no limit would mean "everything" - switched off
+        if (want.length && !kept) {
+          r.prepare('UPDATE users SET active=0 WHERE id=?').run(u.id);
+          log.warn(`Restore: user ${u.id} is limited to locations the backup does not have - switched off`);
+        }
       }
     }
     if (cred.agents && hasTable(r, 'agents')) {
       const list = r.prepare('SELECT id, created_at FROM agents').all();
       // first every key unusable (token_hash is unique), then today's ones back
       for (const a of list) r.prepare('UPDATE agents SET token_hash=?, enabled=0 WHERE id=?').run(`revoked-${a.id}-${crypto.randomBytes(16).toString('hex')}`, a.id);
+      // A backup from before the SNMP choice of agents: add the columns now (the schema update later sees them and skips),
+      // otherwise the update would give every agent "all" again although today it has less
+      if (cred.agentCols.includes('snmp_mode') && !colsOf(r, 'agents').includes('snmp_mode')) {
+        r.exec(MIGRATIONS.find((m) => String(m?.unless || '').includes("'agents') WHERE name = 'snmp_mode'")).sql);
+      }
+      const cols = cred.agentCols.filter((c) => colsOf(r, 'agents').includes(c));
+      const set = r.prepare(`UPDATE agents SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`);
       for (const a of list) {
         const now = cred.agents.get(a.id);
-        if (same(now, a)) r.prepare('UPDATE agents SET token_hash=?, enabled=? WHERE id=?').run(now.token_hash, now.enabled ?? 1, a.id);
+        if (same(now, a)) set.run(...cols.map((c) => (c === 'enabled' ? now.enabled ?? 1 : now[c])), a.id);
       }
     }
     if (cred.hostTokens && hasTable(r, 'host_tokens')) {
@@ -145,8 +175,9 @@ function checkAdminLeft(file, live) {
   const b = new Database(file, { readonly: true, fileMustExist: true });
   try {
     if (!sameInstallation(b, live)) return;
-    const today = live.prepare('SELECT created_at FROM users WHERE id=? AND active=1');
-    const ok = b.prepare("SELECT id, created_at FROM users WHERE role='admin' AND active=1").all().some((u) => today.get(u.id)?.created_at === u.created_at);
+    // roles and the active flag are today's after the restore: an admin of today who is in the backup
+    const today = live.prepare("SELECT created_at FROM users WHERE id=? AND active=1 AND role='admin'");
+    const ok = b.prepare('SELECT id, created_at FROM users').all().some((u) => today.get(u.id)?.created_at === u.created_at);
     if (!ok) throw new HttpError(400, 'err.backupNoAdminLive');
   } finally { b.close(); }
 }
