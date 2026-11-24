@@ -9,8 +9,9 @@
 //
 // Creating or changing a monitor into one that exists already is refused (err.monitorExists, with the name of the
 // one there is). Duplicates from before are merged once: the one that runs (else the oldest) stays and takes over
-// dependencies, maintenance windows and reports; the others are deleted.
+// dependencies, maintenance windows, reports and status page lines; the others are deleted.
 import { log } from '../lib/log.js';
+import { replaceMonitorId } from '../lib/idlists.js';
 
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
 const DONE = 'monitors.deduped';
@@ -71,16 +72,6 @@ export function findSame(db, m, exceptId = null) {
   return null;
 }
 
-/** id `from` → `to` in a JSON list column of every row (no id twice afterwards) */
-function replaceId(db, table, column, from, to) {
-  for (const row of db.prepare(`SELECT id, ${column} v FROM ${table} WHERE ${column} <> '[]'`).all()) {
-    const list = parse(row.v, []);
-    if (!Array.isArray(list) || !list.some((x) => Number(x) === from)) continue;
-    const next = [...new Set(list.map((x) => (Number(x) === from ? to : Number(x))))];
-    db.prepare(`UPDATE ${table} SET ${column}=? WHERE id=?`).run(JSON.stringify(next), row.id);
-  }
-}
-
 /** Merges duplicates: returns [{ kept, removed: [ids], name }] */
 export function mergeDuplicates(db) {
   const index = hostIndex(db);
@@ -101,8 +92,7 @@ export function mergeDuplicates(db) {
       const drop = list.filter((m) => m.id !== keep.id);
       for (const m of drop) {
         db.prepare('UPDATE monitors SET parent_id=? WHERE parent_id=? AND id<>?').run(keep.id, m.id, keep.id);
-        replaceId(db, 'maintenance', 'monitor_ids', m.id, keep.id);
-        replaceId(db, 'reports', 'monitor_ids', m.id, keep.id);
+        replaceMonitorId(db, m.id, keep.id);
         db.prepare('DELETE FROM monitors WHERE id=?').run(m.id);
       }
       // a monitor must not end up behind itself

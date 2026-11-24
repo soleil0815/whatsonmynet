@@ -428,6 +428,16 @@ export function createInventory(db) {
       db.prepare('DELETE FROM devices WHERE id=?').run(dropId);
       if (!keep.mac && drop.mac) fill.mac = drop.mac;
       if (!keep.ip && drop.ip) fill.ip = drop.ip;
+      // who owns a taken value comes with it (a host name typed in on the dropped one stays the user's; one from a scan
+      // or the device stays theirs) - also an entry the kept one had for its empty field must not stay
+      const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
+      const keepAuto = obj(parseAuto(keep.auto_fields)); const dropAuto = obj(parseAuto(drop.auto_fields));
+      let autoChanged = false;
+      for (const k of Object.keys(fill)) {
+        if (k in dropAuto) { if (keepAuto[k] !== dropAuto[k] || !(k in keepAuto)) { keepAuto[k] = dropAuto[k]; autoChanged = true; } }
+        else if (k in keepAuto) { delete keepAuto[k]; autoChanged = true; }
+      }
+      if (autoChanged) fill.auto_fields = JSON.stringify(keepAuto);
       const keys = Object.keys(fill);
       if (keys.length) db.prepare(`UPDATE devices SET ${keys.map((k) => `${k}=?`).join(', ')}, updated_at=? WHERE id=?`).run(...keys.map((k) => fill[k]), now(), keepId);
       // the other card/address of the device: not offered as new again

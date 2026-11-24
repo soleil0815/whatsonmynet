@@ -759,6 +759,32 @@ export const MIGRATIONS = [
    );`,
   // 42: how often a plugin runs (minutes; the host script reports every 5 and reuses the last result in between)
   { sql: 'ALTER TABLE plugins ADD COLUMN interval_min INTEGER NOT NULL DEFAULT 5;', unless: "SELECT 1 FROM pragma_table_info('plugins') WHERE name = 'interval_min'" },
+  // 43: two repairs of stale data (a copy of the database is made before, as for every schema update):
+  // a) Status pages kept the ids of deleted monitors; ids are given again to new monitors, so such a line would show a
+  //    monitor nobody chose. Out go monitor lines whose monitor is gone or was created after the page was last saved
+  //    (a page is only saved with monitors that exist - a younger one behind the id is another monitor).
+  // b) Host names typed into the form when creating a device (before the form marked them as the user's) were still
+  //    overwritten by scans: migration 22 only looked at edits. A device created by hand ('created' with source manual)
+  //    whose host name has no other history (no edit, scan change, device report or merge) and no owner entry yet gets
+  //    the entry (auto_fields.hostname = null: scans leave it alone). Host names themselves are never changed.
+  `UPDATE status_pages SET items = (
+     SELECT json_group_array(CASE WHEN t IN ('object', 'array') THEN json(v) ELSE v END) FROM (SELECT e.value v, e.type t FROM json_each(status_pages.items) e
+       WHERE NOT (json_extract(e.value, '$.type') IS 'monitor' AND NOT EXISTS (SELECT 1 FROM monitors m
+         WHERE m.id = json_extract(e.value, '$.id') AND m.created_at <= status_pages.updated_at))
+       ORDER BY e.key))
+   WHERE json_valid(items) AND json_type(items) = 'array'
+     AND EXISTS (SELECT 1 FROM json_each(status_pages.items) e WHERE json_extract(e.value, '$.type') IS 'monitor'
+       AND NOT EXISTS (SELECT 1 FROM monitors m WHERE m.id = json_extract(e.value, '$.id') AND m.created_at <= status_pages.updated_at));
+   UPDATE devices SET auto_fields = json_set(CASE WHEN json_valid(auto_fields) AND json_type(auto_fields) = 'object' THEN auto_fields ELSE '{}' END, '$.hostname', json('null'))
+   WHERE hostname <> ''
+     AND CASE WHEN json_valid(auto_fields) THEN json_type(auto_fields) <> 'object' OR json_type(auto_fields, '$.hostname') IS NULL ELSE 1 END
+     AND EXISTS (SELECT 1 FROM device_history h WHERE h.device_id = devices.id AND h.kind = 'created')
+     AND NOT EXISTS (SELECT 1 FROM device_history h WHERE h.device_id = devices.id AND (
+       (h.kind = 'created' AND json_valid(h.detail) AND json_extract(h.detail, '$.source') IS NOT NULL AND json_extract(h.detail, '$.source') IS NOT 'manual')
+       OR h.kind = 'merged'
+       OR (h.kind IN ('edit', 'snmp') AND (NOT json_valid(h.detail) OR (json_type(h.detail, '$.fields') = 'array'
+         AND EXISTS (SELECT 1 FROM json_each(h.detail, '$.fields') f WHERE f.type = 'object' AND json_extract(f.value, '$.field') = 'hostname'))))
+       OR (h.kind = 'change' AND (NOT json_valid(h.detail) OR json_extract(h.detail, '$.field') IS 'hostname'))));`,
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

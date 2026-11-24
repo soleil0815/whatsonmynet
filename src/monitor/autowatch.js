@@ -60,10 +60,43 @@ export function pick(metrics, picks, taken = new Set()) {
 export function createAutoWatch({ db, settings, monitoring }) {
   let timer = null;
   let busy = false;
+  let again = false;
   const on = () => settings.get(SETTING) !== false;
   const limits = () => ({ printerThreshold: Number(settings.get('printer.threshold')) || 15, nasThreshold: Number(settings.get('nas.threshold')) || 90 });
   const takenOn = (where, ...args) => new Set(db.prepare(`SELECT options FROM monitors WHERE ${where}`).all(...args)
     .map((m) => parse(m.options, {})).map((o) => `${o.metric}|${o.key ?? ''}`));
+
+  // A Proxmox node that also runs the Linux host script reports its ZFS pools twice: through the API (metric pool,
+  // key "zfs:<node>/<pool>") and through the script (hostPool, key "zfs:<pool>"). One sensor per pool is enough -
+  // whichever comes first; the node is matched to the device by its (short) name.
+  const short = (n) => String(n ?? '').trim().toLowerCase().replace(/\.$/, '').split('.')[0];
+  const namesOfDevice = (id) => {
+    const d = db.prepare("SELECT d.name, d.hostname, json_extract(h.data,'$.hostname') reported FROM devices d LEFT JOIN host_reports h ON h.device_id=d.id WHERE d.id=?").get(id);
+    return new Set([d?.name, d?.hostname, d?.reported].map(short).filter(Boolean));
+  };
+  const nodePool = (key) => { const m = /^([^:]+):([^/]+)\/(.+)$/.exec(String(key ?? '')); return m ? { kind: m[1], node: short(m[2]), name: m[3] } : null; };
+  /** hostPool keys of this device already watched as a pool of its node (through a hypervisor host) */
+  function poolsWatchedOnNode(deviceId) {
+    const names = namesOfDevice(deviceId);
+    const out = new Set();
+    for (const m of db.prepare("SELECT json_extract(options,'$.key') k FROM monitors WHERE type='proxmox' AND json_extract(options,'$.metric')='pool'").all()) {
+      const p = nodePool(m.k);
+      if (p && names.has(p.node)) out.add(`hostPool|${p.kind}:${p.name}`);
+    }
+    return out;
+  }
+  /** pool keys of hypervisor nodes already watched as hostPool of the machine itself (host script) */
+  function poolsWatchedOnDevice(metrics) {
+    const out = new Set();
+    const nodes = new Set(metrics.filter((x) => x.metric === 'pool').map((x) => nodePool(x.key)?.node).filter(Boolean));
+    if (!nodes.size) return out;
+    const rows = db.prepare("SELECT device_id, json_extract(options,'$.key') k FROM monitors WHERE type='sensor' AND json_extract(options,'$.metric')='hostPool'").all();
+    for (const r of rows) {
+      const names = namesOfDevice(r.device_id);
+      for (const n of nodes) if (names.has(n)) out.add(`pool|${String(r.k).replace(/^([^:]+):/, `$1:${n}/`)}`);
+    }
+    return out;
+  }
 
   async function sensor(input) {
     try { await monitoring.create(input); return 1; } catch (e) {
@@ -91,7 +124,9 @@ export function createAutoWatch({ db, settings, monitoring }) {
     if (src && DEVICE_PICKS[src] && !w[src]) {
       const metrics = metricsFor(db, d.id, limits());
       if (metrics.length) {
-        for (const x of pick(metrics, DEVICE_PICKS[src], takenOn("type='sensor' AND device_id=?", d.id))) {
+        const taken = takenOn("type='sensor' AND device_id=?", d.id);
+        for (const k of poolsWatchedOnNode(d.id)) taken.add(k);
+        for (const x of pick(metrics, DEVICE_PICKS[src], taken)) {
           const label = deviceValueLabel(x, lang);
           n += await sensor({ type: 'sensor', device_id: d.id, name: sensorName(d.name, label).slice(0, 120), interval_s: 300,
             options: { metric: x.metric, key: x.key ?? '', op: x.op, threshold: x.threshold ?? '', label: label.slice(0, 120) } });
@@ -111,7 +146,9 @@ export function createAutoWatch({ db, settings, monitoring }) {
     if (!metrics.length) return 0;
     const several = db.prepare('SELECT COUNT(*) n FROM proxmox_hosts').get().n > 1;
     let n = 0;
-    for (const x of pick(metrics, hostPicks(h.kind), takenOn("type='proxmox' AND json_extract(options,'$.host')=?", h.id))) {
+    const taken = takenOn("type='proxmox' AND json_extract(options,'$.host')=?", h.id);
+    for (const k of poolsWatchedOnDevice(metrics)) taken.add(k);
+    for (const x of pick(metrics, hostPicks(h.kind), taken)) {
       const label = hostValueLabel(x, lang);
       // node values name their node themselves; other values get the host when there are several (as in the dialog)
       const owner = several && !/^node/.test(x.metric) && x.metric !== 'storage' ? h.name : '';
@@ -124,14 +161,19 @@ export function createAutoWatch({ db, settings, monitoring }) {
 
   /** One round: everything added "to be watched" that has something new to watch */
   async function tick() {
-    if (busy || !on()) return 0;
+    // asked again while a round runs (a device added meanwhile): one more round right after, not a minute later
+    if (busy) { again = true; return 0; }
+    if (!on()) return 0;
     busy = true;
     let n = 0;
     try {
-      for (const d of db.prepare('SELECT id, name, ip, auto_watch FROM devices WHERE auto_watch IS NOT NULL').all()) n += await forDevice(d);
-      for (const h of db.prepare('SELECT id, name, kind, last_ok, data, auto_watch FROM proxmox_hosts WHERE auto_watch IS NOT NULL').all()) n += await forHost(h);
+      do {
+        again = false;
+        for (const d of db.prepare('SELECT id, name, ip, auto_watch FROM devices WHERE auto_watch IS NOT NULL').all()) n += await forDevice(d);
+        for (const h of db.prepare('SELECT id, name, kind, last_ok, data, auto_watch FROM proxmox_hosts WHERE auto_watch IS NOT NULL').all()) n += await forHost(h);
+      } while (again && on());
       if (n) log.info(`Watch new devices: ${n} monitor(s)/sensor(s) created`);
-    } catch (e) { log.warn(`Watch new devices: ${e.message}`); } finally { busy = false; }
+    } catch (e) { log.warn(`Watch new devices: ${e.message}`); } finally { busy = false; again = false; }
     return n;
   }
 

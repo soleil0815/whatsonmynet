@@ -158,9 +158,10 @@ Monitore und Sensoren lassen sich in **Gruppen** ordnen, z. B. „Webseiten“, 
 Wie in Uptime Kuma: eine Seite, die ohne Anmeldung zeigt, was läuft und was nicht – für Kollegen, den Empfang oder einen Bildschirm im Flur. Es gibt sie erst, wenn ein Administrator eine anlegt: *Monitoring → Statusseiten → Statusseite anlegen*.
 
 - **Was sie zeigt**, bestimmst du: Gruppen und einzelne Monitore, in deiner Reihenfolge, jeweils unter einem **angezeigten Namen** (leer = der Name in WhatsOnMyNet). Eine Gruppe ist eine Zeile („Teilweise gestört“, wenn ein Teil ausfällt) – oder mit *Jeden einzeln zeigen* ein Abschnitt mit ihren Monitoren.
-- Je Zeile: Zustand (*In Betrieb*, *Gestört*, *Teilweise gestört*, *Wartung*, *Nicht überwacht*), die **letzten 90 Tage** als Balken (auf dem Handy 30) und die Verfügbarkeit in Prozent (abschaltbar). Oben die Gesamtlage („Störung bei 2 von 6“), darunter auf Wunsch ein **Hinweis** (z. B. eine angekündigte Wartung) und eine Beschreibung.
+- Je Zeile: Zustand (*In Betrieb*, *Gestört*, *Teilweise gestört*, *Wartung*, *Nicht überwacht*), die **letzten 90 Tage** als Balken (auf dem Handy 30) und die Verfügbarkeit in Prozent (abschaltbar). Oben die Gesamtlage („Störung bei 2 von 6“ – gezählt werden die Zeilen mit eigenem Zustand, nicht ausgeschaltete oder noch nicht geprüfte), darunter auf Wunsch ein **Hinweis** (z. B. eine angekündigte Wartung) und eine Beschreibung.
 - **Nie** auf der Seite: Adressen, Ziele und Fehlertexte – nur Namen: die du vergibst, sonst die der Monitore (bei *Jeden einzeln zeigen* also z. B. „DC01 Ping“ – dann lieber Gruppe als eine Zeile). Sie lädt nichts aus dem Internet, hat kein JavaScript und aktualisiert sich jede Minute; Suchmaschinen sollen sie nicht aufnehmen.
 - **Zugang:** *Geheimer Link* (Standard) – eine Adresse aus Zufallszeichen, nur wer sie bekommt, sieht die Seite; *Neuer Link* macht den alten sofort ungültig. Oder *Eigene Adresse* wie `/status/it` – die kann jeder aufrufen, der sie kennt. Beide lassen sich auf **Netze beschränken** (z. B. `10.0.10.0/24`); hinter einem Reverse Proxy zählt die Adresse, die er weitergibt (`WOMN_TRUST_PROXY`).
+- Ein gelöschter Monitor verschwindet von der Seite (beim Zusammenführen doppelter Monitore zeigt die Zeile auf den verbliebenen, mit ihrem Namen).
 - Eine ausgeschaltete, gelöschte oder für das Netz nicht freigegebene Seite antwortet genauso wie eine, die es nie gab: „nicht gefunden“.
 
 ### Abhängigkeiten: keine Alarmflut
@@ -806,6 +807,7 @@ Ein **Plugin** ist ein kleines Skript, das du in WhatsOnMyNet schreibst und das 
 - eine **alte Version** läuft nicht („veraltet“ - nach dem Speichern einer neuen Version die Datei ersetzen),
 - ein Plugin **für andere Rechner** oder ein **ausgeschaltetes** läuft nicht („nicht für hier“),
 - eine Datei ohne den Kopf von WhatsOnMyNet läuft nicht („kein Plugin“).
+- liegt nach dem Umbenennen eines Plugins die Datei der früheren Version noch im Ordner, zählt die aktuelle; die alte steht als „alte Datei“ da und kann gelöscht werden.
 
 Eine neue Version entsteht nur, wenn sich die Datei ändert (Code, Name, System). Wer das Plugin bekommt, die Beschreibung, wie oft es läuft oder das Zeitlimit lassen sich ändern, ohne neu zu verteilen.
 

@@ -158,9 +158,10 @@ Monitors and sensors can be put in **groups**, e.g. "Websites", "Telephony", "St
 As in Uptime Kuma: a page that shows without login what runs and what does not – for colleagues, the reception desk or a screen in the corridor. It exists only once an administrator makes one: *Monitoring → Status pages → Create status page*.
 
 - **What it shows** is up to you: groups and single monitors, in your order, each under a **name shown** (empty = the name in WhatsOnMyNet). A group is one line ("Partly down" when part of it fails) – or, with *Show each one*, a section with its monitors.
-- Per line: state (*Operational*, *Down*, *Partly down*, *Maintenance*, *Not monitored*), the **last 90 days** as bars (30 on a phone) and the uptime in percent (can be switched off). At the top the overall state ("Outage at 2 of 6"), below it a **notice** if you like (e.g. an announced maintenance) and a description.
+- Per line: state (*Operational*, *Down*, *Partly down*, *Maintenance*, *Not monitored*), the **last 90 days** as bars (30 on a phone) and the uptime in percent (can be switched off). At the top the overall state ("Outage at 2 of 6" - counting the lines with a state of their own, not switched-off or not yet checked ones), below it a **notice** if you like (e.g. an announced maintenance) and a description.
 - **Never** on the page: addresses, targets and error texts – only names: those you give, else those of the monitors (with *Show each one* e.g. "DC01 Ping" – then rather the group as one line). It loads nothing from the internet, has no JavaScript and refreshes every minute; search engines are asked not to index it.
 - **Access:** *Secret link* (default) – an address of random characters, only those who get it see the page; *New link* makes the old one invalid at once. Or *Own address* such as `/status/it` – anyone who knows it can open it. Both can be **limited to networks** (e.g. `10.0.10.0/24`); behind a reverse proxy the address it passes on counts (`WOMN_TRUST_PROXY`).
+- A deleted monitor leaves the page (when duplicate monitors are merged, the line points to the one that stays, with its name).
 - A page that is switched off, deleted or not open to the network answers just like one that never existed: "not found".
 
 ### Dependencies: no alarm flood
@@ -807,6 +808,7 @@ A **plugin** is a small script you write in WhatsOnMyNet and that the host scrip
 - an **old version** does not run ("outdated" - replace the file after saving a new version),
 - a plugin **for other machines** or one **switched off** does not run ("not for here"),
 - a file without the header of WhatsOnMyNet does not run ("no plugin").
+- if the file of an earlier version is still in the folder after a plugin was renamed, the current one counts; the old one is shown as "old file" and can be deleted.
 
 A new version comes only when the file changes (code, name, system). Who gets the plugin, the description, how often it runs or the time limit can change without handing it out again.
 

@@ -49,12 +49,17 @@ export function createStatusPages({ db, shownStatus, now = () => new Date() }) {
     notice: p.notice, notice_level: p.notice_level, show_uptime: !!p.show_uptime, language: p.language, items: parse(p.items, []), enabled: !!p.enabled,
     created_at: p.created_at, updated_at: p.updated_at } : null);
 
-  /** What is shown, checked: groups (as one line or with their members) and single monitors */
-  function cleanItems(list) {
+  /**
+   * What is shown, checked: groups (as one line or with their members) and single monitors. A monitor that is gone
+   * but was on the page already (stored = the ids saved before) is left out, so the page can still be saved; a monitor
+   * newly chosen must exist.
+   */
+  function cleanItems(list, stored = new Set()) {
     if (!Array.isArray(list)) throw new HttpError(400, 'err.badRequest', 'items');
     if (list.length > MAX_ITEMS) throw new HttpError(400, 'err.badRequest', `at most ${MAX_ITEMS}`);
     const exists = db.prepare('SELECT 1 FROM monitors WHERE id=?');
-    return list.map((x) => {
+    const gone = (x) => x?.type === 'monitor' && Number.isInteger(Number(x.id)) && stored.has(Number(x.id)) && !exists.get(Number(x.id));
+    return list.filter((x) => !gone(x)).map((x) => {
       if (x?.type === 'group') {
         const group = line(x.group, 60);
         if (!group) throw new HttpError(400, 'err.groupRequired', '', 'items');
@@ -65,6 +70,8 @@ export function createStatusPages({ db, shownStatus, now = () => new Date() }) {
       return { type: 'monitor', id, label: line(x.label, 80) };
     });
   }
+
+  const storedIds = (old) => new Set([parse(old?.items, [])].flat().filter((x) => x?.type === 'monitor').map((x) => Number(x.id)));
 
   function clean(input, old) {
     const name = line(input.name ?? old?.name, 80);
@@ -89,7 +96,7 @@ export function createStatusPages({ db, shownStatus, now = () => new Date() }) {
       notice_level: level,
       show_uptime: (input.show_uptime ?? (old ? !!old.show_uptime : true)) ? 1 : 0,
       language: (input.language ?? old?.language) === 'en' ? 'en' : 'de',
-      items: JSON.stringify(cleanItems(input.items ?? parse(old?.items, []))),
+      items: JSON.stringify(cleanItems(input.items ?? parse(old?.items, []), storedIds(old))),
       enabled: (input.enabled ?? (old ? !!old.enabled : true)) ? 1 : 0,
     };
   }
@@ -187,10 +194,13 @@ export function createStatusPages({ db, shownStatus, now = () => new Date() }) {
       }
     }
     const all = sections.flatMap((s) => s.lines);
-    const bad = all.filter((l) => l.state === 'down' || l.state === 'partial').length;
-    const overall = bad ? (all.every((l) => l.state === 'down') ? 'down' : 'partial') : all.some((l) => l.state === 'maintenance') ? 'maintenance' : all.length ? 'up' : 'pending';
+    // the summary is over the lines with a state of their own: one not monitored or still being checked is no "of 3"
+    const counted = all.filter((l) => l.state !== 'off' && l.state !== 'pending');
+    const bad = counted.filter((l) => l.state === 'down' || l.state === 'partial').length;
+    const overall = bad ? (counted.every((l) => l.state === 'down') ? 'down' : 'partial') : counted.some((l) => l.state === 'maintenance') ? 'maintenance'
+      : counted.length ? 'up' : 'pending';
     return { title: p.name, description: p.description, notice: p.notice, notice_level: p.notice_level, show_uptime: !!p.show_uptime, language: p.language,
-      sections, overall, bad, total: all.length, at: at.toISOString(), days };
+      sections, overall, bad, counted: counted.length, total: all.length, at: at.toISOString(), days };
   }
 
   /** The page for a visitor - null when it is off, unknown or not for this address (the caller answers "not found") */
@@ -248,7 +258,7 @@ export function renderStatusPage(v) {
   return `${head(v.title, lang, true)}
 <body><main>
 <header><h1>${esc(v.title)}</h1>${v.description ? `<p class="lead">${para(v.description)}</p>` : ''}</header>
-<div class="overall o-${v.overall}" role="status"><span class="dot"></span>${esc(fill(T.all[v.overall] || T.all.pending, { n: v.bad, m: v.total }))}</div>
+<div class="overall o-${v.overall}" role="status"><span class="dot"></span>${esc(fill(T.all[v.overall] || T.all.pending, { n: v.bad, m: v.counted ?? v.total }))}</div>
 ${v.notice ? `<div class="notice n-${esc(v.notice_level)}">${para(v.notice)}</div>` : ''}
 ${v.total ? sections : `<p class="lead">${T.empty}</p>`}
 ${v.total ? `<p class="legend"><span class="d-long">${fill(T.days, { n: DAYS })}</span><span class="d-short">${fill(T.days, { n: 30 })}</span><span>${T.today}</span></p>` : ''}
