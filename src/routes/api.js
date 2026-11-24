@@ -373,9 +373,16 @@ export function createApi(ctx) {
       snmp: ['switch', 'nas', 'ups'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: pluggedFor(req, d), history: inventory.historyOf(d.id) });
   });
   // A non-admin sets only addresses he may scan: pollers and monitors of the device contact it (with the SNMP access data)
-  const deviceIpOk = async (req, oldIp = null) => {
+  // The web address of a device becomes the target of its automatic http monitor: the same rule as a monitor target
+  const deviceIpOk = async (req, old = {}) => {
     const ip = typeof req.body?.ip === 'string' ? req.body.ip.trim() : '';
-    if (ip && ip !== oldIp) await assertTargetsAllowed(db, req.user, [ip], { snmp: true });
+    if (ip && ip !== (old.ip ?? null)) await assertTargetsAllowed(db, req.user, [ip], { snmp: true });
+    const web = typeof req.body?.web_url === 'string' ? req.body.web_url.trim() : '';
+    if (web && web !== (old.web_url ?? null) && /^https?:/i.test(web)) {
+      let host = '';
+      try { host = new URL(web).hostname.replace(/^\[|\]$/g, ''); } catch { /* the inventory refuses it */ }
+      if (host) await assertTargetsAllowed(db, req.user, [host]);
+    }
   };
   r.post('/devices', editor, async (req, res) => {
     if (req.scope && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
@@ -404,7 +411,7 @@ export function createApi(ctx) {
   r.patch('/devices/:id', editor, async (req, res) => {
     visible(req, idParam(req));
     if (req.scope && 'location_id' in req.body && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
-    await deviceIpOk(req, db.prepare('SELECT ip FROM devices WHERE id=?').get(idParam(req))?.ip ?? null);
+    await deviceIpOk(req, db.prepare('SELECT ip, web_url FROM devices WHERE id=?').get(idParam(req)) || {});
     res.json(inventory.update(idParam(req), req.body, who(req)));
   });
   r.delete('/devices/:id', editor, (req, res) => {

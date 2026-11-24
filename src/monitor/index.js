@@ -480,12 +480,13 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   // (or the type) changed; guard.rule is the user's rule, kept with the monitor so every check
   // run checks the resolved address again (runCheck in checks.js)
   const ruleOf = (guard, v) => (guard?.rule && monitorHosts(v).length ? JSON.stringify(guard.rule) : null);
-  async function create(input, { guard = null } = {}) {
+  // rule: for monitors nobody typed (automatic watching) - checked the same way when the check runs
+  async function create(input, { guard = null, rule = null } = {}) {
     const v = await clean(input);
     if (guard) await guard(monitorHosts(v), v);
     refuseSame(v);
     const ts = iso();
-    const cols = { ...v, created_at: ts, updated_at: ts, status: 'pending', status_since: ts, target_rule: ruleOf(guard, v) };
+    const cols = { ...v, created_at: ts, updated_at: ts, status: 'pending', status_since: ts, target_rule: ruleOf(guard || (rule ? { rule } : null), v) };
     const keys = Object.keys(cols);
     const id = Number(db.prepare(`INSERT INTO monitors(${keys.join(',')}) VALUES(${keys.map(() => '?').join(',')})`).run(...keys.map((k) => cols[k])).lastInsertRowid);
     nextRun.set(id, 0);
@@ -498,8 +499,11 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const v = await clean(input, old);
     if (guard && hostsChanged(v, old)) await guard(monitorHosts(v), v);
     refuseSame(v, old);
-    // who set the address decides how it is checked when the check runs (an admin's change drops the rule)
-    if (hostsChanged(v, old)) v.target_rule = ruleOf(guard, v);
+    // who set the contacted host decides how it is checked when the check runs: a new host takes the rule of who typed
+    // it (an admin's: none); other changes (port, path, type) keep the rule of the host that stays
+    const contacted = (x) => JSON.stringify(monitorHosts(x).map((h) => String(h || '').toLowerCase()));
+    if (contacted({ ...old, ...v }) !== contacted(old)) v.target_rule = ruleOf(guard, { ...old, ...v });
+    else if (guard?.rule && !old.target_rule && hostsChanged(v, old) && monitorHosts({ ...old, ...v }).length) v.target_rule = ruleOf(guard, { ...old, ...v });
     // Paused because its device got a new IP (see devicechange.js): saved with a newly typed password it runs again
     // (at the address it was saved for - the dialog offers the new one)
     const ipMoved = !old.enabled && !!parse(old.data, {})?.ipMoved;

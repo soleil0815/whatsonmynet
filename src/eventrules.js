@@ -178,7 +178,7 @@ export function senderIs(entry, row) {
  * Does a stored message match the filter? row: events_in (+ device_name). A message without source and log (NXLog
  * without JSON: only time, host, severity, id and text) cannot say where it came from - there the event id decides alone.
  */
-/** stats (optional): { regexMs } - how long the expression took (in its thread), for switching slow rules off */
+/** stats (optional): { regexMs, key } - the first group of the expression and how long the expression took (in its thread), for switching slow rules off */
 export function ruleMatches(m, row, stats = null) {
   if (m.kind && row.kind !== m.kind) return false;
   if (row.severity > (m.maxSeverity ?? 7)) return false;
@@ -199,8 +199,9 @@ export function ruleMatches(m, row, stats = null) {
   }
   if (m.regex) {
     let r;
-    try { r = regexRun(m.regex, row.text); } catch (e) { if (stats && e.code === 'REGEX_TIMEOUT') stats.regexMs = e.ms; throw e; }
-    if (stats) stats.regexMs = r.ms;
+    // with stats the first group comes along (the key of an open event) - one run instead of two
+    try { r = regexRun(m.regex, row.text, { group: !!stats }); } catch (e) { if (stats && e.code === 'REGEX_TIMEOUT') stats.regexMs = e.ms; throw e; }
+    if (stats) { stats.regexMs = r.ms; stats.key = r.key; }
     if (!r.match) return false;
   }
   return true;
@@ -314,8 +315,8 @@ export function createEventRules({ db, channels, settings = null, now = () => ne
 
   // ------------------------------------------------------------------------------------------------- open events
   /** The first match opens an event; later ones only count it up (no new notification). Returns true when counted up. */
-  function openOrBump(rule, row) {
-    const key = keyOf(rule._keyRe, row.text);
+  function openOrBump(rule, row, known = null) {
+    const key = known ?? keyOf(rule._keyRe, row.text);
     const live = db.prepare("SELECT id FROM event_open WHERE rule_id=? AND source_ip=? AND key=? AND state IN ('open','ack') ORDER BY id DESC LIMIT 1").get(rule.id, row.source_ip, key);
     if (live) {
       db.prepare('UPDATE event_open SET count=count+1, last_at=?, last_event=? WHERE id=?').run(row.at || iso(), row.id, live.id);
@@ -401,7 +402,7 @@ export function createEventRules({ db, channels, settings = null, now = () => ne
         if (held.length < rule.count.n) continue;
         const ids = held.map((h) => h.id);
         markHits(ids, 'UPDATE event_rule_hits SET held=0');
-        if (rule.state?.open && openOrBump(rule, full)) { markHits(ids, 'UPDATE event_rule_hits SET sent_at=?', iso()); continue; }
+        if (rule.state?.open && openOrBump(rule, full, 'key' in st ? st.key : null)) { markHits(ids, 'UPDATE event_rule_hits SET sent_at=?', iso()); continue; }
         const events = held.slice(-DIGEST_LIST).map((h) => eventRow(h.event_id)).filter(Boolean);
         for (const id of ids) inflight.add(id);
         deliver(rule, events, held.length, held[0].at, { threshold: { n: rule.count.n, minutes: rule.count.minutes, who: grp ? (full.device_name || full.host || grp) : '' } })
@@ -412,7 +413,7 @@ export function createEventRules({ db, channels, settings = null, now = () => ne
       }
       const hitId = Number(db.prepare('INSERT INTO event_rule_hits(rule_id, event_id, at) VALUES(?,?,?)').run(rule.id, row.id, at).lastInsertRowid);
       // an open event that is already there: counted up, no new notification
-      if (rule.state?.open && openOrBump(rule, full)) { db.prepare('UPDATE event_rule_hits SET sent_at=? WHERE id=?').run(iso(), hitId); continue; }
+      if (rule.state?.open && openOrBump(rule, full, 'key' in st ? st.key : null)) { db.prepare('UPDATE event_rule_hits SET sent_at=? WHERE id=?').run(iso(), hitId); continue; }
       if (rule.mode !== 'each') continue;
       const t = now().getTime();
       const sent = (singles.get(rule.id) || []).filter((x) => t - x < 3600000);

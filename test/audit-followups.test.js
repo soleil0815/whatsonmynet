@@ -253,3 +253,51 @@ test('Windows checks: Fluent Bit in a fixed version, Node 24', () => {
   const wf = fs.readFileSync('.github/workflows/windows.yml', 'utf8');
   assert.doesNotMatch(wf, /node-version: 22/);
 });
+
+// ---------------------------------------------------------------------------------------------------- review findings
+test('review: an admin with left-over location rows is not switched off by a restore', async () => {
+  const { dbFile, backupsDir, db: first } = restoreSetup();
+  let db = first;
+  const adm = db.prepare("INSERT INTO users(username,password_hash,role,created_at) VALUES('testadmin','h','admin',?)").run(iso()).lastInsertRowid;
+  const name = path.basename(await backupDatabase(db, 10, backupsDir));
+  const l = db.prepare("INSERT INTO locations(name,created_at) VALUES('Neu',?)").run(iso()).lastInsertRowid;
+  db.prepare('INSERT INTO user_locations(user_id,location_id) VALUES(?,?)').run(adm, l);
+  await createBackups({ db, settings: { get: () => 10 }, dbFile, backupsDir, restart: () => {} }).restore({ name });
+  db.close();
+  applyPendingRestore(dbFile, backupsDir);
+  db = openDatabase(dbFile);
+  try { assert.equal(db.prepare('SELECT active FROM users WHERE id=?').get(adm).active, 1); } finally { db.close(); }
+});
+
+test('review: an admin changing only the port keeps the rule of the host a non-admin typed', async () => {
+  const app = await startApp({ setupToken: 'fu-port' });
+  const { call, ctx } = app;
+  setLookupForTests(async () => [{ address: '10.0.10.9', family: 4 }]);
+  try {
+    await call('POST', '/api/setup', { code: 'fu-port', username: 'testadmin', password: 'Admin-Passwort-1', email: 'a@firma.local' });
+    await call('POST', '/api/users', { username: 'max', password: 'Max-Passwort-123', role: 'editor', email: 'max@firma.local' });
+    await call('POST', '/api/login', { username: 'max', password: 'Max-Passwort-123' }, { who: 'ed' });
+    const m = await call('POST', '/api/monitors', { name: 'Dienst', type: 'tcp', target: 'dienst.firma.local', port: 80, interval_s: 3600 }, { who: 'ed' });
+    assert.equal(m.status, 201);
+    await call('PUT', `/api/monitors/${m.data.id}`, { name: 'Dienst', type: 'tcp', target: 'dienst.firma.local', port: 8080, interval_s: 3600 });
+    assert.ok(ctx.db.prepare('SELECT target_rule FROM monitors WHERE id=?').get(m.data.id).target_rule);
+  } finally { setLookupForTests(null); await app.close(); }
+});
+
+test('review: a non-admin cannot reach the host itself through the web address of a device', async () => {
+  const app = await startApp({ setupToken: 'fu-web' });
+  const { call } = app;
+  try {
+    await call('POST', '/api/setup', { code: 'fu-web', username: 'testadmin', password: 'Admin-Passwort-1', email: 'a@firma.local' });
+    await call('POST', '/api/users', { username: 'max', password: 'Max-Passwort-123', role: 'editor', email: 'max@firma.local' });
+    await call('POST', '/api/login', { username: 'max', password: 'Max-Passwort-123' }, { who: 'ed' });
+    const r = await call('POST', '/api/devices', { name: 'PC-0001', ip: '10.0.10.21', type: 'pc', web_url: 'http://127.0.0.1:9/admin' }, { who: 'ed' });
+    assert.equal(r.status, 403);
+    assert.equal((await call('POST', '/api/devices', { name: 'PC-0002', ip: '10.0.10.22', type: 'pc', web_url: 'http://10.0.10.22/' }, { who: 'ed' })).status, 201);
+  } finally { await app.close(); }
+});
+
+test('review: monitors made by automatic watching never contact the host itself', async () => {
+  const r = await runCheck({ type: 'tcp', target: '127.0.0.1', port: 9, timeout_s: 1, target_rule: JSON.stringify({ scoped: false, subnets: [] }) }, {});
+  assert.match(r.message, /not allowed/);
+});

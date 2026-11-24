@@ -11,6 +11,9 @@ import { proxmoxMetrics } from '../proxmox.js';
 import { nodeTempsInto } from '../hosts.js';
 import { deviceValueLabel, hostValueLabel, sensorName } from './sensornames.js';
 
+// The rule of monitors made by automatic watching (lib/targetguard.js: an editor without a location limit)
+const AUTO_RULE = { scoped: false, subnets: [] };
+
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
 const SETTING = 'autowatch.enabled';
 
@@ -99,7 +102,9 @@ export function createAutoWatch({ db, settings, monitoring }) {
   }
 
   async function sensor(input) {
-    try { await monitoring.create(input); return 1; } catch (e) {
+    // nobody typed this address (device address or web address of the device, which a user may have entered): the
+    // check never goes to the WhatsOnMyNet host itself, link-local or 0.x, also when a name points there later
+    try { await monitoring.create(input, { rule: AUTO_RULE }); return 1; } catch (e) {
       // watched that way already (by hand, with another name or address): nothing to add
       if (e.status !== 409) log.warn(`Watch new devices: ${input.name}: ${e.message}`);
       return 0;

@@ -211,7 +211,8 @@ export function checkRegexTime(src, samples = [], { limitMs = 2000, slowMs = SLO
 // ------------------------------------------------------------------------------------------------ the running thread
 // One thread for all expressions of the rules. The caller waits for the answer (Atomics.wait, the matching of a message
 // is synchronous); when the answer does not come in time the thread is stopped and a new one starts with the next run.
-// State in ctrl[0]: 0 waiting, 1 match, 2 no match, 3 invalid; ctrl[1] = 1 once the thread is ready.
+// State in ctrl[0]: 0 waiting, 1 match, 2 no match, 3 invalid; ctrl[1] = 1 once the thread is ready; ctrl[2] = 1 once
+// the thread took the text (a thread that never took it was gone - the run is tried once more on a new one).
 const RUNNER = `
 const { parentPort, workerData } = require('node:worker_threads');
 const ctrl = new Int32Array(workerData.ctrl);
@@ -219,6 +220,7 @@ const num = new Float64Array(workerData.num);
 const out = new Uint16Array(workerData.out);
 const cache = new Map();
 parentPort.on('message', ({ src, text, group }) => {
+  Atomics.store(ctrl, 2, 1);
   let re = cache.get(src);
   if (re === undefined) {
     try { re = new RegExp(src, 'i'); } catch { re = null; }
@@ -244,7 +246,7 @@ Atomics.notify(ctrl, 1);
 let runner = null;
 
 function startRunner() {
-  const buf = { ctrl: new SharedArrayBuffer(8), num: new SharedArrayBuffer(8), out: new SharedArrayBuffer(2 * 121) };
+  const buf = { ctrl: new SharedArrayBuffer(12), num: new SharedArrayBuffer(8), out: new SharedArrayBuffer(2 * 121) };
   const w = new Worker(RUNNER, { eval: true, workerData: buf, resourceLimits: { maxOldGenerationSizeMb: 64 } });
   w.unref();
   const r = { w, ctrl: new Int32Array(buf.ctrl), num: new Float64Array(buf.num), out: new Uint16Array(buf.out) };
@@ -261,16 +263,19 @@ function startRunner() {
  * key = the first group (group: true), ms = the time of the expression itself. Throws { code: 'REGEX_TIMEOUT', ms }
  * when it did not finish within limitMs (the thread is stopped), HttpError(err.regexInvalid) for an invalid one.
  */
-export function regexRun(src, text, { group = false, limitMs = HARD_MS } = {}) {
+export function regexRun(src, text, { group = false, limitMs = HARD_MS } = {}, retried = false) {
   if (!runner) runner = startRunner();
   const r = runner;
   Atomics.store(r.ctrl, 0, 0);
+  Atomics.store(r.ctrl, 2, 0);
   r.w.postMessage({ src: String(src), text: String(text ?? '').slice(0, 4000), group: !!group });
   Atomics.wait(r.ctrl, 0, 0, limitMs);
   const state = Atomics.load(r.ctrl, 0);
   if (state === 0) {
     runner = null;
     r.w.terminate().catch(() => {});
+    // the thread never took the text (it had ended, e.g. at its memory limit): not the expression's fault - once more
+    if (!Atomics.load(r.ctrl, 2) && !retried) return regexRun(src, text, { group, limitMs }, true);
     throw Object.assign(new Error(`regular expression stopped after ${limitMs} ms`), { code: 'REGEX_TIMEOUT', ms: limitMs });
   }
   if (state === 3) throw new HttpError(400, 'err.regexInvalid', undefined, 'regex');

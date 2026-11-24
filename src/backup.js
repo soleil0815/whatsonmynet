@@ -122,7 +122,15 @@ function carryCredentials(r, cred) {
         const now = cred.users.get(u.id);
         if (!same(now, u)) { r.prepare('UPDATE users SET active=0 WHERE id=?').run(u.id); continue; }
         set.run(...cols.map((c) => now[c]), u.id);
-        if (!scoped) continue;
+        // administrators have no location limit (left-over rows from an earlier role do not count)
+        if (now.role === 'admin' || !cred.scopes) continue;
+        const limited = (cred.scopes.get(u.id) || []).length > 0;
+        // a backup from before location limits: the table comes with the schema update, empty - that would mean
+        // "everything" for someone limited today, so he is switched off (an admin enables him again with his limits)
+        if (!scoped) {
+          if (limited) { r.prepare('UPDATE users SET active=0 WHERE id=?').run(u.id); log.warn(`Restore: user ${u.id} is limited to locations the backup does not know - switched off`); }
+          continue;
+        }
         // today's location limits: only locations that are the same ones in the backup
         const want = cred.scopes.get(u.id) || [];
         r.prepare('DELETE FROM user_locations WHERE user_id=?').run(u.id);
