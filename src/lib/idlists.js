@@ -8,15 +8,41 @@ const parse = (s) => { try { const v = JSON.parse(s); return Array.isArray(v) ? 
  * onEmpty(row) is called for rows whose list becomes empty (where "empty" means "all", the caller decides what to do).
  * Returns the number of rows changed.
  */
-export function dropId(db, table, column, id, onEmpty = null) {
+export function dropId(db, table, column, id, onEmpty = null, idOf = Number) {
   const n = Number(id);
   let changed = 0;
   for (const row of db.prepare(`SELECT id, ${column} v FROM ${table} WHERE ${column} <> '[]'`).all()) {
     const list = parse(row.v);
-    const rest = list.filter((x) => Number(x) !== n);
+    const rest = list.filter((x) => idOf(x) !== n);
     if (rest.length === list.length) continue;
     db.prepare(`UPDATE ${table} SET ${column}=? WHERE id=?`).run(JSON.stringify(rest), row.id);
     if (!rest.length && onEmpty) onEmpty(row);
+    changed++;
+  }
+  return changed;
+}
+
+/**
+ * Replaces id `from` by `to` in the JSON list in `table.column` of every row (no id twice afterwards).
+ * idOf(entry) reads the id of an entry (null: an entry without one, kept as it is); withId(entry, id) gives the entry
+ * with the other id (other fields of the entry, e.g. a label, stay).
+ */
+export function replaceId(db, table, column, from, to, idOf = Number, withId = (x, id) => id) {
+  const f = Number(from); const t = Number(to);
+  let changed = 0;
+  for (const row of db.prepare(`SELECT id, ${column} v FROM ${table} WHERE ${column} <> '[]'`).all()) {
+    const list = parse(row.v);
+    if (!list.some((x) => idOf(x) === f)) continue;
+    const seen = new Set();
+    const next = [];
+    for (const x of list) {
+      const id = idOf(x);
+      const y = id === f ? withId(x, t) : id === null || id === undefined || Number.isNaN(id) ? x : withId(x, id);
+      const k = idOf(y);
+      if (k !== null && k !== undefined && !Number.isNaN(k)) { if (seen.has(k)) continue; seen.add(k); }
+      next.push(y);
+    }
+    db.prepare(`UPDATE ${table} SET ${column}=? WHERE id=?`).run(JSON.stringify(next), row.id);
     changed++;
   }
   return changed;
@@ -40,12 +66,26 @@ const offReport = (db) => (row) => {
   if (r && r.device_ids === '[]' && r.monitor_ids === '[]') db.prepare('UPDATE reports SET enabled=0 WHERE id=?').run(row.id);
 };
 
-/** Monitors deleted (also through their device): out of maintenance windows and reports */
+// Every JSON list that refers to monitors - kept in one place, so that deleting and merging monitors treat them all
+// alike. Status pages hold objects ({ type: 'monitor', id, label } or a group, which names no monitor id); a page whose
+// last line goes stays as it is (it shows "nothing chosen", never everything).
+const statusItemId = (x) => (x && typeof x === 'object' && x.type === 'monitor' ? Number(x.id) : null);
+export const MONITOR_ID_LISTS = [
+  { table: 'maintenance', column: 'monitor_ids', onEmpty: offWindow },
+  { table: 'reports', column: 'monitor_ids', onEmpty: offReport },
+  { table: 'status_pages', column: 'items', idOf: statusItemId, withId: (x, id) => ({ ...x, id }) },
+];
+
+/** Monitors deleted (also through their device): out of maintenance windows, reports and status pages */
 export function forgetMonitors(db, ids) {
   for (const id of ids) {
-    dropId(db, 'maintenance', 'monitor_ids', id, offWindow(db));
-    dropId(db, 'reports', 'monitor_ids', id, offReport(db));
+    for (const l of MONITOR_ID_LISTS) dropId(db, l.table, l.column, id, l.onEmpty ? l.onEmpty(db) : null, l.idOf);
   }
+}
+
+/** Monitor `from` merged into `to`: every list that named `from` names `to` (a status page line keeps its label) */
+export function replaceMonitorId(db, from, to) {
+  for (const l of MONITOR_ID_LISTS) replaceId(db, l.table, l.column, from, to, l.idOf, l.withId);
 }
 
 /** Devices deleted: out of reports, and their monitors out of everything above */

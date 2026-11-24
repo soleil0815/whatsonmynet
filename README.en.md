@@ -160,7 +160,7 @@ Devices of type *Printer* are queried regularly (default hourly) via SNMP - read
 - **Notice** when a supply drops to the threshold (default 15 %) and again when it is empty - once per cartridge, armed again after replacing it
 - The overview lists all printers that are running low
 
-Settings under *Settings → Printers*. The community is the same as for the scan (*Settings → Scan*). SNMP (v1 or v2c) has to be switched on at the printer.
+Settings under *Settings → Printers*. The community is the same as for the scan (*Settings → Scan*). SNMP (v1/v2c or v3) has to be switched on at the printer.
 
 ## Switches and NAS via SNMP (from version 0.3)
 
@@ -172,7 +172,7 @@ Devices of type *Switch* and *NAS* are queried regularly (default every 15 minut
 - **Taken into the inventory**: serial number and model that printers, switches and NAS report via SNMP, for switches and NAS also the firmware (or DSM version), go right into the details of the device and stay current; your own different entries stay. If a device at the same IP reports another serial number (exchange), serial number, model and firmware come from the new device and the next scan takes the new MAC address; the history notes the exchange.
 - **Notice** for a failing disk, a degraded RAID, fan or power supply failure and a volume running full (default 90 %) - once when it happens and once when everything is fine again. The overview lists open NAS problems.
 
-Settings under *Settings → Switches & NAS*. Simple switches without SNMP (e.g. TP-Link "Easy Smart") give no data; on LANCOM, HP/Aruba, Cisco, Netgear Smart and others SNMP v1/v2c has to be enabled read-only.
+Settings under *Settings → Switches & NAS*. Simple switches without SNMP (e.g. TP-Link "Easy Smart") give no data; on LANCOM, HP/Aruba, Cisco, Netgear Smart and others SNMP (v1/v2c or v3) has to be enabled read-only.
 
 ## Network map (from version 0.3)
 
@@ -200,7 +200,7 @@ Then the "ping not possible" notice of the scan is gone and ping monitors work. 
 
 ### SNMP
 
-By default the scan asks devices with the community `public` (SNMP v2c, else v1) for name, description and vendor ID - read-only. Own communities go under *Settings → Scan*; they are stored encrypted. Devices without SNMP (e.g. simple TP-Link switches) are still recognised, just with fewer details.
+By default the scan asks devices with the community `public` (SNMP v2c, else v1) for name, description and vendor ID - read-only. Own communities go under *Settings → Scan*; they are stored encrypted. Devices that only speak SNMPv3 are asked with up to five users from *Settings → Scan → SNMPv3 accesses* (authentication and encryption, passwords stored encrypted). Devices without SNMP (e.g. simple TP-Link switches) are still recognised, just with fewer details.
 
 ## Sign-in with Active Directory (from version 0.3)
 
@@ -217,7 +217,7 @@ Under *Settings → Active Directory* users sign in with their Windows account:
 
 Editors and viewers can be limited to one or more locations under *Settings → Users* - e.g. for the IT of a branch office. A limited account only sees and changes devices, scan results and monitors of these locations, scans only their subnets and counts only them on the overview. Devices without a location, free subnets, the nightly scan, maintenance windows and Docker hosts stay with unlimited accounts. Administrators are never limited; this also applies to accounts from Active Directory.
 
-**Allowed scan targets:** editors only scan private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and 100.64.0.0/10) and the subnets an administrator entered at the locations. Public addresses - as a subnet in a scan or as the deep check of a device - only an administrator may scan.
+**Allowed scan targets:** editors only scan private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and 100.64.0.0/10) and the subnets an administrator entered at the locations. Public addresses - as a subnet in a scan or as the deep check of a device - only an administrator may scan. Monitor targets a non-admin enters never point at the WhatsOnMyNet host itself (127.x, ::1), 169.254.x/fe80:: or 0.x; anything else is allowed, internet addresses such as `https://www.example.com` too. Users limited to locations reach private addresses only inside the subnets of their locations (if those have no subnets, the private networks count). SNMP monitors send the stored communities and v3 users - for non-admins they only go to private networks and location subnets (limited to locations: only their own). Host names are resolved when saved: if there are IPv4 answers, those decide (each must fit) and IPv6 answers only must not point at the host itself; with IPv6 answers only, each must fit (fc00::/7 counts as private). If the owner of a name changes its DNS answer later, that is not noticed - for a strict boundary have non-admins enter IP addresses. Printers, switches & NAS and an administrator's SNMP monitors ask with all stored access data. A device IP address entered by a non-admin follows the SNMP rule, because printers, switches and NAS are asked with the stored access data.
 
 ## Scan agent for branch offices (from version 0.3)
 
@@ -245,7 +245,7 @@ More hypervisors on the same page: **VMware ESXi/vCenter** (vSphere API), **XCP-
 
 **Network controllers:** UniFi Network (UniFi OS and Network app), TP-Link Omada and MikroTik RouterOS 7 are asked with a read-only account (*Monitoring → Network controllers*): access points, switches and gateways with model, firmware (and pending update), clients and state. Model, serial number, firmware and type go into the inventory by MAC; sensors for online state, clients, CPU/RAM and firmware updates. The scan recognises UniFi, Omada, MikroTik and Aruba Instant On by their model names.
 
-**Windows and Linux machines without agent:** a small script (PowerShell or POSIX sh) reports CPU, RAM, drives, uptime and services every 5 minutes - no agent, no open port, no account, nothing installed. On its first call it sets itself up (scheduled task or cron), an uninstall script removes it again. If it does not report for a day, the device page asks whether it was removed, and the machine is no longer offered for new sensors. Per device (*device page → More → Monitor with script*) or shared by many machines to roll out (*Settings → Machine scripts*); reports are matched to the inventory by MAC, machine name or IP.
+**Windows and Linux machines without agent:** a small script (PowerShell or POSIX sh) reports CPU, RAM, drives, uptime and services every 5 minutes - no agent package, nothing downloaded, no open port, no account. On its first call it only sets up itself and a scheduled task (cron), an uninstall script removes it again. If it does not report for a day, the device page asks whether it was removed, and the machine is no longer offered for new sensors. Per device (*device page → More → Monitor with script*) or shared by many machines to roll out (*Settings → Machine scripts*); reports are matched to the inventory by MAC, machine name or IP - with the shared script a device with a known MAC only when the report names that MAC (every machine holds the key), and only a script with its own key changes serial number, model and MAC of a device. A laptop that reports only its docking station's MAC therefore gets a script of its own (device page).
 
 - **VE**: nodes (online, CPU, RAM), storage with usage, VMs and containers (running/stopped), the latest backups (vzdump) with errors
 - **Backup Server**: datastores with usage, backup groups with the age of their last backup, failed tasks (verify, GC …)
@@ -306,7 +306,9 @@ Details on all of it are in the manual.
 - On first start WhatsOnMyNet creates a self-signed certificate for the host name, `localhost`, all IPv4 addresses of the host and the address in `WOMN_BASE_URL`. It is renewed automatically 30 days before it expires.
 - Under *Settings → HTTPS certificate* you upload your own certificate: PEM (certificate with chain + key) or PFX/P12 with password. It is checked first (key matches, not expired) and becomes active without a restart.
 - HTTP on `WOMN_HTTP_PORT` redirects to HTTPS - except for a trusted reverse proxy (see below).
-- WhatsOnMyNet only sends HSTS with an own certificate and a host name. With a self-signed certificate HSTS would stop the browser from letting you past the warning - you would be locked out.
+- When WhatsOnMyNet replaces an uploaded certificate (a new upload, back to self-signed, key missing or not matching), the old files stay as `*.<time>.bak` in `<data>/tls`. If `cert.pem` or `key.pem` exists but cannot be read (permissions), WhatsOnMyNet does not start and replaces nothing.
+- WhatsOnMyNet only sends HSTS with an own certificate and only for host names that certificate contains. With a self-signed certificate HSTS would stop the browser from letting you past the warning - you would be locked out.
+- Behind the trusted reverse proxy WhatsOnMyNet sends HSTS only when the proxy does not redirect to HTTPS itself and WhatsOnMyNet had to do it. `WOMN_HSTS=off` switches HSTS off entirely, `WOMN_HSTS=preload` always sends it (with an own certificate or behind the proxy, never with the self-signed one); the default is `on`.
 
 ### Behind a reverse proxy
 
@@ -329,7 +331,7 @@ The proxy then forwards either to `https://<server>:8743` (self-signed - "do not
 
 ## Two-factor sign-in (from version 0.4)
 
-Local accounts switch on two-factor sign-in under *My account*: scan the QR code with an authenticator app (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), confirm a code and keep the ten **recovery codes** safe. Sign-in then asks for the six-digit code; each code works only once. Under *Settings → Users* two-factor sign-in can be made **mandatory for administrators**. Admins can reset it for an account with a lost phone; accounts from Active Directory are protected by AD itself.
+Local accounts switch on two-factor sign-in under *My account*: scan the QR code with an authenticator app (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), confirm a code together with the current password (other sign-ins of the account are signed out) and keep the ten **recovery codes** safe. Sign-in then asks for the six-digit code; each code works only once. Under *Settings → Users* two-factor sign-in can be made **mandatory for administrators**. Admins can reset it for an account with a lost phone; accounts from Active Directory are protected by AD itself.
 
 ## Locked out?
 
@@ -350,7 +352,7 @@ What is new is in [CHANGELOG.en.md](CHANGELOG.en.md) (the same texts as in the p
 - In the week before patch day a ZAP scan attacks the program in a throwaway container without login. The monthly code audit evaluates the result.
 - WhatsOnMyNet writes a daily compressed database backup to `data/backups/` (`.sqlite.gz`, the 10 newest by default, number under *Settings → Backup*, where single backups can be deleted as well). Back up the whole `data/` folder, including `secret.key` and `tls/`. The messages of the devices (syslog, traps) are in `data/events.sqlite` - not in the database and not in the daily backups; at most 2 GB (adjustable).
 
-Under *Settings → Backup* (from 0.4) you download a current backup at any time, create one or restore one - uploaded (`.sqlite` or `.sqlite.gz`) or from the list on the server. The file is checked first (WhatsOnMyNet database, not newer than this version, same key), the current state is kept as `whatsonmynet-before-restore-…`, then the program restarts. **Keep `data/secret.key` (or your `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
+Under *Settings → Backup* (from 0.4) you download a current backup at any time, create one or restore one - uploaded (`.sqlite` or `.sqlite.gz`) or from the list on the server. The file is checked first (WhatsOnMyNet database, not newer than this version, same key), the current state is kept as `whatsonmynet-before-restore-…`, then the program restarts. Keys and accounts stay as they are today: agent, machine-script and /metrics keys, passwords and two-factor sign-in come from the current database, keys deleted since do not come back and accounts deleted since only deactivated (for backups of the same installation, not when moving to a new server). **Keep `data/secret.key` (or your `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 
 **Diagnostic package** (from 0.22): *Settings → Diagnostics* makes a ZIP for troubleshooting - log of the last 1–30 days or since the last update, warnings and errors, monitors, sensors, devices with their values, hypervisors and cloud, messages and event rules, scans, settings. Anonymised by default (placeholders such as GERAET-001 that stay the same in every package and can be looked up), never with passwords or keys, nothing is sent anywhere by itself.
 
@@ -366,4 +368,4 @@ What changed in which version is shown in the program itself: click the version 
 
 WhatsOnMyNet is open source under the [GNU Affero General Public License 3.0](LICENSE) (AGPL-3.0-or-later). Whoever offers a modified version over a network has to make its source code available (`WOMN_SOURCE_URL`).
 
-Fonts: IBM Plex and Barlow Semi Condensed (SIL Open Font License, `public/fonts/OFL.txt`). Manufacturer list: IEEE via the package `oui-data` (BSD-2-Clause).
+Fonts: Inter and IBM Plex Mono (SIL Open Font License, `public/fonts/OFL.txt`). Manufacturer list: IEEE via the package `oui-data` (BSD-2-Clause).

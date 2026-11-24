@@ -269,8 +269,13 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
       db.pragma('foreign_keys = OFF');
       try {
         db.transaction(() => {
-          // who is signed in here, by name: a session must never pass to another person with the same user id
-          const signedIn = db.prepare('SELECT s.id, u.username FROM sessions s JOIN users u ON u.id=s.user_id').all();
+          // who is signed in here, by name: a session must never pass to another person with the same user id. After
+          // the first copy (the accounts here are the master's then) also by the sign-in data of the account: a new
+          // password or a 2FA reset on the master (which ended the sessions there) ends them here too
+          const sameCopy = !!st.standby?.lastSync;
+          const credOf = (u) => JSON.stringify([u.password_hash, u.totp_enabled, u.totp_secret]);
+          const signedIn = db.prepare('SELECT s.id sid, u.* FROM sessions s JOIN users u ON u.id=s.user_id').all()
+            .map((x) => ({ id: x.sid, username: x.username, cred: credOf(x) }));
           for (const t of tables) {
             const cols = db.prepare(`PRAGMA main.table_info("${t}")`).all().map((c) => `"${c.name}"`).join(',');
             db.prepare(`DELETE FROM main."${t}"`).run();
@@ -282,9 +287,12 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
           }
           // sessions of users that do not exist (or may not sign in) on the master are ended here as well
           db.prepare('DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users WHERE active=1)').run();
-          const nameOf = db.prepare('SELECT u.username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=?');
+          const nameOf = db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=?');
           const end = db.prepare('DELETE FROM sessions WHERE id=?');
-          for (const x of signedIn) if (nameOf.get(x.id)?.username !== x.username) end.run(x.id);
+          for (const x of signedIn) {
+            const now = nameOf.get(x.id);
+            if (now?.username !== x.username || (sameCopy && credOf(now) !== x.cred)) end.run(x.id);
+          }
         })();
         copied = true;
       } finally { db.pragma('foreign_keys = ON'); }
@@ -829,7 +837,7 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
         const addEvent = db.prepare('INSERT INTO monitor_events(monitor_id,at,kind,message,notified) VALUES(?,?,?,?,?)');
         for (const r of arr(b.events, MAX_ROWS)) {
           const id = target(r?.[0]); const at = iso(r?.[1]); const kind = str(r?.[2], 20);
-          if (id === null || !at || at < from || at > to || !/^[a-z]+$/.test(kind) || hasEvent.get(id, at, kind)) continue;
+          if (id === null || !at || at < from || at > to || !/^[a-zA-Z]+$/.test(kind) || hasEvent.get(id, at, kind)) continue;
           addEvent.run(id, at, kind, str(r[3], 500), str(r[4], 200));
           n.events++;
         }

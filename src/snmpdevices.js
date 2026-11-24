@@ -72,6 +72,7 @@ export function carryOver(prev, next) {
 
 export function createSnmpDevices({ db, settings, channels }) {
   // communities and SNMPv3 users of the scan
+  // (stored ones only for private ranges and location subnets)
   const communities = () => snmpCredentials(settings);
   const readers = { switch: readSwitch, nas: readNas, ups: readUpsDevice };
   const busy = new Set();

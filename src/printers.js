@@ -38,6 +38,7 @@ export function supplyAlerts(supplies, previous, threshold) {
 
 export function createPrinters({ db, settings, channels }) {
   // communities and SNMPv3 users of the scan
+  // (stored ones only for private ranges and location subnets)
   const communities = () => snmpCredentials(settings);
   const busy = new Set();
   let timer = null;

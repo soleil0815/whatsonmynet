@@ -274,7 +274,9 @@ export async function hostScriptsSettings(body, reload) {
     h('p', { class: 'muted small', style: { marginTop: 0 } }, t('hs.unknownLead')),
     h('ul', { class: 'port-macs' }, unmatched.map((u) => h('li', {}, h('strong', {}, u.hostname), h('span', { class: 'mono small' }, u.ip || ''),
       h('span', { class: 'muted small' }, [u.os, fmtAgo(u.at, t)].filter(Boolean).join(' · ')),
-      btn(t('hs.forget'), { class: 'btn btn-sm btn-ghost', onclick: async () => { try { await del(`/hosts/unmatched/${encodeURIComponent(u.hostname)}`); reload(); } catch (ex) { fail(ex); } } }))))) : null,
+      btn(t('hs.forget'), { class: 'btn btn-sm btn-ghost', onclick: async () => {
+        if (!await confirmDialog(t('hs.forget'), t('hs.forgetConfirm', { name: u.hostname }), t('hs.forget'), t('cancel'))) return;
+        try { await del(`/hosts/unmatched/${encodeURIComponent(u.hostname)}`); toast(t('hs.forgotten', { name: u.hostname })); reload(); } catch (ex) { fail(ex); } } }))))) : null,
   h('section', { class: 'panel panel-pad' },
     h('h2', { class: 'section-title' }, t('hs.remove')),
     h('p', { class: 'muted small', style: { marginTop: 0 } }, t('hs.removeLead')),

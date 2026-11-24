@@ -197,7 +197,7 @@ function editor(body, p, choices, reload) {
 /** Device page: the plugins meant for this machine and what its host script says about them */
 export function pluginsBlock(pl, isAdmin) {
   if (!pl?.items?.length) return null;
-  const tone = { ok: 'ok', missing: 'new', outdated: 'new', notAssigned: '', changed: 'bad', error: 'bad', timeout: 'bad', deferred: 'new', unsafe: 'bad', noHeader: '' };
+  const tone = { ok: 'ok', missing: 'new', outdated: 'new', notAssigned: '', changed: 'bad', error: 'bad', timeout: 'bad', deferred: 'new', unsafe: 'bad', noHeader: '', oldFile: '' };
   return [h('h3', { class: 'sub-title' }, t('plg.onDevice', { n: pl.items.length })),
     !pl.scriptKnows ? h('p', { class: 'note warn small', style: { margin: '0 0 6px' } }, t('plg.scriptOld')) : null,
     h('ul', { class: 'ev-list' }, pl.items.map((x) => h('li', {},

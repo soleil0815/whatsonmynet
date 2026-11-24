@@ -158,9 +158,10 @@ Monitore und Sensoren lassen sich in **Gruppen** ordnen, z. B. „Webseiten“, 
 Wie in Uptime Kuma: eine Seite, die ohne Anmeldung zeigt, was läuft und was nicht – für Kollegen, den Empfang oder einen Bildschirm im Flur. Es gibt sie erst, wenn ein Administrator eine anlegt: *Monitoring → Statusseiten → Statusseite anlegen*.
 
 - **Was sie zeigt**, bestimmst du: Gruppen und einzelne Monitore, in deiner Reihenfolge, jeweils unter einem **angezeigten Namen** (leer = der Name in WhatsOnMyNet). Eine Gruppe ist eine Zeile („Teilweise gestört“, wenn ein Teil ausfällt) – oder mit *Jeden einzeln zeigen* ein Abschnitt mit ihren Monitoren.
-- Je Zeile: Zustand (*In Betrieb*, *Gestört*, *Teilweise gestört*, *Wartung*, *Nicht überwacht*), die **letzten 90 Tage** als Balken (auf dem Handy 30) und die Verfügbarkeit in Prozent (abschaltbar). Oben die Gesamtlage („Störung bei 2 von 6“), darunter auf Wunsch ein **Hinweis** (z. B. eine angekündigte Wartung) und eine Beschreibung.
+- Je Zeile: Zustand (*In Betrieb*, *Gestört*, *Teilweise gestört*, *Wartung*, *Nicht überwacht*), die **letzten 90 Tage** als Balken (auf dem Handy 30) und die Verfügbarkeit in Prozent (abschaltbar). Oben die Gesamtlage („Störung bei 2 von 6“ – gezählt werden die Zeilen mit eigenem Zustand, nicht ausgeschaltete oder noch nicht geprüfte), darunter auf Wunsch ein **Hinweis** (z. B. eine angekündigte Wartung) und eine Beschreibung.
 - **Nie** auf der Seite: Adressen, Ziele und Fehlertexte – nur Namen: die du vergibst, sonst die der Monitore (bei *Jeden einzeln zeigen* also z. B. „DC01 Ping“ – dann lieber Gruppe als eine Zeile). Sie lädt nichts aus dem Internet, hat kein JavaScript und aktualisiert sich jede Minute; Suchmaschinen sollen sie nicht aufnehmen.
 - **Zugang:** *Geheimer Link* (Standard) – eine Adresse aus Zufallszeichen, nur wer sie bekommt, sieht die Seite; *Neuer Link* macht den alten sofort ungültig. Oder *Eigene Adresse* wie `/status/it` – die kann jeder aufrufen, der sie kennt. Beide lassen sich auf **Netze beschränken** (z. B. `10.0.10.0/24`); hinter einem Reverse Proxy zählt die Adresse, die er weitergibt (`WOMN_TRUST_PROXY`).
+- Ein gelöschter Monitor verschwindet von der Seite (beim Zusammenführen doppelter Monitore zeigt die Zeile auf den verbliebenen, mit ihrem Namen).
 - Eine ausgeschaltete, gelöschte oder für das Netz nicht freigegebene Seite antwortet genauso wie eine, die es nie gab: „nicht gefunden“.
 
 ### Abhängigkeiten: keine Alarmflut
@@ -210,7 +211,7 @@ Ereignisregeln können mehr als „bei jedem Treffer eine Mail“:
 
 Windows-Server und -Clients schicken ihre Ereignisanzeige mit einem kleinen, kostenlosen Agenten per Syslog an WhatsOnMyNet. WhatsOnMyNet erkennt darin **Ereignisnummer**, **Protokoll**, **Quelle** und **Konto** und zeigt sie unter dem Meldungstext - so wie in der Ereignisanzeige. Unter *Meldungen → Empfang einstellen* **Syslog über TCP** einschalten (Port 1514); bei den Agenten muss nur die Adresse von WhatsOnMyNet eingetragen werden (hier `womn.firma.local`).
 
-**NXLog** ([NXLog Community Edition](https://nxlog.co), kostenlos, läuft als Dienst). Eine vollständige `C:\Program Files\nxlog\conf\nxlog.conf`, die so im Betrieb läuft:
+**NXLog** (NXLog Community Edition, https://nxlog.co, kostenlos, läuft als Dienst). Eine vollständige `C:\Program Files\nxlog\conf\nxlog.conf`, die so im Betrieb läuft:
 
 ```
 Panic Soft
@@ -273,7 +274,7 @@ SpoolDir  %ROOT%\data
 
 Danach den Dienst neu starten (`Restart-Service nxlog`). Unter *Meldungen* steht bei jeder neuen Meldung z. B. „Ereignis 101 · Microsoft-Windows-Kernel-Cache/Operational · Microsoft-Windows-Kernel-Cache“. Fehlen die drei `Exec`-Zeilen ab `$Channel`, schickt NXLog nur Zeit, Rechner, Stufe, Nummer und Text: Regeln erkennen die Ereignisse dann nur an der Nummer, und ein Ausschluss für eine Quelle (`1@Ntfs`) greift nicht. Auch `Exec $Message = to_json(); to_syslog_ietf();` (alle Felder als JSON) wird verstanden, die Meldungen werden damit aber deutlich länger.
 
-**Fluent Bit** ([fluentbit.io](https://fluentbit.io), kostenlos, Apache-Lizenz, läuft als Dienst) geht genauso. `fluent-bit.conf`:
+**Fluent Bit** (https://fluentbit.io, kostenlos, Apache-Lizenz, läuft als Dienst) geht genauso. `fluent-bit.conf`:
 
 ```
 [SERVICE]
@@ -344,7 +345,7 @@ Unter *Meldungen → Ereignisregeln* legst du fest, welche Meldungen wohin gehen
 - **Fertige Regeln:** Virenfund (Defender 1116/1117), Software-Einschränkung (865-868), AppLocker (8004/8007), Benutzerkonto gesperrt (4740), Mitglied zu einer Sicherheitsgruppe hinzugefügt (4728/4732/4756), Ereignisprotokoll gelöscht (1102 Sicherheit, 104 System), neuer Dienst (7045), neue geplante Aufgabe (4698), Benutzerkonto angelegt (4720), Echtzeitschutz von Defender ausgeschaltet (5001), PowerShell: verdächtiges Skript (4104, nur Warnungen) und Fehler eines Befehls (4100), Fehler eines Geräts (Syslog), dazu gezählt: fehlgeschlagene Anmeldungen (4625) und SSH-Fehlversuche. Danach lässt sich alles ändern.
   - 4698 und 4720 schreibt Windows nur mit erweiterter Überwachung (Gruppenrichtlinie *Erweiterte Überwachungsrichtlinienkonfiguration*: *Objektzugriff → Andere Objektzugriffsereignisse* bzw. *Kontoverwaltung → Benutzerkontenverwaltung*, jeweils *Erfolg*). Die PowerShell-Regeln brauchen die Skriptblockprotokollierung (*Administrative Vorlagen → Windows-Komponenten → Windows PowerShell*).
   - Die PowerShell-Regeln sind am aussagekräftigsten, wenn die eigenen Werkzeuge still sind: Das Windows-Skript von WhatsOnMyNet erzeugt keine Warnungen 4104 und keine 4100.
-- **Bedingungen:** Ereignisnummern (auch Bereiche), Quelle, Protokoll, Absender (Name, Gerät oder IP, auch Teile), Wörter im Text, Wörter, die nicht vorkommen dürfen, Art und Schwere. Alle angegebenen Bedingungen müssen passen. Fehlen Quelle und Protokoll in der Meldung (NXLog ohne `Exec`), entscheidet die Nummer.
+- **Bedingungen:** Ereignisnummern (auch Bereiche), Quelle, Protokoll, Absender (Teil des Rechnernamens oder des Geräts aus dem Inventar, Groß-/Kleinschreibung egal - `switch` passt zu *core-switch-01*, `*` steht für beliebige Zeichen: `core-*-01`; eine IP-Adresse genau - `10.0.10.1` nicht für 10.0.10.15; ein Netz wie `10.0.10.0/24` oder der Anfang einer Adresse wie `10.0.10.` bzw. `10.0.10`. Adressen gelten für den sendenden Rechner und für die Adresse, die eine Meldung als Rechnername mitbringt - z. B. hinter einem rsyslog-Relay), Wörter im Text, Wörter, die nicht vorkommen dürfen, Art und Schwere. Alle angegebenen Bedingungen müssen passen. Fehlen Quelle und Protokoll in der Meldung (NXLog ohne `Exec`), entscheidet die Nummer.
 - **Testen** zeigt, welche der Meldungen der letzten 7 Tage die Regel getroffen hätte - bevor sie gespeichert ist. Bei jeder Meldung macht **Regel** daraus eine neue Regel.
 - **Versand:** *einzeln* - jede Meldung eine Nachricht (beim Ticketsystem: ein Ticket je Ereignis), höchstens so viele je Stunde wie eingestellt (Standard 20); was darüber hinaus kommt, geht nach der Sammelzeit gesammelt hinterher. *Gesammelt* - eine Nachricht mit allen Meldungen, sobald die älteste so alt ist wie die Sammelzeit (Standard 15 Minuten).
 - **Nichts geht verloren:** Jeder Treffer wird zuerst gespeichert und erst nach dem Versand als erledigt markiert. Ist ein Empfänger nicht erreichbar, wird es alle 5 Minuten wieder versucht - eine Stunde lang; die Liste zeigt wartende und nicht zugestellte Meldungen.
@@ -722,7 +723,7 @@ Dazu kommt, was ein Administrator von einem Server wissen will. Alles steht auf 
 
 Lüfter, Netzteile, weitere Temperaturen und RAID-Controller kennt das Betriebssystem meist nicht. Die liefert der Management-Chip des Servers (siehe *Server-Hardware* oben).
 
-Das Skript installiert nichts, lädt nichts nach, öffnet keinen Port und braucht kein Konto - es sendet nur an WhatsOnMyNet. (Unter Windows fragt die Update-Suche, wie Windows selbst, den WSUS-Server bzw. Windows Update.) Unter Windows ist es ein PowerShell-Skript (läuft als SYSTEM), unter Linux ein POSIX-sh-Skript (braucht `sh`, `awk` und `curl`, root ist nicht nötig).
+Kein Agent-Paket, nichts wird heruntergeladen, kein offener Port, kein Konto: Das Skript richtet nur sich selbst und eine geplante Aufgabe (cron) ein und sendet nur an WhatsOnMyNet. (Unter Windows fragt die Update-Suche, wie Windows selbst, den WSUS-Server bzw. Windows Update.) Unter Windows ist es ein PowerShell-Skript (läuft als SYSTEM), unter Linux ein POSIX-sh-Skript (braucht `sh`, `awk` und `curl`, root ist nicht nötig).
 
 **Ein einzelner Rechner:** *Monitoring* → **Monitor anlegen** → **Rechner per Skript (Windows/Linux)** → Rechner wählen. Auf der Geräteseite geht es genauso über **Überwachen** (Art der Prüfung *Rechner per Skript*) oder *Mehr* → **Per Skript überwachen**. Dann Windows oder Linux → **Skript erzeugen**.
 
@@ -732,7 +733,7 @@ Das Skript installiert nichts, lädt nichts nach, öffnet keinen Port und brauch
    - **Linux**: `sh womn-host.sh` - als root nach `/usr/local/sbin` mit `/etc/cron.d/whatsonmynet-host`, sonst nach `~/.local/bin` mit einem Eintrag in der eigenen crontab.
 3. Nach ein paar Sekunden zeigt die Geräteseite den Bereich **System**. Mit **Sensor anlegen** werden daraus Monitore mit Alarm: „Rechner meldet sich“, „CPU-Auslastung“, „Arbeitsspeicher“, „Laufwerk C:“, „Gestörte Dienste“ oder „Dienst … läuft“.
 
-**Viele Rechner auf einmal:** *Einstellungen → Rechner-Skripte* → **Gemeinsames Skript**. Dieses eine Skript verteilst du über die Softwareverteilung, ein Startskript per Gruppenrichtlinie oder Ansible. Jede Meldung wird dem passenden Gerät im Inventar zugeordnet (MAC-Adresse, Rechnername, IP). Rechner, die noch nicht im Inventar stehen, erscheinen dort unter *Unbekannte Rechner* - es wird nichts von allein angelegt.
+**Viele Rechner auf einmal:** *Einstellungen → Rechner-Skripte* → **Gemeinsames Skript**. Dieses eine Skript verteilst du über die Softwareverteilung, ein Startskript per Gruppenrichtlinie oder Ansible. Jede Meldung wird dem passenden Gerät im Inventar zugeordnet (MAC-Adresse, Rechnername, IP). Weil alle Rechner denselben Schlüssel haben, erreicht eine Meldung ein Gerät mit bekannter MAC nur, wenn sie diese MAC nennt, und sie ändert nie Seriennummer, Modell oder MAC (*Hardware getauscht* erkennt nur ein Skript mit eigenem Schlüssel). Ein Notebook, das an der Dockingstation nur deren MAC meldet, erscheint so unter *Unbekannte Rechner* - gib ihm ein eigenes Skript (*Geräteseite → Mehr → Per Skript überwachen*). Rechner, die noch nicht im Inventar stehen, erscheinen dort unter *Unbekannte Rechner* - es wird nichts von allein angelegt.
 
 **Gestörte Dienste:** Windows - automatisch startende Dienste, die mit einem Fehlercode beendet wurden (normal beendete Dienste mit Auslösestart zählen nicht); Linux - systemd-Dienste im Zustand *failed*.
 
@@ -806,6 +807,7 @@ Ein **Plugin** ist ein kleines Skript, das du in WhatsOnMyNet schreibst und das 
 - eine **alte Version** läuft nicht („veraltet“ - nach dem Speichern einer neuen Version die Datei ersetzen),
 - ein Plugin **für andere Rechner** oder ein **ausgeschaltetes** läuft nicht („nicht für hier“),
 - eine Datei ohne den Kopf von WhatsOnMyNet läuft nicht („kein Plugin“).
+- liegt nach dem Umbenennen eines Plugins die Datei der früheren Version noch im Ordner, zählt die aktuelle; die alte steht als „alte Datei“ da und kann gelöscht werden.
 
 Eine neue Version entsteht nur, wenn sich die Datei ändert (Code, Name, System). Wer das Plugin bekommt, die Beschreibung, wie oft es läuft oder das Zeitlimit lassen sich ändern, ohne neu zu verteilen.
 
@@ -851,10 +853,10 @@ Unter *Überwachung → Berichte* gehen Berichte zu festen Zeiten per E-Mail rau
 
 ## Benutzer und Rechte
 
-- **Rollen**: *Administrator* (alles), *Bearbeiter* (scannen, übernehmen, pflegen, Monitore), *Nur lesen*. Bearbeiter scannen nur private Netze (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) und die Subnetze der Standorte; öffentliche Adressen nur Administratoren.
+- **Rollen**: *Administrator* (alles), *Bearbeiter* (scannen, übernehmen, pflegen, Monitore), *Nur lesen*. Bearbeiter scannen nur private Netze (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) und die Subnetze der Standorte; öffentliche Adressen nur Administratoren. Monitor-Ziele von Nicht-Administratoren: nie der WhatsOnMyNet-Rechner selbst (127.x, ::1) oder 169.254.x; sonst alles, auch Internet-Adressen - mit Standort-Beschränkung private Adressen nur in den Subnetzen der eigenen Standorte. SNMP-Monitore (sie schicken die gespeicherten SNMP-Zugänge) nur an private Netze und Standort-Subnetze. Geräte-Adressen von Nicht-Administratoren folgen der SNMP-Regel (Drucker, Switches und NAS werden mit den hinterlegten Zugängen abgefragt).
 - **Standorte**: Bearbeiter und Leser lassen sich auf Standorte beschränken - sie sehen und ändern dann nur deren Geräte, Scans und Monitore.
 - **Active Directory**: Anmeldung mit dem Windows-Konto, siehe nächster Abschnitt.
-- **Zwei-Faktor-Anmeldung** (*Mein Konto*): QR-Code mit einer Authenticator-App scannen, Code bestätigen, Wiederherstellungscodes aufbewahren. Für Administratoren lässt sie sich unter *Einstellungen → Benutzer* (Abschnitt *Anmeldung*) verpflichtend machen.
+- **Zwei-Faktor-Anmeldung** (*Mein Konto*): QR-Code mit einer Authenticator-App scannen, Code zusammen mit dem aktuellen Passwort bestätigen (andere Anmeldungen des Kontos werden dabei abgemeldet), Wiederherstellungscodes aufbewahren. Für Administratoren lässt sie sich unter *Einstellungen → Benutzer* (Abschnitt *Anmeldung*) verpflichtend machen.
 
 ## Anmeldung mit Active Directory
 
@@ -922,7 +924,7 @@ Beim Koppeln übernimmt der Standby **alle Daten des Masters** (Geräte, Monitor
 ## Sicherung und Updates
 
 - Einmal am Tag sichert WhatsOnMyNet die Datenbank komprimiert nach `data/backups/` (`whatsonmynet-….sqlite.gz`, das erste Mal eine Stunde nach dem Start); vor jedem Update der Datenbank zusätzlich. Aufbewahrt werden standardmäßig die 10 neuesten, von den Kopien vor Updates und vor dem Einspielen ebenso je die 10 neuesten. Die Anzahl stellst du unter *Einstellungen → Sicherung → Aufbewahrung* ein (1 - 90); beim Speichern werden überzählige gleich gelöscht, die ältesten zuerst. Ältere unkomprimierte Sicherungen werden einmal komprimiert.
-- *Einstellungen → Sicherung*: Sicherung herunterladen, jetzt sichern, einzelne Sicherungen löschen (Papierkorb in der Liste, mit Rückfrage), Sicherung einspielen - `.sqlite` oder `.sqlite.gz` (der aktuelle Stand wird vorher gesichert, dann startet das Programm neu). Zum Öffnen von Hand: `gunzip -k whatsonmynet-….sqlite.gz`.
+- *Einstellungen → Sicherung*: Sicherung herunterladen, jetzt sichern, einzelne Sicherungen löschen (Papierkorb in der Liste, mit Rückfrage), Sicherung einspielen - `.sqlite` oder `.sqlite.gz` (der aktuelle Stand wird vorher gesichert, dann startet das Programm neu). Schlüssel (Agenten, Rechner-Skripte, /metrics), Kennwörter und Zwei-Faktor-Anmeldung bleiben dabei auf dem heutigen Stand; seither gelöschte Schlüssel kommen nicht zurück, seither gelöschte Konten nur deaktiviert. Zum Öffnen von Hand: `gunzip -k whatsonmynet-….sqlite.gz`.
 - **Bewahre `data/secret.key` (bzw. `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
 - Updates: in Dockhand/Watchtower oder `docker compose pull && docker compose up -d`. Einmal im Monat erscheint ein Sicherheits-Update mit neuen Paketen.
 

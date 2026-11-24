@@ -10,7 +10,7 @@ import { systemPanel, openHostScript, helpLink } from './hostscripts.js';
 import { isReadOnly } from './failover.js';
 import { hardwarePanel } from './hardware.js';
 import { switchPanel, nasPanel, upsPanel, pluggedLine } from './snmpdev.js';
-import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips } from './common.js';
+import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips, notFoundPage } from './common.js';
 import { maintBadge, untilText } from '../maint.js';
 
 const FIELD_LABEL = (f) => t(`f.${f}`) !== `f.${f}` ? t(`f.${f}`) : f;
@@ -85,7 +85,10 @@ export function historyText(r) {
 }
 
 export async function renderDevice(main, id) {
-  const [d, locations, sugg] = await Promise.all([get(`/devices/${id}`), get('/locations'), get('/devices/suggestions').catch(() => null)]);
+  let d; let locations; let sugg;
+  try {
+    [d, locations, sugg] = await Promise.all([get(`/devices/${id}`), get('/locations'), get('/devices/suggestions').catch(() => null)]);
+  } catch (e) { if (notFoundPage(main, e, '/inventory')) return; throw e; }
   const types = state.meta?.types || [];
   const services = state.meta?.services || {};
   const edit = state.user.canEdit;
@@ -264,7 +267,7 @@ export async function renderDevice(main, id) {
         d.hostScript ? t('hs.menuRenew') : t('hs.menu')) : null,
       d.ip ? h('button', { type: 'button', title: ti ? t('dev.deepTi') : t('dev.deepHint'), onclick: (e) => { e.currentTarget.closest('details').open = false; deep(e.currentTarget); } }, t('dev.deep')) : null,
       // what this device sent by itself (syslog, traps, Windows events): the messages page for this sender only
-      d.ip && (state.user.canEditServer ?? state.user.canEdit) ? h('button', { type: 'button', onclick: () => navigate(`/events?from=${encodeURIComponent(d.ip)}`) }, t('ev.deviceMessages')) : null,
+      d.ip && state.user.serverPages ? h('button', { type: 'button', onclick: () => navigate(`/events?from=${encodeURIComponent(d.ip)}`) }, t('ev.deviceMessages')) : null,
       h('button', { type: 'button', class: 'danger', onclick: (e) => { e.currentTarget.closest('details').open = false; remove(); } }, t('dev.delete')))) : null;
 
   mount(main, h('div', { class: 'page' },

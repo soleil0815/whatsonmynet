@@ -120,7 +120,8 @@ test('monitoring: roles and secrets', async () => {
   const asAdmin = JSON.stringify((await call('GET', '/api/channels')).data);
   assert.ok(!asAdmin.includes('AAAAAAAAAA'));
   assert.equal((await call('POST', '/api/monitors', { name: 'Web', type: 'http', target: 'https://intranet.firma.local/' }, { who: 'viewer' })).status, 403);
-  const m = await call('POST', '/api/monitors', { name: 'Web', type: 'http', target: 'https://intranet.firma.local/', channels: [ch.data.id] }, { who: 'editor' });
+  // (an editor's target must resolve to an allowed address when saved - a name that does not resolve here is refused)
+  const m = await call('POST', '/api/monitors', { name: 'Web', type: 'http', target: 'https://10.0.10.80/', channels: [ch.data.id] }, { who: 'editor' });
   assert.equal(m.status, 201);
   assert.equal((await call('GET', `/api/monitors/${m.data.id}`, undefined, { who: 'viewer' })).data.name, 'Web');
   assert.equal((await call('POST', `/api/monitors/${m.data.id}/pause`, {}, { who: 'editor' })).data.status, 'paused');

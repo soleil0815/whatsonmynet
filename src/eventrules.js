@@ -16,6 +16,7 @@
 // - Open events: the first match opens one (per rule, sender and key - the first group of the expression, e.g. the
 //   port), further matches only count up instead of notifying again; a user acknowledges it; the counter-message
 //   ("link up"), a click or a time without news closes it.
+import { BlockList, isIP } from 'node:net';
 import { performance } from 'node:perf_hooks';
 import { HttpError, line } from './lib/http.js';
 import { log } from './lib/log.js';
@@ -124,6 +125,55 @@ export function cleanOptions(o = {}) {
   return { count, state };
 }
 
+// ------------------------------------------------------------------------------------------------ the sender
+// An entry of "from" is one of:
+//   - an address (10.0.10.5, fe80::1): exactly - 10.0.10.1 is not 10.0.10.15;
+//   - a network (10.0.10.0/24, 2001:db8::/32): an address in it;
+//   - the start of an IPv4 address ("10.0.10.", "10.0.10.*", "10.0.10"): addresses beginning with it;
+//   - a name: part of the name of the device in the inventory that has the sending address or of the computer name the
+//     message gives itself, any case ("switch" is core-switch-01); "*" stands for any characters ("core-*-01").
+// Addresses are compared with the sending address and with the computer name the message gives (a relay such as
+// rsyslog forwards messages of other machines, which then name their own address there).
+const senderCache = new Map();
+function senderTest(entry) {
+  const e = String(entry ?? '').trim().toLowerCase();
+  let t = senderCache.get(e);
+  if (t) return t;
+  const cidr = /^([0-9a-f.:]+)\/(\d{1,3})$/.exec(e);
+  const v = cidr ? isIP(cidr[1]) : 0;
+  const addrs = (row) => [addrOf(row.source_ip), addrOf(row.host)].filter(Boolean);
+  if (cidr && v && Number(cidr[2]) <= (v === 4 ? 32 : 128)) {
+    const bl = new BlockList();
+    bl.addSubnet(cidr[1], Number(cidr[2]), v === 4 ? 'ipv4' : 'ipv6');
+    t = (row) => addrs(row).some((ip) => { const k = isIP(ip); return !!k && bl.check(ip, k === 4 ? 'ipv4' : 'ipv6'); });
+  } else if (isIP(e)) {
+    const want = addrOf(e);
+    t = (row) => addrs(row).includes(want);
+  } else if (/^\d{1,3}(?:\.\d{1,3}){0,2}(?:\.\*?)$|^\d{1,3}(?:\.\d{1,3}){1,2}$/.test(e)) {
+    const prefix = `${e.replace(/\*$/, '').replace(/\.$/, '')}.`;
+    t = (row) => addrs(row).some((ip) => isIP(ip) === 4 && ip.startsWith(prefix));
+  } else {
+    // a name: a part of it, "*" for any characters in between (the pieces in this order - no expression, no backtracking)
+    const parts = e.split('*').filter(Boolean);
+    const has = (name) => {
+      const n = lower(name);
+      if (!n) return false;
+      let at = 0;
+      for (const p of parts) { const i = n.indexOf(p, at); if (i < 0) return false; at = i + p.length; }
+      return true;
+    };
+    t = (row) => parts.length > 0 && (has(row.device_name) || has(row.host));
+  }
+  if (senderCache.size > 2000) senderCache.clear();
+  senderCache.set(e, t);
+  return t;
+}
+const addrOf = (x) => String(x ?? '').trim().toLowerCase().replace(/^::ffff:(?=\d+\.)/, '');
+/** Is the sender of this message the one an entry of "from" names? */
+export function senderIs(entry, row) {
+  return senderTest(entry)(row);
+}
+
 /**
  * Does a stored message match the filter? row: events_in (+ device_name). A message without source and log (NXLog
  * without JSON: only time, host, severity, id and text) cannot say where it came from - there the event id decides alone.
@@ -140,10 +190,7 @@ export function ruleMatches(m, row) {
   const unknownOrigin = row.event_id !== null && row.event_id !== undefined && !row.app && !row.channel;
   if (m.source && !unknownOrigin && !lower(row.app).includes(lower(m.source))) return false;
   if (m.channel && !unknownOrigin && !lower(row.channel).includes(lower(m.channel))) return false;
-  if (m.from?.length) {
-    const who = [row.source_ip, row.host, row.device_name].map(lower);
-    if (!m.from.some((f) => who.some((w) => w.includes(lower(f))))) return false;
-  }
+  if (m.from?.length && !m.from.some((f) => senderIs(f, row))) return false;
   if (m.words?.length || m.notWords?.length) {
     const text = lower(`${row.app} ${row.text} ${row.account || ''}`);
     if (m.words?.length && !m.words.some((w) => text.includes(lower(w)))) return false;

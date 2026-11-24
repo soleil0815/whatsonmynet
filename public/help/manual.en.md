@@ -158,9 +158,10 @@ Monitors and sensors can be put in **groups**, e.g. "Websites", "Telephony", "St
 As in Uptime Kuma: a page that shows without login what runs and what does not – for colleagues, the reception desk or a screen in the corridor. It exists only once an administrator makes one: *Monitoring → Status pages → Create status page*.
 
 - **What it shows** is up to you: groups and single monitors, in your order, each under a **name shown** (empty = the name in WhatsOnMyNet). A group is one line ("Partly down" when part of it fails) – or, with *Show each one*, a section with its monitors.
-- Per line: state (*Operational*, *Down*, *Partly down*, *Maintenance*, *Not monitored*), the **last 90 days** as bars (30 on a phone) and the uptime in percent (can be switched off). At the top the overall state ("Outage at 2 of 6"), below it a **notice** if you like (e.g. an announced maintenance) and a description.
+- Per line: state (*Operational*, *Down*, *Partly down*, *Maintenance*, *Not monitored*), the **last 90 days** as bars (30 on a phone) and the uptime in percent (can be switched off). At the top the overall state ("Outage at 2 of 6" - counting the lines with a state of their own, not switched-off or not yet checked ones), below it a **notice** if you like (e.g. an announced maintenance) and a description.
 - **Never** on the page: addresses, targets and error texts – only names: those you give, else those of the monitors (with *Show each one* e.g. "DC01 Ping" – then rather the group as one line). It loads nothing from the internet, has no JavaScript and refreshes every minute; search engines are asked not to index it.
 - **Access:** *Secret link* (default) – an address of random characters, only those who get it see the page; *New link* makes the old one invalid at once. Or *Own address* such as `/status/it` – anyone who knows it can open it. Both can be **limited to networks** (e.g. `10.0.10.0/24`); behind a reverse proxy the address it passes on counts (`WOMN_TRUST_PROXY`).
+- A deleted monitor leaves the page (when duplicate monitors are merged, the line points to the one that stays, with its name).
 - A page that is switched off, deleted or not open to the network answers just like one that never existed: "not found".
 
 ### Dependencies: no alarm flood
@@ -210,7 +211,7 @@ Event rules can do more than "a mail at every match":
 
 Windows servers and clients send their event log by syslog to WhatsOnMyNet with a small free agent. WhatsOnMyNet recognises the **event id**, **log**, **source** and **account** in it and shows them below the text of the message - as in the event viewer. Under *Messages → Receiving settings* switch on **Syslog over TCP** (port 1514); in the agents only the address of WhatsOnMyNet is entered (here `womn.firma.local`).
 
-**NXLog** ([NXLog Community Edition](https://nxlog.co), free, runs as a service). A complete `C:\Program Files\nxlog\conf\nxlog.conf` as it runs in production:
+**NXLog** (NXLog Community Edition, https://nxlog.co, free, runs as a service). A complete `C:\Program Files\nxlog\conf\nxlog.conf` as it runs in production:
 
 ```
 Panic Soft
@@ -273,7 +274,7 @@ SpoolDir  %ROOT%\data
 
 Then restart the service (`Restart-Service nxlog`). Under *Messages* each new message shows e.g. "Event 101 · Microsoft-Windows-Kernel-Cache/Operational · Microsoft-Windows-Kernel-Cache". Without the three `Exec` lines from `$Channel` on, NXLog only sends time, computer, level, id and text: rules then recognise the events by their id only, and leaving out for one source (`1@Ntfs`) does not apply. `Exec $Message = to_json(); to_syslog_ietf();` (all fields as JSON) is understood too, but makes the messages much longer.
 
-**Fluent Bit** ([fluentbit.io](https://fluentbit.io), free, Apache licence, runs as a service) works just as well. `fluent-bit.conf`:
+**Fluent Bit** (https://fluentbit.io, free, Apache licence, runs as a service) works just as well. `fluent-bit.conf`:
 
 ```
 [SERVICE]
@@ -344,7 +345,7 @@ Under *Messages → Event rules* you set which messages go where - **apart from 
 - **Ready-made rules:** virus found (Defender 1116/1117), software restriction (865-868), AppLocker (8004/8007), user account locked (4740), member added to a security group (4728/4732/4756), event log cleared (1102 security, 104 system), new service (7045), new scheduled task (4698), user account created (4720), Defender real-time protection turned off (5001), PowerShell: suspicious script (4104, warnings only) and error of a command (4100), errors of a device (syslog), and counted: failed logons (4625) and SSH failures. Everything can be changed afterwards.
   - Windows writes 4698 and 4720 only with advanced auditing (group policy *Advanced Audit Policy Configuration*: *Object Access → Other Object Access Events* and *Account Management → User Account Management*, *Success* each). The PowerShell rules need script block logging (*Administrative Templates → Windows Components → Windows PowerShell*).
   - The PowerShell rules say the most when your own tools are quiet: the Windows script of WhatsOnMyNet causes no warnings 4104 and no 4100.
-- **Conditions:** event ids (ranges too), source, log, sender (name, device or IP, parts too), words in the text, words that must not be there, kind and severity. All conditions given must match. If source and log are missing in the message (NXLog without `Exec`), the id decides.
+- **Conditions:** event ids (ranges too), source, log, sender (part of the computer name or of the inventory device, any case - `switch` matches *core-switch-01*, `*` stands for any characters: `core-*-01`; an IP address exactly - `10.0.10.1` not for 10.0.10.15; a network such as `10.0.10.0/24` or the start of an address such as `10.0.10.` or `10.0.10`. Addresses apply to the sending machine and to an address a message gives as its computer name - e.g. behind an rsyslog relay), words in the text, words that must not be there, kind and severity. All conditions given must match. If source and log are missing in the message (NXLog without `Exec`), the id decides.
 - **Test** shows which of the messages of the last 7 days the rule would have matched - before it is saved. At every message **Rule** turns it into a new rule.
 - **Sending:** *one by one* - one notification per message (with a ticket system: one ticket per event), at most as many per hour as set (default 20); what comes beyond follows collected after the collecting time. *Collected* - one notification with all messages once the oldest is as old as the collecting time (default 15 minutes).
 - **Nothing is lost:** every match is stored first and only marked done once sent. If a recipient cannot be reached it is tried again every 5 minutes - for an hour; the list shows waiting and undelivered messages.
@@ -723,7 +724,7 @@ On top comes what an administrator wants to know about a server. Everything is o
 
 Fans, power supplies, further temperatures and RAID controllers are usually unknown to the operating system. They come from the management chip of the server (see *Server hardware* above).
 
-The script installs nothing, loads nothing, opens no port and needs no account - it only sends to WhatsOnMyNet. (On Windows the update search asks the WSUS server or Windows Update, like Windows itself.) On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
+No agent package, nothing downloaded, no open port, no account: the script only sets up itself and a scheduled task (cron) and only sends to WhatsOnMyNet. (On Windows the update search asks the WSUS server or Windows Update, like Windows itself.) On Windows it is a PowerShell script (runs as SYSTEM), on Linux a POSIX sh script (needs `sh`, `awk` and `curl`, root is not needed).
 
 **A single machine:** *Monitoring* → **Add monitor** → **Machine by script (Windows/Linux)** → choose the machine. On the device page the same works with **Monitor** (kind of check *Machine by script*) or *More* → **Monitor with script**. Then Windows or Linux → **Create script**.
 
@@ -733,7 +734,7 @@ The script installs nothing, loads nothing, opens no port and needs no account -
    - **Linux**: `sh womn-host.sh` - as root into `/usr/local/sbin` with `/etc/cron.d/whatsonmynet-host`, otherwise into `~/.local/bin` with an entry in the own crontab.
 3. After a few seconds the device page shows the section **System**. **Add sensor** turns it into monitors with alarms: "Machine reports", "CPU load", "Memory", "Drive C:", "Failed services" or "Service … running".
 
-**Many machines at once:** *Settings → Machine scripts* → **Shared script**. You roll out this one script by software distribution, a startup script by group policy or Ansible. Each report is matched to its device in the inventory (MAC address, machine name, IP). Machines that are not in the inventory yet show up there under *Unknown machines* - nothing is created on its own.
+**Many machines at once:** *Settings → Machine scripts* → **Shared script**. You roll out this one script by software distribution, a startup script by group policy or Ansible. Each report is matched to its device in the inventory (MAC address, machine name, IP). Because all machines hold the same key, a report reaches a device with a known MAC only when it names that MAC, and it never changes serial number, model or MAC (*hardware exchanged* is detected only by a script with its own key). A laptop that reports only its docking station's MAC therefore shows up under *Unknown machines* - give it a script of its own (*device page → More → Monitor with script*). Machines that are not in the inventory yet show up there under *Unknown machines* - nothing is created on its own.
 
 **Failed services:** Windows - services that start automatically and stopped with an error code (trigger-start services that stopped normally do not count); Linux - systemd services in the state *failed*.
 
@@ -807,6 +808,7 @@ A **plugin** is a small script you write in WhatsOnMyNet and that the host scrip
 - an **old version** does not run ("outdated" - replace the file after saving a new version),
 - a plugin **for other machines** or one **switched off** does not run ("not for here"),
 - a file without the header of WhatsOnMyNet does not run ("no plugin").
+- if the file of an earlier version is still in the folder after a plugin was renamed, the current one counts; the old one is shown as "old file" and can be deleted.
 
 A new version comes only when the file changes (code, name, system). Who gets the plugin, the description, how often it runs or the time limit can change without handing it out again.
 
@@ -852,10 +854,10 @@ Under *Monitoring → Reports* reports go out by e-mail at set times - e.g. the 
 
 ## Users and rights
 
-- **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*. Editors only scan private networks (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) and the subnets of the locations; public addresses only administrators.
+- **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*. Editors only scan private networks (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) and the subnets of the locations; public addresses only administrators. Monitor targets of non-admins: never the WhatsOnMyNet host itself (127.x, ::1) or 169.254.x; otherwise anything, internet addresses too - limited to locations, private addresses only in the subnets of the own locations. SNMP monitors (they send the stored SNMP access data) only to private networks and location subnets. Device addresses entered by non-admins follow the SNMP rule (printers, switches and NAS are asked with the stored access data).
 - **Locations**: editors and viewers can be limited to locations - they then only see and change devices, scans and monitors of these.
 - **Active Directory**: sign-in with the Windows account, see the next section.
-- **Two-factor sign-in** (*My account*): scan the QR code with an authenticator app, confirm a code, keep the recovery codes. It can be made mandatory for administrators under *Settings → Users* (section *Sign-in*).
+- **Two-factor sign-in** (*My account*): scan the QR code with an authenticator app, confirm a code together with the current password (other sign-ins of the account are signed out), keep the recovery codes. It can be made mandatory for administrators under *Settings → Users* (section *Sign-in*).
 
 ## Sign-in with Active Directory
 
@@ -923,7 +925,7 @@ When pairing, the standby takes **all data of the master** (devices, monitors, u
 ## Backup and updates
 
 - Once a day WhatsOnMyNet backs up the database compressed to `data/backups/` (`whatsonmynet-….sqlite.gz`, the first time one hour after the start); additionally before every database update. By default the 10 newest are kept, and likewise the 10 newest of the copies before updates and before a restore each. Set the number under *Settings → Backup → Retention* (1 - 90); saving deletes the ones over it at once, the oldest first. Older uncompressed backups are compressed once.
-- *Settings → Backup*: download a backup, back up now, delete single backups (bin in the list, with a question first), restore a backup - `.sqlite` or `.sqlite.gz` (the current state is backed up first, then the program restarts). To open one by hand: `gunzip -k whatsonmynet-….sqlite.gz`.
+- *Settings → Backup*: download a backup, back up now, delete single backups (bin in the list, with a question first), restore a backup - `.sqlite` or `.sqlite.gz` (the current state is backed up first, then the program restarts). Keys (agents, machine scripts, /metrics), passwords and two-factor sign-in stay as they are today; keys deleted since do not come back, accounts deleted since only deactivated. To open one by hand: `gunzip -k whatsonmynet-….sqlite.gz`.
 - **Keep `data/secret.key` (or `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 - Updates: in Dockhand/Watchtower or `docker compose pull && docker compose up -d`. Once a month a security update with new packages is released.
 

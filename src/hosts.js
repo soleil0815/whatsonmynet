@@ -126,21 +126,23 @@ export function createHosts({ db, plugins = null }) {
 
   /**
    * Which inventory device sent this? Device key: that one. Shared key: MAC, then host name, then IP.
-   * Returns { id, sure } - sure: matched by device key or MAC (only then may the report say the hardware was exchanged).
+   * Returns { id, sure } - sure: matched by a device key (only then may the report say the hardware was exchanged).
    */
   function match(t, r, remoteIp) {
     if (t.device_id) return { id: t.device_id, sure: true };
+    // Everything below comes with the shared key: every machine that runs the shared script holds it and writes the
+    // report body itself (MACs are no secret on the LAN either). So such a match is never "sure" - serial, model and
+    // MAC of a device are never overwritten by it - and a device with a known MAC is only reached when the report
+    // names that MAC (by MAC, host name or IP alike). A laptop that reports only its dock's MAC while the inventory
+    // knows its Wi-Fi MAC stays an unknown machine: it needs a script with its own key (device page).
     // The shared key never reaches a device that has a key of its own (its reports come only with that key)
     const free = 'id NOT IN (SELECT device_id FROM host_tokens WHERE device_id IS NOT NULL)';
-    for (const m of r.macs) { const d = db.prepare(`SELECT id FROM devices WHERE mac=? AND ${free}`).get(m); if (d) return { id: d.id, sure: true }; }
-    // A reused IP address never reaches a device with another MAC (it would mix two machines). The host name may: a
-    // laptop docked on cable reports only that MAC while the inventory knows its Wi-Fi MAC. Such a match is not "sure",
-    // so serial, model and MAC of the device are never overwritten by it.
-    const macs = r.macs.length ? ` AND (mac IS NULL OR mac IN (${r.macs.map(() => '?').join(',')}))` : '';
+    for (const m of r.macs) { const d = db.prepare(`SELECT id FROM devices WHERE mac=? AND ${free}`).get(m); if (d) return { id: d.id, sure: false }; }
+    const macs = r.macs.length ? ` AND (mac IS NULL OR mac IN (${r.macs.map(() => '?').join(',')}))` : ' AND mac IS NULL';
     const short = r.hostname.toLowerCase().split('.')[0];
     // "name" or "name.domain" - compared as text (no LIKE: % and _ in a reported name would be wildcards)
     const byName = short ? db.prepare(`SELECT id FROM devices WHERE (lower(hostname)=? OR lower(name)=? OR substr(lower(hostname),1,length(?)+1)=?||'.'
-      OR substr(lower(name),1,length(?)+1)=?||'.') AND ${free} ORDER BY id LIMIT 1`).get(short, short, short, short, short, short) : null;
+      OR substr(lower(name),1,length(?)+1)=?||'.') AND ${free}${macs} ORDER BY id LIMIT 1`).get(short, short, short, short, short, short, ...r.macs) : null;
     if (byName) return { id: byName.id, sure: false };
     for (const ip of r.ips) { const d = db.prepare(`SELECT id FROM devices WHERE ip=? AND ${free}${macs}`).get(ip, ...r.macs); if (d) return { id: d.id, sure: false }; }
     // The sender address (may be a NAT or proxy address) only for devices without MAC
@@ -171,7 +173,7 @@ export function createHosts({ db, plugins = null }) {
     // Operating system and host name from the machine itself into empty fields of the device
     // … and what the machine knows about its hardware (manufacturer, model, serial number; a VM is a VM)
     const hw = r.hw || {};
-    // A match by name or address alone is not sure enough to declare the hardware exchanged (MAC dropped, serial replaced)
+    // Only a device key is sure enough to declare the hardware exchanged (MAC dropped, serial replaced)
     fillDevice(db, deviceId, { os: r.os, hostname: r.hostname, vendor: hw.vendor, model: hw.model, serial: hw.serial, type: hw.virtual ? 'vm' : undefined }, 'script', { mayReplace: found.sure });
     // which plugins this machine may run (id, version, fingerprint) - the script keeps the list for its next run
     const allowed = plugins ? plugins.allowedFor(deviceId, hostOs(r.os)) : [];

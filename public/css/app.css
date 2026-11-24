@@ -358,9 +358,11 @@ table.data { width: 100%; border-collapse: collapse; }
 .device-head h1 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .device-head .meta { color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
 .device-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; align-items: start; }
-dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 8px 18px; margin: 0; }
+dl.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; margin: 0; }
 dl.kv dt { color: var(--muted); font-size: 13px; }
 dl.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+/* a long badge ("Selbst erzeugt (selbstsigniert)") wraps on a phone instead of running out of the box */
+dl.kv dd .badge { white-space: normal; height: auto; min-height: 20px; }
 .web-row + .web-row { margin-top: 4px; }
 .web-row .badge { margin-left: 4px; vertical-align: 1px; }
 .section-title { font-family: var(--display); font-size: 16px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); margin: 18px 0 10px; }
@@ -403,7 +405,7 @@ dialog.modal.wide { width: min(820px, calc(100vw - 24px)); }
 dialog.modal::backdrop { background: rgba(0, 0, 0, .28); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 dialog.modal header { display: flex; justify-content: space-between; align-items: center; padding: 18px 16px 8px 22px; }
 dialog.modal .modal-body { padding: 12px 22px 18px; max-height: 70vh; overflow: auto; }
-dialog.modal footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px 18px; border-top: 1px solid var(--line); }
+dialog.modal footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 22px 18px; border-top: 1px solid var(--line); }
 .toasts { position: fixed; bottom: 20px; right: 20px; display: grid; gap: 8px; z-index: 1000; }
 .toast { padding: 12px 18px; border-radius: 14px; background: rgba(29, 29, 31, .9); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); color: #F5F5F7; font-weight: 500; max-width: 420px; box-shadow: var(--shadow-2); transition: opacity .3s, transform .3s; }
 .toast-error { background: rgba(215, 0, 21, .92); color: #fff; }

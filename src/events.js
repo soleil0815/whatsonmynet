@@ -301,8 +301,13 @@ export function describeTrap(pdu) {
 }
 
 // ---------------------------------------------------------------------------------------------- the service
+/** UDP of the address to listen on: an IPv6 one (WOMN_BIND=::1, or :: - IPv6 and IPv4 together) needs an IPv6 socket */
+export const udpType = (addr) => (String(addr || '').includes(':') ? 'udp6' : 'udp4');
 const MAX_CONNECTIONS = 200;
 const IDLE_MS = 60 * 60 * 1000;   // a device keeps its connection open; one silent for an hour is closed
+const FIRST_FRAME_MS = 60 * 1000; // ... once it has sent a message - until then a connection gets one minute
+const HANDSHAKE_MS = 10 * 1000;   // TLS: the handshake must be done in 10 s (Node's default: 120 s)
+const DROPPED_MAX = 10000;        // senders remembered with the number of their messages not kept
 
 export function createEvents({ db, settings, tls: tlsSource = null, onEvent = () => {}, limits: floodOwn = {}, ports = {}, bind = config.bind }) {
   // limits and ports of their own: only for the tests and the load test (womn-admin loadtest)
@@ -320,7 +325,15 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   const inRanges = (list, id) => list.some(([a, b]) => id >= a && id <= b);
   // Severity: per sender (Messages → by sender → Filter), else for all (Receiving settings). -1 = muted.
   let sevFilter = null; let sevAt = 0;
-  const droppedBy = new Map(); // address → messages not kept since the start (the page shows it at the sender)
+  // address → messages not kept since the start (the page shows it at the sender). At most DROPPED_MAX addresses, the
+  // one not heard from longest goes first: UDP senders can be forged, one per address would grow without end.
+  const droppedBy = new Map();
+  const countDropped = (addr) => {
+    const n = (droppedBy.get(addr) || 0) + 1;
+    droppedBy.delete(addr);
+    if (droppedBy.size >= DROPPED_MAX) droppedBy.delete(droppedBy.keys().next().value);
+    droppedBy.set(addr, n);
+  };
   function sevWanted(ip, severity) {
     if (!sevFilter || Date.now() - sevAt > 60000) {
       sevFilter = new Map(db.prepare('SELECT source_ip, min_severity FROM event_source_filters').all().map((r) => [r.source_ip, r.min_severity]));
@@ -381,7 +394,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     if (settings.get('events.onlyKnown') && !device) return null;
     if (!idWanted(ev.eventId, ev.app)) { filtered++; return null; }
     const sev = Math.max(0, Math.min(7, Number(ev.severity) || 0));
-    if (!sevWanted(addr, sev)) { filtered++; droppedBy.set(addr, (droppedBy.get(addr) || 0) + 1); return null; }
+    if (!sevWanted(addr, sev)) { filtered++; countDropped(addr); return null; }
     const row = { at: at.toISOString(), kind, source_ip: addr, device_id: device, severity: Math.max(0, Math.min(7, Number(ev.severity) || 0)), facility: ev.facility ?? null,
       host: clip(ev.host, 120), app: clip(ev.app, 60), oid: clip(ev.oid, 200), text: clip(ev.text, TEXT_MAX) || '(empty)',
       event_id: Number.isInteger(ev.eventId) ? ev.eventId : null, channel: clip(ev.channel, 120), account: clip(ev.account, 120),
@@ -501,7 +514,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   function startTraps() {
     status.traps.error = '';
     try {
-      trapRx = snmp.createReceiver({ port: port.traps, address: bind || null, transport: 'udp4', includeAuthentication: true }, (err, n) => {
+      trapRx = snmp.createReceiver({ port: port.traps, address: bind || null, transport: udpType(bind), includeAuthentication: true }, (err, n) => {
         if (err) {
           // a port that cannot be opened, or a trap with an unknown community (ignored)
           if (/EACCES|EADDRINUSE|EADDRNOTAVAIL/.test(`${err.code} ${err.message}`)) {
@@ -521,7 +534,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   }
   function startSyslog() {
     status.syslog.error = '';
-    sysSock = dgram.createSocket('udp4');
+    sysSock = dgram.createSocket(udpType(bind));
     sysSock.on('error', (e) => {
       status.syslog.on = false;
       status.syslog.error = e.code === 'EADDRINUSE' ? `port ${port.syslog} is in use` : e.code === 'EACCES' ? `port ${port.syslog} not allowed without root - use 1514 and a redirect` : e.message;
@@ -545,20 +558,34 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       st.error = e.code === 'EADDRINUSE' ? `port ${st.port} is in use` : e.code === 'EACCES' ? `port ${st.port} not allowed without root` : e.message;
       log.warn(`Syslog ${kind === 'syslogTls' ? 'TLS' : 'TCP'}: ${st.error}`);
     });
-    // TLS: a failed handshake (wrong version, client gave up) is not an error of the server
+    // TLS: a failed handshake (wrong version, client gave up, too slow) is not an error of the server
     server.on('tlsClientError', (e, s) => { log.debug(`Syslog TLS: handshake ${e.code || e.message}`); s?.destroy(); });
-    const accept = (sock) => {
-      const ip = String(sock.remoteAddress || '').replace(/^::ffff:/, '');
+    const isTls = kind === 'syslogTls';
+    // Counted per address as soon as the connection is there - for TLS before the handshake too: else one host could
+    // hold all slots (maxConnections counts plain connections) with connections that never say hello
+    server.on('connection', (raw) => {
+      const ip = String(raw.remoteAddress || '').replace(/^::ffff:/, '');
       const same = [...conns].filter((c) => c.ip === ip).length;
-      if (same >= flood.connectionsPerSender) { sock.destroy(); return; }
-      const c = { ip, sock, kind };
+      if (same >= flood.connectionsPerSender) { raw.destroy(); return; }
+      const c = { ip, sock: raw, kind };
       conns.add(c); st.connections++;
-      sock.setTimeout(IDLE_MS, () => sock.destroy());
+      raw.on('error', () => {});
+      raw.on('close', () => { conns.delete(c); st.connections--; });
+      if (!isTls) serve(raw, ip);
+    });
+    if (isTls) server.on('secureConnection', (sock) => serve(sock, String(sock.remoteAddress || '').replace(/^::ffff:/, '')));
+    const serve = (sock, ip) => {
+      // silent until the first whole message: closed after a minute; a sender that has sent keeps it open for an hour
+      let framed = false;
+      sock.setTimeout(FIRST_FRAME_MS, () => sock.destroy());
       // Above the limit a message waits (in order) and the connection pauses until the next second: the agent keeps
       // the rest meanwhile - TCP loses nothing, it only comes a little later
       const held = []; let waiting = null;
-      const take = (frame) => queue('syslog', ip, parseSyslog(frame), true, kind === 'syslogTls' ? 'tls' : 'tcp');
-      const pass = (frame) => { if (held.length || !allowed(ip, true)) held.push(frame); else take(frame); };
+      const take = (frame) => queue('syslog', ip, parseSyslog(frame), true, isTls ? 'tls' : 'tcp');
+      const pass = (frame) => {
+        if (!framed) { framed = true; sock.setTimeout(IDLE_MS); }
+        if (held.length || !allowed(ip, true)) held.push(frame); else take(frame);
+      };
       const wait = () => { if (!waiting && !sock.destroyed) { sock.pause(); waiting = setTimeout(drain, 1005 - (Date.now() % 1000)); } };
       const drain = () => {
         waiting = null;
@@ -571,16 +598,15 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
         if (held.length) wait();
       });
       sock.on('error', () => {});
-      sock.on('close', () => { clearTimeout(waiting); held.length = 0; conns.delete(c); st.connections--; });
+      sock.on('close', () => { clearTimeout(waiting); held.length = 0; });
     };
-    server.on(kind === 'syslogTls' ? 'secureConnection' : 'connection', accept);
     server.listen(st.port, bind || undefined, () => { st.on = true; st.port = server.address().port; log.info(`Syslog ${kind === 'syslogTls' ? 'TLS' : 'TCP'}: listening on ${st.port}`); });
     return server;
   }
   function tlsOptions() {
     const cur = tlsSource?.current?.();
     if (!cur?.cert || !cur?.key) return null;
-    return { cert: cur.cert, key: cur.key, minVersion: 'TLSv1.2' };
+    return { cert: cur.cert, key: cur.key, minVersion: 'TLSv1.2', handshakeTimeout: HANDSHAKE_MS };
   }
   function startStreams() {
     status.syslogTcp.error = ''; status.syslogTls.error = '';
@@ -736,8 +762,31 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     return out;
   }
 
-  // The first message at or after a time (ids grow with the time of arrival)
+  // A time range as a range of ids for the word index. Ids grow with the time of arrival - mostly: a standby stores the
+  // master's older messages (failover copies) with new, higher ids. So the bounds are the smallest id at or after
+  // "from" and the largest before "to", not the id of the first message at that time. Each is found the cheaper way:
+  // through the index on the time when few messages are on that side, else along the ids (it stops at the first that
+  // fits - right away when the ids are in time order).
   const firstIdAt = db.prepare('SELECT id FROM events_in WHERE at >= ? ORDER BY at LIMIT 1').pluck();
+  const maxIdNow = db.prepare('SELECT MAX(id) FROM events_in').pluck();
+  const minIdFrom = { byAt: db.prepare('SELECT MIN(id) FROM events_in INDEXED BY events_in_at WHERE at >= ?').pluck(),
+    byId: db.prepare('SELECT MIN(id) FROM events_in NOT INDEXED WHERE at >= ?').pluck() };
+  const maxIdBefore = { byAt: db.prepare('SELECT MAX(id) FROM events_in INDEXED BY events_in_at WHERE at < ?').pluck(),
+    byId: db.prepare('SELECT MAX(id) FROM events_in NOT INDEXED WHERE at < ?').pluck() };
+  /** Smallest id of a message at or after t (NONE: there is none) */
+  function idFrom(t) {
+    const f = firstIdAt.get(t);
+    if (f === undefined) return NONE;
+    const max = maxIdNow.get() || 0;
+    return (max - f < f ? minIdFrom.byAt : minIdFrom.byId).get(t) ?? NONE;
+  }
+  /** One past the largest id of a message before t (0: there is none) */
+  function idBefore(t) {
+    const f = firstIdAt.get(t);
+    const max = maxIdNow.get() || 0;
+    const v = (f !== undefined && f < max - f ? maxIdBefore.byAt : maxIdBefore.byId).get(t);
+    return v === null || v === undefined ? 0 : v + 1;
+  }
   const NONE = Number.MAX_SAFE_INTEGER;
   const MANY = 20000;
   const ftsCount = db.prepare(`SELECT COUNT(*) FROM (SELECT 1 FROM events_fts WHERE events_fts MATCH ? AND rowid >= ? AND rowid < ? LIMIT ${MANY + 1})`).pluck();
@@ -760,8 +809,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     // when the words lead)
     const at = words ? '+e.at' : 'e.at';
     let lo = 0; let hi = NONE; let many = false;
-    if (iso(from)) { where.push(`${at} >= ?`); args.push(iso(from)); if (words) lo = firstIdAt.get(iso(from)) ?? NONE; }
-    if (iso(to)) { where.push(`${at} < ?`); args.push(iso(to)); if (words) hi = firstIdAt.get(iso(to)) ?? NONE; }
+    if (iso(from)) { where.push(`${at} >= ?`); args.push(iso(from)); if (words) lo = idFrom(iso(from)); }
+    if (iso(to)) { where.push(`${at} < ?`); args.push(iso(to)); if (words) hi = idBefore(iso(to)); }
     const likeCols = "(e.text LIKE ? ESCAPE '\\' OR e.app LIKE ? ESCAPE '\\' OR e.source_ip LIKE ? ESCAPE '\\' OR e.host LIKE ? ESCAPE '\\' OR e.channel LIKE ? ESCAPE '\\' OR e.account LIKE ? ESCAPE '\\')";
     const devName = "e.device_id IN (SELECT id FROM devices WHERE name LIKE ? ESCAPE '\\')";
     const tail = Math.max(ftsDone(), lo - 1);
@@ -1210,6 +1259,14 @@ export function eventMatches(row, o, deviceId) {
   return true;
 }
 
+// lower() of SQLite folds only A-Z: "LÜFTER" stays "lÜfter". The check uses the same lower case as eventMatches (JS).
+const withLower = new WeakSet();
+function unicodeLower(db) {
+  if (withLower.has(db)) return;
+  db.function('womn_lower', { deterministic: true }, (v) => (v === null || v === undefined ? null : String(v).toLowerCase()));
+  withLower.add(db);
+}
+
 /** The check of an event monitor: down while a matching message is younger than `holdMin` minutes */
 export function eventCheck(db, m) {
   let o = {};
@@ -1219,7 +1276,7 @@ export function eventCheck(db, m) {
   const where = ['at >= ?', 'severity <= ?']; const args = [since, Number.isInteger(o.maxSeverity) ? o.maxSeverity : 4];
   if (o.source === 'trap' || o.source === 'syslog') { where.push('kind = ?'); args.push(o.source); }
   if (m.device_id) { where.push('device_id = ?'); args.push(m.device_id); }
-  if (o.match) { where.push("lower(app || ' ' || text) LIKE ? ESCAPE '\\'"); args.push(`%${String(o.match).toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`); }
+  if (o.match) { unicodeLower(db); where.push("instr(womn_lower(app || ' ' || text), ?) > 0"); args.push(String(o.match).toLowerCase()); }
   const rows = db.prepare(`SELECT * FROM events_in WHERE ${where.join(' AND ')} ORDER BY id DESC LIMIT 50`).all(...args);
   if (!rows.length) return { ok: true, ms: null, message: `no matching message in the last ${hold} min` };
   const r = rows[0];

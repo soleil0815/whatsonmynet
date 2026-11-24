@@ -10,8 +10,9 @@ import os from 'node:os';
 import { config } from '../config.js';
 import { HttpError, line, str, int, ids, oneOf } from '../lib/http.js';
 import { safeEqual } from '../lib/crypto.js';
-import { requireAuth, requireRole, can } from '../auth/session.js';
+import { requireAuth, requireRole, can, twoFactorRequiredFor, twoFactorGate } from '../auth/session.js';
 import { localInterfaces, defaultGateways, parseCidr, cidrContains, scanTargetAllowed } from '../lib/net.js';
+import { assertTargetsAllowed } from '../lib/targetguard.js';
 import { pingAvailable } from '../scan/probes.js';
 import { TYPES } from '../scan/classify.js';
 import { validTime } from '../scan/nightly.js';
@@ -39,7 +40,9 @@ export function createApi(ctx) {
     db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), who(req), action, String(detail).slice(0, 500));
   };
   // The user for the browser, with the location limit (null = all locations)
-  const userOut = (u) => { const sc = scopeOf(db, u); return { ...publicUser(u), locations: sc ? [...sc] : null }; };
+  // serverPages: events, virtualisation, controllers, server hardware, cloud - editors without a location limit
+  // (those pages belong to no location; the server refuses them to limited users)
+  const userOut = (u) => { const sc = scopeOf(db, u); return { ...publicUser(u), locations: sc ? [...sc] : null, serverPages: can(u, 'editor') && !sc }; };
   const idParam = (req) => {
     const n = int(req.params.id);
     if (!n || n < 1) throw new HttpError(404, 'err.notFound');
@@ -74,7 +77,7 @@ export function createApi(ctx) {
     req.user = u;
     audit(req, 'setup', `admin ${u.username}`);
     log.info(`Initial setup completed - administrator "${u.username}" created`);
-    res.json({ user: publicUser(u) });
+    res.json({ user: userOut(u) });
   });
 
   r.post('/login', async (req, res) => {
@@ -162,12 +165,9 @@ export function createApi(ctx) {
   // --- Signed in ------------------------------------------------------------------------------------------
   r.use(requireAuth);
   // Admin setting: local administrators must use two-factor sign-in - until set up only the own account works
-  const twoFactorRequired = (u) => !!settings.get('security.require2faAdmins') && u.role === 'admin' && u.source === 'local';
-  r.use((req, _res, next) => {
-    if (!twoFactorRequired(req.user) || req.user.totp_enabled) return next();
-    if (/^\/(me(\/|$)|bootstrap$|meta$|logout$)/.test(req.path)) return next();
-    next(new HttpError(403, 'err.totpRequiredByAdmin'));
-  });
+  // (the same gate guards the failover routes, see routes/failover.js)
+  const twoFactorRequired = (u) => twoFactorRequiredFor(settings, u);
+  r.use(twoFactorGate(settings));
   // Location limit of the user (null = everything); also used by the monitoring routes
   r.use((req, _res, next) => { req.scope = scopeOf(db, req.user); next(); });
   const visible = (req, deviceId) => deviceInScope(db, req.scope, deviceId);
@@ -183,20 +183,24 @@ export function createApi(ctx) {
     const uri = otpauthUri(secret, req.user.username, settings.get('general.title') || 'WhatsOnMyNet');
     res.json({ secret, uri, svg: await qrSvg(uri) });
   });
-  r.post('/me/2fa/enable', (req, res) => {
-    limiter.check(req.ip, `2fa:${req.user.username}`);
-    try {
-      const codes = users.enableTotp(req.user.id, str(req.body.code, 20));
-      audit(req, '2fa.enable');
-      res.json({ recoveryCodes: codes });
-    } catch (e) { limiter.fail(req.ip, `2fa:${req.user.username}`); throw e; }
-  });
-  // Switching off or new recovery codes: password (and, if on, a code) again
+  // Switching on, off or new recovery codes: password (and, if on, a code) again
   const recheck = (req) => {
     limiter.check(req.ip, req.user.username);
     if (!users.authenticate(req.user.username, str(req.body.password, 1024))) { limiter.fail(req.ip, req.user.username); throw new HttpError(400, 'err.passwordWrong'); }
     if (req.user.totp_enabled && !users.checkSecondFactor(req.user.id, str(req.body.code, 40))) { limiter.fail(req.ip, req.user.username); throw new HttpError(400, 'err.totpWrong'); }
   };
+  r.post('/me/2fa/enable', (req, res) => {
+    // a stolen session alone must not put an own authenticator on the account (and lock the owner out)
+    recheck(req);
+    limiter.check(req.ip, `2fa:${req.user.username}`);
+    try {
+      const codes = users.enableTotp(req.user.id, str(req.body.code, 20));
+      // from now on a sign-in needs the second factor: sessions elsewhere (signed in without it) end, this one stays
+      sessions.destroyAllForUser(req.user.id, req.sessionId);
+      audit(req, '2fa.enable');
+      res.json({ recoveryCodes: codes });
+    } catch (e) { limiter.fail(req.ip, `2fa:${req.user.username}`); throw e; }
+  });
   r.post('/me/2fa/disable', (req, res) => {
     recheck(req);
     if (twoFactorRequired(req.user)) throw new HttpError(400, 'err.totpRequiredByAdmin');
@@ -281,12 +285,12 @@ export function createApi(ctx) {
     res.send(f.bytes);
   });
   // Search over everything (Ctrl+K): only what this user may see
-  r.get('/search', (req, res) => res.json(searchAll(db, str(req.query.q, 100), { user: req.user, scope: req.scope })));
+  r.get('/search', (req, res) => res.json(searchAll(db, str(req.query.q, 100), { user: req.user, scope: req.scope, shownStatus: ctx.monitoring.shownStatus })));
   r.get('/dashboard', (req, res) => {
     // Limited users: only monitors of their devices
     const mon = ctx.monitoring.summary(req.scope ? (m) => seeDeviceId(req, m.device_id) : null);
     const quiet = new Set(Object.keys(ctx.monitoring.deviceMaintenance()).map(Number));
-    res.json({ ...inventory.stats({ allowed: req.scope, quiet }), monitoring: mon, start: firstSteps(req),
+    res.json({ ...inventory.stats({ allowed: req.scope, quiet, scanVisible: (s) => scanVisible(req, s) }), monitoring: mon, start: firstSteps(req),
       printersLow: ctx.printers.low().filter((x) => seeDeviceId(req, x.deviceId)),
       nasProblems: ctx.snmpDevices.problems().filter((x) => seeDeviceId(req, x.deviceId)) });
   });
@@ -353,6 +357,11 @@ export function createApi(ctx) {
     audit(req, 'device.merge', `${name} → ${d.name}${merged.length ? ` (${merged.reduce((n, g) => n + g.removed.length, 0)} duplicate monitor(s) merged)` : ''}`);
     res.json({ device: d, monitorsMerged: merged.reduce((n, g) => n + g.removed.length, 0) });
   });
+  // The switch port a device is plugged into - not when the switch belongs to a location the user may not see
+  const pluggedFor = (req, d) => {
+    const p = d.mac ? ctx.snmpDevices.locate(d.mac) : null;
+    return p && seeDeviceId(req, p.switchId) ? p : null;
+  };
   r.get('/devices/:id', (req, res) => {
     visible(req, idParam(req));
     const d = inventory.get(idParam(req));
@@ -361,10 +370,16 @@ export function createApi(ctx) {
     const monitors = db.prepare('SELECT id FROM monitors WHERE device_id=? ORDER BY name').all(d.id).map((m) => ctx.monitoring.get(m.id));
     res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null, host: ctx.hosts.report(d.id), hardware: ctx.proxmox.hardwareOf(d.id), hasSensors: ctx.sensorChoices.hasValues(d.id, { withHosts: !req.scope }),
       hostScript: req.user.role === 'admin' ? ctx.hosts.list().find((t) => t.device_id === d.id) || null : undefined,
-      snmp: ['switch', 'nas', 'ups'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: d.mac ? ctx.snmpDevices.locate(d.mac) : null, history: inventory.historyOf(d.id) });
+      snmp: ['switch', 'nas', 'ups'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: pluggedFor(req, d), history: inventory.historyOf(d.id) });
   });
-  r.post('/devices', editor, (req, res) => {
+  // A non-admin sets only addresses he may scan: pollers and monitors of the device contact it (with the SNMP access data)
+  const deviceIpOk = async (req, oldIp = null) => {
+    const ip = typeof req.body?.ip === 'string' ? req.body.ip.trim() : '';
+    if (ip && ip !== oldIp) await assertTargetsAllowed(db, req.user, [ip], { snmp: true });
+  };
+  r.post('/devices', editor, async (req, res) => {
     if (req.scope && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
+    await deviceIpOk(req);
     const d = inventory.create(req.body, who(req));
     audit(req, 'device.create', d.name);
     ctx.autoWatch.markDevices([d.id], req.user.language);
@@ -386,9 +401,10 @@ export function createApi(ctx) {
     audit(req, 'host.forget', d.name);
     res.json({ ok: true });
   });
-  r.patch('/devices/:id', editor, (req, res) => {
+  r.patch('/devices/:id', editor, async (req, res) => {
     visible(req, idParam(req));
     if (req.scope && 'location_id' in req.body && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
+    await deviceIpOk(req, db.prepare('SELECT ip FROM devices WHERE id=?').get(idParam(req))?.ip ?? null);
     res.json(inventory.update(idParam(req), req.body, who(req)));
   });
   r.delete('/devices/:id', editor, (req, res) => {
@@ -464,7 +480,7 @@ export function createApi(ctx) {
       .filter((x) => inScope(req.scope, x.location_id))
       .map((x) => ({ ...x, facts: parse(x.facts), outdated: outdated.has(x.id),
         // probably in the inventory already: a tip instead of a second device
-        maybe: x.status === 'new' && !x.handled && !x.device_id ? inventory.likelyExisting(x) : null }));
+        maybe: x.status === 'new' && !x.handled && !x.device_id ? inventory.likelyExisting(x, req.scope) : null }));
     res.json({ ...s, targets: parse(s.targets, []), stats: parse(s.stats), progress: scanner.progress(id), results });
   });
   r.post('/scans', editor, (req, res) => {
@@ -505,7 +521,7 @@ export function createApi(ctx) {
       if (o && typeof o === 'object') overrides[rid] = { type: oneOf(o.type, TYPES, undefined), name: line(o.name, 120), force: o.force === true };
     }
     const skipped = [];
-    const created = inventory.adopt(resultIds, overrides, who(req), skipped);
+    const created = inventory.adopt(resultIds, overrides, who(req), skipped, req.scope);
     if (created.length) audit(req, 'inventory.adopt', `${created.length} device(s) from scan ${scanId}`);
     // watched from the start: a first monitor now, sensors once the devices deliver values
     const watched = ctx.autoWatch.markDevices(created, req.user.language);
@@ -516,7 +532,7 @@ export function createApi(ctx) {
   r.post('/scans/:id/link', editor, (req, res) => {
     const scanId = idParam(req);
     const resultIds = ids(req.body.ids).filter((x) => { const r0 = db.prepare('SELECT location_id FROM scan_results WHERE id=? AND scan_id=?').get(x, scanId); return r0 && inScope(req.scope, r0.location_id); });
-    const n = inventory.linkResults(resultIds, who(req));
+    const n = inventory.linkResults(resultIds, who(req), req.scope);
     if (n) audit(req, 'inventory.link', `${n} result(s) of scan ${scanId} to existing devices`);
     res.json({ linked: n });
   });
@@ -648,7 +664,7 @@ export function createApi(ctx) {
     }
     return pin;
   };
-  r.get('/hosts/devices', editor, (_req, res) => res.json(ctx.hosts.deviceIds()));
+  r.get('/hosts/devices', editor, (req, res) => res.json(ctx.hosts.deviceIds().filter((id) => seeDeviceId(req, id))));
   r.get('/hosts', admin, (_req, res) => res.json({ tokens: ctx.hosts.list(), unmatched: ctx.hosts.unmatched() }));
   r.post('/hosts', admin, (req, res) => {
     const out = ctx.hosts.create(req.body, { server: str(req.body?.server, 300), pin: pinOf() });

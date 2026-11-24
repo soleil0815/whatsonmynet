@@ -94,6 +94,21 @@ export function requireRole(role) {
 
 export const can = (user, role) => (RANK[user?.role] || 0) >= RANK[role];
 
+/** Admin setting "administrators must use two-factor sign-in": does it apply to this (local administrator) account? */
+export const twoFactorRequiredFor = (settings, u) => !!settings.get('security.require2faAdmins') && u?.role === 'admin' && u?.source === 'local';
+
+/**
+ * Until such an administrator has set up two-factor sign-in, only his own account works (and the bar at the top).
+ * Requests without a session (sign-in, failover peers with the pairing secret, agents) are not concerned.
+ */
+export function twoFactorGate(settings) {
+  return (req, _res, next) => {
+    if (!req.user || !twoFactorRequiredFor(settings, req.user) || req.user.totp_enabled) return next();
+    if (/^\/(me(\/|$)|bootstrap$|meta$|logout$|failover\/banner$)/.test(req.path)) return next();
+    next(new HttpError(403, 'err.totpRequiredByAdmin'));
+  };
+}
+
 /** At most 8 failed attempts per user name and 40 per IP address in 15 minutes. */
 export function createLoginLimiter({ max = 8, ipMax = 40, windowMs = 15 * 60 * 1000 } = {}) {
   const hits = new Map();

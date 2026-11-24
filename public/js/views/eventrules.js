@@ -60,7 +60,7 @@ function extras(r) {
 }
 
 export async function renderEventRules(main) {
-  if (!(state.user.canEditServer ?? state.user.canEdit)) { navigate('/', { replace: true }); return; }
+  if (!state.user.serverPages) { navigate('/', { replace: true }); return; }
   const body = h('div', { class: 'stack' });
   mount(main, h('div', { class: 'page' }, body));
   const box = h('div');

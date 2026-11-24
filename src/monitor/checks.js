@@ -3,6 +3,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
+import { lookup as dnsLookup } from 'node:dns/promises';
 import { config } from '../config.js';
 import { ping, pingAvailable } from '../scan/probes.js';
 import { dockerCheck, mysqlCheck, postgresCheck, redisCheck, DEFAULT_PORTS } from './services.js';
@@ -134,7 +135,15 @@ export function runCheck(m, ctx = {}) {
   if (m.type === 'snmp') {
     let o = {};
     try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
-    return snmpCheck(m.target, m.port, ctx.communities?.() || ['public'], o, m.timeout_s).catch((e) => ({ ok: false, ms: null, message: e.message }));
+    // A name is resolved here once and the check asks exactly that address (the one checked when saved, a DNS answer
+    // cannot redirect the access data between the lookup and the query)
+    return (async () => {
+      let ip = m.target;
+      if (!net.isIP(ip)) {
+        try { ip = (await dnsLookup(m.target, { family: 4 })).address; } catch { return { ok: false, ms: null, message: 'name not found (DNS)' }; }
+      }
+      return snmpCheck(ip, m.port, ctx.communities?.(ip) || ['public'], o, m.timeout_s);
+    })().catch((e) => ({ ok: false, ms: null, message: e.message }));
   }
   if (['dns', 'mail', 'ldap', 'ntp', 'mssql'].includes(m.type)) {
     let o = {};

@@ -9,17 +9,21 @@
 # - a platform image that a published image (a version tagged with the version of this run or latest) points to -
 #   the per-architecture candidates are the platform images of the published multi-arch image;
 # - untagged versions (not ours to judge).
-# If the published images cannot be read, nothing is deleted.
+# What is published is read from the registry itself first (the digests of <version> and latest, and the platform
+# images they point to): the package API may still list the old tags for a while after publishing. The API tag list
+# is only a second check on top. If a published image cannot be read, nothing is deleted.
 #
 # The workflows do not call this when the publish job failed: that run keeps its candidates, so that "Re-run failed
 # jobs" still finds them (a run that is never re-run leaves them behind - they carry the run id and can be deleted by
-# hand). After publishing, a skipped publish (failed build or check, nothing to publish) or a cancel they go.
+# hand). This includes a failed Trivy gate, which runs inside the publish job. After publishing, a skipped publish
+# (failed build), a publish with nothing to publish or a cancel they go.
 # A token without access to the package (HTTP 403/404 from the API) is only a warning and exit 0 - the release itself
 # went fine and must not turn red because of the cleanup; every other error still ends with exit 1.
 #
 # Usage: sh .github/scripts/delete-candidates.sh <image> <run id>
 #   image: ghcr.io/<owner>/<name> (or <owner>/<name>)
-# Environment: GH_TOKEN (packages: write), PACKAGE_OWNER_TYPE=users|orgs (default users)
+# Environment: GH_TOKEN (packages: write), PACKAGE_OWNER_TYPE=users|orgs (default users),
+#   PUBLISHED=true when the publish job succeeded (then <version> must exist in the registry, else nothing is deleted)
 # Needs: gh, jq, docker buildx (reads the published image indexes).
 set -euf
 
@@ -99,6 +103,31 @@ fi
 echo latest >> "$work/release-tags"
 sort -u -o "$work/release-tags" "$work/release-tags"
 : > "$work/protected"
+
+# 1. From the registry itself: the image behind each published tag and its platform images
+while read -r t; do
+  if d="$(docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$registry:$t" < /dev/null 2> "$work/inspect.err")"; then
+    d="$(printf '%s' "$d" | tr -d '"[:space:]')"
+    case "$d" in sha256:*) ;; *) echo "::error::Unexpected digest of $registry:$t: $d - nothing deleted" >&2; exit 1 ;; esac
+    if ! docker buildx imagetools inspect --raw "$registry@$d" < /dev/null > "$work/manifest" 2> "$work/inspect.err"; then
+      echo "::error::Cannot read $registry@$d ($(cat "$work/inspect.err")) - nothing deleted" >&2; exit 1
+    fi
+    echo "$d" >> "$work/protected"
+    if ! jq -r '.manifests[]?.digest' "$work/manifest" >> "$work/protected"; then
+      echo "::error::Cannot parse the index of $registry@$d - nothing deleted" >&2; exit 1
+    fi
+    echo "Published: $registry:$t = $d"
+  elif grep -qE 'not found|manifest unknown|MANIFEST_UNKNOWN|404' "$work/inspect.err"; then
+    if [ "${PUBLISHED:-}" = true ] && [ "$t" != latest ]; then
+      echo "::error::$registry:$t was published but cannot be found in the registry - nothing deleted" >&2; exit 1
+    fi
+    echo "Not in the registry: $registry:$t"
+  else
+    echo "::error::Cannot read $registry:$t ($(cat "$work/inspect.err")) - nothing deleted" >&2; exit 1
+  fi
+done < "$work/release-tags"
+
+# 2. In addition from the package API tag list
 while IFS="$tab" read -r id digest tags; do
   hit=0
   for t in $tags; do
@@ -122,7 +151,7 @@ for pass in index platform; do
     for t in $tags; do case "$t" in *-kandidat-"$run") platform=0 ;; esac; done
     if { [ "$pass" = index ] && [ "$platform" = 1 ]; } || { [ "$pass" = platform ] && [ "$platform" = 0 ]; }; then continue; fi
     if grep -qxF -- "$digest" "$work/protected"; then
-      echo "Kept $id ($tags): platform image of a published image"
+      echo "Kept $id ($tags): published image or platform image of a published image"
       continue
     fi
     if gh api -X DELETE "$api/$id" > /dev/null 2> "$work/delete.err"; then

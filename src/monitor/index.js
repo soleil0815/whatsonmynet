@@ -83,12 +83,25 @@ export function hasLimit(m) {
 // What a change of several monitors at once may set (the "advanced" part of the form plus the limit of sensors)
 const BULK_FIELDS = ['group_name', 'interval_s', 'fail_threshold', 'timeout_s', 'resend_min', 'escalate_min', 'escalate_channels', 'channels', 'op', 'threshold'];
 export const BULK_MAX = 1000;
+// Types that contact no address of their own (the values come from the database, a Docker host or hypervisor set up by an admin)
+const NO_HOST_TYPES = ['sensor', 'proxmox', 'group', 'event', 'docker'];
+/** The hosts (IP or name) a monitor makes the server contact - for the target rule of non-admins */
+export function monitorHosts(v) {
+  if (NO_HOST_TYPES.includes(v.type)) return [];
+  if (v.type === 'http') { try { return [new URL(v.target).hostname]; } catch { return [v.target]; } }
+  // DNS: the name is only asked; contacted is the server set in the monitor (else the resolver of the host)
+  if (v.type === 'dns') { const server = parse(v.options, {}).server; return server ? [server] : []; }
+  return [v.target];
+}
+const hostsChanged = (v, old) => !old || v.type !== old.type || v.target !== old.target || Number(v.port) !== Number(old.port)
+  || (v.type === 'dns' && parse(v.options, {}).server !== parse(old.options, {}).server);
 
 export function createMonitoring({ db, channels, maintenance, settings = null, now = () => new Date() }) {
   const checkCtx = {
     dockerUrl: (id) => (id ? db.prepare('SELECT url FROM docker_hosts WHERE id=?').get(id)?.url : null),
     secret: (m) => { if (!m.secret) return ''; try { return decrypt(m.secret); } catch { return ''; } },
     db,
+    // the stored access data (where a non-admin may point an SNMP monitor is checked when it is saved)
     communities: () => (settings ? snmpCredentials(settings) : ['public']),
     group: (m) => groupCheck(m),
   };
@@ -463,8 +476,11 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     if (same) throw new HttpError(409, 'err.monitorExists', same.name);
   }
 
-  async function create(input) {
+  // guard(hosts, v): optional check of the addresses (non-admins: lib/targetguard.js) - on a change only when the address
+  // (or the type) changed
+  async function create(input, { guard = null } = {}) {
     const v = await clean(input);
+    if (guard) await guard(monitorHosts(v), v);
     refuseSame(v);
     const ts = iso();
     const cols = { ...v, created_at: ts, updated_at: ts, status: 'pending', status_since: ts };
@@ -474,10 +490,11 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     return get(id);
   }
 
-  async function update(id, input) {
+  async function update(id, input, { guard = null } = {}) {
     const old = db.prepare('SELECT * FROM monitors WHERE id=?').get(id);
     if (!old) throw new HttpError(404, 'err.notFound');
     const v = await clean(input, old);
+    if (guard && hostsChanged(v, old)) await guard(monitorHosts(v), v);
     refuseSame(v, old);
     // Paused because its device got a new IP (see devicechange.js): saved with a newly typed password it runs again
     // (at the address it was saved for - the dialog offers the new one)

@@ -9,6 +9,7 @@
 // loads nothing: the file is brought by the administrator (software distribution, by hand).
 import crypto from 'node:crypto';
 import { HttpError, line } from './lib/http.js';
+import { goneBefore } from './hosts.js';
 
 export const MAX_CODE = 64 * 1024;
 export const OS = ['windows', 'linux'];
@@ -83,6 +84,16 @@ export function cleanPluginReport(raw) {
   }).filter(Boolean);
 }
 
+/**
+ * The entry of a machine's report for plugin `id`: after a rename the old file can still lie in the plugins folder and
+ * is reported too (as outdated) - the copy with the current version counts, else one that runs, else the first.
+ */
+export function reportFor(rep, id, version) {
+  if (!Array.isArray(rep)) return null;
+  const mine = rep.filter((x) => x?.id === id);
+  return mine.find((x) => x.version === version) || mine.find((x) => x.state === 'ok') || mine[0] || null;
+}
+
 export function createPlugins({ db }) {
   const files = new Map(); // id → { key, file } - built once per version
   const shape = (r) => ({ id: r.id, name: r.name, description: r.description, os: r.os, version: r.version, targets: parse(r.targets, { all: true }),
@@ -114,13 +125,14 @@ export function createPlugins({ db }) {
   const row = (id) => db.prepare('SELECT * FROM plugins WHERE id=?').get(id);
 
   /**
-   * How far each plugin is rolled out: per plugin the machines it is meant for (with a report of the host script) and
+   * How far each plugin is rolled out: per plugin the machines it is meant for (with a report of the host script within the last day - one silent
+   * longer is most likely gone, as everywhere else) and
    * what they say - running, missing, outdated, changed … One query; the reports are read by SQLite (only os and
    * plugins), not parsed whole here - also with thousands of machines.
    */
   function rollout() {
     const rows = db.prepare(`SELECT h.device_id id, d.name, d.location_id, d.tags, json_extract(h.data,'$.os') os, json_extract(h.data,'$.plugins') pl
-      FROM host_reports h JOIN devices d ON d.id=h.device_id`).all();
+      FROM host_reports h JOIN devices d ON d.id=h.device_id WHERE h.at >= ?`).all(goneBefore());
     const all = db.prepare('SELECT id, os, version, targets, enabled FROM plugins').all();
     const out = new Map(all.map((p) => [p.id, { expected: 0, ok: 0, problems: [] }]));
     for (const r of rows) {
@@ -130,7 +142,7 @@ export function createPlugins({ db }) {
         if (!p.enabled || p.os !== os || !targetsMatch(parse(p.targets, null), r)) continue;
         const o = out.get(p.id);
         o.expected++;
-        const mine = Array.isArray(rep) ? rep.find((x) => x?.id === p.id) : null;
+        const mine = reportFor(rep, p.id, p.version);
         const state = !Array.isArray(rep) ? 'scriptOld' : !mine ? 'missing' : mine.state;
         if (state === 'ok') o.ok++;
         else if (o.problems.length < 50) o.problems.push({ device: r.id, name: r.name, state });
@@ -152,7 +164,7 @@ export function createPlugins({ db }) {
       return {
         tags: [...tags].sort().slice(0, 500),
         locations: db.prepare('SELECT id, name FROM locations ORDER BY name COLLATE NOCASE').all(),
-        devices: db.prepare(`SELECT d.id, d.name, json_extract(h.data,'$.os') os FROM host_reports h JOIN devices d ON d.id=h.device_id ORDER BY d.name COLLATE NOCASE LIMIT 2000`).all()
+        devices: db.prepare(`SELECT d.id, d.name, json_extract(h.data,'$.os') os FROM host_reports h JOIN devices d ON d.id=h.device_id WHERE h.at >= ? ORDER BY d.name COLLATE NOCASE LIMIT 2000`).all(goneBefore())
           .map((d) => ({ id: d.id, name: d.name, os: /windows/i.test(String(d.os || '')) ? 'windows' : 'linux' })),
         dirs: DIRS,
       };
@@ -208,10 +220,17 @@ export function createPlugins({ db }) {
       const names = new Map(db.prepare('SELECT id, name, version FROM plugins').all().map((r) => [r.id, r]));
       const rep = Array.isArray(reported) ? reported : [];
       const out = want.map((w) => {
-        const r = rep.find((x) => x.id === w.id);
+        const r = reportFor(rep, w.id, w.version);
         return { id: w.id, name: names.get(w.id)?.name || '', version: w.version, file: r?.file || '', reportedVersion: r?.version ?? null,
           state: !r ? 'missing' : r.state, text: r?.text || '' };
       });
+      // further copies of a plugin that is meant for this machine (the file of a version before a rename): can go
+      for (const w of want) {
+        const used = reportFor(rep, w.id, w.version);
+        for (const r of rep.filter((x) => x.id === w.id && x !== used && x.version !== w.version)) {
+          out.push({ id: w.id, name: r.file, version: w.version, file: r.file, reportedVersion: r.version, state: 'oldFile', text: '' });
+        }
+      }
       for (const r of rep.filter((x) => !want.some((w) => w.id === x.id))) {
         const p = r.id ? names.get(r.id) : null;
         out.push({ id: r.id, name: p?.name || '', version: p?.version ?? null, file: r.file, reportedVersion: r.version, state: r.state === 'ok' ? 'notAssigned' : r.state, text: r.text });

@@ -9,7 +9,9 @@ import { normalizeMac, isIPv4, ipSortKey, cidrContains } from './lib/net.js';
 import { TYPES, isTelematik, suggestName } from './scan/classify.js';
 import { bestWebUrl } from './scan/engine.js';
 import { forgetDevices } from './lib/idlists.js';
+import { csvCell } from './lib/csv.js';
 import { onDeviceChanged, followUrl } from './devicechange.js';
+import { inScope } from './auth/scope.js';
 
 const EDITABLE = ['name', 'type', 'vendor', 'model', 'ip', 'mac', 'hostname', 'os', 'location_id', 'owner', 'notes', 'tags',
   'web_url', 'serial', 'supplier', 'purchase_date', 'warranty_until', 'maintenance_until'];
@@ -277,7 +279,7 @@ export function createInventory(db) {
   }
 
   /** Adopts scan results into the inventory (optional type/name per result chosen in the UI). */
-  function adopt(resultIds, overrides = {}, user = '', skipped = []) {
+  function adopt(resultIds, overrides = {}, user = '', skipped = [], scope = null) {
     const created = [];
     refuseOutdated(resultIds);
     db.transaction(() => {
@@ -292,7 +294,7 @@ export function createInventory(db) {
         if (!mac && byIpNoMac.get(r.ip)) continue;
         const o = overrides[rid] || {};
         // Probably in the inventory already (same address or host name): only when asked for ("add as new anyway")
-        const maybe = o.force ? null : likelyExisting(r);
+        const maybe = o.force ? null : likelyExisting(r, scope);
         if (maybe) { skipped.push({ id: rid, device: maybe }); continue; }
         const type = TYPES.includes(o.type) ? o.type : r.detected_type;
         const seen = seenTimes(r, mac);
@@ -317,26 +319,28 @@ export function createInventory(db) {
 
   // Names too general to say "the same device" (many devices answer with them)
   const GENERIC_HOST = /^(localhost|unknown|android|iphone|ipad|espressif|esp[-_]?\w*|wlan\w*|dhcp\w*|.{0,2})$/i;
-  const sameHost = db.prepare(`SELECT id, name, mac, ip FROM devices WHERE lower(hostname)=? OR substr(lower(hostname),1,length(?)+1)=?||'.'
-    OR (hostname='' AND lower(name)=?) ORDER BY id LIMIT 1`);
-  const sameIp = db.prepare('SELECT id, name, mac, ip FROM devices WHERE ip=? ORDER BY id LIMIT 1');
+  const sameHost = db.prepare(`SELECT id, name, mac, ip, location_id FROM devices WHERE lower(hostname)=? OR substr(lower(hostname),1,length(?)+1)=?||'.'
+    OR (hostname='' AND lower(name)=?) ORDER BY id LIMIT 50`);
+  const sameIp = db.prepare('SELECT id, name, mac, ip, location_id FROM devices WHERE ip=? ORDER BY id LIMIT 50');
 
   /**
    * A new scan result that is probably a device of the inventory already (shown as a tip, not adopted by itself):
    *   'ip'        the same address, another MAC (a VM with a new MAC, a device exchanged, a changing WLAN MAC)
    *   'hostname'  the same host name, another address and MAC (a second network card, e.g. a NAS with two ports)
    * Returns { id, name, why } or null. Several services of one server are not concerned (they are no devices).
+   * scope: Set of location ids of a limited user (null = all) - only devices he may see are offered and linked.
    */
-  function likelyExisting(r) {
+  function likelyExisting(r, scope = null) {
     if (!r || r.device_id) return null;
     const mac = normalizeMac(r.mac);
-    const ip = sameIp.get(r.ip);
+    const first = (rows) => rows.find((d) => inScope(scope, d.location_id));
+    const ip = first(sameIp.all(r.ip));
     if (ip && ip.mac && ip.mac !== mac) return { id: ip.id, name: ip.name, why: 'ip' };
     const facts = parse(r.facts);
     for (const raw of [r.hostname, facts.netbios?.name]) {
       const short = String(raw || '').trim().toLowerCase().split('.')[0];
       if (!short || GENERIC_HOST.test(short)) continue;
-      const d = sameHost.get(short, short, short, short);
+      const d = first(sameHost.all(short, short, short, short));
       if (d && (!mac || d.mac !== mac)) return { id: d.id, name: d.name, why: 'hostname' };
     }
     return null;
@@ -347,13 +351,13 @@ export function createInventory(db) {
    * the new MAC (the next scan finds it by it). A second network card (same host name): its MAC/address is put on the
    * ignore list with a note, so it does not come back as new.
    */
-  function linkResults(resultIds, user = '') {
+  function linkResults(resultIds, user = '', scope = null) {
     let n = 0;
     refuseOutdated(resultIds);
     db.transaction(() => {
       for (const rid of resultIds) {
         const r = getResult.get(rid);
-        const m = likelyExisting(r);
+        const m = likelyExisting(r, scope);
         if (!m || r.handled) continue;
         const mac = normalizeMac(r.mac);
         const d = getDevice.get(m.id);
@@ -424,6 +428,16 @@ export function createInventory(db) {
       db.prepare('DELETE FROM devices WHERE id=?').run(dropId);
       if (!keep.mac && drop.mac) fill.mac = drop.mac;
       if (!keep.ip && drop.ip) fill.ip = drop.ip;
+      // who owns a taken value comes with it (a host name typed in on the dropped one stays the user's; one from a scan
+      // or the device stays theirs) - also an entry the kept one had for its empty field must not stay
+      const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
+      const keepAuto = obj(parseAuto(keep.auto_fields)); const dropAuto = obj(parseAuto(drop.auto_fields));
+      let autoChanged = false;
+      for (const k of Object.keys(fill)) {
+        if (k in dropAuto) { if (keepAuto[k] !== dropAuto[k] || !(k in keepAuto)) { keepAuto[k] = dropAuto[k]; autoChanged = true; } }
+        else if (k in keepAuto) { delete keepAuto[k]; autoChanged = true; }
+      }
+      if (autoChanged) fill.auto_fields = JSON.stringify(keepAuto);
       const keys = Object.keys(fill);
       if (keys.length) db.prepare(`UPDATE devices SET ${keys.map((k) => `${k}=?`).join(', ')}, updated_at=? WHERE id=?`).run(...keys.map((k) => fill[k]), now(), keepId);
       // the other card/address of the device: not offered as new again
@@ -470,12 +484,19 @@ export function createInventory(db) {
     return n;
   }
 
-  /** quiet: ids of devices in a maintenance window - away there is the plan, not "missing" */
-  function stats({ allowed = null, quiet = null } = {}) {
+  /**
+   * quiet: ids of devices in a maintenance window - away there is the plan, not "missing"
+   * allowed: locations of a limited user (null = all); scanVisible: may he see this scan (default: every target in
+   * his locations, the same rule as the scan list)
+   */
+  function stats({ allowed = null, quiet = null, scanVisible = null } = {}) {
     const devices = list({ allowed });
     const byType = {};
     for (const d of devices) byType[d.type] = (byType[d.type] || 0) + 1;
-    const lastScan = db.prepare("SELECT * FROM scans WHERE kind IN ('network','light') AND status IN ('done','cancelled','failed') ORDER BY id DESC LIMIT 1").get();
+    const ownScan = scanVisible || ((sc) => { const tg = parse(sc.targets, []); return Array.isArray(tg) && tg.length > 0 && tg.every((x) => inScope(allowed, x?.locationId)); });
+    const lastScan = allowed
+      ? db.prepare("SELECT * FROM scans WHERE kind IN ('network','light') AND status IN ('done','cancelled','failed') ORDER BY id DESC LIMIT 500").all().find(ownScan) || null
+      : db.prepare("SELECT * FROM scans WHERE kind IN ('network','light') AND status IN ('done','cancelled','failed') ORDER BY id DESC LIMIT 1").get();
     const waiting = lastScan ? db.prepare("SELECT location_id FROM scan_results WHERE scan_id=? AND status='new' AND handled IS NULL").all(lastScan.id)
       .filter((r) => !allowed || allowed.has(r.location_id)).length : 0;
     const seeDevice = new Set(devices.map((d) => d.id));
@@ -487,7 +508,7 @@ export function createInventory(db) {
       byType,
       waiting,
       lastScan: lastScan ? { ...lastScan, stats: parse(lastScan.stats), targets: parse(lastScan.targets, []) } : null,
-      locations: db.prepare('SELECT COUNT(*) n FROM locations').get().n,
+      locations: db.prepare('SELECT id FROM locations').all().filter((l) => inScope(allowed, l.id)).length,
       recent: db.prepare(`SELECT h.*, d.name device_name FROM device_history h JOIN devices d ON d.id=h.device_id
         ORDER BY h.id DESC LIMIT 200`).all().filter((h) => seeDevice.has(h.device_id)).slice(0, 12).map((h) => ({ ...h, detail: parse(h.detail) })),
       warranty: devices.filter((d) => d.warranty_until && d.warranty_until <= new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10))
@@ -575,13 +596,5 @@ export function createInventory(db) {
 export function toCsv(devices) {
   const cols = ['name', 'type', 'ip', 'mac', 'hostname', 'vendor', 'model', 'os', 'location_name', 'owner', 'tags', 'serial',
     'supplier', 'purchase_date', 'warranty_until', 'maintenance_until', 'web_url', 'last_seen', 'notes'];
-  const esc = (v) => {
-    let s = String(v ?? '');
-    // Formula injection: a cell starting with = + - @ (also after leading spaces, tabs or line breaks), starting with a
-    // tab or CR, or holding a comma followed by one of them (Excel with comma as list separator splits the cell there)
-    // is shown as text in spreadsheets. Every column is text (dates are ISO strings), so "-5" becomes text as well.
-    if (/^[\t\r]|^\s*[=+\-@]|,\s*[=+\-@]/.test(s)) s = `'${s}`;
-    return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return '﻿' + [cols.join(';'), ...devices.map((d) => cols.map((c) => esc(d[c])).join(';'))].join('\r\n') + '\r\n';
+  return '﻿' + [cols.join(';'), ...devices.map((d) => cols.map((c) => csvCell(d[c])).join(';'))].join('\r\n') + '\r\n';
 }

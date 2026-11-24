@@ -7,6 +7,13 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 ## Next version (not released yet)
 
 - English interface: the example values under Settings → Active Directory (groups, test account), in troubleshooting and for plugins are now English too
+- Code audit – security: users limited to locations no longer see or change anything of other locations through scan matching, monitors, maintenance windows, the overview or search; monitors and device addresses of non-administrators never point at the WhatsOnMyNet host itself or 169.254.x, for users limited to locations private addresses only in their own subnets; SNMP monitors and device addresses of non-administrators only to private networks and location subnets, because the stored SNMP access data go there
+- Code audit – sign-in: turning on two-factor asks for the password and signs out other sessions; "administrators need two-factor" also applies to failover; after a password change on the master the session ends on the standby too; a restore does not bring back revoked agent, host or /metrics keys, old passwords or deleted users
+- Code audit – host script with a shared key: reports only land on a device whose MAC they name and never change serial number, model or MAC (a laptop at a docking station needs a script of its own)
+- Code audit – log messages: event rules with "from" match addresses exactly (10.0.0.1 no longer matches 10.0.0.10), also the address reported through a relay, and ranges like 10.0.0.0/24; dangerous regular expressions are refused when saved; monitors on messages ignore upper/lower case also for umlauts; TLS syslog can no longer be blocked by open connections; IPv6 in WOMN_BIND works for UDP too; time-range search on the standby finds all messages
+- Code audit – data: deleted monitors leave status pages (before, a new monitor could take their place on the public page) and the page can be saved again; host names typed by hand stay on devices created with the form earlier and on merged devices; "Watch new devices" adds only one sensor per ZFS pool; renamed plugins no longer count as outdated; the diagnostic package also hides tokens in addresses
+- Code audit – HTTPS: an uploaded certificate is never replaced without a backup (also when its key is missing or an upload was interrupted); HSTS only for names the certificate contains
+- Code audit – interface: the overview no longer counts monitors not checked yet as "OK", confirmation before deleting saved searches and unknown machines, manual links from the search lead to the right section, dialogs and the certificate page fit on phones
 
 ## 0.56.0 - 2026-11-22
 

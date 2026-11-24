@@ -1,5 +1,5 @@
 // Building blocks shared by several pages.
-import { h } from '../dom.js';
+import { h, mount } from '../dom.js';
 import { t } from '../i18n.js';
 import { icon } from '../icons.js';
 import { fail } from '../app.js';
@@ -13,6 +13,17 @@ export function typeChip(type, { label = true } = {}) {
 
 export function presenceDot(p) {
   return h('span', { class: `dot ${p}`, title: t(`presence.${p}`), role: 'img', 'aria-label': t(`presence.${p}`) });
+}
+
+/**
+ * A device or monitor the server does not show (404) or that lies outside the user's locations (403): say so,
+ * with the way back to its list, instead of an empty page. True when it was such an error.
+ */
+export function notFoundPage(main, e, href) {
+  if (![403, 404].includes(e?.status)) return false;
+  mount(main, h('div', { class: 'page' }, h('div', { class: 'empty' }, h('p', {}, t('err.notVisible')),
+    h('a', { class: 'btn', href, 'data-link': true }, t('err.backToList')))));
+  return true;
 }
 
 export function pageHead(title, lead, ...actions) {

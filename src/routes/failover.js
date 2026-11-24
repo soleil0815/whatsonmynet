@@ -1,12 +1,13 @@
 // Failover: settings for the admin, and the five endpoints a paired standby calls on its master (with its secret,
 // no session).
 import express from 'express';
-import { requireRole, requireAuth } from '../auth/session.js';
+import { requireRole, requireAuth, twoFactorGate } from '../auth/session.js';
 
 export function createFailoverApi(ctx) {
   const { failover, db } = ctx;
   const r = express.Router();
-  const admin = requireRole('admin');
+  // administrators - with two-factor sign-in when the admin setting asks for it (like the rest of the API)
+  const admin = [requireRole('admin'), twoFactorGate(ctx.settings)];
   const audit = (req, action, detail = '') => {
     try { db.prepare('INSERT INTO audit(at,user,action,detail) VALUES(?,?,?,?)').run(new Date().toISOString(), req.user?.username || '', action, String(detail ?? '').slice(0, 500)); } catch { /* the log never stops an action */ }
   };

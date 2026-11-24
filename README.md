@@ -160,7 +160,7 @@ Geräte vom Typ *Drucker* werden regelmäßig (Standard stündlich) per SNMP gef
 - **Meldung**, wenn ein Verbrauchsmaterial auf den Schwellwert fällt (Standard 15 %) und noch einmal, wenn es leer ist - einmal pro Kartusche, nach dem Wechsel wieder scharf
 - Die Übersicht zeigt alle Drucker, bei denen etwas zur Neige geht
 
-Einstellungen unter *Einstellungen → Drucker*. Die Community ist dieselbe wie beim Scan (*Einstellungen → Scan*). Am Drucker muss SNMP (v1 oder v2c) eingeschaltet sein.
+Einstellungen unter *Einstellungen → Drucker*. Die Community ist dieselbe wie beim Scan (*Einstellungen → Scan*). Am Drucker muss SNMP (v1/v2c oder v3) eingeschaltet sein.
 
 ## Switches und NAS per SNMP (ab Version 0.3)
 
@@ -172,7 +172,7 @@ Geräte vom Typ *Switch* und *NAS* werden regelmäßig (Standard alle 15 Minuten
 - **Ins Inventar übernommen**: Seriennummer und Modell, die Drucker, Switches und NAS per SNMP melden, bei Switches und NAS zusätzlich die Firmware (bzw. DSM-Version), landen gleich in den Angaben des Geräts und bleiben aktuell; eigene abweichende Eingaben bleiben. Meldet ein Gerät unter derselben IP eine andere Seriennummer (Tausch), kommen Seriennummer, Modell und Firmware vom neuen Gerät und der nächste Scan übernimmt die neue MAC-Adresse; der Verlauf vermerkt den Tausch.
 - **Meldung** bei einer gestörten Festplatte, einem eingeschränkten RAID, Lüfter- oder Netzteilfehler und wenn ein Volume voll läuft (Standard 90 %) - einmal beim Auftreten und einmal, wenn alles wieder in Ordnung ist. Die Übersicht zeigt offene NAS-Probleme.
 
-Einstellungen unter *Einstellungen → Switches & NAS*. Einfache Switches ohne SNMP (z. B. TP-Link „Easy Smart“) liefern keine Daten; bei LANCOM, HP/Aruba, Cisco, Netgear Smart und Co. muss SNMP v1/v2c lesend aktiv sein.
+Einstellungen unter *Einstellungen → Switches & NAS*. Einfache Switches ohne SNMP (z. B. TP-Link „Easy Smart“) liefern keine Daten; bei LANCOM, HP/Aruba, Cisco, Netgear Smart und Co. muss SNMP (v1/v2c oder v3) lesend aktiv sein.
 
 ## Netzplan (ab Version 0.3)
 
@@ -200,7 +200,7 @@ Danach verschwindet der Hinweis „Ping nicht möglich“ beim Scan, und Ping-Mo
 
 ### SNMP
 
-Standardmäßig fragt der Scan Geräte mit der Community `public` (SNMP v2c, sonst v1) nach Name, Beschreibung und Hersteller-ID - nur lesend. Eigene Communities trägst du unter *Einstellungen → Scan* ein; sie werden verschlüsselt gespeichert. Geräte ohne SNMP (z. B. einfache TP-Link-Switches) werden trotzdem erkannt, nur mit weniger Details.
+Standardmäßig fragt der Scan Geräte mit der Community `public` (SNMP v2c, sonst v1) nach Name, Beschreibung und Hersteller-ID - nur lesend. Eigene Communities trägst du unter *Einstellungen → Scan* ein; sie werden verschlüsselt gespeichert. Geräte, die nur SNMPv3 sprechen, fragt der Scan mit bis zu fünf Benutzern aus *Einstellungen → Scan → SNMPv3-Zugänge* (Authentifizierung und Verschlüsselung, Passwörter verschlüsselt gespeichert). Geräte ohne SNMP (z. B. einfache TP-Link-Switches) werden trotzdem erkannt, nur mit weniger Details.
 
 ## Anmeldung mit Active Directory (ab Version 0.3)
 
@@ -217,7 +217,7 @@ Unter *Einstellungen → Active Directory* meldest du dich mit dem Windows-Konto
 
 Bearbeiter und Leser lassen sich unter *Einstellungen → Benutzer* auf einen oder mehrere Standorte beschränken - etwa für die IT einer Außenstelle. Ein beschränktes Konto sieht und ändert nur Geräte, Scan-Ergebnisse und Monitore dieser Standorte, scannt nur deren Subnetze und zählt auf der Übersicht nur sie. Geräte ohne Standort, freie Subnetze, der nächtliche Scan, Wartungsfenster und Docker-Hosts bleiben unbeschränkten Konten vorbehalten. Administratoren sind nie beschränkt; das gilt auch für Konten aus dem Active Directory.
 
-**Erlaubte Scan-Ziele:** Bearbeiter scannen nur private Netze (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 und 100.64.0.0/10) und die Subnetze, die ein Administrator bei den Standorten eingetragen hat. Öffentliche Adressen - als Subnetz im Scan oder als Tiefenprüfung eines Geräts - darf nur ein Administrator scannen.
+**Erlaubte Scan-Ziele:** Bearbeiter scannen nur private Netze (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 und 100.64.0.0/10) und die Subnetze, die ein Administrator bei den Standorten eingetragen hat. Öffentliche Adressen - als Subnetz im Scan oder als Tiefenprüfung eines Geräts - darf nur ein Administrator scannen. Monitor-Ziele, die ein Nicht-Administrator einträgt, dürfen nie auf den WhatsOnMyNet-Rechner selbst (127.x, ::1), 169.254.x/fe80:: oder 0.x zeigen; sonst ist alles erlaubt, auch Internet-Adressen wie `https://www.example.com`. Benutzer mit Standort-Beschränkung erreichen private Adressen nur in den Subnetzen ihrer Standorte (haben diese keine Subnetze, gelten die privaten Netze). SNMP-Monitore schicken die gespeicherten Communities und v3-Benutzer – sie gehen bei Nicht-Administratoren nur an private Netze und Standort-Subnetze (mit Standort-Beschränkung nur an die eigenen). Hostnamen werden beim Speichern aufgelöst: Gibt es IPv4-Antworten, entscheiden diese (jede muss passen) und IPv6-Antworten dürfen nur nicht auf den Rechner selbst zeigen; nur IPv6-Antworten müssen jede passen (fc00::/7 gilt als privat). Ändert der Besitzer eines Namens dessen DNS-Antwort später, fällt das nicht auf – wer es streng will, lässt Nicht-Administratoren IP-Adressen eintragen. Drucker, Switches & NAS und die SNMP-Monitore eines Administrators fragen mit allen gespeicherten Zugängen. Die IP-Adresse eines Geräts, die ein Nicht-Administrator einträgt, folgt der SNMP-Regel, denn Drucker, Switches und NAS werden mit den hinterlegten Zugängen abgefragt.
 
 ## Scan-Agent für Außenstellen (ab Version 0.3)
 
@@ -245,7 +245,7 @@ Weitere Hypervisoren auf derselben Seite: **VMware ESXi/vCenter** (vSphere-API),
 
 **Netzwerk-Controller:** UniFi Network (UniFi OS und Network-App), TP-Link Omada und MikroTik RouterOS 7 werden mit einem Lesekonto abgefragt (*Überwachung → Netzwerk-Controller*): Access Points, Switches und Gateways mit Modell, Firmware (und anstehendem Update), Clients und Zustand. Modell, Seriennummer, Firmware und Typ gehen per MAC ins Inventar; Sensoren für Online-Zustand, Clients, CPU/RAM und Firmware-Updates. Der Scan erkennt UniFi, Omada, MikroTik und Aruba Instant On an ihren Modellnamen.
 
-**Windows- und Linux-Rechner ohne Agent:** Ein kleines Skript (PowerShell bzw. POSIX sh) meldet alle 5 Minuten CPU, RAM, Laufwerke, Laufzeit und Dienste - kein Agent, kein offener Port, kein Konto, nichts installiert. Beim ersten Aufruf richtet es sich selbst ein (geplante Aufgabe bzw. cron), ein Deinstallationsskript entfernt es wieder. Meldet es sich einen Tag lang nicht, fragt die Geräteseite, ob es entfernt wurde, und der Rechner wird für neue Sensoren nicht mehr angeboten. Pro Gerät (*Geräteseite → Mehr → Per Skript überwachen*) oder gemeinsam für viele Rechner zum Verteilen (*Einstellungen → Rechner-Skripte*); Meldungen werden dem Inventar über MAC, Rechnername oder IP zugeordnet.
+**Windows- und Linux-Rechner ohne Agent:** Ein kleines Skript (PowerShell bzw. POSIX sh) meldet alle 5 Minuten CPU, RAM, Laufwerke, Laufzeit und Dienste - kein Agent-Paket, nichts wird heruntergeladen, kein offener Port, kein Konto. Beim ersten Aufruf richtet es nur sich selbst und eine geplante Aufgabe (cron) ein, ein Deinstallationsskript entfernt es wieder. Meldet es sich einen Tag lang nicht, fragt die Geräteseite, ob es entfernt wurde, und der Rechner wird für neue Sensoren nicht mehr angeboten. Pro Gerät (*Geräteseite → Mehr → Per Skript überwachen*) oder gemeinsam für viele Rechner zum Verteilen (*Einstellungen → Rechner-Skripte*); Meldungen werden dem Inventar über MAC, Rechnername oder IP zugeordnet - beim gemeinsamen Skript ein Gerät mit bekannter MAC nur, wenn die Meldung diese MAC nennt (den Schlüssel haben alle Rechner), und Seriennummer, Modell und MAC eines Geräts ändert nur ein Skript mit eigenem Schlüssel. Ein Notebook, das an der Dockingstation nur deren MAC meldet, bekommt deshalb ein eigenes Skript (Geräteseite).
 
 - **VE**: Knoten (online, CPU, RAM), Speicher mit Belegung, VMs und Container (läuft/gestoppt), die letzten Sicherungen (vzdump) mit Fehlern
 - **Backup Server**: Datastores mit Belegung, Sicherungsgruppen mit dem Alter der letzten Sicherung, fehlgeschlagene Aufgaben (Verify, GC …)
@@ -306,7 +306,9 @@ Einzelheiten zu allem stehen im Handbuch.
 - Beim ersten Start erzeugt WhatsOnMyNet ein selbstsigniertes Zertifikat für den Hostnamen, `localhost`, alle IPv4-Adressen des Hosts und die Adresse aus `WOMN_BASE_URL`. Es wird 30 Tage vor Ablauf automatisch erneuert.
 - Unter *Einstellungen → HTTPS-Zertifikat* lädst du ein eigenes Zertifikat hoch: PEM (Zertifikat mit Kette + Schlüssel) oder PFX/P12 mit Kennwort. Es wird vorher geprüft (Schlüssel passt, nicht abgelaufen) und ohne Neustart aktiv.
 - HTTP auf `WOMN_HTTP_PORT` leitet auf HTTPS um - außer für einen vertrauten Reverse Proxy (siehe unten).
-- HSTS sendet WhatsOnMyNet nur mit eigenem Zertifikat und Hostnamen. Mit einem selbstsignierten Zertifikat würde HSTS dazu führen, dass der Browser die Warnung nicht mehr überspringen lässt - du kämst nicht mehr hinein.
+- Ersetzt WhatsOnMyNet ein hochgeladenes Zertifikat (neues hochgeladen, zurück auf selbstsigniert, Schlüssel fehlt oder passt nicht), bleiben die alten Dateien als `*.<Zeit>.bak` in `<Daten>/tls`. Ist `cert.pem` oder `key.pem` vorhanden, aber nicht lesbar (Rechte), startet WhatsOnMyNet nicht und ersetzt nichts.
+- HSTS sendet WhatsOnMyNet nur mit eigenem Zertifikat und nur für Hostnamen, die das Zertifikat enthält. Mit einem selbstsignierten Zertifikat würde HSTS dazu führen, dass der Browser die Warnung nicht mehr überspringen lässt - du kämst nicht mehr hinein.
+- Hinter dem vertrauten Reverse Proxy sendet WhatsOnMyNet HSTS nur, wenn der Proxy nicht selbst auf HTTPS umleitet und WhatsOnMyNet das übernehmen musste. `WOMN_HSTS=off` schaltet HSTS ganz ab, `WOMN_HSTS=preload` sendet es immer (mit eigenem Zertifikat oder hinter dem Proxy, nie mit dem selbstsignierten); Standard ist `on`.
 
 ### Hinter einem Reverse Proxy
 
@@ -329,7 +331,7 @@ Der Proxy leitet dann entweder an `https://<server>:8743` (selbstsigniert, beim 
 
 ## Zwei-Faktor-Anmeldung (ab Version 0.4)
 
-Lokale Konten schalten unter *Mein Konto* die Zwei-Faktor-Anmeldung ein: QR-Code mit einer Authenticator-App scannen (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), Code bestätigen, die zehn **Wiederherstellungscodes** sicher aufbewahren. Danach fragt die Anmeldung nach dem sechsstelligen Code; jeder Code gilt nur einmal. Unter *Einstellungen → Benutzer* lässt sich die Zwei-Faktor-Anmeldung **für Administratoren verpflichtend** machen. Admins können sie bei verlorenem Handy für ein Konto zurücksetzen; Konten aus dem Active Directory schützt das AD selbst.
+Lokale Konten schalten unter *Mein Konto* die Zwei-Faktor-Anmeldung ein: QR-Code mit einer Authenticator-App scannen (Microsoft/Google Authenticator, Aegis, 2FAS, Bitwarden …), Code zusammen mit dem aktuellen Passwort bestätigen (andere Anmeldungen des Kontos werden dabei abgemeldet), die zehn **Wiederherstellungscodes** sicher aufbewahren. Danach fragt die Anmeldung nach dem sechsstelligen Code; jeder Code gilt nur einmal. Unter *Einstellungen → Benutzer* lässt sich die Zwei-Faktor-Anmeldung **für Administratoren verpflichtend** machen. Admins können sie bei verlorenem Handy für ein Konto zurücksetzen; Konten aus dem Active Directory schützt das AD selbst.
 
 ## Ausgesperrt?
 
@@ -350,7 +352,7 @@ Was neu ist, steht in [CHANGELOG.md](CHANGELOG.md) (dieselben Texte wie im Progr
 - In der Woche vor dem Patchday greift ein ZAP-Scan das Programm in einem Wegwerf-Container ohne Anmeldung an. Das Ergebnis wertet der monatliche Code-Audit aus.
 - WhatsOnMyNet legt jeden Tag eine komprimierte Sicherung der Datenbank in `data/backups/` an (`.sqlite.gz`, standardmäßig die 10 neuesten, Anzahl unter *Einstellungen → Sicherung*; dort lassen sich einzelne Sicherungen auch löschen). Sichere den ganzen Ordner `data/`, inklusive `secret.key` und `tls/`. Die Meldungen der Geräte (Syslog, Traps) liegen in `data/events.sqlite` - nicht in der Datenbank und nicht in den täglichen Sicherungen; höchstens 2 GB (einstellbar).
 
-Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle Sicherung herunter, legst eine an oder spielst eine ein - hochgeladen (`.sqlite` oder `.sqlite.gz`) oder aus der Liste auf dem Server. Die Datei wird vorher geprüft (WhatsOnMyNet-Datenbank, nicht neuer als diese Version, gleicher Schlüssel), der aktuelle Stand wird als `whatsonmynet-before-restore-…` gesichert, dann startet das Programm neu. **Bewahre `data/secret.key` (bzw. deinen `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
+Unter *Einstellungen → Sicherung* (ab 0.4) lädst du jederzeit eine aktuelle Sicherung herunter, legst eine an oder spielst eine ein - hochgeladen (`.sqlite` oder `.sqlite.gz`) oder aus der Liste auf dem Server. Die Datei wird vorher geprüft (WhatsOnMyNet-Datenbank, nicht neuer als diese Version, gleicher Schlüssel), der aktuelle Stand wird als `whatsonmynet-before-restore-…` gesichert, dann startet das Programm neu. Schlüssel und Konten bleiben dabei auf dem heutigen Stand: Agent-, Rechner- und /metrics-Schlüssel, Kennwörter und Zwei-Faktor-Anmeldung kommen aus der aktuellen Datenbank, seither gelöschte Schlüssel kommen nicht zurück und seither gelöschte Konten nur deaktiviert (gilt für Sicherungen derselben Installation, nicht beim Umzug auf einen neuen Server). **Bewahre `data/secret.key` (bzw. deinen `WOMN_SECRET`) mit auf** - ohne ihn sind gespeicherte Passwörter in einer Sicherung unlesbar.
 
 **Diagnosepaket** (ab 0.22): *Einstellungen → Diagnose* erstellt ein ZIP für die Fehlersuche - Protokoll der letzten 1–30 Tage oder seit dem letzten Update, Warnungen und Fehler, Monitore, Sensoren, Geräte mit ihren Werten, Hypervisoren und Cloud, Meldungen und Ereignisregeln, Scans, Einstellungen. Standardmäßig anonymisiert (Platzhalter wie GERAET-001, die in jedem Paket gleich bleiben und sich nachschlagen lassen), nie mit Kennwörtern oder Schlüsseln, nichts wird automatisch verschickt.
 
@@ -366,4 +368,4 @@ Was sich in welcher Version geändert hat, steht im Programm selbst: Klick unten
 
 WhatsOnMyNet ist Open Source unter der [GNU Affero General Public License 3.0](LICENSE) (AGPL-3.0-or-later). Wer eine veränderte Fassung im Netz anbietet, muss deren Quellcode zugänglich machen (`WOMN_SOURCE_URL`).
 
-Schriften: IBM Plex und Barlow Semi Condensed (SIL Open Font License, `public/fonts/OFL.txt`). Herstellerliste: IEEE über das Paket `oui-data` (BSD-2-Clause).
+Schriften: Inter und IBM Plex Mono (SIL Open Font License, `public/fonts/OFL.txt`). Herstellerliste: IEEE über das Paket `oui-data` (BSD-2-Clause).

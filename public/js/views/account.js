@@ -92,14 +92,18 @@ function twoFactorPanel(tf, reload) {
     try {
       const s = await post('/me/2fa/setup');
       const code = input('code', '', { inputmode: 'numeric', autocomplete: 'one-time-code', class: 'mono', required: true, maxlength: 6 });
+      // the current password again: a session alone must not switch it on
+      const pw = input('password', '', { type: 'password', autocomplete: 'current-password', required: true });
       const f = h('form', { class: 'form', onsubmit: async (e) => {
         e.preventDefault();
-        try { const r = await post('/me/2fa/enable', { code: code.value }); showCodes(r.recoveryCodes); toast(t('tf.enabled')); reload(); } catch (ex) { fail(ex); code.select(); }
+        try { const r = await post('/me/2fa/enable', { code: code.value, password: pw.value }); showCodes(r.recoveryCodes); toast(t('tf.enabled')); reload(); } catch (ex) { fail(ex); (ex?.code === 'err.passwordWrong' ? pw : code).select(); }
       } },
       h('ol', { class: 'tf-steps' }, h('li', {}, t('tf.step1')), h('li', {}, t('tf.step2')), h('li', {}, t('tf.step3'))),
       h('div', { class: 'tf-qr', html: s.svg, role: 'img', 'aria-label': t('tf.qr') }),
       h('p', { class: 'muted small' }, t('tf.manual'), ' ', h('code', { class: 'mono' }, s.secret.replace(/(.{4})/g, '$1 ').trim())),
       field(t('login.code'), code),
+      field(t('acc.current'), pw),
+      h('p', { class: 'muted small' }, t('tf.othersOut')),
       h('div', { class: 'actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, t('tf.confirm'))));
       mount(area, f);
       code.focus();

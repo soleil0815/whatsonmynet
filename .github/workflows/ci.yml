@@ -401,10 +401,10 @@ jobs:
           generate_release_notes: true
 
   # Candidate images of this run (<version>-kandidat-<run id>[-<arch>]): removed from the registry when the run
-  # ends - after publishing, after a failed build or check (publish skipped) or a cancel. A failed publish job (e.g. a
-  # transient registry error) keeps them, so that "Re-run failed jobs" still finds them. Never deleted: a version
-  # that also carries a real version tag or latest (after publishing that is the checked candidate itself) and the
-  # platform images the published image points to (see the script).
+  # ends - after publishing, after a failed build (publish skipped) or a cancel. A failed publish job keeps them -
+  # that includes the Trivy gate on the candidate, which runs inside publish, and transient registry errors - so
+  # that "Re-run failed jobs" still finds them. Never deleted: what the registry shows as published (<version>,
+  # latest and their platform images; PUBLISHED makes a missing <version> stop the cleanup) - see the script.
   cleanup-candidates:
     needs: [release-check, release-build, publish]
     if: always() && needs.publish.result != 'failure' && needs.release-check.result == 'success' && needs.release-build.result != 'skipped'
@@ -429,4 +429,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE_OWNER_TYPE: ${{ github.event.repository.owner.type == 'Organization' && 'orgs' || 'users' }}
+          PUBLISHED: ${{ needs.publish.result == 'success' }}
         run: sh .github/scripts/delete-candidates.sh "$IMAGE" "$GITHUB_RUN_ID"

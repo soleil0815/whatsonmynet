@@ -16,7 +16,8 @@ function tryGet(session, oids, timeout) {
 
 /**
  * Opens a session with the first access that answers: communities (v2c, then v1), then SNMPv3 users. The access that
- * worked last time for this device is tried first. A device silent to v3 is not asked again with every other user.
+ * worked last time for this device is tried first. A device silent to v3 (no answer to the engine discovery) is not
+ * asked again with every other user.
  * Returns { session, version, access, close() } or null. Community and keys never leave this module.
  */
 export async function openSnmp(ip, communities = ['public'], { timeout = 1500, port = 161 } = {}) {
@@ -33,7 +34,9 @@ export async function openSnmp(ip, communities = ['public'], { timeout = 1500, p
         rememberAccess(ip, c);
         return { session, version: label, access: accessLabel(c, label), close: () => { try { session.close(); } catch { /* closed */ } } };
       }
-      if (label === '3' && r.silent) v3Silent = true;
+      // silent to v3 altogether: not even the engine discovery got an answer (a device that knows v3 but drops an
+      // unknown user without a report still gets asked with the next user)
+      if (label === '3' && r.silent && !session.msgSecurityParameters) v3Silent = true;
       try { session.close(); } catch { /* closed */ }
     }
   }
@@ -91,14 +94,17 @@ export function walk(s, base, { max = 2000, timeout = 8000 } = {}) {
     let done = false;
     const end = (complete = false) => { if (!done) { done = true; out.complete = complete; resolve(out); } };
     const prefix = `${base}.`;
-    let last = '';
+    const seen = new Set();
     const feed = (vbs) => {
+      // ended already (timeout): returning true tells net-snmp to stop asking - otherwise it would keep sending GETBULKs
+      if (done) return true;
       for (const vb of vbs) {
         // end of the table: past its end, "no such object" or end of the MIB. Some agents answer a GETBULK past the end
-        // of their MIB with the asked OID again - net-snmp would then ask the same thing in a tight loop until the time
-        // runs out (load on the device and on WhatsOnMyNet), so a repeated OID ends the walk too.
-        if (snmp.isVarbindError(vb) || !vb.oid.startsWith(prefix) || vb.oid === last) { end(true); return true; }
-        last = vb.oid;
+        // of their MIB with an OID they gave before (the asked one again, or going back and forth) - net-snmp would then
+        // ask in a loop until the time runs out (load on the device and on WhatsOnMyNet), so any repeated OID ends the
+        // walk too (a correct agent never repeats one: the OIDs of a walk only grow).
+        if (snmp.isVarbindError(vb) || !vb.oid.startsWith(prefix) || seen.has(vb.oid)) { end(true); return true; }
+        seen.add(vb.oid);
         out.set(vb.oid.slice(prefix.length), vbValue(vb));
         if (out.size >= max) { end(true); return true; }
       }

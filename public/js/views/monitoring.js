@@ -5,7 +5,7 @@ import { get, post, put, del } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, navigate, fail } from '../app.js';
-import { pageHead, field, input, select, btn, formData } from './common.js';
+import { pageHead, field, input, select, btn, formData, notFoundPage } from './common.js';
 import { openHostScript } from './hostscripts.js';
 import { checkText } from '../checktext.js';
 import { historyChart, duration } from './monchart.js';
@@ -458,7 +458,7 @@ async function renderDetail(main, id) {
 
   async function load() {
     let m; let windows = [];
-    try { [m, windows] = await Promise.all([get(`/monitors/${id}?hours=${hours}`), get('/maintenance').catch(() => [])]); } catch (e) { if (alive) fail(e); return; }
+    try { [m, windows] = await Promise.all([get(`/monitors/${id}?hours=${hours}`), get('/maintenance').catch(() => [])]); } catch (e) { if (alive && !notFoundPage(main, e, '/monitoring')) fail(e); return; }
     if (!alive) return;
     const reload = () => { clearTimeout(timer); load(); };
     mount(head, h('div', { class: 'device-head' },
@@ -1169,7 +1169,7 @@ async function renderMaintenance(main) {
           btn(t('edit'), { class: 'btn btn-sm', onclick: () => maintenanceForm(w, monitors, reload) }),
           h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${t('delete')}: ${w.name}`, html: icon('trash'), onclick: async () => {
             if (!await confirmDialog(t('delete'), t('maint.deleteConfirm', { name: w.name }), t('delete'), t('cancel'), { danger: true })) return;
-            try { await del(`/maintenance/${w.id}`); reload(); } catch (e) { fail(e); }
+            try { await del(`/maintenance/${w.id}`); toast(t('deleted')); reload(); } catch (e) { fail(e); }
           } })) : null))))))
       : h('div', { class: 'empty' }, h('p', {}, t('maint.empty'))))));
 }

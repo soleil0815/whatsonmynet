@@ -68,7 +68,8 @@ test('proxy rules: learn HTTPS, then redirect HTTP and send HSTS', async () => {
 test('direct HSTS only with an own certificate and a host name', () => {
   const run = (source, host, encrypted = true) => {
     const headers = {};
-    const cert = { source, selfSigned: source !== 'custom', validTo: new Date(Date.now() + 864e5).toISOString() };
+    const cert = { source, selfSigned: source !== 'custom', validTo: new Date(Date.now() + 864e5).toISOString(),
+      x509: { checkHost: (h) => (h === 'womn.firma.local' ? h : undefined) } };
     directHstsMiddleware({ hsts: 'on', cert: () => cert })({ socket: { encrypted }, headers: { host } }, { setHeader: (k, v) => { headers[k] = v; } }, () => {});
     return headers['Strict-Transport-Security'];
   };
