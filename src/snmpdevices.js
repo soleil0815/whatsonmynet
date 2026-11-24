@@ -7,7 +7,7 @@ import { readNas, nasProblems, readUpsDevice } from './scan/nas.js';
 import { HttpError } from './lib/http.js';
 import { log } from './lib/log.js';
 import { normalizeMac } from './lib/net.js';
-import { snmpCredentials } from './snmpcreds.js';
+import { snmpCredentialsFor } from './snmpcreds.js';
 
 export const SNMP_KINDS = { switch: 'switch', nas: 'nas', ups: 'ups' };
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
@@ -72,7 +72,8 @@ export function carryOver(prev, next) {
 
 export function createSnmpDevices({ db, settings, channels }) {
   // communities and SNMPv3 users of the scan
-  const communities = () => snmpCredentials(settings);
+  // (stored ones only for private ranges and location subnets)
+  const communities = (ip) => snmpCredentialsFor(settings, ip, db.prepare('SELECT cidr FROM subnets').all().map((x) => x.cidr));
   const readers = { switch: readSwitch, nas: readNas, ups: readUpsDevice };
   const busy = new Set();
   let timer = null;
@@ -160,7 +161,7 @@ export function createSnmpDevices({ db, settings, channels }) {
     const prev = getStatus.get(d.id);
     try {
       let data = null; let error = '';
-      try { data = await readers[kind](d.ip, communities()); } catch (e) { error = ['snmp', 'noIfMib', 'noNasMib', 'noUpsMib'].includes(e.message) ? e.message : 'snmp'; log.debug?.(`SNMP ${d.name}: ${e.message}`); }
+      try { data = await readers[kind](d.ip, communities(d.ip)); } catch (e) { error = ['snmp', 'noIfMib', 'noNasMib', 'noUpsMib'].includes(e.message) ? e.message : 'snmp'; log.debug?.(`SNMP ${d.name}: ${e.message}`); }
       let alerts = prev && prev.kind === kind ? parse(prev.alerts) : {};
       if (data && kind === 'switch') {
         storeMacs(d.id, data, at);

@@ -165,7 +165,9 @@ function snmpGetOnce(ip, community, version, timeout) {
     session.on('error', () => end(null));
     const keys = Object.keys(SYS);
     session.get(keys.map((k) => SYS[k]), (err, vbs) => {
-      if (err || !vbs) return end(err instanceof snmp.RequestTimedOutError ? null : false);
+      // null: no answer at all; false: refused - or v3 with an answer to the engine discovery but none for this user
+      // (some devices drop unknown users without a report: the next user may still work)
+      if (err || !vbs) return end(err instanceof snmp.RequestTimedOutError && !(version === 3 && session.msgSecurityParameters) ? null : false);
       const out = {};
       vbs.forEach((vb, i) => {
         if (snmp.isVarbindError(vb)) return;
@@ -176,7 +178,7 @@ function snmpGetOnce(ip, community, version, timeout) {
       });
       end(Object.keys(out).length ? out : null);
     });
-    setTimeout(() => end(null), timeout + 500).unref();
+    setTimeout(() => end(version === 3 && session.msgSecurityParameters ? false : null), timeout + 500).unref();
   });
 }
 

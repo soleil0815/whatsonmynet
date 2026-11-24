@@ -2,6 +2,7 @@
 // encryption). Both are kept encrypted in the settings and never go to the browser. Which access works for a device is
 // remembered (in memory), so the next poll asks with it first and does not wait for the others to time out.
 import snmp from 'net-snmp';
+import { scanTargetAllowed } from './lib/net.js';
 
 export const V3_LEVELS = ['noAuthNoPriv', 'authNoPriv', 'authPriv'];
 export const V3_AUTH = ['sha', 'sha256', 'sha512', 'sha224', 'sha384', 'md5'];
@@ -45,6 +46,16 @@ export function v3Public(raw) {
 export function snmpCredentials(settings) {
   const comm = parseCommunities(settings.get('scan.snmpCommunities'));
   return [...(comm.length ? comm : ['public']), ...parseV3(settings.get('scan.snmpV3'))];
+}
+
+/**
+ * The accesses for one address: the stored communities and v3 users only go to addresses an editor may scan as well -
+ * private ranges and the subnets of the locations (`subnets`). Anywhere else only the default "public" is tried, so a
+ * monitor or a device address pointing outside never hands out the stored access data (also not for an administrator:
+ * a public subnet of his own he adds to a location).
+ */
+export function snmpCredentialsFor(settings, ip, subnets = []) {
+  return scanTargetAllowed(ip, subnets) ? snmpCredentials(settings) : ['public'];
 }
 
 const keyOf = (c) => (typeof c === 'string' ? `c:${c}` : `u:${c.user}`);

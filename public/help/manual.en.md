@@ -852,7 +852,7 @@ Under *Monitoring → Reports* reports go out by e-mail at set times - e.g. the 
 
 ## Users and rights
 
-- **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*. Editors only scan private networks (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) and the subnets of the locations; public addresses only administrators.
+- **Roles**: *Administrator* (everything), *Editor* (scan, adopt, maintain, monitors), *Read only*. Editors only scan private networks (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) and the subnets of the locations; public addresses only administrators. This also applies to monitor targets and device addresses (limited to locations: only the subnets of the own locations; never 127.x or 169.254.x). Stored SNMP access data only go to private networks and location subnets.
 - **Locations**: editors and viewers can be limited to locations - they then only see and change devices, scans and monitors of these.
 - **Active Directory**: sign-in with the Windows account, see the next section.
 - **Two-factor sign-in** (*My account*): scan the QR code with an authenticator app, confirm a code together with the current password (other sign-ins of the account are signed out), keep the recovery codes. It can be made mandatory for administrators under *Settings → Users* (section *Sign-in*).

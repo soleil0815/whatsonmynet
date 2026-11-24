@@ -217,7 +217,7 @@ Under *Settings → Active Directory* users sign in with their Windows account:
 
 Editors and viewers can be limited to one or more locations under *Settings → Users* - e.g. for the IT of a branch office. A limited account only sees and changes devices, scan results and monitors of these locations, scans only their subnets and counts only them on the overview. Devices without a location, free subnets, the nightly scan, maintenance windows and Docker hosts stay with unlimited accounts. Administrators are never limited; this also applies to accounts from Active Directory.
 
-**Allowed scan targets:** editors only scan private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and 100.64.0.0/10) and the subnets an administrator entered at the locations. Public addresses - as a subnet in a scan or as the deep check of a device - only an administrator may scan.
+**Allowed scan targets:** editors only scan private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and 100.64.0.0/10) and the subnets an administrator entered at the locations. Public addresses - as a subnet in a scan or as the deep check of a device - only an administrator may scan. The same rule applies to monitor targets and device addresses an editor enters (host names are resolved when saved, every address must fit); users limited to locations only inside the subnets of their locations, and never the WhatsOnMyNet host itself (127.x) or 169.254.x. The stored SNMP communities and v3 users - also for administrators - only go to private networks and location subnets; elsewhere only "public" is tried. An administrator adds an own public network to a location for that.
 
 ## Scan agent for branch offices (from version 0.3)
 

@@ -5,6 +5,7 @@ import { HttpError, int, str, ids } from '../lib/http.js';
 import { BULK_MAX } from '../monitor/index.js';
 import { requireRole } from '../auth/session.js';
 import { inScope } from '../auth/scope.js';
+import { assertTargetsAllowed } from '../lib/targetguard.js';
 import { config } from '../config.js';
 import { parseEventIds, parseDenyList, formatDenyList, denies } from '../eventrules.js';
 import { WIN_NOISE, WIN_KEEP } from '../settings.js';
@@ -73,11 +74,13 @@ export function createMonitoringApi(ctx) {
     const dev = set ? Number(given) : (given !== undefined && type === 'event') ? null : old?.device_id ?? null;
     if (!deviceOk(req, dev)) throw new HttpError(403, 'err.scope');
   };
+  // Non-admins: a monitor may only make the server contact what they may scan (private ranges, location subnets)
+  const targetGuard = (req) => (req.user.role === 'admin' ? null : (hosts) => assertTargetsAllowed(db, req.user, hosts));
   r.post('/monitors', editor, async (req, res) => {
     resultOk(req);
     parentOk(req);
     typeOk(req, req.body.type);
-    const m = await monitoring.create(req.body);
+    const m = await monitoring.create(req.body, { guard: targetGuard(req) });
     audit(req, 'monitor.create', `${m.name} (${m.type} ${m.target})`);
     res.status(201).json(m);
   });
@@ -87,7 +90,7 @@ export function createMonitoringApi(ctx) {
     resultOk(req, db.prepare('SELECT type, device_id FROM monitors WHERE id=?').get(idParam(req)));
     parentOk(req);
     typeOk(req, req.body.type ?? monitoring.get(idParam(req))?.type);
-    const m = await monitoring.update(idParam(req), req.body);
+    const m = await monitoring.update(idParam(req), req.body, { guard: targetGuard(req) });
     audit(req, 'monitor.update', m.name);
     res.json(m);
   });

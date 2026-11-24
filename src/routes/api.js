@@ -12,6 +12,7 @@ import { HttpError, line, str, int, ids, oneOf } from '../lib/http.js';
 import { safeEqual } from '../lib/crypto.js';
 import { requireAuth, requireRole, can, twoFactorRequiredFor, twoFactorGate } from '../auth/session.js';
 import { localInterfaces, defaultGateways, parseCidr, cidrContains, scanTargetAllowed } from '../lib/net.js';
+import { assertTargetsAllowed } from '../lib/targetguard.js';
 import { pingAvailable } from '../scan/probes.js';
 import { TYPES } from '../scan/classify.js';
 import { validTime } from '../scan/nightly.js';
@@ -371,8 +372,14 @@ export function createApi(ctx) {
       hostScript: req.user.role === 'admin' ? ctx.hosts.list().find((t) => t.device_id === d.id) || null : undefined,
       snmp: ['switch', 'nas', 'ups'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: pluggedFor(req, d), history: inventory.historyOf(d.id) });
   });
-  r.post('/devices', editor, (req, res) => {
+  // A non-admin sets only addresses he may scan: pollers and monitors of the device contact it (with the SNMP access data)
+  const deviceIpOk = async (req, oldIp = null) => {
+    const ip = typeof req.body?.ip === 'string' ? req.body.ip.trim() : '';
+    if (ip && ip !== oldIp) await assertTargetsAllowed(db, req.user, [ip]);
+  };
+  r.post('/devices', editor, async (req, res) => {
     if (req.scope && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
+    await deviceIpOk(req);
     const d = inventory.create(req.body, who(req));
     audit(req, 'device.create', d.name);
     ctx.autoWatch.markDevices([d.id], req.user.language);
@@ -394,9 +401,10 @@ export function createApi(ctx) {
     audit(req, 'host.forget', d.name);
     res.json({ ok: true });
   });
-  r.patch('/devices/:id', editor, (req, res) => {
+  r.patch('/devices/:id', editor, async (req, res) => {
     visible(req, idParam(req));
     if (req.scope && 'location_id' in req.body && !inScope(req.scope, req.body.location_id)) throw new HttpError(403, 'err.scope');
+    await deviceIpOk(req, db.prepare('SELECT ip FROM devices WHERE id=?').get(idParam(req))?.ip ?? null);
     res.json(inventory.update(idParam(req), req.body, who(req)));
   });
   r.delete('/devices/:id', editor, (req, res) => {
