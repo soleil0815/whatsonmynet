@@ -42,23 +42,61 @@ export function createTls(dir = paths.tlsDir) {
 
   function writeFiles(certPem, keyPem, meta) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    // Write everything next to the files first, then rename: never a half-written certificate, and the window in
-    // which key and certificate do not fit together is as short as it gets
+    // Write everything next to the files first (flushed to disk), then rename: never a half-written certificate, and
+    // the window in which key and certificate do not fit together is as short as it gets. A crash inside that window
+    // is finished by finishPendingWrite() at the next start.
     const files = [[keyFile, keyPem, 0o600], [certFile, certPem, 0o644], [metaFile, JSON.stringify(meta, null, 2), 0o644]];
     try {
-      for (const [file, data, mode] of files) fs.writeFileSync(`${file}.tmp`, data, { mode });
+      for (const [file, data, mode] of files) {
+        const fd = fs.openSync(`${file}.tmp`, 'w', mode);
+        try { fs.writeFileSync(fd, data); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      }
       for (const [file] of files) fs.renameSync(`${file}.tmp`, file);
+      try { const d = fs.openSync(dir, 'r'); try { fs.fsyncSync(d); } finally { fs.closeSync(d); } } catch { /* not on every platform */ }
     } finally { cached = undefined; }
   }
 
-  /** Keeps the current files as *.<time>.bak (an uploaded certificate is never just thrown away) */
+  /**
+   * Keeps the current files (and leftovers of an interrupted write) as *.<time>.bak - an uploaded certificate is never
+   * just thrown away. Each file on its own: a missing key must not stop the certificate from being kept.
+   */
   function backup() {
     const stamp = new Date().toISOString().replace(/[:T]/g, '-').replace(/\..*$/, '');
-    try {
-      fs.copyFileSync(certFile, `${certFile}.${stamp}.bak`);
-      fs.copyFileSync(keyFile, `${keyFile}.${stamp}.bak`); fs.chmodSync(`${keyFile}.${stamp}.bak`, 0o600);
-    } catch { /* best effort */ }
+    for (const file of [certFile, keyFile, `${certFile}.tmp`, `${keyFile}.tmp`]) {
+      try {
+        fs.copyFileSync(file, `${file}.${stamp}.bak`);
+        if (file.startsWith(keyFile)) fs.chmodSync(`${file}.${stamp}.bak`, 0o600);
+      } catch { /* missing - or unreadable, which ensure() refuses before it gets here */ }
+    }
     return stamp;
+  }
+
+  /** File content, null if it does not exist; a file that exists but cannot be read is an error (never replaced) */
+  function readIfThere(file) {
+    try { return fs.readFileSync(file, 'utf8'); } catch (e) {
+      if (e.code === 'ENOENT') return null;
+      throw new Error(`${file} exists but cannot be read (${e.code || e.message}) - the certificate is not replaced; fix the file (permissions) and start again`);
+    }
+  }
+
+  const fits = (cert, key) => {
+    try { tls.createSecureContext({ cert, key }); return true; } catch { return false; }
+  };
+
+  /** A crash between the renames of writeFiles(): finish it when the new certificate and key fit together */
+  function finishPendingWrite() {
+    const certTmp = readIfThere(`${certFile}.tmp`);
+    const keyTmp = readIfThere(`${keyFile}.tmp`);
+    if (certTmp === null && keyTmp === null) return;
+    const cert = certTmp ?? readIfThere(certFile);
+    const key = keyTmp ?? readIfThere(keyFile);
+    if (cert === null || key === null || !fits(cert, key)) {
+      log.warn('Unfinished certificate files (*.tmp) found that do not form a usable pair - left as they are');
+      return;
+    }
+    for (const file of [keyFile, certFile, metaFile]) if (fs.existsSync(`${file}.tmp`)) fs.renameSync(`${file}.tmp`, file);
+    cached = undefined;
+    log.warn('An interrupted certificate change was finished');
   }
 
   /** Names for the self-signed certificate */
@@ -108,15 +146,28 @@ export function createTls(dir = paths.tlsDir) {
     } catch { return null; }
   }
 
-  /** Creates or renews the self-signed certificate when needed. Returns true if it changed. */
+  /** cert.pem exists and is not provably generated here (then it is kept as *.bak before it is replaced) */
+  function certIsCustom() {
+    try { return sourceOf(fs.readFileSync(certFile, 'utf8')) === 'custom'; } catch (e) { return e.code !== 'ENOENT'; }
+  }
+
+  /**
+   * Creates or renews the self-signed certificate when needed. Returns true if it changed. A certificate or key file
+   * that exists but cannot be read stops it (error) - it is never replaced.
+   */
   const ensure = () => serial(async () => {
     cached = undefined; // the files may have been changed from outside (restore)
-    const cur = current();
-    if (cur) {
-      const source = sourceOf(cur.cert);
+    let cert; let key;
+    try {
+      finishPendingWrite();
+      cert = readIfThere(certFile);
+      key = readIfThere(keyFile);
+    } catch (e) { log.error(e.message); throw e; }
+    if (cert !== null && key !== null) {
+      const source = sourceOf(cert);
       try {
-        const info = describePem(cur.cert);
-        tls.createSecureContext({ cert: cur.cert, key: cur.key });
+        const info = describePem(cert);
+        tls.createSecureContext({ cert, key });
         const daysLeft = (Date.parse(info.validTo) - Date.now()) / 86400000;
         if (source === 'custom') {
           if (daysLeft < 0) log.warn('The uploaded certificate has expired - upload a new one under Settings → HTTPS.');
@@ -128,14 +179,20 @@ export function createTls(dir = paths.tlsDir) {
         const missing = [...want.dns, ...want.ips].filter((n) => !have.has(n));
         if (daysLeft > RENEW_DAYS && !missing.length) return false;
         log.info(daysLeft <= RENEW_DAYS ? 'Self-signed certificate expires soon - renewing' : `Self-signed certificate is missing ${missing.join(', ')} - renewing`);
-        try { await generateSelfSigned(cur.key); return true; } catch (e) { log.warn(`Renewing with the same key failed (${e.message}) - a new key is made; host scripts and scan agents then need a new script / setting`); }
+        try { await generateSelfSigned(key); return true; } catch (e) { log.warn(`Renewing with the same key failed (${e.message}) - a new key is made; host scripts and scan agents then need a new script / setting`); }
       } catch (e) {
-        if (source === 'custom') {
-          // Kept, not lost: an uploaded certificate that a newer OpenSSL refuses may still be wanted (or fixed)
-          const stamp = backup();
-          log.error(`Uploaded certificate cannot be used (${e.message}) - falling back to a self-signed one; the old files are kept as *.${stamp}.bak`);
-        }
+        // Kept, not lost: an uploaded certificate that a newer OpenSSL refuses may still be wanted (or fixed), and a key
+        // that does not fit the certificate may be the uploaded one
+        const stamp = backup();
+        log.error(`${source === 'custom' ? 'Uploaded certificate' : 'Certificate and key'} cannot be used (${e.message}) - falling back to a self-signed one; the old files are kept as *.${stamp}.bak`);
       }
+    } else if (cert !== null || key !== null) {
+      // Half a pair (partial restore): keep what is there unless it is provably a generated certificate
+      const what = cert === null ? 'cert.pem is missing' : 'key.pem is missing';
+      if (cert === null || sourceOf(cert) === 'custom') {
+        const stamp = backup();
+        log.error(`${what} - falling back to a self-signed certificate; the old files are kept as *.${stamp}.bak`);
+      } else log.warn(`${what} - a new self-signed certificate is created`);
     }
     await generateSelfSigned();
     return true;
@@ -168,6 +225,8 @@ export function createTls(dir = paths.tlsDir) {
     const plainKey = privateKey.export({ type: 'pkcs8', format: 'pem' });
     const chain = [certs[at], ...certs.filter((_, i) => i !== at)].join('\n');
     try { tls.createSecureContext({ cert: chain, key: plainKey }); } catch (e) { throw new HttpError(400, 'err.tlsUnusable', e.message); }
+    // Replacing an uploaded certificate: keep it (the admin may want it back)
+    if (certIsCustom()) backup();
     writeFiles(chain, plainKey, { source: 'custom', installedAt: new Date().toISOString() });
     log.info(`Own certificate installed: ${leaf.subject.replace(/\n/g, ', ')}`);
     return describe();
@@ -175,8 +234,7 @@ export function createTls(dir = paths.tlsDir) {
 
   const resetToSelfSigned = () => serial(async () => {
     // Replacing an uploaded certificate: keep it (the admin may want it back)
-    const cur = current();
-    if (cur && sourceOf(cur.cert) === 'custom') backup();
+    if (certIsCustom()) backup();
     await generateSelfSigned();
     return describe();
   });
@@ -189,6 +247,8 @@ export function createTls(dir = paths.tlsDir) {
     try {
       cached = { ...describePem(cur.cert), source: sourceOf(cur.cert), installedAt: cur.meta.installedAt || null,
         chain: splitPem(cur.cert).length };
+      // For the HSTS host check (https.js); not enumerable, so it never ends up in the JSON for the browser
+      Object.defineProperty(cached, 'x509', { value: new crypto.X509Certificate(splitPem(cur.cert)[0]), enumerable: false });
     } catch { cached = { source: 'custom', error: true }; }
     return cached;
   }

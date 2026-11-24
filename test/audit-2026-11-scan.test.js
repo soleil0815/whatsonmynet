@@ -177,7 +177,9 @@ test('direct HSTS: not sent for an uploaded certificate that is itself self-sign
   assert.equal(run({ source: 'custom', selfSigned: false, validTo: '2020-01-01T00:00:00.000Z' }), undefined);
   assert.equal(run({ source: 'custom', selfSigned: false, error: true }), undefined);
   assert.equal(run({ source: 'self-signed', selfSigned: true, validTo: future }), undefined);
-  assert.equal(run({ source: 'custom', selfSigned: false, validTo: future }), 'max-age=31536000');
+  const x509 = { checkHost: (h) => (h === 'womn.firma.local' ? h : undefined) };
+  assert.equal(run({ source: 'custom', selfSigned: false, validTo: future, x509 }), 'max-age=31536000');
+  assert.equal(run({ source: 'custom', selfSigned: false, validTo: future }), undefined, 'no certificate to check the host against');
   assert.equal(hstsAllowed(null), false);
 });
 

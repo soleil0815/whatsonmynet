@@ -306,7 +306,8 @@ Details on all of it are in the manual.
 - On first start WhatsOnMyNet creates a self-signed certificate for the host name, `localhost`, all IPv4 addresses of the host and the address in `WOMN_BASE_URL`. It is renewed automatically 30 days before it expires.
 - Under *Settings → HTTPS certificate* you upload your own certificate: PEM (certificate with chain + key) or PFX/P12 with password. It is checked first (key matches, not expired) and becomes active without a restart.
 - HTTP on `WOMN_HTTP_PORT` redirects to HTTPS - except for a trusted reverse proxy (see below).
-- WhatsOnMyNet only sends HSTS with an own certificate and a host name. With a self-signed certificate HSTS would stop the browser from letting you past the warning - you would be locked out.
+- When WhatsOnMyNet replaces an uploaded certificate (a new upload, back to self-signed, key missing or not matching), the old files stay as `*.<time>.bak` in `<data>/tls`. If `cert.pem` or `key.pem` exists but cannot be read (permissions), WhatsOnMyNet does not start and replaces nothing.
+- WhatsOnMyNet only sends HSTS with an own certificate and only for host names that certificate contains. With a self-signed certificate HSTS would stop the browser from letting you past the warning - you would be locked out.
 
 ### Behind a reverse proxy
 

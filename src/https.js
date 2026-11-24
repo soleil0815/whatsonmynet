@@ -143,12 +143,19 @@ export function hstsAllowed(info, now = Date.now()) {
   return !!info && info.source === 'custom' && !info.error && info.selfSigned === false && Date.parse(info.validTo) > now;
 }
 
-/** HSTS for direct HTTPS access - only with a trusted (uploaded) certificate and a host name. cert() = tls.describe() */
+/**
+ * HSTS for direct HTTPS access - only with a trusted (uploaded) certificate and a host name that certificate covers
+ * (info.x509.checkHost): a browser that was clicked past the name warning of an alias must not lock that name for a
+ * year. cert() = tls.describe()
+ */
 export function directHstsMiddleware({ hsts, cert }) {
   return (req, res, next) => {
-    if (hsts !== 'off' && req.socket?.encrypted && hstsAllowed(cert())) {
+    const info = hsts !== 'off' && req.socket?.encrypted ? cert() : null;
+    if (info && hstsAllowed(info)) {
       const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
-      if (HOSTNAME.test(host)) res.setHeader('Strict-Transport-Security', hsts === 'preload' ? HSTS_PRELOAD : HSTS);
+      if (HOSTNAME.test(host) && typeof info.x509?.checkHost === 'function' && info.x509.checkHost(host)) {
+        res.setHeader('Strict-Transport-Security', hsts === 'preload' ? HSTS_PRELOAD : HSTS);
+      }
     }
     next();
   };

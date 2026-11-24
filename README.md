@@ -306,7 +306,8 @@ Einzelheiten zu allem stehen im Handbuch.
 - Beim ersten Start erzeugt WhatsOnMyNet ein selbstsigniertes Zertifikat für den Hostnamen, `localhost`, alle IPv4-Adressen des Hosts und die Adresse aus `WOMN_BASE_URL`. Es wird 30 Tage vor Ablauf automatisch erneuert.
 - Unter *Einstellungen → HTTPS-Zertifikat* lädst du ein eigenes Zertifikat hoch: PEM (Zertifikat mit Kette + Schlüssel) oder PFX/P12 mit Kennwort. Es wird vorher geprüft (Schlüssel passt, nicht abgelaufen) und ohne Neustart aktiv.
 - HTTP auf `WOMN_HTTP_PORT` leitet auf HTTPS um - außer für einen vertrauten Reverse Proxy (siehe unten).
-- HSTS sendet WhatsOnMyNet nur mit eigenem Zertifikat und Hostnamen. Mit einem selbstsignierten Zertifikat würde HSTS dazu führen, dass der Browser die Warnung nicht mehr überspringen lässt - du kämst nicht mehr hinein.
+- Ersetzt WhatsOnMyNet ein hochgeladenes Zertifikat (neues hochgeladen, zurück auf selbstsigniert, Schlüssel fehlt oder passt nicht), bleiben die alten Dateien als `*.<Zeit>.bak` in `<Daten>/tls`. Ist `cert.pem` oder `key.pem` vorhanden, aber nicht lesbar (Rechte), startet WhatsOnMyNet nicht und ersetzt nichts.
+- HSTS sendet WhatsOnMyNet nur mit eigenem Zertifikat und nur für Hostnamen, die das Zertifikat enthält. Mit einem selbstsignierten Zertifikat würde HSTS dazu führen, dass der Browser die Warnung nicht mehr überspringen lässt - du kämst nicht mehr hinein.
 
 ### Hinter einem Reverse Proxy
 

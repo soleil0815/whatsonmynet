@@ -194,6 +194,8 @@ jobs:
   publish:
     needs: [prepare, build]
     runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}   # false: nothing published (cleanup-candidates)
     timeout-minutes: 30
     # Environment "release": only allowed from branch main (repository setting)
     environment: release
@@ -362,10 +364,10 @@ jobs:
           files: release/*
 
   # Candidate images of this run (<version>-kandidat-<run id>[-<arch>]): removed from the registry when the run
-  # ends - after publishing, when nothing changed, after a failed build or check (publish skipped) or a cancel. A
-  # failed publish job (e.g. a transient registry error) keeps them, so that "Re-run failed jobs" still finds them.
-  # Never deleted: a version that also carries a real version tag or latest (after publishing that is the checked
-  # candidate itself) and the platform images the published image points to (see the script).
+  # ends - after publishing, when nothing changed, after a failed build (publish skipped) or a cancel. A failed
+  # publish job keeps them - that includes the Trivy gate on the candidate, which runs inside publish, and transient
+  # registry errors - so that "Re-run failed jobs" still finds them. Never deleted: what the registry shows as
+  # published (<version>, latest and their platform images; PUBLISHED makes a missing <version> stop the cleanup).
   cleanup-candidates:
     needs: [prepare, build, publish]
     if: always() && needs.publish.result != 'failure' && needs.prepare.result == 'success' && needs.build.result != 'skipped'
@@ -390,4 +392,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE_OWNER_TYPE: ${{ github.event.repository.owner.type == 'Organization' && 'orgs' || 'users' }}
+          PUBLISHED: ${{ needs.publish.result == 'success' && needs.publish.outputs.changed == 'true' }}
         run: sh .github/scripts/delete-candidates.sh "$IMAGE" "$GITHUB_RUN_ID"
