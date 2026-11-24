@@ -16,7 +16,7 @@ import { findSame } from './dedupe.js';
 import { explain } from './explain.js';
 import { isIP } from 'node:net';
 import { DNS_TYPES, MAIL_PORTS } from './protocols.js';
-import { snmpCredentialsFor } from '../snmpcreds.js';
+import { snmpCredentials } from '../snmpcreds.js';
 
 const HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 const MAX_PARALLEL = 25;
@@ -101,8 +101,8 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     dockerUrl: (id) => (id ? db.prepare('SELECT url FROM docker_hosts WHERE id=?').get(id)?.url : null),
     secret: (m) => { if (!m.secret) return ''; try { return decrypt(m.secret); } catch { return ''; } },
     db,
-    // the stored access data only for private ranges and location subnets (ip: the address the check really asks)
-    communities: (ip) => (settings ? snmpCredentialsFor(settings, ip, db.prepare('SELECT cidr FROM subnets').all().map((x) => x.cidr)) : ['public']),
+    // the stored access data (where a non-admin may point an SNMP monitor is checked when it is saved)
+    communities: () => (settings ? snmpCredentials(settings) : ['public']),
     group: (m) => groupCheck(m),
   };
   // The group a monitor is shown in: its own, else the location of its device
@@ -476,10 +476,11 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     if (same) throw new HttpError(409, 'err.monitorExists', same.name);
   }
 
-  // guard(hosts): optional check of the addresses (non-admins: the scan rule) - on a change only when the address changed
+  // guard(hosts, v): optional check of the addresses (non-admins: lib/targetguard.js) - on a change only when the address
+  // (or the type) changed
   async function create(input, { guard = null } = {}) {
     const v = await clean(input);
-    if (guard) await guard(monitorHosts(v));
+    if (guard) await guard(monitorHosts(v), v);
     refuseSame(v);
     const ts = iso();
     const cols = { ...v, created_at: ts, updated_at: ts, status: 'pending', status_since: ts };
@@ -493,7 +494,7 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     const old = db.prepare('SELECT * FROM monitors WHERE id=?').get(id);
     if (!old) throw new HttpError(404, 'err.notFound');
     const v = await clean(input, old);
-    if (guard && hostsChanged(v, old)) await guard(monitorHosts(v));
+    if (guard && hostsChanged(v, old)) await guard(monitorHosts(v), v);
     refuseSame(v, old);
     // Paused because its device got a new IP (see devicechange.js): saved with a newly typed password it runs again
     // (at the address it was saved for - the dialog offers the new one)

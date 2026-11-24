@@ -74,8 +74,9 @@ export function createMonitoringApi(ctx) {
     const dev = set ? Number(given) : (given !== undefined && type === 'event') ? null : old?.device_id ?? null;
     if (!deviceOk(req, dev)) throw new HttpError(403, 'err.scope');
   };
-  // Non-admins: a monitor may only make the server contact what they may scan (private ranges, location subnets)
-  const targetGuard = (req) => (req.user.role === 'admin' ? null : (hosts) => assertTargetsAllowed(db, req.user, hosts));
+  // Non-admins: a monitor may not make the server contact the host itself or internal networks outside their reach;
+  // an SNMP monitor (it sends the stored access data) only private ranges and location subnets - see targetguard.js
+  const targetGuard = (req) => (req.user.role === 'admin' ? null : (hosts, v) => assertTargetsAllowed(db, req.user, hosts, { snmp: v?.type === 'snmp' }));
   r.post('/monitors', editor, async (req, res) => {
     resultOk(req);
     parentOk(req);

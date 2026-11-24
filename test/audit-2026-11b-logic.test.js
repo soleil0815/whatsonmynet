@@ -165,7 +165,8 @@ test('watch new devices: a device marked while a round runs is handled right aft
   const a = ins('PC-0002');
   const first = ctx.autoWatch.tick();
   const b = ins('PC-0003');
-  assert.equal(await ctx.autoWatch.tick(), 0, 'a round runs already');
+  // as markDevices asks (the minute timer does not ask for another round - audit-2026-11b-review.test.js)
+  assert.equal(await ctx.autoWatch.tick({ rerun: true }), 0, 'a round runs already');
   await first;
   const w = (id) => JSON.parse(db.prepare('SELECT auto_watch FROM devices WHERE id=?').get(id).auto_watch);
   assert.equal(w(a).conn, true);

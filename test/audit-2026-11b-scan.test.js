@@ -1,6 +1,7 @@
-// Audit 2026-11 (b), group "scan": monitor targets follow the scan rule for non-admins, stored SNMP credentials only go
-// to private ranges and location subnets, device addresses set by non-admins follow the same rule, the SNMP walk stops
-// asking once it is over, and one silent v3 user does not hide the others.
+// Audit 2026-11 (b), group "scan": monitor targets and device addresses of non-admins never reach the WhatsOnMyNet host
+// or internal networks outside their reach (SNMP monitors: only private ranges and location subnets), the SNMP walk
+// stops asking once it is over, and one silent v3 user does not hide the others. (The rule in detail and the SNMP
+// access data of admin devices: audit-2026-11b-review.test.js.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import dgram from 'node:dgram';
@@ -44,15 +45,13 @@ test('an editor cannot point an SNMP monitor at the WhatsOnMyNet host (no commun
   assert.ok(!l.got.some((p) => p.includes(SECRET)));
 });
 
-test('editor monitor targets: loopback, public, names resolving to loopback refused; private allowed', async () => {
+test('editor monitor targets: loopback, link-local, names resolving to loopback refused; private and public allowed', async () => {
   const appPort = Number(new URL(app.url).port);
   const bad = [
     { name: 't1', type: 'tcp', target: '127.0.0.1', port: appPort },
-    { name: 't2', type: 'tcp', target: '203.0.113.5', port: 22 },
     { name: 't3', type: 'tcp', target: '169.254.1.1', port: 22 },
     { name: 't4', type: 'tcp', target: 'localhost', port: appPort },
     { name: 'h1', type: 'http', target: `http://127.0.0.1:${appPort}/` },
-    { name: 'h2', type: 'http', target: 'https://203.0.113.5/' },
     { name: 'h3', type: 'http', target: `http://localhost:${appPort}/` },
     { name: 'm1', type: 'mail', target: '127.0.0.1', options: { proto: 'smtp', tls: 'none' } },
     { name: 'd1', type: 'dns', target: 'firma.local', options: { server: '127.0.0.1' } },
@@ -66,6 +65,8 @@ test('editor monitor targets: loopback, public, names resolving to loopback refu
   assert.equal(ok.status, 201, JSON.stringify(ok.data));
   const okHttp = await call('POST', '/api/monitors', { name: 'ok2', type: 'http', target: 'http://10.0.10.6/', interval_s: 3600 }, { who: 'ed' });
   assert.equal(okHttp.status, 201, JSON.stringify(okHttp.data));
+  const okPub = await call('POST', '/api/monitors', { name: 'ok4', type: 'http', target: 'https://203.0.113.5/', interval_s: 3600 }, { who: 'ed' });
+  assert.equal(okPub.status, 201, JSON.stringify(okPub.data));
   // a DNS check through the system resolver only asks a name - allowed
   const okDns = await call('POST', '/api/monitors', { name: 'ok3', type: 'dns', target: 'firma.local', interval_s: 3600 }, { who: 'ed' });
   assert.equal(okDns.status, 201, JSON.stringify(okDns.data));
@@ -88,55 +89,25 @@ test('a location-limited editor: only addresses inside the subnets of his locati
 test('edits by an editor are checked again; admins stay unrestricted', async () => {
   const pub = await call('POST', '/api/monitors', { name: 'extern', type: 'tcp', target: '203.0.113.10', port: 443, interval_s: 3600 });
   assert.equal(pub.status, 201, 'admin may watch a public address');
-  // renaming the admin's monitor is fine, turning it into a port scanner is not
+  // renaming the admin's monitor or another port of a public address is fine, pointing it at the host itself is not
   assert.equal((await call('PUT', `/api/monitors/${pub.data.id}`, { name: 'extern 2' }, { who: 'ed' })).status, 200);
-  assert.equal((await call('PUT', `/api/monitors/${pub.data.id}`, { port: 22 }, { who: 'ed' })).status, 403);
+  assert.equal((await call('PUT', `/api/monitors/${pub.data.id}`, { port: 22 }, { who: 'ed' })).status, 200);
+  assert.equal((await call('PUT', `/api/monitors/${pub.data.id}`, { target: '169.254.1.1' }, { who: 'ed' })).status, 403);
   const own = (await call('GET', '/api/monitors', undefined, { who: 'ed' })).data.find((m) => m.name === 'ok1');
   assert.equal((await call('PUT', `/api/monitors/${own.id}`, { target: '127.0.0.1' }, { who: 'ed' })).status, 403);
   assert.equal((await call('PUT', `/api/monitors/${own.id}`, { target: 'http://127.0.0.1/', type: 'http' }, { who: 'ed' })).status, 403);
 });
 
-test('device address set by a non-admin follows the scan rule', async () => {
-  assert.equal((await call('POST', '/api/devices', { name: 'PC-0002', ip: '203.0.113.7' }, { who: 'ed' })).status, 403);
+test('device address set by a non-admin follows the monitor target rule', async () => {
+  assert.equal((await call('POST', '/api/devices', { name: 'PC-0002', ip: '169.254.7.7' }, { who: 'ed' })).status, 403);
   const d = await call('POST', '/api/devices', { name: 'PC-0003', ip: '10.0.10.7' }, { who: 'ed' });
   assert.equal(d.status, 201);
   assert.equal((await call('PATCH', `/api/devices/${d.data.id}`, { ip: '127.0.0.1' }, { who: 'ed' })).status, 403);
   assert.equal((await call('PATCH', `/api/devices/${d.data.id}`, { notes: 'unchanged ip' }, { who: 'ed' })).status, 200);
   // admins may
-  assert.equal((await call('PATCH', `/api/devices/${d.data.id}`, { ip: '203.0.113.7' })).status, 200);
+  assert.equal((await call('PATCH', `/api/devices/${d.data.id}`, { ip: '127.0.0.1' })).status, 200);
   // an editor editing other fields of that device is not stopped by the admin's address
-  assert.equal((await call('PATCH', `/api/devices/${d.data.id}`, { notes: 'still fine', ip: '203.0.113.7' }, { who: 'ed' })).status, 200);
-});
-
-test('stored SNMP credentials only go to private ranges and location subnets - also for admins', async () => {
-  const l = await udpListener();
-  try {
-    const m = await call('POST', '/api/monitors', { name: 'own snmpd', type: 'snmp', target: '127.0.0.1', port: l.port, options: { oid: '1.3.6.1.2.1.1.1.0', op: 'contains', threshold: 'x' }, timeout_s: 1, interval_s: 3600 });
-    assert.equal(m.status, 201, JSON.stringify(m.data));
-    await call('POST', `/api/monitors/${m.data.id}/check`, {});
-  } finally { l.sock.close(); }
-  assert.ok(l.got.length > 0, 'asked at all');
-  assert.ok(!l.got.some((p) => p.includes(SECRET)), 'the stored community did not go to 127.0.0.1');
-
-  // printer and switch polls of the inventory
-  const seen = [];
-  ctx.printers.setReaderForTests(async (ip, creds) => { seen.push([ip, creds]); throw new Error('snmp'); });
-  ctx.snmpDevices.setReaderForTests('switch', async (ip, creds) => { seen.push([ip, creds]); throw new Error('snmp'); });
-  const pubPrn = (await call('POST', '/api/devices', { name: 'PRN-1', type: 'printer', ip: '203.0.113.20' })).data;
-  const lanPrn = (await call('POST', '/api/devices', { name: 'PRN-2', type: 'printer', ip: '10.0.10.20' })).data;
-  const pubSw = (await call('POST', '/api/devices', { name: 'SW-1', type: 'switch', ip: '192.0.2.21' })).data;
-  await call('POST', `/api/devices/${pubPrn.id}/printer`, {});
-  await call('POST', `/api/devices/${lanPrn.id}/printer`, {});
-  await call('POST', `/api/devices/${pubSw.id}/snmp`, {});
-  const credsOf = (ip) => JSON.stringify(seen.find((x) => x[0] === ip)?.[1]);
-  assert.ok(!credsOf('203.0.113.20').includes(SECRET), credsOf('203.0.113.20'));
-  assert.ok(!credsOf('192.0.2.21').includes(SECRET), credsOf('192.0.2.21'));
-  assert.ok(credsOf('10.0.10.20').includes(SECRET), 'private address gets the stored community');
-  // a public subnet an admin put at a location counts as his own network
-  await call('PUT', `/api/locations/${locA.id}`, { name: 'A', subnets: ['10.77.1.0/24', '203.0.113.0/24'] });
-  seen.length = 0;
-  await call('POST', `/api/devices/${pubPrn.id}/printer`, {});
-  assert.ok(credsOf('203.0.113.20').includes(SECRET));
+  assert.equal((await call('PATCH', `/api/devices/${d.data.id}`, { notes: 'still fine', ip: '127.0.0.1' }, { who: 'ed' })).status, 200);
 });
 
 test('walk() stops asking once it has ended (timeout) and on any repeated OID', async () => {

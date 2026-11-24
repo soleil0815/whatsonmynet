@@ -5,7 +5,7 @@ import { fillDevice } from './devicefill.js';
 import { HttpError } from './lib/http.js';
 import { log } from './lib/log.js';
 import { localDay } from './scan/nightly.js';
-import { snmpCredentialsFor } from './snmpcreds.js';
+import { snmpCredentials } from './snmpcreds.js';
 
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
 const REARM = 10; // a supply is "replaced" when it rises this many points above the threshold
@@ -39,7 +39,7 @@ export function supplyAlerts(supplies, previous, threshold) {
 export function createPrinters({ db, settings, channels }) {
   // communities and SNMPv3 users of the scan
   // (stored ones only for private ranges and location subnets)
-  const communities = (ip) => snmpCredentialsFor(settings, ip, db.prepare('SELECT cidr FROM subnets').all().map((x) => x.cidr));
+  const communities = () => snmpCredentials(settings);
   const busy = new Set();
   let timer = null;
   let reader = readPrinter; // replaced in tests
@@ -74,7 +74,7 @@ export function createPrinters({ db, settings, channels }) {
     const prev = getStatus.get(d.id);
     try {
       let data = null; let error = '';
-      try { data = await reader(d.ip, communities(d.ip)); } catch (e) { error = e.message === 'snmp' || e.message === 'noPrinterMib' ? e.message : 'snmp'; }
+      try { data = await reader(d.ip, communities()); } catch (e) { error = e.message === 'snmp' || e.message === 'noPrinterMib' ? e.message : 'snmp'; }
       let alerts = parse(prev?.alerts);
       if (data) {
         // Serial number and model from the printer itself into the inventory (only empty fields)

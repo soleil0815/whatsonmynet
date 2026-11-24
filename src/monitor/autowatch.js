@@ -159,10 +159,13 @@ export function createAutoWatch({ db, settings, monitoring }) {
     return n;
   }
 
-  /** One round: everything added "to be watched" that has something new to watch */
-  async function tick() {
-    // asked again while a round runs (a device added meanwhile): one more round right after, not a minute later
-    if (busy) { again = true; return 0; }
+  /**
+   * One round: everything added "to be watched" that has something new to watch. rerun: asked because something was
+   * just marked - if a round runs right now, one more follows right after (not a minute later). The minute timer does
+   * not ask for that: a long round would otherwise be followed by the next one at once, forever.
+   */
+  async function tick({ rerun = false } = {}) {
+    if (busy) { if (rerun) again = true; return 0; }
     if (!on()) return 0;
     busy = true;
     let n = 0;
@@ -185,7 +188,7 @@ export function createAutoWatch({ db, settings, monitoring }) {
       const set = db.prepare('UPDATE devices SET auto_watch=? WHERE id=? AND auto_watch IS NULL');
       const v = JSON.stringify({ lang: lang === 'en' ? 'en' : 'de' });
       for (const id of ids) set.run(v, id);
-      if (timer) setImmediate(() => { tick(); });
+      if (timer) setImmediate(() => { tick({ rerun: true }); });
       return true;
     },
     markHost(id, lang) {

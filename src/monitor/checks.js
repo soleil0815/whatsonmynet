@@ -135,7 +135,8 @@ export function runCheck(m, ctx = {}) {
   if (m.type === 'snmp') {
     let o = {};
     try { o = JSON.parse(m.options || '{}'); } catch { o = {}; }
-    // A name is resolved here once and the check asks exactly that address: the access data are chosen for it
+    // A name is resolved here once and the check asks exactly that address (the one checked when saved, a DNS answer
+    // cannot redirect the access data between the lookup and the query)
     return (async () => {
       let ip = m.target;
       if (!net.isIP(ip)) {

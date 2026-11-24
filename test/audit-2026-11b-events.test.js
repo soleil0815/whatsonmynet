@@ -24,11 +24,12 @@ const gc = vm.runInNewContext('gc');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test('regex: a counted group around an unbounded quantifier is refused when saved', () => {
-  for (const src of ['(?:\\*+ ?){8}ALERT', '(a+){2,5}', '(?:\\w+\\s){2}', '(x*y){3,}']) {
+  for (const src of ['(?:\\*+ ?){8}ALERT', '(a+){2,5}', '(?:\\w+\\s?){2}', '(x*y){3,}']) {
     assert.throws(() => checkRegexStatic(src), (e) => e.code === 'err.regexUnsafe', src);
   }
-  // still fine: counted groups without an unbounded inner quantifier, and the presets of the rule form
-  for (const src of ['(\\d{1,3}\\.){3}\\d{1,3}', '(ab){8}', '([a-z]+){1}', 'Failed password|Invalid user', 'port\\s*(\\d+)\\D*down', 'port\\s*(\\d+)\\D*up']) {
+  // still fine: counted groups without an unbounded inner quantifier or whose repeated atom stops at a required
+  // separator, and the presets of the rule form
+  for (const src of ['(\\d{1,3}\\.){3}\\d{1,3}', '(?:\\w+\\s){2}', '(ab){8}', '([a-z]+){1}', 'Failed password|Invalid user', 'port\\s*(\\d+)\\D*down', 'port\\s*(\\d+)\\D*up']) {
     assert.doesNotThrow(() => checkRegexStatic(src), src);
   }
 });
@@ -67,23 +68,25 @@ test('event monitor: the check is case-insensitive beyond ASCII, like the trigge
   assert.equal(eventCheck(db, { options: JSON.stringify({ ...o, match: 'lüfter_aus' }), device_id: null }).ok, true);
 });
 
-test('event rules: "from" matches addresses exactly or by network, names as whole words', () => {
+test('event rules: "from" matches addresses exactly or by network, names as parts of the name', () => {
   const base = { kind: 'syslog', severity: 3, device_id: null, device_name: '', app: 'x', text: 'y', event_id: null, channel: '', host: '' };
   const m = (from, row) => ruleMatches({ from }, { ...base, ...row });
   assert.equal(m(['10.0.10.1'], { source_ip: '10.0.10.15' }), false);
   assert.equal(m(['10.0.10.1'], { source_ip: '10.0.10.100' }), false);
   assert.equal(m(['10.0.10.1'], { source_ip: '10.0.10.1' }), true);
-  assert.equal(m(['10.0.10.1'], { source_ip: '192.0.2.9', host: '10.0.10.1' }), false, 'an address is the sending address, not the name a message gives');
+  assert.equal(m(['10.0.0.1'], { source_ip: '10.0.0.10' }), false);
+  assert.equal(m(['10.0.10.1'], { source_ip: '192.0.2.9', host: '10.0.10.1' }), true, 'a relay: the address the message gives counts as well');
+  assert.equal(m(['10.0.10.1'], { source_ip: '192.0.2.9', host: '10.0.10.15' }), false);
   assert.equal(m(['10.0.10.0/24'], { source_ip: '10.0.10.77' }), true);
   assert.equal(m(['10.0.10.0/24'], { source_ip: '10.0.11.7' }), false);
   assert.equal(m(['10.0.10.'], { source_ip: '10.0.10.200' }), true, 'the start of an address still works');
-  assert.equal(m(['dc01'], { source_ip: '192.0.2.10', host: 'dc011' }), false);
-  assert.equal(m(['dc01'], { source_ip: '192.0.2.10', host: 'old-dc01' }), false);
+  assert.equal(m(['10.0.10.'], { source_ip: '110.0.10.200' }), false);
   assert.equal(m(['dc01'], { source_ip: '192.0.2.10', host: 'DC01.firma.local' }), true);
-  assert.equal(m(['pc-0001'], { source_ip: '10.0.10.20', device_id: 7, device_name: 'PC-0001' }), true);
-  assert.equal(m(['pc-0001'], { source_ip: '10.0.10.21', device_id: 8, device_name: 'PC-00010' }), false);
-  assert.equal(m(['pc-00*'], { source_ip: '10.0.10.21', device_id: 8, device_name: 'PC-00010' }), true, 'a name with * at the end: the beginning of a word');
-  assert.equal(m(['pc-00'], { source_ip: '10.0.10.21', device_id: 8, device_name: 'PC-00010' }), false);
+  assert.equal(m(['dc01'], { source_ip: '192.0.2.10', host: 'srv02' }), false);
+  assert.equal(m(['switch'], { source_ip: '10.0.10.2', host: 'core-switch-01' }), true, 'a part of the name, as rules always did');
+  assert.equal(m(['pc-00'], { source_ip: '10.0.10.21', device_id: 8, device_name: 'PC-00010' }), true);
+  assert.equal(m(['pc-*10'], { source_ip: '10.0.10.21', device_id: 8, device_name: 'PC-00010' }), true, '* for any characters');
+  assert.equal(m(['pc-*11'], { source_ip: '10.0.10.21', device_id: 8, device_name: 'PC-00010' }), false);
 });
 
 test('standby: a time range finds own messages and copies whose ids are not in time order', () => {

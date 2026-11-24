@@ -127,51 +127,48 @@ export function cleanOptions(o = {}) {
 
 // ------------------------------------------------------------------------------------------------ the sender
 // An entry of "from" is one of:
-//   - an address (10.0.10.5, fe80::1): exactly the sending address - 10.0.10.1 is not 10.0.10.15;
-//   - a network (10.0.10.0/24, 2001:db8::/32) - the sending address in it;
-//   - the start of an IPv4 address ("10.0.10.", "10.0.10.*", "10.0.10"): addresses beginning with it (as rules did before);
-//   - a name: the name of the device in the inventory that has the sending address, or the computer name the message
-//     gives itself - as a whole word, any case ("dc01" is DC01 and dc01.firma.local, not dc011 or old-dc01); with a
-//     "*" at the end the beginning of a word ("pc-*" is PC-0001 and PC-0002).
-// The address and the inventory are what the network says; the computer name in a syslog message is what the sender
-// says about itself.
+//   - an address (10.0.10.5, fe80::1): exactly - 10.0.10.1 is not 10.0.10.15;
+//   - a network (10.0.10.0/24, 2001:db8::/32): an address in it;
+//   - the start of an IPv4 address ("10.0.10.", "10.0.10.*", "10.0.10"): addresses beginning with it;
+//   - a name: part of the name of the device in the inventory that has the sending address or of the computer name the
+//     message gives itself, any case ("switch" is core-switch-01); "*" stands for any characters ("core-*-01").
+// Addresses are compared with the sending address and with the computer name the message gives (a relay such as
+// rsyslog forwards messages of other machines, which then name their own address there).
 const senderCache = new Map();
-const WORDCH = /[\p{L}\p{N}_-]/u;
 function senderTest(entry) {
   const e = String(entry ?? '').trim().toLowerCase();
   let t = senderCache.get(e);
   if (t) return t;
   const cidr = /^([0-9a-f.:]+)\/(\d{1,3})$/.exec(e);
   const v = cidr ? isIP(cidr[1]) : 0;
+  const addrs = (row) => [addrOf(row.source_ip), addrOf(row.host)].filter(Boolean);
   if (cidr && v && Number(cidr[2]) <= (v === 4 ? 32 : 128)) {
     const bl = new BlockList();
     bl.addSubnet(cidr[1], Number(cidr[2]), v === 4 ? 'ipv4' : 'ipv6');
-    t = (row) => { const ip = addrOf(row); const k = isIP(ip); return !!k && bl.check(ip, k === 4 ? 'ipv4' : 'ipv6'); };
+    t = (row) => addrs(row).some((ip) => { const k = isIP(ip); return !!k && bl.check(ip, k === 4 ? 'ipv4' : 'ipv6'); });
   } else if (isIP(e)) {
-    const want = e.replace(/^::ffff:/, '');
-    t = (row) => addrOf(row) === want;
-  } else if (/^\d{1,3}(?:\.\d{1,3}){0,2}\.?\*?$/.test(e)) {
+    const want = addrOf(e);
+    t = (row) => addrs(row).includes(want);
+  } else if (/^\d{1,3}(?:\.\d{1,3}){0,2}(?:\.\*?)$|^\d{1,3}(?:\.\d{1,3}){1,2}$/.test(e)) {
     const prefix = `${e.replace(/\*$/, '').replace(/\.$/, '')}.`;
-    t = (row) => isIP(addrOf(row)) === 4 && addrOf(row).startsWith(prefix);
+    t = (row) => addrs(row).some((ip) => isIP(ip) === 4 && ip.startsWith(prefix));
   } else {
-    // a name: whole word, so the characters next to it must not belong to a name; "pc-*": words beginning with it
-    const begin = e.endsWith('*');
-    const w = begin ? e.replace(/\*+$/, '') : e;
-    const word = (name) => {
+    // a name: a part of it, "*" for any characters in between (the pieces in this order - no expression, no backtracking)
+    const parts = e.split('*').filter(Boolean);
+    const has = (name) => {
       const n = lower(name);
-      if (!w) return false;
-      for (let i = n.indexOf(w); i >= 0; i = n.indexOf(w, i + 1)) {
-        if ((i === 0 || !WORDCH.test(n[i - 1])) && (begin || i + w.length === n.length || !WORDCH.test(n[i + w.length]))) return true;
-      }
-      return false;
+      if (!n) return false;
+      let at = 0;
+      for (const p of parts) { const i = n.indexOf(p, at); if (i < 0) return false; at = i + p.length; }
+      return true;
     };
-    t = (row) => word(row.device_name) || word(row.host);
+    t = (row) => parts.length > 0 && (has(row.device_name) || has(row.host));
   }
   if (senderCache.size > 2000) senderCache.clear();
   senderCache.set(e, t);
   return t;
 }
-const addrOf = (row) => String(row.source_ip ?? '').trim().toLowerCase().replace(/^::ffff:/, '');
+const addrOf = (x) => String(x ?? '').trim().toLowerCase().replace(/^::ffff:(?=\d+\.)/, '');
 /** Is the sender of this message the one an entry of "from" names? */
 export function senderIs(entry, row) {
   return senderTest(entry)(row);
