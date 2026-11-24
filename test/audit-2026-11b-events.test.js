@@ -147,7 +147,10 @@ test('UDP syslog and traps listen on an IPv6 bind address', { skip: ipv6 ? false
   const db = memoryDb(); const settings = createSettings(db);
   settings.set('events.syslog', true); settings.set('events.traps', true);
   const seen = [];
-  const ev = createEvents({ db, settings, ports: { syslog: 0, traps: 0 }, bind: '::1', onEvent: (r) => seen.push(r.text) });
+  // traps refuse port 0 (below 1024 needs root): take a free high port for them
+  const probe = dgram.createSocket('udp6');
+  const trapPort = await new Promise((r) => probe.bind(0, '::1', () => { const p = probe.address().port; probe.close(() => r(p)); }));
+  const ev = createEvents({ db, settings, ports: { syslog: 0, traps: trapPort }, bind: '::1', onEvent: (r) => seen.push(r.text) });
   ev.apply();
   await wait(200);
   const st = ev.status();
