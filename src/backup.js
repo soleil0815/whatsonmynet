@@ -71,24 +71,118 @@ function trialMigration(file) {
   }
 }
 
+// --- Sign-in data stay as they are today ----------------------------------------------------------------------
+// A backup holds the keys and passwords of its day. A key renewed or deleted since (it leaked), a changed password or
+// a removed account must not work again after a restore: for the same installation (same check value of the key) the
+// sign-in data are taken from the current database. Accounts, scan agents and host keys are the same ones only with
+// the same id AND the same creation time (ids may be given again after a delete).
+const USER_CRED = ['password_hash', 'password_changed_at', 'active', 'totp_secret', 'totp_enabled', 'totp_last_step', 'recovery_codes'];
+const hasTable = (d, t) => !!d.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
+const colsOf = (d, t) => (hasTable(d, t) ? d.prepare(`SELECT name FROM pragma_table_info('${t}')`).all().map((c) => c.name) : []);
+const keycheckOf = (d) => { try { return d.prepare("SELECT value FROM settings WHERE key='_keycheck'").get()?.value || ''; } catch { return ''; } };
+
+/** Same installation: both carry the same check value (written once at the first start, kept by every restore) */
+function sameInstallation(a, b) {
+  const k = keycheckOf(a);
+  return !!k && k === keycheckOf(b);
+}
+
+/** Today's sign-in data (read from the current database, small: accounts and keys only) */
+function readCredentials(live) {
+  const rows = (t, cols) => {
+    const have = colsOf(live, t);
+    const want = ['id', 'created_at', ...cols].filter((c) => have.includes(c));
+    return have.length ? new Map(live.prepare(`SELECT ${want.join(',')} FROM ${t}`).all().map((r) => [r.id, r])) : null;
+  };
+  return {
+    users: rows('users', USER_CRED),
+    userCols: USER_CRED.filter((c) => colsOf(live, 'users').includes(c)),
+    agents: rows('agents', ['token_hash', 'enabled']),
+    hostTokens: rows('host_tokens', ['token_hash']),
+    apiTokens: live.prepare("SELECT value FROM settings WHERE key='api.tokens'").get()?.value ?? null,
+  };
+}
+
+/** Into the restored database (r): today's sign-in data; what is gone today comes back switched off */
+function carryCredentials(r, cred) {
+  const same = (mine, row) => mine && mine.created_at === row.created_at;
+  r.transaction(() => {
+    if (cred.users && hasTable(r, 'users')) {
+      const cols = cred.userCols.filter((c) => colsOf(r, 'users').includes(c));
+      const set = r.prepare(`UPDATE users SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`);
+      for (const u of r.prepare('SELECT id, created_at FROM users').all()) {
+        const now = cred.users.get(u.id);
+        if (same(now, u)) set.run(...cols.map((c) => now[c]), u.id);
+        else r.prepare('UPDATE users SET active=0 WHERE id=?').run(u.id);
+      }
+    }
+    if (cred.agents && hasTable(r, 'agents')) {
+      const list = r.prepare('SELECT id, created_at FROM agents').all();
+      // first every key unusable (token_hash is unique), then today's ones back
+      for (const a of list) r.prepare('UPDATE agents SET token_hash=?, enabled=0 WHERE id=?').run(`revoked-${a.id}-${crypto.randomBytes(16).toString('hex')}`, a.id);
+      for (const a of list) {
+        const now = cred.agents.get(a.id);
+        if (same(now, a)) r.prepare('UPDATE agents SET token_hash=?, enabled=? WHERE id=?').run(now.token_hash, now.enabled ?? 1, a.id);
+      }
+    }
+    if (cred.hostTokens && hasTable(r, 'host_tokens')) {
+      for (const h of r.prepare('SELECT id, created_at FROM host_tokens').all()) {
+        const now = cred.hostTokens.get(h.id);
+        if (same(now, h)) r.prepare('UPDATE host_tokens SET token_hash=? WHERE id=?').run(now.token_hash, h.id);
+        else r.prepare('DELETE FROM host_tokens WHERE id=?').run(h.id);
+      }
+    }
+    r.prepare("DELETE FROM settings WHERE key='api.tokens'").run();
+    if (cred.apiTokens !== null) r.prepare("INSERT INTO settings(key,value) VALUES('api.tokens',?)").run(cred.apiTokens);
+  })();
+}
+
+/**
+ * Before a restore is accepted: with today's accounts, is there still an administrator of the backup who may sign in?
+ * (Otherwise nobody could sign in afterwards.) Backups of another installation are taken as they are.
+ */
+function checkAdminLeft(file, live) {
+  const b = new Database(file, { readonly: true, fileMustExist: true });
+  try {
+    if (!sameInstallation(b, live)) return;
+    const today = live.prepare('SELECT created_at FROM users WHERE id=? AND active=1');
+    const ok = b.prepare("SELECT id, created_at FROM users WHERE role='admin' AND active=1").all().some((u) => today.get(u.id)?.created_at === u.created_at);
+    if (!ok) throw new HttpError(400, 'err.backupNoAdminLive');
+  } finally { b.close(); }
+}
+
 /** At startup, before the database is opened: put a waiting restore in place */
 export function applyPendingRestore(dbFile, backupsDir) {
   const pending = pendingPath(dbFile);
   if (!fs.existsSync(pending)) return false;
   fs.mkdirSync(backupsDir, { recursive: true, mode: 0o700 });
   const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+  let cred = null;
   if (fs.existsSync(dbFile)) {
     const keep = freeName(path.join(backupsDir, `whatsonmynet-before-restore-${stamp}.sqlite.gz`));
     // The latest changes may still be in the -wal file only: write them into the database first, then copy
     try { const old = new Database(dbFile); try { old.pragma('wal_checkpoint(TRUNCATE)'); } finally { old.close(); } } catch (e) { log.warn(`Restore: checkpoint of the previous database failed: ${e.message}`); }
     gzipFileSync(dbFile, keep);
     log.info(`Restore: the previous database was kept as ${keep}`);
+    // today's keys and passwords (a damaged current database - often the reason for the restore - has none to give)
+    try {
+      const live = new Database(dbFile, { readonly: true, fileMustExist: true });
+      const r = new Database(pending, { readonly: true, fileMustExist: true });
+      try { if (sameInstallation(r, live)) cred = readCredentials(live); } finally { r.close(); live.close(); }
+    } catch (e) { log.warn(`Restore: could not read the sign-in data of the previous database: ${e.message}`); }
   }
   // Sessions in the backup were open when it was made: signed out or revoked since, they must not come back to life
   try {
     const r = new Database(pending);
     try {
       r.prepare('DELETE FROM sessions').run();
+      if (cred) {
+        try {
+          carryCredentials(r, cred);
+          log.info('Restore: keys, passwords and accounts are as they were before the restore');
+          if (!r.prepare("SELECT 1 FROM users WHERE role='admin' AND active=1").get()) log.error('Restore: no active administrator left - create one with "womn-admin reset <user>"');
+        } catch (e) { log.warn(`Restore: could not take over today's keys and passwords: ${e.message}`); }
+      }
       r.pragma('wal_checkpoint(TRUNCATE)');
     } finally { r.close(); }
   } catch (e) { log.warn(`Restore: could not remove the sessions of the restored database: ${e.message}`); }
@@ -180,6 +274,7 @@ export function createBackups({ db, settings, dbFile, backupsDir, restart = () =
           }
         }
         const info = inspect(tmp);
+        checkAdminLeft(tmp, db);
         fs.renameSync(tmp, pending);
         log.warn(`Restore requested (${info.devices} devices, ${info.users} users, schema ${info.schema}) - restarting`);
         restart();

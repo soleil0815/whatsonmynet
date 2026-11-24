@@ -9,6 +9,7 @@ import { normalizeMac, isIPv4, ipSortKey, cidrContains } from './lib/net.js';
 import { TYPES, isTelematik, suggestName } from './scan/classify.js';
 import { bestWebUrl } from './scan/engine.js';
 import { forgetDevices } from './lib/idlists.js';
+import { csvCell } from './lib/csv.js';
 import { onDeviceChanged, followUrl } from './devicechange.js';
 import { inScope } from './auth/scope.js';
 
@@ -585,13 +586,5 @@ export function createInventory(db) {
 export function toCsv(devices) {
   const cols = ['name', 'type', 'ip', 'mac', 'hostname', 'vendor', 'model', 'os', 'location_name', 'owner', 'tags', 'serial',
     'supplier', 'purchase_date', 'warranty_until', 'maintenance_until', 'web_url', 'last_seen', 'notes'];
-  const esc = (v) => {
-    let s = String(v ?? '');
-    // Formula injection: a cell starting with = + - @ (also after leading spaces, tabs or line breaks), starting with a
-    // tab or CR, or holding a comma followed by one of them (Excel with comma as list separator splits the cell there)
-    // is shown as text in spreadsheets. Every column is text (dates are ISO strings), so "-5" becomes text as well.
-    if (/^[\t\r]|^\s*[=+\-@]|,\s*[=+\-@]/.test(s)) s = `'${s}`;
-    return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return '﻿' + [cols.join(';'), ...devices.map((d) => cols.map((c) => esc(d[c])).join(';'))].join('\r\n') + '\r\n';
+  return '﻿' + [cols.join(';'), ...devices.map((d) => cols.map((c) => csvCell(d[c])).join(';'))].join('\r\n') + '\r\n';
 }

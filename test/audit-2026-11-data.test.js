@@ -49,8 +49,9 @@ test('shared host key: a report whose MACs match no device never lands on a devi
   const noMac = db.prepare("INSERT INTO devices(name,type,ip,created_at,updated_at) VALUES('PC-0003','computer','10.0.10.13',?,?)").run(ts, ts).lastInsertRowid;
   const t = hosts.create({ name: 'All PCs', os: 'windows' }, { server: 'https://womn.firma.local' });
   const rep = (over) => ({ hostname: 'PC-0001', os: 'Windows 11', macs: ['aa:bb:cc:00:00:99'], ips: [], hw: { vendor: 'HP', model: 'EliteDesk', serial: 'SN-OTHER' }, ...over });
-  // same name, other MAC (docked laptop reports only its cable MAC): PC-0001, but MAC, serial and model stay
-  assert.equal(hosts.push(t.token, rep()).device, a);
+  // same name, other MAC (docked laptop reports only its cable MAC): not PC-0001 with the shared key (audit 2026-11 b:
+  // anyone holding it could claim the name) - such a laptop needs a script with its own key
+  assert.throws(() => hosts.push(t.token, rep()), { code: 'err.hostUnknown' });
   // reported IP of a device with another MAC: not that one either
   assert.throws(() => hosts.push(t.token, rep({ hostname: 'X1', ips: ['10.0.10.12'] })), { code: 'err.hostUnknown' });
   // the remote address only reaches devices without MAC
@@ -65,15 +66,17 @@ test('shared host key: a report whose MACs match no device never lands on a devi
   assert.equal(db.prepare("SELECT COUNT(*) n FROM device_history WHERE kind='replaced'").get().n, 0);
 });
 
-test('shared host key: a match by name with another serial does not mark the device as replaced', () => {
+test('shared host key: a match with another serial does not mark the device as replaced', () => {
   const db = memoryDb();
   const hosts = createHosts({ db });
   const ts = iso();
   const id = db.prepare(`INSERT INTO devices(name,type,ip,mac,serial,model,auto_fields,created_at,updated_at)
     VALUES('PC-0004','computer','10.0.10.14','aa:bb:cc:00:00:04','SN-D','OptiPlex',?,?,?)`).run(JSON.stringify({ serial: 'SN-D', model: 'OptiPlex' }), ts, ts).lastInsertRowid;
   const t = hosts.create({ name: 'All PCs', os: 'windows' }, { server: 'https://womn.firma.local' });
-  // script without MAC list (older version): matched by name, but the serial differs
-  assert.equal(hosts.push(t.token, { hostname: 'PC-0004', macs: [], hw: { serial: 'SN-OTHER', model: 'EliteDesk' } }).device, id);
+  // script without MAC list (older version): not matched by name to a device with a MAC any more (audit 2026-11 b);
+  // with its MAC it is, but the serial differs - the shared key never marks hardware as exchanged
+  assert.throws(() => hosts.push(t.token, { hostname: 'PC-0004', macs: [], hw: { serial: 'SN-OTHER', model: 'EliteDesk' } }), { code: 'err.hostUnknown' });
+  assert.equal(hosts.push(t.token, { hostname: 'PC-0004', macs: ['aa:bb:cc:00:00:04'], hw: { serial: 'SN-OTHER', model: 'EliteDesk' } }).device, id);
   const d = db.prepare('SELECT mac, serial, model FROM devices WHERE id=?').get(id);
   assert.deepEqual([d.mac, d.serial, d.model], ['aa:bb:cc:00:00:04', 'SN-D', 'OptiPlex']);
 });

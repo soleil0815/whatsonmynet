@@ -733,7 +733,7 @@ The script installs nothing, loads nothing, opens no port and needs no account -
    - **Linux**: `sh womn-host.sh` - as root into `/usr/local/sbin` with `/etc/cron.d/whatsonmynet-host`, otherwise into `~/.local/bin` with an entry in the own crontab.
 3. After a few seconds the device page shows the section **System**. **Add sensor** turns it into monitors with alarms: "Machine reports", "CPU load", "Memory", "Drive C:", "Failed services" or "Service … running".
 
-**Many machines at once:** *Settings → Machine scripts* → **Shared script**. You roll out this one script by software distribution, a startup script by group policy or Ansible. Each report is matched to its device in the inventory (MAC address, machine name, IP). Machines that are not in the inventory yet show up there under *Unknown machines* - nothing is created on its own.
+**Many machines at once:** *Settings → Machine scripts* → **Shared script**. You roll out this one script by software distribution, a startup script by group policy or Ansible. Each report is matched to its device in the inventory (MAC address, machine name, IP). Because all machines hold the same key, a report reaches a device with a known MAC only when it names that MAC, and it never changes serial number, model or MAC (*hardware exchanged* is detected only by a script with its own key). A laptop that reports only its docking station's MAC therefore shows up under *Unknown machines* - give it a script of its own (*device page → More → Monitor with script*). Machines that are not in the inventory yet show up there under *Unknown machines* - nothing is created on its own.
 
 **Failed services:** Windows - services that start automatically and stopped with an error code (trigger-start services that stopped normally do not count); Linux - systemd services in the state *failed*.
 
@@ -923,7 +923,7 @@ When pairing, the standby takes **all data of the master** (devices, monitors, u
 ## Backup and updates
 
 - Once a day WhatsOnMyNet backs up the database compressed to `data/backups/` (`whatsonmynet-….sqlite.gz`, the first time one hour after the start); additionally before every database update. By default the 10 newest are kept, and likewise the 10 newest of the copies before updates and before a restore each. Set the number under *Settings → Backup → Retention* (1 - 90); saving deletes the ones over it at once, the oldest first. Older uncompressed backups are compressed once.
-- *Settings → Backup*: download a backup, back up now, delete single backups (bin in the list, with a question first), restore a backup - `.sqlite` or `.sqlite.gz` (the current state is backed up first, then the program restarts). To open one by hand: `gunzip -k whatsonmynet-….sqlite.gz`.
+- *Settings → Backup*: download a backup, back up now, delete single backups (bin in the list, with a question first), restore a backup - `.sqlite` or `.sqlite.gz` (the current state is backed up first, then the program restarts). Keys (agents, machine scripts, /metrics), passwords and two-factor sign-in stay as they are today; keys deleted since do not come back, accounts deleted since only deactivated. To open one by hand: `gunzip -k whatsonmynet-….sqlite.gz`.
 - **Keep `data/secret.key` (or `WOMN_SECRET`) as well** - without it stored passwords in a backup are unreadable.
 - Updates: in Dockhand/Watchtower or `docker compose pull && docker compose up -d`. Once a month a security update with new packages is released.
 

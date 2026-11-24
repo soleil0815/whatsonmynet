@@ -16,6 +16,7 @@ import os from 'node:os';
 import { config, paths } from './config.js';
 import { setLogSink } from './lib/log.js';
 import { zip } from './lib/zip.js';
+import { csvCell } from './lib/csv.js';
 import { DEFAULTS } from './settings.js';
 import { metricsFor, sourceOf } from './monitor/sensors.js';
 import { proxmoxMetrics } from './proxmox.js';
@@ -33,13 +34,19 @@ const iso = (ms) => new Date(ms).toISOString();
 // Never in a package, whatever their value: setting keys and option fields with secrets
 const SECRET_NAME = /(pass|secret|token|community|credential|cookie|apikey|api_key|private|totp|recovery|bindpassword)/i;
 const NEVER_SETTING = /(^_keycheck$|password|secret|token|community|\.ca$)/i;
-// "password=…", "token: …" in free text (log lines, error messages)
-const SECRET_IN_TEXT = /\b(password|passwort|kennwort|secret|token|community|apikey|api_key|authorization)(["'\s]*[:=]\s*["']?)([^\s"',;&]+)/gi;
+// "password=…", "token: …", "access_token=…", "X-Api-Key: …" in free text (log lines, error messages)
+const SECRET_IN_TEXT = /([\w-]*(?:password|passwort|kennwort|passwd|secret|token|community|api[-_]?key))(["'\s]*[:=]\s*["']?)([^\s"',;&]+)/gi;
+// "Authorization: Bearer …" / "authorization=Basic …": scheme and value; a bare "Bearer …" as well
+const AUTH_IN_TEXT = /\b((?:proxy-)?authorization)(["'\s]*[:=]\s*["']?)(?:(?:bearer|basic|digest|token|negotiate|apikey)\s+)?[^\s"',;&]+/gi;
+const BEARER = /\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
+// every value of a query string (?access_token=…&sig=…): its names stay, the values may be keys
+const QUERY_VALUE = /([?&][^\s?&#=/"'<>]{1,64}=)[^\s&#"'<>]+/g;
 const USERINFO = /(\/\/)[^\s/@:]+:[^\s/@]*@/g;
 
-/** Passwords in free text and user:password@ in addresses - always, also without anonymising */
+/** Passwords in free text, query values and user:password@ in addresses - always, also without anonymising */
 export function maskSecrets(text) {
-  return String(text ?? '').replace(USERINFO, '$1***:***@').replace(SECRET_IN_TEXT, (_, k, sep) => `${k}${sep}***`);
+  return String(text ?? '').replace(USERINFO, '$1***:***@').replace(QUERY_VALUE, '$1***').replace(AUTH_IN_TEXT, '$1$2***')
+    .replace(BEARER, '$1 ***').replace(SECRET_IN_TEXT, (_, k, sep) => `${k}${sep}***`);
 }
 
 // --- Placeholders ------------------------------------------------------------------------------------------
@@ -170,11 +177,8 @@ export function createAnonymizer(db, enabled = true) {
 
 // --- Package ----------------------------------------------------------------------------------------------
 function csv(rows, cols) {
-  const cell = (v) => {
-    const s = v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
-    return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return `﻿${[cols.join(';'), ...rows.map((r) => cols.map((c) => cell(r[c])).join(';'))].join('\r\n')}\r\n`;
+  // (the same cells as the inventory export: names and messages from the network never run as a formula)
+  return `﻿${[cols.join(';'), ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(';'))].join('\r\n')}\r\n`;
 }
 const json = (v) => `${JSON.stringify(v, null, 1)}\n`;
 const normMsg = (m) => String(m).replace(/\d+(\.\d+)?/g, '#').slice(0, 200);
