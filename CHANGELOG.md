@@ -6,6 +6,7 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Sicherung: Die Texte sagen jetzt, was passiert – gesichert wird alle 24 Stunden (das erste Mal eine Stunde nach dem Start), nicht „jede Nacht“; Sicherungen mit „Jetzt sichern“ zählen bei der Aufbewahrung mit
 - Mehrfachauswahl in Inventar und Monitoring: Ist etwas angekreuzt, wählt ein Klick in die Zeile sie aus, statt das Gerät oder den Monitor zu öffnen – geöffnet wird dann über den Namen. Auch die Zelle um das Kästchen herum wählt aus, und die Auswahl bleibt beim Öffnen und Zurückgehen erhalten
 
 ## 0.57.1 - 2026-11-25

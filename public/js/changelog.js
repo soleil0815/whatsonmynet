@@ -3,8 +3,10 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Sicherung: Die Texte sagen jetzt, was passiert – gesichert wird alle 24 Stunden (das erste Mal eine Stunde nach dem Start), nicht „jede Nacht“; Sicherungen mit „Jetzt sichern“ zählen bei der Aufbewahrung mit',
     'Mehrfachauswahl in Inventar und Monitoring: Ist etwas angekreuzt, wählt ein Klick in die Zeile sie aus, statt das Gerät oder den Monitor zu öffnen – geöffnet wird dann über den Namen. Auch die Zelle um das Kästchen herum wählt aus, und die Auswahl bleibt beim Öffnen und Zurückgehen erhalten',
   ], en: [
+    'Backup: the texts now say what happens – a backup is made every 24 hours (the first an hour after the start), not "every night"; backups made with "Back up now" count towards the number kept',
     'Multiple selection in inventory and monitoring: once something is ticked, a click in a row ticks it instead of opening the device or monitor – opening is then by the name. The cell around the box ticks too, and the selection stays when you open one and go back',
   ] },
   { version: '0.57.1', date: '2026-11-25', de: [

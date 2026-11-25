@@ -246,7 +246,7 @@ export function createBackups({ db, settings, dbFile, backupsDir, restart = () =
       return path.basename(file);
     },
     /** Keep only as many as set (daily ones, and the same number of copies before an update or a restore) - right when
-     * the number is changed, not only at the next nightly backup */
+     * the number is changed, not only at the next daily backup */
     async tidy() {
       if (fs.existsSync(backupsDir)) await tidyBackups(backupsDir, Number(settings.get('backup.keep')) || 10);
     },
