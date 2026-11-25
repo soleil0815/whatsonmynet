@@ -890,12 +890,17 @@ dialog.modal.wide:has(.ev-noise) { width: min(980px, calc(100vw - 24px)); }
 .grp-toggle:hover { background: var(--bg-2); color: var(--ink); }
 .grp-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .grp-caret, .grp-caret svg { display: block; width: 16px; height: 16px; }
-/* Group rows like Uptime Kuma: the group is a row of its own, its members indented below with a line on the left */
-.data tr.grp-row td { background: var(--bg); border-top: 1px solid var(--line-2); }
-.data tr.grp-row .name { font-weight: 650; }
+/* Group rows like Uptime Kuma: the group is a row of its own - lightly tinted in the accent colour with a bar on the
+   left (red when something in it is down) - its members clearly indented below it with a line in the same colour */
+.data tr.grp-row td { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); border-top: 1px solid var(--line-2); }
+.data tr.grp-row td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.data tr.grp-row.grp-bad td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+.data tr.grp-row .name { font-weight: 650; font-size: 15px; }
+.data tr.grp-row.sel td { background: var(--accent-soft); }
 .grp-name { display: flex; gap: 8px; align-items: center; margin-left: -6px; }
-.data tr.grp-child td.mon-name { padding-left: 34px; position: relative; }
-.data tr.grp-child td.mon-name::before { content: ''; position: absolute; left: 22px; top: 0; bottom: 0; border-left: 2px solid var(--line-2); }
+.data tr.grp-child td.mon-name { padding-left: 60px; position: relative; }
+.data tr.grp-child td.mon-name::before { content: ''; position: absolute; left: 30px; top: 0; bottom: 0; border-left: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line-2)); }
+@media (max-width: 640px) { .data tr.grp-child td.mon-name { padding-left: 40px; } .data tr.grp-child td.mon-name::before { left: 20px; } }
 .ev-transport { font: 600 10px/1.6 var(--mono); letter-spacing: .02em; }
 .ev-noise-gone > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
 .ev-noise .num { text-align: right; font-variant-numeric: tabular-nums; }

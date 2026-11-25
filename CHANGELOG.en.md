@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Monitoring by group: group rows are lightly tinted and have a bar on the left (red when something is down); their monitors stand clearly indented below
+
+## 0.57.0 - 2026-11-24
+
 - Scan agents: per agent you choose which SNMP access data it gets – none (only "public"), its own for its location only (stored encrypted) or all of this server. New agents start with none; existing ones keep all for now and are marked in the list – best switch them to their own
 - Monitors of non-administrators: host names are resolved and checked again on every check, and the check contacts exactly the checked address – if a name later points at the WhatsOnMyNet host or another network (DNS rebinding), the monitor reports "target address not allowed". The web address of a device follows this rule too, and monitors made automatically never go to the WhatsOnMyNet host itself
 - Restoring a backup: the roles and location limits of users and the SNMP choice of agents stay as they are today too – a user demoted since does not get the old rights back
