@@ -1049,8 +1049,8 @@ export async function backupDatabase(db, keep = 10, dir = paths.backups) {
 const DAILY = /^whatsonmynet-\d{4}-.*\.sqlite(\.gz)?$/;
 const SPECIAL = [/^whatsonmynet-before-schema-.*\.sqlite(\.gz)?$/, /^whatsonmynet-before-restore-.*\.sqlite(\.gz)?$/];
 /**
- * Older uncompressed copies are compressed once; the daily ones are cut to `keep`, the copies before a schema update
- * or a restore to the newest 10 each (they used to pile up for ever).
+ * Older uncompressed copies are compressed once; the daily ones (also "Back up now") are cut to `keep`, the copies
+ * before a schema update or a restore to the newest `keep` each (they used to pile up for ever).
  */
 /** Compress old uncompressed copies, then keep the newest `keep` daily ones and as many of each kind of special copy */
 export async function tidyBackups(dir, keep) {
