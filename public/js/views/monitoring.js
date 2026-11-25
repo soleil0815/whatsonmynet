@@ -1,5 +1,6 @@
 // Monitoring: list of monitors with heartbeat bar, detail with response time chart and events,
 // form to add or edit a monitor, maintenance windows.
+import { pickClick, pickedSet } from '../pick.js';
 import { h, mount, modal, toast, confirmDialog, fmtDate, fmtAgo } from '../dom.js';
 import { get, post, put, del } from '../api.js';
 import { t, getLang } from '../i18n.js';
@@ -263,7 +264,7 @@ export async function renderMonitoring(main, id, sub) {
     h('option', { value: 'state' }, t('mon.viewState')), h('option', { value: 'group' }, t('mon.viewGroup')));
   viewSel.value = view;
   // Several at once (editors): tick rows, then change interval/alarm settings, pause, resume or delete them together
-  const selected = new Set();
+  const selected = pickedSet(`pick.${kind}`);
   let shown = [];
   const cols = (kind === 'sensors' ? 4 : 5) + (edit ? 1 : 0);
 
@@ -271,8 +272,9 @@ export async function renderMonitoring(main, id, sub) {
     onchange: (e) => { if (e.target.checked) selected.add(m.id); else selected.delete(m.id); e.target.closest('tr').classList.toggle('sel', e.target.checked); renderBulk(); } }) : null);
   function row(m, child = false) {
     const box = boxFor(m);
-    return h('tr', { class: `click${selected.has(m.id) ? ' sel' : ''}${child ? ' grp-child' : ''}`, onclick: (e) => { if (!e.target.closest('a,button,input,label')) navigate(`/monitoring/${m.id}`); } },
-      edit ? h('td', { class: 'min' }, box) : null,
+    // once something is picked, a click in the row picks it too - opened is only by the name
+    return h('tr', { class: `click${selected.has(m.id) ? ' sel' : ''}${child ? ' grp-child' : ''}`, onclick: (e) => { if (pickClick(e, box, selected.size > 0)) return; if (!e.target.closest('a,button,input,label')) navigate(`/monitoring/${m.id}`); } },
+      edit ? h('td', { class: 'min pick-cell' }, box) : null,
       h('td', { class: 'mon-name' }, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, monitorDot(m.status),
         h('div', { style: { minWidth: 0 } }, h('a', { href: `/monitoring/${m.id}`, 'data-link': true, class: 'name' }, m.name),
           h('div', { class: 'sub' }, ipMoved(m) ? h('span', { class: 'tone-bad' }, t('mon.ipMoved', ipMoved(m)))
@@ -304,9 +306,10 @@ export async function renderMonitoring(main, id, sub) {
     const ups = part.map((m) => m.uptime24).filter((v) => v !== null && v !== undefined);
     const mean = ups.length ? Math.round((ups.reduce((a, b) => a + b, 0) / ups.length) * 100) / 100 : null;
     const name = gm ? h('a', { href: `/monitoring/${gm.id}`, 'data-link': true, class: 'name' }, g) : h('span', { class: 'name' }, g || t('mon.noGroup'));
+    const gbox = gm ? boxFor(gm) : null;
     return h('tr', { class: `grp-row${gm ? ' click' : ''}${gm && selected.has(gm.id) ? ' sel' : ''}${bad ? ' grp-bad' : ''}`,
-      onclick: gm ? (e) => { if (!e.target.closest('a,button,input,label')) navigate(`/monitoring/${gm.id}`); } : null },
-      edit ? h('td', { class: 'min' }, gm ? boxFor(gm) : null) : null,
+      onclick: gm ? (e) => { if (pickClick(e, gbox, selected.size > 0)) return; if (!e.target.closest('a,button,input,label')) navigate(`/monitoring/${gm.id}`); } : null },
+      edit ? h('td', { class: 'min pick-cell' }, gbox) : null,
       h('td', {}, h('div', { class: 'grp-name' }, toggle, monitorDot(state),
         h('div', { style: { minWidth: 0 } }, name,
           h('div', { class: 'sub' }, gm ? h('span', {}, t(gm.options?.mode === 'all' ? 'mon.grpAlarmAll' : 'mon.grpAlarmAny')) : h('span', {}, t('mon.grpMembers', { n: part.length })))))),
@@ -386,7 +389,7 @@ export async function renderMonitoring(main, id, sub) {
     bulk.hidden = !selected.size;
     if (!selected.size) { mount(bulk); return; }
     const chosen = shown.filter((m) => selected.has(m.id));
-    mount(bulk, h('span', { class: 'count grow', 'aria-live': 'polite' }, t('scan.selected', { n: selected.size })),
+    mount(bulk, h('span', { class: 'count grow', 'aria-live': 'polite' }, t('scan.selected', { n: selected.size }), h('span', { class: 'muted small pick-hint' }, t('inv.pickHint'))),
       btn(t('inv.clearSel'), { class: 'btn btn-ghost btn-sm', onclick: () => { selected.clear(); draw(); } }),
       chosen.some((m) => m.enabled) ? btn(t('mon.pause'), { class: 'btn btn-sm', onclick: (e) => bulkRun(e, 'pause') }) : null,
       chosen.some((m) => !m.enabled) ? btn(t('mon.resume'), { class: 'btn btn-sm', onclick: (e) => bulkRun(e, 'resume') }) : null,
