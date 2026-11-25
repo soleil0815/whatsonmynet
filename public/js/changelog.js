@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Mehrfachauswahl in Inventar und Monitoring: Ist etwas angekreuzt, wählt ein Klick in die Zeile sie aus, statt das Gerät oder den Monitor zu öffnen – geöffnet wird dann über den Namen. Auch die Zelle um das Kästchen herum wählt aus, und die Auswahl bleibt beim Öffnen und Zurückgehen erhalten',
+  ], en: [
+    'Multiple selection in inventory and monitoring: once something is ticked, a click in a row ticks it instead of opening the device or monitor – opening is then by the name. The cell around the box ticks too, and the selection stays when you open one and go back',
+  ] },
+  { version: '0.57.1', date: '2026-11-25', de: [
     'Monitoring nach Gruppe: Gruppenzeilen sind dezent eingefärbt und haben links einen Balken (rot, wenn etwas gestört ist); ihre Monitore stehen deutlich eingerückt darunter',
   ], en: [
     'Monitoring by group: group rows are lightly tinted and have a bar on the left (red when something is down); their monitors stand clearly indented below',

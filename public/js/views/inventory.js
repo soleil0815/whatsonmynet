@@ -1,4 +1,5 @@
 // Inventory list with search, filters and grouping.
+import { pickClick, pickedSet } from '../pick.js';
 import { h, mount, clear, debounce, fmtAgo, fmtDate, modal, toast, confirmDialog } from '../dom.js';
 import { get, post } from '../api.js';
 import { t, getLang } from '../i18n.js';
@@ -14,7 +15,7 @@ export async function renderInventory(main) {
   const [locations, sugg] = await Promise.all([get('/locations'), get('/devices/suggestions').catch(() => null)]);
   const types = state.meta?.types || [];
   const edit = state.user.canEdit;
-  const selected = new Set();
+  const selected = pickedSet('pick.inventory');
   let shown = [];
   let view = 'list';
   try { view = localStorage.getItem(VIEW_KEY) || 'list'; } catch { /* storage blocked */ }
@@ -106,8 +107,9 @@ export async function renderInventory(main) {
     const st = d.maint ? ['maint', null] : d.monitor === 'down' ? ['bad', t('inv.st.monitorDown')] : d.presence === 'missing' ? ['bad', t('inv.st.missing')]
       : d.monitor === 'unreachable' ? ['muted', t('mon.status.unreachable')] : d.monitor === 'paused' ? ['muted', t('mon.status.paused')] : d.presence === 'online' || d.monitor === 'up' ? ['ok', t('inv.st.ok')] : ['muted', t(`presence.${d.presence}`)];
     const sub = [t(`type.${d.type}`), d.model && d.model !== d.name ? d.model : d.vendor && d.vendor !== d.name ? d.vendor : ''].filter(Boolean).join(' · ');
-    return h('tr', { class: `click${selected.has(d.id) ? ' sel' : ''}`, onclick: (e) => { if (!e.target.closest('a,input,label')) open(); } },
-      edit ? h('td', { class: 'min' }, box) : null,
+    // once something is picked, a click in the row picks it too - opened is only by the name
+    return h('tr', { class: `click${selected.has(d.id) ? ' sel' : ''}`, onclick: (e) => { if (pickClick(e, box, selected.size > 0)) return; if (!e.target.closest('a,input,label')) open(); } },
+      edit ? h('td', { class: 'min pick-cell' }, box) : null,
       h('td', {}, h('div', { class: 'inv-dev' }, h('span', { class: `inv-ico${d.telematik ? ' ti' : ''}`, html: icon(d.type) }),
         h('div', { style: { minWidth: 0 } }, h('a', { href: `/devices/${d.id}`, 'data-link': true, class: 'name', style: { color: 'inherit', textDecoration: 'none' } }, d.name),
           h('div', { class: 'sub' }, sub)))),
@@ -129,7 +131,7 @@ export async function renderInventory(main) {
     allBox.indeterminate = !allBox.checked && shown.some((d) => selected.has(d.id));
     bulk.hidden = !selected.size;
     if (!selected.size) return;
-    mount(bulk, h('span', { class: 'count grow' }, t('scan.selected', { n: selected.size })),
+    mount(bulk, h('span', { class: 'count grow' }, t('scan.selected', { n: selected.size }), h('span', { class: 'muted small pick-hint' }, t('inv.pickHint'))),
       btn(t('inv.clearSel'), { class: 'btn btn-ghost btn-sm', onclick: () => { selected.clear(); load(); } }),
       btn(t('inv.bulkDelete'), { class: 'btn btn-danger btn-sm', onclick: bulkDelete }, 'trash'),
       h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => bulkEdit([...selected], locations, types, sugg, () => { selected.clear(); load(); }) },

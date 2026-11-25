@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Multiple selection in inventory and monitoring: once something is ticked, a click in a row ticks it instead of opening the device or monitor – opening is then by the name. The cell around the box ticks too, and the selection stays when you open one and go back
+
+## 0.57.1 - 2026-11-25
+
 - Monitoring by group: group rows are lightly tinted and have a bar on the left (red when something is down); their monitors stand clearly indented below
 
 ## 0.57.0 - 2026-11-24

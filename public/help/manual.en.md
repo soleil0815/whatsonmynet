@@ -58,7 +58,7 @@ The MAC address is the identity of a device: if it gets a new IP, the next scan 
 - **Search and filter** by name, IP, MAC, manufacturer, type, location or tag; export as CSV or JSON.
 - **Device page**: all details, purchase and warranty dates, notes, quick access to the web interface, what the scan detected, history of all changes.
 - **Suggestions while typing**: manufacturer, model, operating system, owner, supplier and tags suggest what is already in the inventory. A known model fills in manufacturer and type.
-- **Multiple selection**: tick devices and edit them together (type, location, manufacturer, model, dates, tags) or delete them.
+- **Multiple selection**: tick devices and edit them together (type, location, manufacturer, model, dates, tags) or delete them. Once something is ticked, a click in a row ticks the device; opening is then by the name.
 - **Deep check**: checks one device with a longer port list. Telematik devices (connector, card terminal) are always checked gently. For a device not yet recognised, the deep check first asks port 4742 (SICCT) alone - if a card terminal answers, the gentle profile stays.
 
 ## Nightly light scan
@@ -117,7 +117,7 @@ Tokens, keys and webhook addresses are stored encrypted and never shown again. O
 
 ### Changing several monitors or sensors at once
 
-In the *Monitors* and *Sensors* lists every row has a box; the box in the table header takes all rows shown right now (search and filter apply). A bar above shows the number and the buttons **Pause**, **Resume**, **Delete** (asks first) and **Edit together**. The dialog holds the fields of *Advanced*: check every, alarm after … failed checks, time limit, repeat the alarm, escalation and - after ticking *Change channels* - the escalation and notification channels; for sensors also condition and limit. Every field starts as *unchanged*: only what you fill in changes, everything else stays as it was for each monitor. If a value is invalid (e.g. less than 20 seconds), nothing changes. Condition and limit only go to sensors with a numeric value; state sensors (online, healthy …) are skipped, the message says how many. Editors limited to locations can only select monitors of their locations.
+In the *Monitors* and *Sensors* lists every row has a box; the box in the table header takes all rows shown right now (search and filter apply). A bar above shows the number and the buttons **Pause**, **Resume**, **Delete** (asks first) and **Edit together**. The dialog holds the fields of *Advanced*: check every, alarm after … failed checks, time limit, repeat the alarm, escalation and - after ticking *Change channels* - the escalation and notification channels; for sensors also condition and limit. Every field starts as *unchanged*: only what you fill in changes, everything else stays as it was for each monitor. If a value is invalid (e.g. less than 20 seconds), nothing changes. Condition and limit only go to sensors with a numeric value; state sensors (online, healthy …) are skipped, the message says how many. Editors limited to locations can only select monitors of their locations. Once something is ticked, a click anywhere in a row ticks or unticks it – opening is then only by a click on the name, so a missed click does not throw the selection away. The selection also stays when you open an entry and go back (in the same browser tab). The same holds in the inventory.
 
 ### Escalation
 

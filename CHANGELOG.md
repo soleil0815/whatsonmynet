@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Mehrfachauswahl in Inventar und Monitoring: Ist etwas angekreuzt, wählt ein Klick in die Zeile sie aus, statt das Gerät oder den Monitor zu öffnen – geöffnet wird dann über den Namen. Auch die Zelle um das Kästchen herum wählt aus, und die Auswahl bleibt beim Öffnen und Zurückgehen erhalten
+
+## 0.57.1 - 2026-11-25
+
 - Monitoring nach Gruppe: Gruppenzeilen sind dezent eingefärbt und haben links einen Balken (rot, wenn etwas gestört ist); ihre Monitore stehen deutlich eingerückt darunter
 
 ## 0.57.0 - 2026-11-24

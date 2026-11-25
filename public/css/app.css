@@ -1052,3 +1052,8 @@ dialog.gs .gs-input:focus, dialog.gs .gs-input:focus-visible { border: 0; outlin
 .plg-devs { max-height: 220px; overflow-y: auto; }
 .plg-formats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
 .plg-formats pre { margin: 6px 0; }
+
+/* Picking several rows: the hint next to the count; the cell around the box picks too */
+.pick-hint { margin-left: 10px; font-weight: 400; }
+.data td.pick-cell { cursor: pointer; }
+@media (max-width: 640px) { .pick-hint { display: none; } }
