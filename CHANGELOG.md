@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Monitoring nach Gruppe: Gruppenzeilen sind dezent eingefärbt und haben links einen Balken (rot, wenn etwas gestört ist); ihre Monitore stehen deutlich eingerückt darunter
+
+## 0.57.0 - 2026-11-24
+
 - Scan-Agenten: Je Agent wählbar, welche SNMP-Zugangsdaten er bekommt – keine (nur „public“), eigene nur für seinen Standort (verschlüsselt gespeichert) oder alle dieses Servers. Neue Agenten starten ohne; bestehende behalten vorerst alle und sind in der Liste markiert – am besten auf eigene umstellen
 - Monitore von Nicht-Administratoren: Hostnamen werden bei jeder Prüfung neu aufgelöst und geprüft, und die Prüfung geht genau an die geprüfte Adresse – zeigt ein Name später auf den WhatsOnMyNet-Rechner oder ein fremdes Netz (DNS-Rebinding), meldet der Monitor „Zieladresse nicht erlaubt“. Auch die Web-Adresse eines Geräts folgt dieser Regel, und automatisch angelegte Monitore gehen nie an den WhatsOnMyNet-Rechner selbst
 - Wiederherstellen einer Sicherung: Auch Rollen und Standort-Beschränkungen der Benutzer und die SNMP-Auswahl der Agenten bleiben auf dem heutigen Stand – ein seither herabgestufter Benutzer bekommt seine alten Rechte nicht zurück
