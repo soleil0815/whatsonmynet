@@ -10,6 +10,8 @@ import { metricsFor, sensorCheck } from '../src/monitor/sensors.js';
 import { cleanNics } from '../src/hostfacts.js';
 import { createHosts } from '../src/hosts.js';
 import { onDeviceChanged } from '../src/devicechange.js';
+import { createSensorChoices } from '../src/monitor/choices.js';
+import { VIRTUAL_IF } from '../src/scan/switch.js';
 
 const iso = (ms) => new Date(ms).toISOString();
 const settings = (over = {}) => { const m = { 'snmpdev.enabled': true, 'snmpdev.interval': 15, 'scan.snmpCommunities': 'public', ...over }; return { get: (k) => m[k] }; };
@@ -105,4 +107,66 @@ test('host script: network cards are kept only for watched machines, then with l
   assert.equal(nm('portErrorsNew').value, 12);
   assert.ok(nm('portLoad').value > 0);
   assert.equal(nm('portSpeed').value, 1000);
+});
+
+// ------------------------------------------------------------------------------------------- review findings
+test('review: a watched router can be picked for sensors; a type change without ports switches the watch off', async () => {
+  const db = memoryDb();
+  const ts = new Date().toISOString();
+  const id = db.prepare("INSERT INTO devices(name,type,ip,watch_ports,created_at,updated_at) VALUES('FW-01','firewall','10.0.10.2',1,?,?)").run(ts, ts).lastInsertRowid;
+  const snmp = createSnmpDevices({ db, settings: settings(), channels: { notifyIds: async () => [] } });
+  let calls = 0;
+  snmp.setReaderForTests('ports', async () => { calls++; return { ports: [port({})], uptime: 1 }; });
+  await snmp.pollDue();
+  assert.ok([...createSensorChoices({ db, settings: settings() }).deviceIds()].includes(id));
+  const before = db.prepare('SELECT * FROM devices WHERE id=?').get(id);
+  db.prepare("UPDATE devices SET type='camera' WHERE id=?").run(id);
+  onDeviceChanged(db, before, { ...before, type: 'camera' }, 'scan', { ts });
+  assert.equal(db.prepare('SELECT watch_ports FROM devices WHERE id=?').get(id).watch_ports, 0);
+  db.prepare('DELETE FROM snmp_status').run();
+  calls = 0;
+  await snmp.pollDue();
+  assert.equal(calls, 0, 'nothing queried any more');
+  // even with the flag set by hand: only types whose page offers the switch are asked
+  db.prepare('UPDATE devices SET watch_ports=1 WHERE id=?').run(id);
+  await snmp.pollDue();
+  assert.equal(calls, 0);
+});
+
+test('review: switched off while the device was being asked - nothing of its ports is kept', async () => {
+  const db = memoryDb();
+  const ts = new Date().toISOString();
+  const id = db.prepare("INSERT INTO devices(name,type,ip,watch_ports,created_at,updated_at) VALUES('LANCOM-01','router','10.0.10.1',1,?,?)").run(ts, ts).lastInsertRowid;
+  const snmp = createSnmpDevices({ db, settings: settings(), channels: { notifyIds: async () => [] } });
+  snmp.setReaderForTests('ports', async () => { db.prepare('UPDATE devices SET watch_ports=0 WHERE id=?').run(id); return { ports: [port({})], uptime: 1 }; });
+  await snmp.poll(id);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM snmp_status WHERE device_id=?').get(id).n, 0);
+});
+
+test('review: a NAS keeps its ports over one failed port query; with the host script its ports stay SNMP', async () => {
+  const db = memoryDb();
+  const ts = new Date().toISOString();
+  const id = db.prepare("INSERT INTO devices(name,type,ip,hostname,watch_ports,created_at,updated_at) VALUES('NAS-01','nas','10.0.10.5','nas-01',1,?,?)").run(ts, ts).lastInsertRowid;
+  const snmp = createSnmpDevices({ db, settings: settings(), channels: { notifyIds: async () => [] } });
+  snmp.setReaderForTests('nas', async () => ({ volumes: [{ name: 'Volume 1', pct: 40 }] }));
+  let fail = false;
+  snmp.setReaderForTests('ports', async () => { if (fail) throw new Error('snmp'); return { ports: [port({ name: 'LAN 1' })], uptime: 5 }; });
+  await snmp.poll(id);
+  fail = true;
+  await snmp.poll(id);
+  const c = sensorCheck(db, { ...sensor('port', 1), device_id: id });
+  assert.equal(c.ok, true, c.message);
+  await snmp.poll(id);
+  assert.match(sensorCheck(db, { ...sensor('port', 1), device_id: id }).message, /not found/, 'kept for one poll only');
+  // host script on the NAS: its network cards are neither asked for nor kept
+  const hosts = createHosts({ db });
+  const { token } = hosts.create({ name: 'NAS-01', os: 'linux', device_id: id }, { server: 'https://womn.firma.local' });
+  const a = hosts.push(token, { hostname: 'nas-01', os: 'Linux', nics: [{ name: 'eth0', up: 1, speed: 1000 }] });
+  assert.equal(a.nics, false);
+  assert.equal(JSON.parse(db.prepare('SELECT data FROM host_reports WHERE device_id=?').get(id).data).nics, undefined);
+});
+
+test('review: virtual interfaces of Linux-based devices are not ports', () => {
+  for (const n of ['docker0', 'br-3f2a9c1d7e44', 'veth12ab', 'virbr0', 'vnet3', 'tun0', 'lo']) assert.ok(VIRTUAL_IF.test(n), n);
+  for (const n of ['eth0', 'LAN 1', 'ETH-1', 'ovs_eth0', 'bond0', 'GigabitEthernet1/0/1']) assert.ok(!VIRTUAL_IF.test(n), n);
 });

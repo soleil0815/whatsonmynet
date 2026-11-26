@@ -15,6 +15,9 @@ import { cleanPluginReport } from './plugins.js';
 import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts, cleanTemps, cleanChecks, cleanNics } from './hostfacts.js';
 import { portRates } from './portrates.js';
 
+// devices whose ports come by SNMP even when a host script runs on them
+const SNMP_PORT_TYPES = ['switch', 'nas', 'ups'];
+
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
 const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 const pct = (used, total) => (total > 0 ? Math.max(0, Math.min(100, Math.round((used / total) * 100))) : null);
@@ -170,12 +173,17 @@ export function createHosts({ db, plugins = null }) {
       db.prepare('DELETE FROM host_unmatched WHERE rowid NOT IN (SELECT rowid FROM host_unmatched ORDER BY at DESC LIMIT 500)').run();
       throw new HttpError(404, 'err.hostUnknown', r.hostname);
     }
-    // Network cards only when someone watches the ports of this machine: then load and new errors since the last report
-    if (db.prepare('SELECT watch_ports FROM devices WHERE id=?').get(deviceId)?.watch_ports && r.nics.length) {
+    // Network cards only when someone watches the ports of this machine: then load and new errors since the last report.
+    // Switches, NAS and UPS keep their ports from SNMP (one source, the one the sensors use)
+    const dev = db.prepare('SELECT watch_ports, type FROM devices WHERE id=?').get(deviceId);
+    const wantNics = !!dev?.watch_ports && !SNMP_PORT_TYPES.includes(dev.type);
+    if (wantNics && r.nics.length) {
       const prev = db.prepare('SELECT at, data FROM host_reports WHERE device_id=?').get(deviceId);
       let before = null;
       try { before = prev ? JSON.parse(prev.data) : null; } catch { before = null; }
-      if (before?.nics?.length) portRates({ ports: before.nics, uptime: before.uptime }, prev.at, { ports: r.nics, uptime: r.uptime }, at);
+      const now = { ports: r.nics, uptime: r.uptime };
+      if (before?.nics?.length) portRates({ ports: before.nics, uptime: before.uptime }, prev.at, now, at);
+      if (now.rateSeconds) r.nicsRateSeconds = now.rateSeconds;
     } else delete r.nics;
     db.prepare('INSERT INTO host_reports(device_id,at,data) VALUES(?,?,?) ON CONFLICT(device_id) DO UPDATE SET at=excluded.at, data=excluded.data')
       .run(deviceId, at, JSON.stringify(r));
@@ -187,7 +195,8 @@ export function createHosts({ db, plugins = null }) {
     fillDevice(db, deviceId, { os: r.os, hostname: r.hostname, vendor: hw.vendor, model: hw.model, serial: hw.serial, type: hw.virtual ? 'vm' : undefined }, 'script', { mayReplace: found.sure });
     // which plugins this machine may run (id, version, fingerprint) - the script keeps the list for its next run
     const allowed = plugins ? plugins.allowedFor(deviceId, hostOs(r.os)) : [];
-    return { ok: true, device: deviceId, plugins: plugins ? plugins.allowString(allowed) : '' };
+    // nics: whether the script should read the network cards from its next run on (nothing is read unless asked)
+    return { ok: true, device: deviceId, plugins: plugins ? plugins.allowString(allowed) : '', nics: wantNics };
   }
 
   /** Last report of a device with "stale" if it is older than 15 minutes; null if it never reported */

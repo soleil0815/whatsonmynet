@@ -279,16 +279,21 @@ if (Test-Path -LiteralPath $PlugDir) {
 }
 
 $net = @(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE')
-# Network cards (physical ones): state, speed, bytes and errors - used by WhatsOnMyNet only when the ports of this
-# machine are watched there. Read by CIM like the disks (no NetAdapter cmdlets: those would log warning 4104 on
-# every run); Windows versions without the namespace send none.
+# Network cards (physical, wired): state, speed, bytes and errors - read only when WhatsOnMyNet asked for them (its
+# answer to the last report: the ports of this machine are watched there). By CIM like the disks (no NetAdapter
+# cmdlets: those would log warning 4104 on every run); Windows versions without the namespace send none. Wi-Fi left
+# out: its speed changes all the time.
+$NicsFile = Join-Path $Dir 'womn-nics.txt'
 $nics = @()
 $nicStats = @{}
-foreach ($x in @(Try-Get { Get-Cim 'root/StandardCimv2' 'MSFT_NetAdapterStatisticsSettingData' '' })) {
-  if ($x) { $nicStats[[string]$x.Name] = $x }
+$wantNics = Test-Path -LiteralPath $NicsFile
+if ($wantNics) {
+  foreach ($x in @(Try-Get { Get-Cim 'root/StandardCimv2' 'MSFT_NetAdapterStatisticsSettingData' '' })) {
+    if ($x) { $nicStats[[string]$x.Name] = $x }
+  }
 }
-foreach ($a in @(Try-Get { Get-Cim 'root/StandardCimv2' 'MSFT_NetAdapter' 'ConnectorPresent=TRUE' })) {
-  if (-not $a -or $nics.Count -ge 32) { continue }
+foreach ($a in @($(if ($wantNics) { Try-Get { Get-Cim 'root/StandardCimv2' 'MSFT_NetAdapter' 'ConnectorPresent=TRUE' } }))) {
+  if (-not $a -or $nics.Count -ge 32 -or [int]$a.NdisPhysicalMedium -eq 9) { continue }
   $st = $nicStats[[string]$a.Name]
   $nics += @{ name = [string]$a.Name; descr = [string]$a.InterfaceDescription; up = ([int]$a.InterfaceOperationalStatus -eq 1); speed = [int64]([double]$a.Speed / 1000000)
     rxBytes = $st.ReceivedBytes; txBytes = $st.SentBytes; rxErrors = $st.ReceivedPacketErrors; txErrors = $st.OutboundPacketErrors }

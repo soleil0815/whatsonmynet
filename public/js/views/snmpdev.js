@@ -96,7 +96,8 @@ export const portsPanelFor = (d) => d.type !== 'switch' && d.type !== 'printer' 
 export function portsPanel(device) {
   const box = h('section', { class: 'panel panel-pad ports-panel' });
   const detail = h('div', { class: 'port-detail' });
-  const viaHost = !!device.host;
+  // a NAS keeps its ports from SNMP even with the host script (one source - the one its sensors use)
+  const viaHost = !!device.host && device.type !== 'nas';
   const on = !!device.watch_ports;
   const toggle = state.user.canEdit ? h('label', { class: 'check' },
     h('input', { type: 'checkbox', checked: on, onchange: async (e) => {
@@ -115,7 +116,7 @@ export function portsPanel(device) {
   }
   const s = viaHost ? null : device.snmp;
   const ports = viaHost ? (device.host.nics || []) : (s?.ports || []);
-  const rateSeconds = viaHost ? 300 : s?.rateSeconds || 0;
+  const rateSeconds = viaHost ? device.host.nicsRateSeconds || 0 : s?.rateSeconds || 0;
   function showPort(p) {
     mount(detail, h('div', { class: 'port-card' },
       h('div', { class: 'port-card-head' }, h('strong', {}, p.name), p.alias ? h('span', { class: 'muted' }, ` · ${p.alias}`) : null,
@@ -130,7 +131,9 @@ export function portsPanel(device) {
     title: `${p.name}: ${p.status}${p.speed ? ` · ${fmtSpeed(p.speed)}bit/s` : ''}`, 'aria-label': `${p.name}: ${p.status}`,
     onclick: (e) => { box.querySelectorAll('.port-sq.sel').forEach((x) => x.classList.remove('sel')); e.currentTarget.classList.add('sel'); showPort(p); },
   }, h('span', { class: 'num' }, p.name.slice(0, 14))))) : null;
-  const empty = !ports.length ? h('p', { class: 'muted small' }, viaHost ? t(device.host.scriptOld ? 'ports.scriptOld' : 'ports.waitHost') : s ? '' : t('ports.waitSnmp')) : null;
+  const why = viaHost ? (device.host.scriptOld ? 'ports.scriptOld' : 'ports.waitHost')
+    : !device.ip ? 'ports.noIp' : !s ? 'ports.waitSnmp' : s.ok ? 'ports.noneSnmp' : '';
+  const empty = !ports.length && why ? h('p', { class: 'muted small' }, t(why)) : null;
   mount(box, viaHost ? h('h2', { class: 'section-title' }, t('ports.panel')) : head(t('ports.panel'), device, () => location.reload()),
     toggle, s ? errNote(s, ports.length > 0) : null, empty,
     ports.length ? h('p', { class: 'muted small', style: { margin: '8px 0 10px' } }, t('sw.summary', { up: ports.filter((p) => p.status === 'up').length, n: ports.length })) : null,

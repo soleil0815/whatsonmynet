@@ -353,11 +353,12 @@ for a in /sys/class/net/*/address; do
   macs="$macs${macs:+,}\"$m\""
 done
 ips=$( (ip -o -4 addr show scope global 2>/dev/null || true) | awk '{split($4,a,"/"); printf "%s\"%s\"", (n++?",":""), a[1]}')
-# Network cards (physical ones: with a device behind them): state, speed, bytes and errors - used by WhatsOnMyNet only
-# when the ports of this machine are watched there
+# Network cards (physical, wired: a device behind them, no Wi-Fi): state, speed, bytes and errors - read only when
+# WhatsOnMyNet asked for them (its answer to the last report: the ports of this machine are watched there)
 nj=""; nn=0
-for d in /sys/class/net/*; do
+[ -f "$CACHE/nics" ] && for d in /sys/class/net/*; do
   [ -e "$d/device" ] || continue
+  [ -e "$d/wireless" ] && continue
   [ "$nn" -lt 32 ] || break
   n=${d##*/}
   up=0; [ "$(cat "$d/operstate" 2>/dev/null)" = up ] && up=1
@@ -376,6 +377,8 @@ if printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer 
   if grep -q '"plugins":"' "$CACHE/answer.json" 2>/dev/null; then
     sed -n 's/.*"plugins":"\([0-9a-f: ]*\)".*/\1/p' "$CACHE/answer.json" | head -c 20000 > "$ALLOW"
   fi
+  # … and whether it wants the network cards (only when their ports are watched there): read from the next run on
+  if grep -q '"nics":true' "$CACHE/answer.json" 2>/dev/null; then : > "$CACHE/nics"; else rm -f "$CACHE/nics"; fi
 fi
 rm -f "$CACHE/answer.json"
 

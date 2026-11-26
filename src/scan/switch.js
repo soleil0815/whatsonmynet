@@ -19,6 +19,8 @@ const ENT = { softwareRev: '1.3.6.1.2.1.47.1.1.1.1.10', serial: '1.3.6.1.2.1.47.
 const SYS_DESCR = '1.3.6.1.2.1.1.1.0';
 const SYS_UPTIME = '1.3.6.1.2.1.1.3.0';
 
+// names of virtual interfaces (Docker, bridges, VMs, tunnels) - not ports of the device
+export const VIRTUAL_IF = /^(docker\d*|br-[0-9a-f]{6,}|veth|virbr|vnet\d|vmbr|tap|tun\d|cali|flannel|cni|kube|lxc|lxd|wg\d|lo$)/i;
 const ETHERNET_TYPES = new Set([6, 62, 69, 117, 161]); // ethernetCsmacd, fastEther, fastEtherFX, gigabitEthernet, ieee8023adLag
 const STATUS = { 1: 'up', 2: 'down', 3: 'testing', 5: 'dormant', 6: 'notPresent', 7: 'lowerLayerDown' };
 
@@ -147,7 +149,9 @@ export async function readPorts(ip, communities, { port = 161 } = {}) {
     await Promise.all(Object.entries(IF).map(async ([k, oid]) => { cols[k] = await walk(s, oid, { max: 1200 }); }));
     if (!cols.type.size) throw new Error('noIfMib');
     const sys = await getValues(s, [SYS_DESCR, SYS_UPTIME]);
-    return { ports: parsePorts(cols), descr: text(sys[SYS_DESCR], 200), uptime: Number(sys[SYS_UPTIME]) || null, snmp: s.version };
+    // Linux-based devices (NAS, firewalls) report their virtual interfaces as Ethernet too: containers come and go
+    const ports = parsePorts(cols).filter((p) => !VIRTUAL_IF.test(p.name) && !VIRTUAL_IF.test(p.descr || ''));
+    return { ports, descr: text(sys[SYS_DESCR], 200), uptime: Number(sys[SYS_UPTIME]) || null, snmp: s.version };
   } finally {
     s.close();
   }

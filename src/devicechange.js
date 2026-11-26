@@ -10,6 +10,9 @@
 // - new type: what SNMP read for the old type (NAS problems, MAC table of a switch) is dropped
 import { log } from './lib/log.js';
 
+// types whose ports can be watched (src/snmpdevices.js PORT_TYPES and NAS; switches always are)
+const WATCHABLE = ['router', 'firewall', 'accesspoint', 'hypervisor', 'server', 'nas'];
+
 // Monitors whose target is the address of the device itself
 const ADDRESS_MONITORS = ['ping', 'tcp', 'snmp', 'smb', 'mysql', 'postgres', 'redis'];
 
@@ -154,6 +157,13 @@ export function onDeviceChanged(db, before, after, source, { user = '', ts = now
     }
   }
   if (before.name && after.name && before.name !== after.name) out.renamed = renameMonitors(db, id, before.name, after.name, ts);
+  // a new type whose ports cannot be watched (camera, printer …): the switch goes off with it - nothing stays queried
+  // without a switch on the device page to turn it off (machines with the host script keep it: their page shows it)
+  if (after.watch_ports && before.type !== after.type && after.type !== undefined && !WATCHABLE.includes(after.type)
+    && !db.prepare('SELECT 1 FROM host_reports WHERE device_id=?').get(id)) {
+    db.prepare('UPDATE devices SET watch_ports=0 WHERE id=?').run(id);
+    after = { ...after, watch_ports: 0 };
+  }
   // ports no longer watched: what was read of them goes (nothing is queried for them any more)
   if (before.watch_ports && after.watch_ports === 0) {
     db.prepare("DELETE FROM snmp_status WHERE device_id=? AND kind='ports'").run(id);

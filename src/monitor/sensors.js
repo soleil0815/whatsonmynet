@@ -191,6 +191,9 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
   if (!s) {
     // a machine whose script data was removed ("Remove script data" on its page): the device is still there
     const script = /^host/.test(String(o.metric || '')) && db.prepare('SELECT 1 FROM devices WHERE id=?').get(m.device_id);
+    // ports of a router, firewall … that are no longer watched (switched off on its page)
+    const ports = /^port/.test(String(o.metric || '')) && db.prepare('SELECT 1 FROM devices WHERE id=?').get(m.device_id);
+    if (ports) return { ok: false, ms: null, message: 'ports not watched (switched off on the device page)' };
     return { ok: false, ms: null, message: script ? 'script data removed' : 'device missing' };
   }
   if (!s.data || !s.at) return { ok: false, ms: null, message: 'no data yet' };

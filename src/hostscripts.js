@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 
 const KINDS = {
-  windows: { file: 'womn-host.ps1', ps: true, task: 'WhatsOnMyNet-Host', old: [], extra: ['womn-updates.json', 'womn-plugins.txt', 'womn-plugin-*.out'] },
+  windows: { file: 'womn-host.ps1', ps: true, task: 'WhatsOnMyNet-Host', old: [], extra: ['womn-updates.json', 'womn-plugins.txt', 'womn-plugin-*.out', 'womn-nics.txt'] },
   linux: { file: 'womn-host.sh', ps: false, cron: 'whatsonmynet-host', old: [] },
   hyperv: { file: 'womn-hyperv.ps1', ps: true, task: 'WhatsOnMyNet-HyperV', old: ['WhatsOnMyNet'] },
   libvirt: { file: 'womn-libvirt.sh', ps: false, cron: 'whatsonmynet-kvm', old: ['whatsonmynet'] },
@@ -15,7 +15,7 @@ export const SCRIPT_KINDS = Object.keys(KINDS);
 // that an update of WhatsOnMyNet does not make every machine "outdated". Written into the script (first line, registry
 // HKLM\SOFTWARE\WhatsOnMyNet) and sent with every report. test/hostscriptversion.test.js fails when a script changes
 // and its number stays.
-export const SCRIPT_VERSIONS = { windows: '0.58.0', hyperv: '0.56.0', linux: '0.58.0' };
+export const SCRIPT_VERSIONS = { windows: '0.58.0', hyperv: '0.58.0', linux: '0.58.0' };
 // the value under HKLM\SOFTWARE\WhatsOnMyNet (software distribution and inventory tools filter on it)
 const REG_NAMES = { windows: 'HostScript', hyperv: 'HyperVScript' };
 
