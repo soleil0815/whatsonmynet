@@ -154,6 +154,12 @@ export function onDeviceChanged(db, before, after, source, { user = '', ts = now
     }
   }
   if (before.name && after.name && before.name !== after.name) out.renamed = renameMonitors(db, id, before.name, after.name, ts);
+  // ports no longer watched: what was read of them goes (nothing is queried for them any more)
+  if (before.watch_ports && after.watch_ports === 0) {
+    db.prepare("DELETE FROM snmp_status WHERE device_id=? AND kind='ports'").run(id);
+    db.prepare("UPDATE snmp_status SET data=json_remove(data,'$.ports') WHERE device_id=? AND kind='nas' AND json_valid(data)").run(id);
+    db.prepare("UPDATE host_reports SET data=json_remove(data,'$.nics') WHERE device_id=? AND json_valid(data)").run(id);
+  }
   if (before.type !== after.type && before.type !== undefined && after.type !== undefined) {
     db.prepare('DELETE FROM snmp_status WHERE device_id=?').run(id);
     db.prepare('DELETE FROM switch_macs WHERE switch_id=?').run(id);

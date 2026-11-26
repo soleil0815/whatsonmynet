@@ -1057,3 +1057,8 @@ dialog.gs .gs-input:focus, dialog.gs .gs-input:focus-visible { border: 0; outlin
 .pick-hint { margin-left: 10px; font-weight: 400; }
 .data td.pick-cell { cursor: pointer; }
 @media (max-width: 640px) { .pick-hint { display: none; } }
+
+/* Ports of NAS, routers and machines: names instead of numbers, so wider squares */
+.ports-panel .ports-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.port-sq.wide { aspect-ratio: auto; min-height: 36px; padding: 0 6px; font-size: 11.5px; }
+.port-sq.busy { border-color: var(--bad); }

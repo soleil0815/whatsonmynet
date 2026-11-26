@@ -171,6 +171,7 @@ Devices of type *Switch* and *NAS* are queried regularly (default every 15 minut
 - **NAS**: volumes with usage (any NAS or Linux server with SNMP); on Synology also disks with state and temperature, storage pools/RAID, system state, fans, power supply, DSM version and available updates; on QNAP disks and temperature.
 - **Taken into the inventory**: serial number and model that printers, switches and NAS report via SNMP, for switches and NAS also the firmware (or DSM version), go right into the details of the device and stay current; your own different entries stay. If a device at the same IP reports another serial number (exchange), serial number, model and firmware come from the new device and the next scan takes the new MAC address; the history notes the exchange.
 - **Notice** for a failing disk, a degraded RAID, fan or power supply failure and a volume running full (default 90 %) - once when it happens and once when everything is fine again. The overview lists open NAS problems.
+- **Network ports of other devices** (from version 0.58, switched on per device, off by default): NAS, router, firewall by SNMP (IF-MIB, any vendor) and the network cards of machines with the machine script - with sensors for *port connected*, *speed dropped*, *new errors* and *load*. Switches get the *speed* and *new errors* sensors too.
 
 Settings under *Settings → Switches & NAS*. Simple switches without SNMP (e.g. TP-Link "Easy Smart") give no data; on LANCOM, HP/Aruba, Cisco, Netgear Smart and others SNMP (v1/v2c or v3) has to be enabled read-only.
 

@@ -8,7 +8,7 @@ $o = { param($h) [pscustomobject]$h }
 # The namespaces and classes of this (server) Windows: no Security Center. Asking for anything else throws, as WMI does
 # ("Invalid namespace" / "Invalid class") - and Windows would log it as event 4100, so the script must look first.
 $CimNs = @('root', 'root/cimv2', 'root/StandardCimv2', 'root/Microsoft', 'root/Microsoft/Windows', 'root/Microsoft/Windows/Storage', 'root/Microsoft/Windows/Defender')
-$CimClasses = @('MSFT_NetAdapter', 'MSFT_NetFirewallProfile', 'MSFT_PhysicalDisk', 'MSFT_MpComputerStatus', 'MSFT_StoragePool')
+$CimClasses = @('MSFT_NetAdapter', 'MSFT_NetAdapterStatisticsSettingData', 'MSFT_NetFirewallProfile', 'MSFT_PhysicalDisk', 'MSFT_MpComputerStatus', 'MSFT_StoragePool')
 function Get-CimInstance {
   param([Parameter(Position = 0)][string]$ClassName, [string]$Filter, [string]$Namespace, [string]$Query)
   if ($Namespace -and $CimNs -notcontains $Namespace) { throw "Invalid namespace $Namespace" }
@@ -37,6 +37,7 @@ function Get-CimInstance {
     'MSFT_NetAdapter' { if ($Filter -ne 'ConnectorPresent=TRUE') { throw "filter $Filter" }
       & $o @{ Name = 'Ethernet 1'; InterfaceDescription = 'Broadcom NetXtreme Gigabit Ethernet'; NetworkAddresses = @('00155D010203'); PermanentAddress = '00155D010203'; Speed = 1000000000; InterfaceOperationalStatus = 1 }
       & $o @{ Name = 'Ethernet 2'; InterfaceDescription = 'Broadcom NetXtreme Gigabit Ethernet #2'; NetworkAddresses = $null; PermanentAddress = '00155D010204'; Speed = 0; InterfaceOperationalStatus = 2 } }
+    'MSFT_NetAdapterStatisticsSettingData' { & $o @{ Name = 'Ethernet 1'; ReceivedBytes = [uint64]123456789; SentBytes = [uint64]987654; ReceivedPacketErrors = [uint64]3; OutboundPacketErrors = [uint64]0 } }
     'MSFT_PhysicalDisk' { if ($Namespace -ne 'root/Microsoft/Windows/Storage') { throw 'namespace' }
       & $o @{ ObjectId = 'pd1'; FriendlyName = 'SAMSUNG MZ7LH480'; SerialNumber = ' S45PNA0M123456 '; MediaType = [uint16]4; BusType = [uint16]11; Size = [uint64]480103981056; HealthStatus = [uint16]0 }
       & $o @{ ObjectId = 'pd2'; FriendlyName = 'ST4000NM0035'; SerialNumber = 'ZC1ABCDE'; MediaType = [uint16]3; BusType = [uint16]10; Size = [uint64]4000787030016; HealthStatus = [uint16]1 } }

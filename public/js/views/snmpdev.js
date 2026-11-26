@@ -1,6 +1,6 @@
 // Switch and NAS panels on the device page, "plugged in at" line, NAS problems on the dashboard.
-import { h, mount, fmtDate, fmtAgo } from '../dom.js';
-import { post } from '../api.js';
+import { h, mount, fmtDate, fmtAgo, toast } from '../dom.js';
+import { post, patch } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { state, fail } from '../app.js';
@@ -80,6 +80,62 @@ export function switchPanel(device) {
       checked(s));
   }
   draw(device.snmp);
+  return box;
+}
+
+// ------------------------------------------------------------------------------------- ports of other devices
+
+// Types whose network ports can be watched (switches always are); machines with the host script too
+const PORT_TYPES = ['router', 'firewall', 'accesspoint', 'hypervisor', 'server', 'nas'];
+export const portsPanelFor = (d) => d.type !== 'switch' && d.type !== 'printer' && d.type !== 'ups' && (PORT_TYPES.includes(d.type) || !!d.host);
+
+/**
+ * Network ports of a NAS, router, firewall … (SNMP) or the network cards of a machine with the host script - only
+ * when someone switches "Watch ports" on for the device. Warnings come from sensors (connected, speed, new errors, load).
+ */
+export function portsPanel(device) {
+  const box = h('section', { class: 'panel panel-pad ports-panel' });
+  const detail = h('div', { class: 'port-detail' });
+  const viaHost = !!device.host;
+  const on = !!device.watch_ports;
+  const toggle = state.user.canEdit ? h('label', { class: 'check' },
+    h('input', { type: 'checkbox', checked: on, onchange: async (e) => {
+      const cb = e.currentTarget; cb.disabled = true;
+      try {
+        await patch(`/devices/${device.id}`, { watch_ports: cb.checked });
+        // SNMP: asked within the next minute (or at once with "Refresh"); the host script sends them with its next report
+        toast(t('saved'));
+        location.reload();
+      } catch (ex) { fail(ex); cb.disabled = false; cb.checked = !cb.checked; }
+    } }), h('span', {}, t('ports.watch'))) : null;
+  const hint = h('p', { class: 'muted small', style: { margin: '4px 0 0' } }, t(viaHost ? 'ports.hintHost' : 'ports.hintSnmp'));
+  if (!on) {
+    mount(box, h('h2', { class: 'section-title' }, t('ports.panel')), toggle || h('p', { class: 'muted', style: { margin: 0 } }, t('ports.off')), hint);
+    return box;
+  }
+  const s = viaHost ? null : device.snmp;
+  const ports = viaHost ? (device.host.nics || []) : (s?.ports || []);
+  const rateSeconds = viaHost ? 300 : s?.rateSeconds || 0;
+  function showPort(p) {
+    mount(detail, h('div', { class: 'port-card' },
+      h('div', { class: 'port-card-head' }, h('strong', {}, p.name), p.alias ? h('span', { class: 'muted' }, ` · ${p.alias}`) : null,
+        h('span', { class: `badge ${p.status === 'up' ? 'badge-ok' : ''}`, style: { marginLeft: 'auto' } }, `${t(`port.${p.status}`) || p.status}${p.status === 'up' && p.speed ? ` · ${fmtSpeed(p.speed)}bit/s` : ''}`)),
+      p.inErrors || p.outErrors ? h('p', { class: 'small', style: { color: 'var(--bad)' } }, t('port.errorsInOut', { inN: (p.inErrors || 0).toLocaleString(), outN: (p.outErrors || 0).toLocaleString() })) : null,
+      p.newErrors ? h('p', { class: 'small bad-text' }, t('port.newErrors', { n: p.newErrors.toLocaleString() })) : null,
+      p.status === 'up' && p.inBps !== undefined ? h('p', { class: `small${p.loadPct >= 80 ? ' bad-text' : ''}` }, t('port.load', { inRate: fmtRate(p.inBps), outRate: fmtRate(p.outBps), inPct: fmtPct(p.inPct), outPct: fmtPct(p.outPct), min: Math.round(rateSeconds / 60) }))
+        : p.status === 'up' ? h('p', { class: 'small muted' }, t('port.loadNone')) : null));
+  }
+  const grid = ports.length ? h('div', { class: 'ports-grid', role: 'list' }, ports.filter((p) => !p.lag).map((p) => h('button', {
+    type: 'button', role: 'listitem', class: `port-sq wide ${p.status === 'up' ? 'up' : 'down'}${p.loadPct >= 80 || p.newErrors ? ' busy' : ''}`,
+    title: `${p.name}: ${p.status}${p.speed ? ` · ${fmtSpeed(p.speed)}bit/s` : ''}`, 'aria-label': `${p.name}: ${p.status}`,
+    onclick: (e) => { box.querySelectorAll('.port-sq.sel').forEach((x) => x.classList.remove('sel')); e.currentTarget.classList.add('sel'); showPort(p); },
+  }, h('span', { class: 'num' }, p.name.slice(0, 14))))) : null;
+  const empty = !ports.length ? h('p', { class: 'muted small' }, viaHost ? t(device.host.scriptOld ? 'ports.scriptOld' : 'ports.waitHost') : s ? '' : t('ports.waitSnmp')) : null;
+  mount(box, viaHost ? h('h2', { class: 'section-title' }, t('ports.panel')) : head(t('ports.panel'), device, () => location.reload()),
+    toggle, s ? errNote(s, ports.length > 0) : null, empty,
+    ports.length ? h('p', { class: 'muted small', style: { margin: '8px 0 10px' } }, t('sw.summary', { up: ports.filter((p) => p.status === 'up').length, n: ports.length })) : null,
+    grid, detail, h('p', { class: 'muted small', style: { margin: '10px 0 0' } }, t('ports.sensorsHint')),
+    s?.at ? checked(s) : viaHost && device.host.at ? checked({ at: device.host.at }) : null);
   return box;
 }
 

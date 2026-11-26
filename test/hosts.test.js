@@ -1,5 +1,6 @@
 // Windows/Linux machines with the host script: keys per device or shared, matching to the inventory, sensors,
 // the Linux script really run (stand-ins for df, systemctl, curl …) incl. setup and uninstall.
+import { cleanNics } from '../src/hostfacts.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -206,6 +207,9 @@ test('Windows script: reports hardware, disks, updates, protection, events and c
     ['Dell Inc.', 'PowerEdge R650', '7XK2Q93', '1.13.2', '2024-03-05', 2, 20, 40, false, 34359738368]);
   assert.deepEqual(r.hw.nics.map((n) => [n.name, n.mac, n.speed, n.up]), [['Ethernet 1', '00:15:5d:01:02:03', 1000, true], ['Ethernet 2', '00:15:5d:01:02:04', null, false]]);
   assert.deepEqual(r.pdisks.map((d) => d.bus), ['SATA', 'SAS'], 'numbers of the WMI class turned into the words of the module');
+  // the network cards for watched ports (by CIM, not by the NetAdapter cmdlets)
+  assert.deepEqual(cleanNics(JSON.parse(fs.readFileSync(body, 'utf8')).nics).map((n) => [n.name, n.status, n.speed, n.inOctets, n.inErrors]),
+    [['Ethernet 1', 'up', 1000, 123456789, 3], ['Ethernet 2', 'down', 0, null, 0]]);
   // no module cmdlets (Get-PhysicalDisk & co.): each run would leave ~70 "suspicious" events 4104 on the machine
   const code = fs.readFileSync('src/hostscripts/womn-host.ps1', 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
   assert.doesNotMatch(code, /\b(Get-NetAdapter|Get-PhysicalDisk|Get-StorageReliabilityCounter|Get-MpComputerStatus|Get-NetFirewallProfile)\b/);

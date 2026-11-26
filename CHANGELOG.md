@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Netzwerk-Ports überwachen – je Gerät einschaltbar, standardmäßig aus: NAS, Router und Firewall per SNMP (IF-MIB, jeder Hersteller), Rechner über das Rechner-Skript (ab Skript-Version 0.58, einmal neu verteilen). Neue Sensoren für alle Ports, auch an Switches: Geschwindigkeit gesunken (z. B. 100 statt 1000 Mbit/s) und neue Fehler seit der letzten Abfrage
+
+## 0.57.2 - 2026-11-25
+
 - Sicherung: Die Texte sagen jetzt, was passiert – gesichert wird alle 24 Stunden (das erste Mal eine Stunde nach dem Start), nicht „jede Nacht“; Sicherungen mit „Jetzt sichern“ zählen bei der Aufbewahrung mit
 - Mehrfachauswahl in Inventar und Monitoring: Ist etwas angekreuzt, wählt ein Klick in die Zeile sie aus, statt das Gerät oder den Monitor zu öffnen – geöffnet wird dann über den Namen. Auch die Zelle um das Kästchen herum wählt aus, und die Auswahl bleibt beim Öffnen und Zurückgehen erhalten
 

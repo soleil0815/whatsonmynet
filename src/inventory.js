@@ -14,7 +14,7 @@ import { onDeviceChanged, followUrl } from './devicechange.js';
 import { inScope } from './auth/scope.js';
 
 const EDITABLE = ['name', 'type', 'vendor', 'model', 'ip', 'mac', 'hostname', 'os', 'location_id', 'owner', 'notes', 'tags',
-  'web_url', 'serial', 'supplier', 'purchase_date', 'warranty_until', 'maintenance_until'];
+  'web_url', 'serial', 'supplier', 'purchase_date', 'warranty_until', 'maintenance_until', 'watch_ports'];
 
 const now = () => new Date().toISOString();
 const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return def; } };
@@ -143,6 +143,8 @@ export function createInventory(db) {
           out[k] = d; break;
         }
         case 'notes': out.notes = str(v, 5000); break;
+        // watch the network ports (SNMP or the host script) - only when someone switches it on
+        case 'watch_ports': out.watch_ports = v === true || v === 1 || v === '1' ? 1 : 0; break;
         case 'web_url': {
           const u = line(v, 500);
           if (u && !/^(https?|ssh|rdp|vnc):\/\/[^\s"'<>]+$/i.test(u)) throw new HttpError(400, 'err.url', undefined, 'web_url');

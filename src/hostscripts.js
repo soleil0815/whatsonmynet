@@ -15,7 +15,7 @@ export const SCRIPT_KINDS = Object.keys(KINDS);
 // that an update of WhatsOnMyNet does not make every machine "outdated". Written into the script (first line, registry
 // HKLM\SOFTWARE\WhatsOnMyNet) and sent with every report. test/hostscriptversion.test.js fails when a script changes
 // and its number stays.
-export const SCRIPT_VERSIONS = { windows: '0.56.0', hyperv: '0.56.0', linux: '0.56.0' };
+export const SCRIPT_VERSIONS = { windows: '0.58.0', hyperv: '0.56.0', linux: '0.58.0' };
 // the value under HKLM\SOFTWARE\WhatsOnMyNet (software distribution and inventory tools filter on it)
 const REG_NAMES = { windows: 'HostScript', hyperv: 'HyperVScript' };
 

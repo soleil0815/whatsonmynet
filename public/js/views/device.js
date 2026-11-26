@@ -9,7 +9,7 @@ import { printerPanel } from './printer.js';
 import { systemPanel, openHostScript, helpLink } from './hostscripts.js';
 import { isReadOnly } from './failover.js';
 import { hardwarePanel } from './hardware.js';
-import { switchPanel, nasPanel, upsPanel, pluggedLine } from './snmpdev.js';
+import { switchPanel, nasPanel, upsPanel, pluggedLine, portsPanel, portsPanelFor } from './snmpdev.js';
 import { typeChip, presenceDot, field, input, select, typeOptions, formData, btn, confidenceBar, portList, TI, suggestionLists, wireModelAutofill, tagChips, notFoundPage } from './common.js';
 import { maintBadge, untilText } from '../maint.js';
 
@@ -256,7 +256,7 @@ export async function renderDevice(main, id) {
       case 'monitors': view = monPanel; break;
       case 'network': view = h('div', { class: 'stack' }, detection, meta); break;
       case 'history': view = hist; break;
-      default: view = h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || (d.host ? systemPanel(d.host) : d.hardware ? null : facts), typePanel && d.host ? systemPanel(d.host) : null, hardwarePanel(d.hardware)), h('div', { class: 'stack' }, scriptTip, monPanel, netShort));
+      default: view = h('div', { class: 'device-grid' }, h('div', { class: 'stack' }, typePanel || (d.host ? systemPanel(d.host) : d.hardware ? null : facts), typePanel && d.host ? systemPanel(d.host) : null, hardwarePanel(d.hardware), portsPanelFor(d) ? portsPanel(d) : null), h('div', { class: 'stack' }, scriptTip, monPanel, netShort));
     }
     mount(content, view);
   }

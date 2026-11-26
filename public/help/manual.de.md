@@ -451,6 +451,23 @@ Geräte vom Typ *Drucker*, *Switch* und *NAS* werden per SNMP gefragt (nur lesen
 
 ![NAS](img/nas-de.png)
 
+### Netzwerk-Ports von NAS, Router, Firewall und Rechnern
+
+Bei Switches liest WhatsOnMyNet die Ports immer. Bei anderen Geräten schaltest du das **je Gerät** ein: Geräteseite → *Netzwerk-Ports* → **Ports überwachen**. Standardmäßig ist es aus, dann wird nichts zusätzlich abgefragt.
+
+- **NAS, Router, Firewall, Access Point, Server ohne Rechner-Skript:** per SNMP über den Standard **IF-MIB** - das können praktisch alle verwalteten Geräte, egal von welchem Hersteller (LANCOM, Cisco, HPE/Aruba, Netgear, Zyxel, MikroTik, Sophos, OPNsense, Synology, QNAP …). Abgefragt wird mit denselben SNMP-Zugängen und im selben Takt wie Switches und NAS.
+- **Rechner mit dem Rechner-Skript** (Windows und Linux): Das Skript schickt Zustand, Geschwindigkeit, Fehler und Datenmenge der Netzwerkkarten mit, ab Skript-Version **0.58**. Ein älteres Skript einmal neu verteilen; bis dahin zeigt die Geräteseite einen Hinweis. Gespeichert werden die Werte nur, wenn die Ports des Rechners überwacht werden.
+- **Nicht verwaltete Switches** (ohne Weboberfläche und ohne SNMP) zählen nichts und geben nichts heraus - die kann kein Programm überwachen.
+
+Die Geräteseite zeigt die Ports als Kacheln; ein Klick zeigt Geschwindigkeit, Fehler seit dem Start, **neue Fehler seit der letzten Abfrage** und die Auslastung. **Warnungen** richtest du mit **Sensor anlegen** ein:
+
+- **Port verbunden** - meldet, wenn der Port die Verbindung verliert.
+- **Geschwindigkeit** - meldet, wenn der Port weniger aushandelt als beim Anlegen, etwa 100 statt 1000 Mbit/s: meist Kabel, Stecker oder Port.
+- **Neue Fehler** - meldet, sobald zwischen zwei Abfragen Fehler dazukommen. Eine defekte Netzwerkkarte oder ein schlechtes Kabel zeigt sich hier meist früher als am Datenverkehr.
+- **Auslastung** - optional, ab der zweiten Abfrage, in Prozent der Port-Geschwindigkeit.
+
+Wer die Überwachung wieder ausschaltet, verliert die gelesenen Port-Werte des Geräts; Sensoren darauf melden dann „nicht gefunden“.
+
 ### USV (unterbrechungsfreie Stromversorgung)
 
 WhatsOnMyNet liest USV-Werte mit, ohne dass du etwas einrichten musst. Die Werte sind immer dieselben: **Netzbetrieb oder Akku**, **Akkustand**, **wie lange der Akku noch reicht** und **Last**. Mit **Sensor anlegen** wählst du daraus z. B. „USV: Netz oder Akku“ (Alarm, sobald sie auf Akku läuft) oder „USV-Restlaufzeit (min)“.

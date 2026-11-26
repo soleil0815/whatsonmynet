@@ -420,6 +420,8 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       status_pages: db.prepare(`SELECT COUNT(*) n, SUM(enabled) enabled, SUM(access='link') secret_link, SUM(access='open') own_address,
         SUM(networks <> '[]') limited_to_networks, SUM(json_array_length(items)) items FROM status_pages`).get(),
       // plugins of the host script: how many, for which system, how far rolled out - never their code
+      // devices whose network ports are watched (off by default), by type
+      watch_ports: Object.fromEntries(db.prepare('SELECT type, COUNT(*) n FROM devices WHERE watch_ports=1 GROUP BY type').all().map((r) => [r.type, r.n])),
       plugins: db.prepare(`SELECT os, COUNT(*) n, SUM(enabled) enabled, MAX(version) newest_version, SUM(targets LIKE '%"all":true%') for_all, SUM(interval_min > 5) less_often FROM plugins GROUP BY os`).all(),
       plugin_states: Object.fromEntries(db.prepare(`SELECT json_extract(p.value,'$.state') state, COUNT(*) n FROM host_reports h, json_each(h.data,'$.plugins') p GROUP BY 1`).all().map((r) => [r.state, r.n])),
       // scan agents by the SNMP access data they get (none / own / all) - never the data themselves

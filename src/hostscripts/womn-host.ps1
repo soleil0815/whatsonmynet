@@ -279,12 +279,26 @@ if (Test-Path -LiteralPath $PlugDir) {
 }
 
 $net = @(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE')
+# Network cards (physical ones): state, speed, bytes and errors - used by WhatsOnMyNet only when the ports of this
+# machine are watched there. Read by CIM like the disks (no NetAdapter cmdlets: those would log warning 4104 on
+# every run); Windows versions without the namespace send none.
+$nics = @()
+$nicStats = @{}
+foreach ($x in @(Try-Get { Get-Cim 'root/StandardCimv2' 'MSFT_NetAdapterStatisticsSettingData' '' })) {
+  if ($x) { $nicStats[[string]$x.Name] = $x }
+}
+foreach ($a in @(Try-Get { Get-Cim 'root/StandardCimv2' 'MSFT_NetAdapter' 'ConnectorPresent=TRUE' })) {
+  if (-not $a -or $nics.Count -ge 32) { continue }
+  $st = $nicStats[[string]$a.Name]
+  $nics += @{ name = [string]$a.Name; descr = [string]$a.InterfaceDescription; up = ([int]$a.InterfaceOperationalStatus -eq 1); speed = [int64]([double]$a.Speed / 1000000)
+    rxBytes = $st.ReceivedBytes; txBytes = $st.SentBytes; rxErrors = $st.ReceivedPacketErrors; txErrors = $st.OutboundPacketErrors }
+}
 $body = @{
   hostname = $env:COMPUTERNAME; os = "$($os.Caption) $($os.Version)".Trim(); cpu = [int]$cpu
   memTotal = [int64]$os.TotalVisibleMemorySize * 1024; memUsed = ([int64]$os.TotalVisibleMemorySize - [int64]$os.FreePhysicalMemory) * 1024
   uptime = [int]((Get-Date) - $os.LastBootUpTime).TotalSeconds; disks = $disks; services = $services
   macs = @($net | ForEach-Object { $_.MACAddress } | Where-Object { $_ }); ips = @($net | ForEach-Object { $_.IPAddress } | Where-Object { $_ -match '^\d+\.' }); ups = $ups
-  hw = $hw; pdisks = $pdisks; updates = $updates; av = $av; firewall = $fw; events = $events; certs = $certs; checks = $checks; plugins = $plugins; spaces = $spaces; script = $ScriptVersion
+  hw = $hw; pdisks = $pdisks; updates = $updates; av = $av; firewall = $fw; events = $events; certs = $certs; checks = $checks; plugins = $plugins; spaces = $spaces; nics = $nics; script = $ScriptVersion
 } | ConvertTo-Json -Depth 6 -Compress
 Send-Report $body
 

@@ -353,8 +353,22 @@ for a in /sys/class/net/*/address; do
   macs="$macs${macs:+,}\"$m\""
 done
 ips=$( (ip -o -4 addr show scope global 2>/dev/null || true) | awk '{split($4,a,"/"); printf "%s\"%s\"", (n++?",":""), a[1]}')
+# Network cards (physical ones: with a device behind them): state, speed, bytes and errors - used by WhatsOnMyNet only
+# when the ports of this machine are watched there
+nj=""; nn=0
+for d in /sys/class/net/*; do
+  [ -e "$d/device" ] || continue
+  [ "$nn" -lt 32 ] || break
+  n=${d##*/}
+  up=0; [ "$(cat "$d/operstate" 2>/dev/null)" = up ] && up=1
+  sp=$(cat "$d/speed" 2>/dev/null); case "$sp" in ''|*[!0-9]*) sp=0 ;; esac
+  rb=$(cat "$d/statistics/rx_bytes" 2>/dev/null); tb=$(cat "$d/statistics/tx_bytes" 2>/dev/null)
+  re=$(cat "$d/statistics/rx_errors" 2>/dev/null); te=$(cat "$d/statistics/tx_errors" 2>/dev/null)
+  nj="$nj${nj:+,}{\"name\":\"$(esc "$n")\",\"up\":$up,\"speed\":$sp,\"rxBytes\":$(num "$rb"),\"txBytes\":$(num "$tb"),\"rxErrors\":$(num "$re"),\"txErrors\":$(num "$te")}"
+  nn=$((nn + 1))
+done
 
-body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"plugins\":[$plj],\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\",\"script\":\"$SCRIPT_VERSION\"}"
+body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"plugins\":[$plj],\"nics\":[$nj],\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\",\"script\":\"$SCRIPT_VERSION\"}"
 if [ -n "$PIN" ]; then TLS="-k --pinnedpubkey $PIN"; else TLS=""; fi
 # The answer names the plugins this machine may run ("id:version:sha256:timeout …") - kept for the next run
 # shellcheck disable=SC2086

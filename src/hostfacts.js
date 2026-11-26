@@ -191,3 +191,28 @@ export function cleanChecks(raw) {
       ...(Number.isInteger(plugin) && plugin > 0 ? { plugin } : {}), ...(unit ? { unit } : {}) };
   }).filter(Boolean);
 }
+
+/**
+ * Network cards (host scripts from 0.58 on) in the shape of switch ports, so the same sensors work:
+ * [{ ifIndex: <name>, name, status, speed (Mbit/s), inErrors, outErrors, inOctets, outOctets }] - at most 32.
+ * Kept only for machines whose ports are watched (hosts.js).
+ */
+export function cleanNics(raw) {
+  const seen = new Set();
+  const cnt = (v) => { const n = num(v); return n !== null && n >= 0 && n < 2 ** 63 ? n : null; };
+  return list(raw, 32).map((x0) => {
+    const x = obj(x0);
+    if (!x) return null;
+    const name = clip(x.name, 60);
+    if (!name || seen.has(name.toLowerCase())) return null;
+    seen.add(name.toLowerCase());
+    const sp = num(x.speed);
+    return {
+      ifIndex: name, name, alias: clip(x.descr, 80),
+      status: x.up === true || x.up === 1 || x.up === '1' ? 'up' : 'down',
+      speed: sp !== null && sp > 0 && sp <= 1e6 ? Math.round(sp) : 0,
+      inErrors: cnt(x.rxErrors) ?? 0, outErrors: cnt(x.txErrors) ?? 0,
+      inOctets: cnt(x.rxBytes), outOctets: cnt(x.txBytes),
+    };
+  }).filter(Boolean);
+}

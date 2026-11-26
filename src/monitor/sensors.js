@@ -34,7 +34,7 @@ const OP_TEXT = { lt: '<', le: '≤', gt: '>', ge: '≥', eq: '=', ne: '≠', co
 
 /** Latest stored state of a device: { kind, at, ok, data } or null */
 export function stateOf(db, deviceId) {
-  const d = db.prepare('SELECT type FROM devices WHERE id=?').get(deviceId);
+  const d = db.prepare('SELECT type, watch_ports FROM devices WHERE id=?').get(deviceId);
   if (!d) return null;
   if (d.type === 'printer') {
     const r = db.prepare('SELECT * FROM printer_status WHERE device_id=?').get(deviceId);
@@ -42,9 +42,15 @@ export function stateOf(db, deviceId) {
   }
   const r = db.prepare('SELECT * FROM snmp_status WHERE device_id=?').get(deviceId);
   if ((d.type === 'nas' || d.type === 'switch' || d.type === 'ups') && r) return { kind: r.kind, at: r.at, ok: !!r.ok, data: parse(r.data, {}) };
-  // Windows/Linux machine with the host script
+  // Windows/Linux machine with the host script - its network cards count as ports when they are watched
   const h = db.prepare('SELECT at, data FROM host_reports WHERE device_id=?').get(deviceId);
-  if (h) return { kind: 'host', at: h.at, ok: true, data: parse(h.data, {}) };
+  if (h) {
+    const data = parse(h.data, {});
+    if (d.watch_ports && Array.isArray(data.nics)) data.ports = data.nics;
+    return { kind: 'host', at: h.at, ok: true, data };
+  }
+  // any other device whose ports are watched (router, firewall …): only its ports by SNMP
+  if (r && r.kind === 'ports' && d.watch_ports) return { kind: 'ports', at: r.at, ok: !!r.ok, data: parse(r.data, {}) };
   if (d.type === 'nas' || d.type === 'switch' || d.type === 'ups') return { kind: d.type, data: null };
   return null;
 }
@@ -53,6 +59,30 @@ export function stateOf(db, deviceId) {
 export function sourceOf(db, deviceId) {
   const s = stateOf(db, deviceId);
   return s?.data ? s.kind : null;
+}
+
+/**
+ * Sensors of ports: connected (state), speed (alarm when it falls below today's), new errors since the last query,
+ * load (where the byte counters come; from the second query on) and the error counter as before.
+ */
+function portMetrics(ports) {
+  const out = [];
+  const nm = (p) => `${p.name}${p.alias ? ` (${p.alias})` : ''}`;
+  for (const p of ports.filter((x) => !x.lag)) out.push({ metric: 'port', key: String(p.ifIndex), name: nm(p), value: p.status, unit: '', kind: 'state' });
+  // a port that negotiates less than today (1000 → 100 Mbit/s: cable, plug or port) - only for ports that are up
+  for (const p of ports.filter((x) => !x.lag && x.status === 'up' && x.speed > 0)) {
+    out.push({ metric: 'portSpeed', key: String(p.ifIndex), name: nm(p), value: p.speed, unit: 'Mbit/s', kind: 'number', op: 'lt', threshold: p.speed });
+  }
+  for (const p of ports.filter((x) => !x.lag && x.status === 'up')) {
+    out.push({ metric: 'portErrorsNew', key: String(p.ifIndex), name: nm(p), value: p.newErrors ?? 0, unit: '', kind: 'number', op: 'gt', threshold: 0 });
+  }
+  for (const p of ports.filter((x) => x.loadPct !== null && x.loadPct !== undefined)) {
+    out.push({ metric: 'portLoad', key: String(p.ifIndex), name: nm(p), value: p.loadPct, unit: '%', kind: 'number', op: 'ge', threshold: 80 });
+  }
+  for (const p of ports.filter((x) => x.inErrors > 0)) {
+    out.push({ metric: 'portErrors', key: String(p.ifIndex), name: p.name, value: p.inErrors, unit: '', kind: 'number', op: 'gt', threshold: p.inErrors + 1000 });
+  }
+  return out;
 }
 
 /**
@@ -121,18 +151,9 @@ export function metricsFor(db, deviceId, { printerThreshold = 15, nasThreshold =
     for (const c of (x.checks || []).filter((y) => y.value !== null && y.value !== undefined)) {
       out.push({ metric: 'localValue', key: c.name, name: c.name, value: c.value, unit: c.unit || '', kind: 'number', op: 'ge', threshold: null });
     }
-  } else if (s.kind === 'switch') {
-    for (const p of (s.data.ports || []).filter((x) => !x.lag)) {
-      out.push({ metric: 'port', key: String(p.ifIndex), name: `${p.name}${p.alias ? ` (${p.alias})` : ''}`, value: p.status, unit: '', kind: 'state' });
-    }
-    // load: only where the switch delivers the byte counters (from the second poll on); uplinks (LAG) too
-    for (const p of (s.data.ports || []).filter((x) => x.loadPct !== null && x.loadPct !== undefined)) {
-      out.push({ metric: 'portLoad', key: String(p.ifIndex), name: `${p.name}${p.alias ? ` (${p.alias})` : ''}`, value: p.loadPct, unit: '%', kind: 'number', op: 'ge', threshold: 80 });
-    }
-    for (const p of (s.data.ports || []).filter((x) => x.inErrors > 0)) {
-      out.push({ metric: 'portErrors', key: String(p.ifIndex), name: p.name, value: p.inErrors, unit: '', kind: 'number', op: 'gt', threshold: p.inErrors + 1000 });
-    }
   }
+  // Ports: always on switches; on NAS, routers … and machines with the host script when their ports are watched
+  if (Array.isArray(s.data.ports)) out.push(...portMetrics(s.data.ports));
   // UPS: on the NAS, the UPS device itself or seen by a host script - always the same four values
   const u = s.data.ups;
   if (u) {
@@ -228,6 +249,13 @@ export function sensorCheck(db, m, { staleMin = 180 } = {}) {
       val.text = `${p.loadPct} % (in ${bitRate(p.inBps)}, out ${bitRate(p.outBps)})`;
       break; }
     case 'portErrors': { const p = (s.data.ports || []).find((y) => String(y.ifIndex) === String(o.key)); if (!p) return { ok: false, ms: null, message: `${label}: not found` }; val = num(p.inErrors); break; }
+    case 'portSpeed': { const p = (s.data.ports || []).find((y) => String(y.ifIndex) === String(o.key)); if (!p) return { ok: false, ms: null, message: `${label}: not found` };
+      // down: whether it should be up, its own sensor says
+      if (p.status !== 'up') return { ok: true, ms: null, message: `${label}: no link (port ${p.status})` };
+      val = num(p.speed, 'Mbit/s'); break; }
+    case 'portErrorsNew': { const p = (s.data.ports || []).find((y) => String(y.ifIndex) === String(o.key)); if (!p) return { ok: false, ms: null, message: `${label}: not found` };
+      if (p.newErrors === null || p.newErrors === undefined) return { ok: true, ms: null, message: `${label}: measuring - value after the next query`, data: valueData(0, '', o) };
+      val = num(p.newErrors); break; }
     case 'upsPower': { const u = s.data.ups; if (!u) return { ok: false, ms: null, message: `${label}: no UPS` };
       const extra = [u.charge !== null ? `${u.charge} %` : '', u.runtime !== null ? `${Math.round(u.runtime / 60)} min` : ''].filter(Boolean).join(', ');
       const info = { charge: u.charge, runtime: u.runtime };

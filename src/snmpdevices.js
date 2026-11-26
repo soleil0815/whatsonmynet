@@ -1,7 +1,10 @@
 // Switches and NAS: asks them via SNMP at a set interval (read-only).
 // Switch: ports, MAC table (→ "plugged in at switch X, port Y" for every device), LLDP neighbours, firmware.
 // NAS: volumes, disks, RAID, temperature, health - problems are reported once and again when they are solved.
-import { readSwitch } from './scan/switch.js';
+// Ports on request (devices.watch_ports, off by default): a NAS gets its network ports read as well, other devices
+// (router, firewall, server without host script …) only their ports - state, speed, errors and load.
+import { readSwitch, readPorts } from './scan/switch.js';
+import { portRates } from './portrates.js';
 import { fillDevice, snmpFacts } from './devicefill.js';
 import { readNas, nasProblems, readUpsDevice } from './scan/nas.js';
 import { HttpError } from './lib/http.js';
@@ -17,36 +20,7 @@ const parse = (s, def = {}) => { try { return JSON.parse(s); } catch { return de
 // up to KEEP_POLLS polls (marked "kept"), so a sensor does not alarm "not found" at night; gone longer = really gone.
 export const KEEP_POLLS = 2;
 const TABLES = { volumes: 'name', disks: 'name', raids: 'name' };
-/**
- * Load of the switch ports between two polls, from the 64-bit byte counters (ifHCIn/OutOctets): bit/s in and out, and
- * in percent of the port speed. Only when the previous poll is 30 s to 6 h old and the switch was not restarted in
- * between (counters start at 0 again) - otherwise no value this time rather than a wrong one.
- * Changes `data.ports` in place.
- */
-export function portRates(prevData, prevAt, data, at) {
-  if (!prevData?.ports?.length || !data?.ports?.length) return data;
-  const dt = (Date.parse(at) - Date.parse(prevAt)) / 1000;
-  if (!(dt >= 30 && dt <= 6 * 3600)) return data;
-  if (data.uptime && prevData.uptime && data.uptime < prevData.uptime) return data;
-  const before = new Map(prevData.ports.map((p) => [p.ifIndex, p]));
-  const pct = (bps, mbit) => Math.min(100, Math.round((bps / (mbit * 1e6)) * 1000) / 10);
-  for (const p of data.ports) {
-    const q = before.get(p.ifIndex);
-    if (!q || [p.inOctets, p.outOctets, q.inOctets, q.outOctets].some((x) => x === null || x === undefined || !Number.isFinite(x))) continue;
-    const dIn = p.inOctets - q.inOctets; const dOut = p.outOctets - q.outOctets;
-    // a counter that went back: reset of the port or its module - no value this time
-    if (dIn < 0 || dOut < 0) continue;
-    p.inBps = Math.round((dIn * 8) / dt);
-    p.outBps = Math.round((dOut * 8) / dt);
-    if (p.speed > 0) {
-      p.inPct = pct(p.inBps, p.speed);
-      p.outPct = pct(p.outBps, p.speed);
-      p.loadPct = Math.max(p.inPct, p.outPct);
-    }
-  }
-  data.rateSeconds = Math.round(dt);
-  return data;
-}
+export { portRates } from './portrates.js';
 
 export function carryOver(prev, next) {
   if (!prev || !next) return next;
@@ -74,7 +48,9 @@ export function createSnmpDevices({ db, settings, channels }) {
   // communities and SNMPv3 users of the scan
   // (stored ones only for private ranges and location subnets)
   const communities = () => snmpCredentials(settings);
-  const readers = { switch: readSwitch, nas: readNas, ups: readUpsDevice };
+  const readers = { switch: readSwitch, nas: readNas, ups: readUpsDevice, ports: readPorts };
+  // the kind of query of a device: its type, or "ports" for any other device whose ports are watched
+  const kindOf = (d) => SNMP_KINDS[d.type] || (d.watch_ports && !['printer'].includes(d.type) ? 'ports' : null);
   const busy = new Set();
   let timer = null;
   let polling = false;
@@ -150,9 +126,9 @@ export function createSnmpDevices({ db, settings, channels }) {
   }
 
   async function poll(deviceId) {
-    const d = db.prepare('SELECT id, name, ip, type FROM devices WHERE id=?').get(deviceId);
+    const d = db.prepare('SELECT id, name, ip, type, watch_ports FROM devices WHERE id=?').get(deviceId);
     if (!d) throw new HttpError(404, 'err.notFound');
-    const kind = SNMP_KINDS[d.type];
+    const kind = kindOf(d);
     if (!kind) throw new HttpError(400, 'err.snmpType');
     if (!d.ip) throw new HttpError(400, 'err.noIp');
     if (busy.has(d.id)) return status(d.id);
@@ -162,12 +138,16 @@ export function createSnmpDevices({ db, settings, channels }) {
     try {
       let data = null; let error = '';
       try { data = await readers[kind](d.ip, communities()); } catch (e) { error = ['snmp', 'noIfMib', 'noNasMib', 'noUpsMib'].includes(e.message) ? e.message : 'snmp'; log.debug?.(`SNMP ${d.name}: ${e.message}`); }
+      // a NAS whose ports are watched: its network ports too (a NAS without IF-MIB keeps its other values)
+      if (data && kind === 'nas' && d.watch_ports) {
+        try { const p = await readers.ports(d.ip, communities()); data.ports = p.ports; data.uptime = data.uptime || p.uptime; } catch (e) { log.debug?.(`SNMP ports ${d.name}: ${e.message}`); }
+      }
       let alerts = prev && prev.kind === kind ? parse(prev.alerts) : {};
       if (data && kind === 'switch') {
         storeMacs(d.id, data, at);
         delete data.macs;
       }
-      if (data && kind === 'switch' && prev && prev.kind === kind && prev.ok) portRates(parse(prev.data), prev.at, data, at);
+      if (data?.ports && prev && prev.kind === kind && prev.ok) portRates(parse(prev.data), prev.at, data, at);
       if (data && prev && prev.kind === kind) data = carryOver(parse(prev.data), data);
       if (data && kind === 'nas') alerts = await notifyNas(d, alerts, data, at);
       // Serial number, model, firmware from the device itself into the inventory (only empty fields)
@@ -184,8 +164,11 @@ export function createSnmpDevices({ db, settings, channels }) {
     polling = true;
     try {
       const every = Math.max(5, Number(settings.get('snmpdev.interval')) || 15) * 60 * 1000;
+      // switches, NAS and UPS always; other devices only when their ports are watched and no host script reports for
+      // them (that one sends the network cards itself)
       const due = db.prepare(`SELECT d.id, s.at FROM devices d LEFT JOIN snmp_status s ON s.device_id=d.id
-        WHERE d.type IN ('switch','nas','ups') AND d.ip IS NOT NULL AND d.ip<>''`).all().filter((r) => !r.at || now - Date.parse(r.at) >= every);
+        WHERE (d.type IN ('switch','nas','ups') OR (d.watch_ports=1 AND d.type<>'printer' AND NOT EXISTS (SELECT 1 FROM host_reports h WHERE h.device_id=d.id)))
+          AND d.ip IS NOT NULL AND d.ip<>''`).all().filter((r) => !r.at || now - Date.parse(r.at) >= every);
       for (const r of due.slice(0, 20)) {
         try { await poll(r.id); } catch (e) { log.warn(`SNMP device ${r.id}: ${e.message}`); }
       }
