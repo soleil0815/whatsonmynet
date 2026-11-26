@@ -48,7 +48,7 @@ export const PROXMOX_METRICS = ['nodeOnline', 'nodeCpu', 'nodeMem', 'nodeTemp', 
   'rfHealth', 'rfPower', 'rfFan', 'rfTemp', 'rfPsu', 'rfDrive', 'rfDriveLife', 'rfVolume', 'rfWatts',
   'cloudCheck', 'cloudCpu', 'dbState', 'dbCpu', 'dbStorage', 'lbUnhealthy', 'cloudAlarms', 'cloudResources', 'costMonth',
   'jobResult', 'jobAge', 'repoUsed', 'jobsFailed', 'm365Service', 'm365Issues', 'm365Sku', 'm365Free', 'pool', 'poolUsed', 'poolScrub', 'poolDown', 'nasAlerts', 'nasAlertsCrit', 'replication'];
-export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'portLoad', 'localCheck', 'localValue', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service', 'upsPower', 'upsCharge', 'upsRuntime', 'upsLoad',
+export const SENSOR_METRICS = ['supply', 'pages', 'printerErrors', 'volume', 'temp', 'diskTemp', 'disk', 'raid', 'health', 'port', 'portErrors', 'portLoad', 'portSpeed', 'portErrorsNew', 'localCheck', 'localValue', 'hostOnline', 'hostCpu', 'hostMem', 'hostDisk', 'servicesFailed', 'service', 'upsPower', 'upsCharge', 'upsRuntime', 'upsLoad',
   'hostPdHealth', 'hostPdTemp', 'hostPdWear', 'hostPool', 'hostPoolUsed', 'hostPoolScrub', 'hostPoolDown', 'hostUpdates', 'hostUpdatesSec', 'hostReboot', 'hostAv', 'hostFirewall', 'hostEvCritical', 'hostEvErrors', 'hostCert', 'hostTemp', 'hostTempMax'];
 const DB_TYPES = ['mysql', 'postgres', 'redis'];
 const CONNECT_TYPES = ['http', 'tcp', 'ping'];

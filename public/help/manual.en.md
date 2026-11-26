@@ -452,6 +452,23 @@ Devices of type *Printer*, *Switch* and *NAS* are queried via SNMP (read-only). 
 
 ![NAS](img/nas-en.png)
 
+### Network ports of NAS, router, firewall and machines
+
+On switches WhatsOnMyNet always reads the ports. On other devices you switch it on **per device**: device page → *Network ports* → **Watch ports**. It is off by default, and then nothing extra is queried.
+
+- **NAS, router, firewall, access point, server without the machine script:** by SNMP via the standard **IF-MIB** - nearly every managed device speaks it, whatever the vendor (LANCOM, Cisco, HPE/Aruba, Netgear, Zyxel, MikroTik, Sophos, OPNsense, Synology, QNAP …). Queried with the same SNMP access data and at the same interval as switches and NAS.
+- **Machines with the machine script** (Windows and Linux): the script sends state, speed, errors and traffic of the network cards along, from script version **0.58**. Roll out an older script once more; until then the device page shows a hint. The values are stored only when the ports of the machine are watched.
+- **Unmanaged switches** (no web interface, no SNMP) count nothing and give nothing out - no program can watch them.
+
+The device page shows the ports as tiles; a click shows speed, errors since start, **new errors since the last query** and the load. Set up **warnings** with **Add sensor**:
+
+- **Port connected** - reports when the port loses its link.
+- **Speed** - reports when the port negotiates less than when the sensor was added, e.g. 100 instead of 1000 Mbit/s: mostly cable, plug or port.
+- **New errors** - reports as soon as errors come up between two queries. A failing network card or a bad cable usually shows here earlier than in the traffic.
+- **Load** - optional, from the second query on, in percent of the port speed.
+
+Switching the watch off again drops the port values read for the device; sensors on them then report "not found".
+
 ### UPS (uninterruptible power supply)
 
 WhatsOnMyNet reads UPS values along the way, without anything to set up. The values are always the same: **on mains or battery**, **battery charge**, **how long the battery lasts** and **load**. With **Add sensor** you pick e.g. "UPS: mains or battery" (alarm as soon as it runs on battery) or "UPS runtime left (min)".

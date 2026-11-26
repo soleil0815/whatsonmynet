@@ -353,8 +353,23 @@ for a in /sys/class/net/*/address; do
   macs="$macs${macs:+,}\"$m\""
 done
 ips=$( (ip -o -4 addr show scope global 2>/dev/null || true) | awk '{split($4,a,"/"); printf "%s\"%s\"", (n++?",":""), a[1]}')
+# Network cards (physical, wired: a device behind them, no Wi-Fi): state, speed, bytes and errors - read only when
+# WhatsOnMyNet asked for them (its answer to the last report: the ports of this machine are watched there)
+nj=""; nn=0
+[ -f "$CACHE/nics" ] && for d in /sys/class/net/*; do
+  [ -e "$d/device" ] || continue
+  [ -e "$d/wireless" ] && continue
+  [ "$nn" -lt 32 ] || break
+  n=${d##*/}
+  up=0; [ "$(cat "$d/operstate" 2>/dev/null)" = up ] && up=1
+  sp=$(cat "$d/speed" 2>/dev/null); case "$sp" in ''|*[!0-9]*) sp=0 ;; esac
+  rb=$(cat "$d/statistics/rx_bytes" 2>/dev/null); tb=$(cat "$d/statistics/tx_bytes" 2>/dev/null)
+  re=$(cat "$d/statistics/rx_errors" 2>/dev/null); te=$(cat "$d/statistics/tx_errors" 2>/dev/null)
+  nj="$nj${nj:+,}{\"name\":\"$(esc "$n")\",\"up\":$up,\"speed\":$sp,\"rxBytes\":$(num "$rb"),\"txBytes\":$(num "$tb"),\"rxErrors\":$(num "$re"),\"txErrors\":$(num "$te")}"
+  nn=$((nn + 1))
+done
 
-body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"plugins\":[$plj],\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\",\"script\":\"$SCRIPT_VERSION\"}"
+body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"plugins\":[$plj],\"nics\":[$nj],\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\",\"script\":\"$SCRIPT_VERSION\"}"
 if [ -n "$PIN" ]; then TLS="-k --pinnedpubkey $PIN"; else TLS=""; fi
 # The answer names the plugins this machine may run ("id:version:sha256:timeout …") - kept for the next run
 # shellcheck disable=SC2086
@@ -362,6 +377,8 @@ if printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer 
   if grep -q '"plugins":"' "$CACHE/answer.json" 2>/dev/null; then
     sed -n 's/.*"plugins":"\([0-9a-f: ]*\)".*/\1/p' "$CACHE/answer.json" | head -c 20000 > "$ALLOW"
   fi
+  # … and whether it wants the network cards (only when their ports are watched there): read from the next run on
+  if grep -q '"nics":true' "$CACHE/answer.json" 2>/dev/null; then : > "$CACHE/nics"; else rm -f "$CACHE/nics"; fi
 fi
 rm -f "$CACHE/answer.json"
 

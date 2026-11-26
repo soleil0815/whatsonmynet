@@ -145,9 +145,11 @@ export function createSensorChoices({ db, settings }) {
     /** Does a device have anything to watch (for the button "Add sensor" on its page) */
     hasValues(deviceId, opts) { const gone = goneIds(); return this.valuesOfDevice(deviceId, opts).some((x) => x.src !== 'device' || !gone.has(x.device)); },
 
-    /** Devices that offer values (printers, NAS, switches, UPS, machines with script, nodes, servers with Redfish) */
+    /** Devices that offer values (printers, NAS, switches, UPS, watched ports, machines with script, nodes, servers with Redfish) */
     deviceIds() {
       const ids = new Set(db.prepare("SELECT id FROM devices WHERE type IN ('printer','nas','switch','ups')").all().map((r) => r.id));
+      // routers, firewalls … whose ports are watched and were read by SNMP
+      for (const r of db.prepare("SELECT d.id FROM devices d JOIN snmp_status s ON s.device_id=d.id WHERE d.watch_ports=1 AND s.kind='ports'").all()) ids.add(r.id);
       for (const r of db.prepare('SELECT device_id FROM host_reports WHERE at >= ?').all(goneBefore())) ids.add(r.device_id);
       const idx = deviceIndex();
       for (const h of hostsAll()) {

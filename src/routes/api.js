@@ -370,7 +370,7 @@ export function createApi(ctx) {
     const monitors = db.prepare('SELECT id FROM monitors WHERE device_id=? ORDER BY name').all(d.id).map((m) => ctx.monitoring.get(m.id));
     res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null, host: ctx.hosts.report(d.id), hardware: ctx.proxmox.hardwareOf(d.id), hasSensors: ctx.sensorChoices.hasValues(d.id, { withHosts: !req.scope }),
       hostScript: req.user.role === 'admin' ? ctx.hosts.list().find((t) => t.device_id === d.id) || null : undefined,
-      snmp: ['switch', 'nas', 'ups'].includes(d.type) ? ctx.snmpDevices.status(d.id) : null, plugged: pluggedFor(req, d), history: inventory.historyOf(d.id) });
+      snmp: ['switch', 'nas', 'ups'].includes(d.type) || d.watch_ports ? ctx.snmpDevices.status(d.id) : null, plugged: pluggedFor(req, d), history: inventory.historyOf(d.id) });
   });
   // A non-admin sets only addresses he may scan: pollers and monitors of the device contact it (with the SNMP access data)
   // The web address of a device becomes the target of its automatic http monitor: the same rule as a monitor target

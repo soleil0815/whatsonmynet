@@ -239,3 +239,18 @@ test('Windows script: the same rules; umlauts survive (UTF-8 with BOM)', { skip:
   assert.deepEqual([p2.state, v2], ['ok', 1]);
   assert.match(p2.text, /runs every 60 min/);
 });
+
+test('Linux script: reads the network cards only when asked; an answer without the request forgets it', { skip: !fs.existsSync('/bin/sh') }, () => {
+  const r = linuxRun(() => null, () => '');
+  assert.deepEqual(r.body.nics, [], 'not asked: nothing read');
+  fs.writeFileSync(path.join(r.cache, 'nics'), '');
+  const { body } = r.again();
+  assert.ok(Array.isArray(body.nics));
+  // the stand-in answer does not ask for them: the next run reads none again
+  assert.ok(!fs.existsSync(path.join(r.cache, 'nics')));
+  for (const n of body.nics) {
+    assert.equal(typeof n.name, 'string');
+    assert.ok([0, 1].includes(n.up));
+    assert.equal(typeof n.speed, 'number');
+  }
+});

@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Watch network ports – switched on per device, off by default: NAS, router and firewall by SNMP (IF-MIB, any vendor), machines via the machine script (script version 0.58 on, roll it out once more). New sensors for all ports, switches too: speed dropped (e.g. 100 instead of 1000 Mbit/s) and new errors since the last query
+
+## 0.57.2 - 2026-11-25
+
 - Backup: the texts now say what happens – a backup is made every 24 hours (the first an hour after the start), not "every night"; backups made with "Back up now" count towards the number kept
 - Multiple selection in inventory and monitoring: once something is ticked, a click in a row ticks it instead of opening the device or monitor – opening is then by the name. The cell around the box ticks too, and the selection stays when you open one and go back
 

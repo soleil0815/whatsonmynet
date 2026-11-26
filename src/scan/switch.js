@@ -5,7 +5,7 @@ import { normalizeMac } from '../lib/net.js';
 
 const IF = {
   descr: '1.3.6.1.2.1.2.2.1.2', type: '1.3.6.1.2.1.2.2.1.3', speed: '1.3.6.1.2.1.2.2.1.5', admin: '1.3.6.1.2.1.2.2.1.7',
-  oper: '1.3.6.1.2.1.2.2.1.8', lastChange: '1.3.6.1.2.1.2.2.1.9', inErrors: '1.3.6.1.2.1.2.2.1.14',
+  oper: '1.3.6.1.2.1.2.2.1.8', lastChange: '1.3.6.1.2.1.2.2.1.9', inErrors: '1.3.6.1.2.1.2.2.1.14', outErrors: '1.3.6.1.2.1.2.2.1.20',
   name: '1.3.6.1.2.1.31.1.1.1.1', highSpeed: '1.3.6.1.2.1.31.1.1.1.15', alias: '1.3.6.1.2.1.31.1.1.1.18',
   hcIn: '1.3.6.1.2.1.31.1.1.1.6', hcOut: '1.3.6.1.2.1.31.1.1.1.10',
 };
@@ -19,6 +19,8 @@ const ENT = { softwareRev: '1.3.6.1.2.1.47.1.1.1.1.10', serial: '1.3.6.1.2.1.47.
 const SYS_DESCR = '1.3.6.1.2.1.1.1.0';
 const SYS_UPTIME = '1.3.6.1.2.1.1.3.0';
 
+// names of virtual interfaces (Docker, bridges, VMs, tunnels) - not ports of the device
+export const VIRTUAL_IF = /^(docker\d*|br-[0-9a-f]{6,}|veth|virbr|vnet\d|vmbr|tap|tun\d|cali|flannel|cni|kube|lxc|lxd|wg\d|lo$)/i;
 const ETHERNET_TYPES = new Set([6, 62, 69, 117, 161]); // ethernetCsmacd, fastEther, fastEtherFX, gigabitEthernet, ieee8023adLag
 const STATUS = { 1: 'up', 2: 'down', 3: 'testing', 5: 'dormant', 6: 'notPresent', 7: 'lowerLayerDown' };
 
@@ -41,7 +43,7 @@ export function parsePorts(cols) {
     out.push({
       ifIndex: Number(idx), name, alias: text(cols.alias.get(idx), 80), descr: text(cols.descr.get(idx), 80),
       status: STATUS[Number(cols.oper.get(idx))] || 'unknown', admin: Number(cols.admin.get(idx)) === 2 ? 'down' : 'up',
-      speed, lag: t === 161, inErrors: Number(cols.inErrors.get(idx)) || 0,
+      speed, lag: t === 161, inErrors: Number(cols.inErrors.get(idx)) || 0, outErrors: Number(cols.outErrors?.get(idx)) || 0,
       inOctets: cols.hcIn.has(idx) ? Number(cols.hcIn.get(idx)) : null, outOctets: cols.hcOut.has(idx) ? Number(cols.hcOut.get(idx)) : null,
     });
   }
@@ -130,6 +132,26 @@ export async function readSwitch(ip, communities, { port = 161 } = {}) {
       uptime: Number(sys[SYS_UPTIME]) || null,
       snmp: s.version,
     };
+  } finally {
+    s.close();
+  }
+}
+
+/**
+ * Only the ports of a device (IF-MIB) - for devices that are not switches but whose network ports are watched on
+ * request (NAS, router, firewall …): state, speed, errors and the byte counters. Read-only, the same columns as above.
+ */
+export async function readPorts(ip, communities, { port = 161 } = {}) {
+  const s = await openSnmp(ip, communities, { port });
+  if (!s) throw new Error('snmp');
+  try {
+    const cols = {};
+    await Promise.all(Object.entries(IF).map(async ([k, oid]) => { cols[k] = await walk(s, oid, { max: 1200 }); }));
+    if (!cols.type.size) throw new Error('noIfMib');
+    const sys = await getValues(s, [SYS_DESCR, SYS_UPTIME]);
+    // Linux-based devices (NAS, firewalls) report their virtual interfaces as Ethernet too: containers come and go
+    const ports = parsePorts(cols).filter((p) => !VIRTUAL_IF.test(p.name) && !VIRTUAL_IF.test(p.descr || ''));
+    return { ports, descr: text(sys[SYS_DESCR], 200), uptime: Number(sys[SYS_UPTIME]) || null, snmp: s.version };
   } finally {
     s.close();
   }

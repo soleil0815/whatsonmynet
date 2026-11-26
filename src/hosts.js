@@ -12,7 +12,11 @@ import { zfsFromScript, mdFromMdstat, spacesFromScript } from './pools.js';
 import { fillDevice } from './devicefill.js';
 import { cleanUps } from './scan/ups.js';
 import { cleanPluginReport } from './plugins.js';
-import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts, cleanTemps, cleanChecks } from './hostfacts.js';
+import { cleanHw, cleanPdisks, cleanUpdates, cleanSecurity, cleanEvents, cleanCerts, cleanTemps, cleanChecks, cleanNics } from './hostfacts.js';
+import { portRates } from './portrates.js';
+
+// devices whose ports come by SNMP even when a host script runs on them
+const SNMP_PORT_TYPES = ['switch', 'nas', 'ups'];
 
 const parse = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
 const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -70,6 +74,8 @@ export function cleanReport(body) {
     // ZFS pools and software RAID (Linux script), Storage Spaces (Windows script) - from 0.42 on
     pools: [...zfsFromScript(typeof b.zfs?.list === 'string' ? b.zfs.list.slice(0, 20000) : '', zfsStatus(b.zfs?.status)),
       ...mdFromMdstat(typeof b.mdstat === 'string' ? b.mdstat.slice(0, 20000) : ''), ...spacesFromScript(b.spaces)].slice(0, 64),
+    // network cards (from 0.58 on) - kept only when the ports of the machine are watched (push)
+    nics: cleanNics(b.nics),
     // version of the Windows script (from 0.42 on; older ones send none)
     script: /^\d{1,4}\.\d{1,4}\.\d{1,6}$/.test(String(b.script ?? '')) ? String(b.script) : null,
   };
@@ -167,6 +173,18 @@ export function createHosts({ db, plugins = null }) {
       db.prepare('DELETE FROM host_unmatched WHERE rowid NOT IN (SELECT rowid FROM host_unmatched ORDER BY at DESC LIMIT 500)').run();
       throw new HttpError(404, 'err.hostUnknown', r.hostname);
     }
+    // Network cards only when someone watches the ports of this machine: then load and new errors since the last report.
+    // Switches, NAS and UPS keep their ports from SNMP (one source, the one the sensors use)
+    const dev = db.prepare('SELECT watch_ports, type FROM devices WHERE id=?').get(deviceId);
+    const wantNics = !!dev?.watch_ports && !SNMP_PORT_TYPES.includes(dev.type);
+    if (wantNics && r.nics.length) {
+      const prev = db.prepare('SELECT at, data FROM host_reports WHERE device_id=?').get(deviceId);
+      let before = null;
+      try { before = prev ? JSON.parse(prev.data) : null; } catch { before = null; }
+      const now = { ports: r.nics, uptime: r.uptime };
+      if (before?.nics?.length) portRates({ ports: before.nics, uptime: before.uptime }, prev.at, now, at);
+      if (now.rateSeconds) r.nicsRateSeconds = now.rateSeconds;
+    } else delete r.nics;
     db.prepare('INSERT INTO host_reports(device_id,at,data) VALUES(?,?,?) ON CONFLICT(device_id) DO UPDATE SET at=excluded.at, data=excluded.data')
       .run(deviceId, at, JSON.stringify(r));
     db.prepare('DELETE FROM host_unmatched WHERE lower(hostname)=lower(?)').run(r.hostname);
@@ -177,7 +195,8 @@ export function createHosts({ db, plugins = null }) {
     fillDevice(db, deviceId, { os: r.os, hostname: r.hostname, vendor: hw.vendor, model: hw.model, serial: hw.serial, type: hw.virtual ? 'vm' : undefined }, 'script', { mayReplace: found.sure });
     // which plugins this machine may run (id, version, fingerprint) - the script keeps the list for its next run
     const allowed = plugins ? plugins.allowedFor(deviceId, hostOs(r.os)) : [];
-    return { ok: true, device: deviceId, plugins: plugins ? plugins.allowString(allowed) : '' };
+    // nics: whether the script should read the network cards from its next run on (nothing is read unless asked)
+    return { ok: true, device: deviceId, plugins: plugins ? plugins.allowString(allowed) : '', nics: wantNics };
   }
 
   /** Last report of a device with "stale" if it is older than 15 minutes; null if it never reported */

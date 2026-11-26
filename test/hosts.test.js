@@ -1,5 +1,6 @@
 // Windows/Linux machines with the host script: keys per device or shared, matching to the inventory, sensors,
 // the Linux script really run (stand-ins for df, systemctl, curl …) incl. setup and uninstall.
+import { cleanNics } from '../src/hostfacts.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -37,7 +38,7 @@ test('device key: report stored for that device, OS filled in, sensors on CPU, d
 
   assert.throws(() => hosts.push('x'.repeat(43), report()), { code: 'err.unauthorized' });
   // The device key wins over name/MAC: even another host name lands on this device
-  assert.deepEqual(hosts.push(t.token, report({ hostname: 'renamed' })), { ok: true, device: dev, plugins: '' });
+  assert.deepEqual(hosts.push(t.token, report({ hostname: 'renamed' })), { ok: true, device: dev, plugins: '', nics: false });
   const r = hosts.report(dev);
   assert.deepEqual([r.cpu, r.mem, r.stale, r.disks[0].pct, r.macs[0]], [12, 38, false, 90, '00:15:5d:01:02:03']);
   assert.equal(db.prepare('SELECT os FROM devices WHERE id=?').get(dev).os, 'Microsoft Windows Server 2022 Standard 10.0.20348');
@@ -196,6 +197,8 @@ test('Windows script: reports hardware, disks, updates, protection, events and c
   const file = path.join(home, s.file);
   fs.writeFileSync(file, s.text);
   const body = path.join(dir, 'body.json');
+  // WhatsOnMyNet asked for the network cards with its last answer (the ports of this machine are watched)
+  fs.writeFileSync(path.join(home, 'womn-nics.txt'), '1');
   const run = () => {
     execFileSync(pwsh, ['-NoProfile', '-NonInteractive', '-File', path.resolve('test/fixtures/winmock.ps1'), '-Script', file], { env: { ...process.env, ProgramData: dir, WOMN_BODY: body, COMPUTERNAME: 'SRV-DC01' }, timeout: 60000 });
     return cleanReport(JSON.parse(fs.readFileSync(body, 'utf8')));
@@ -206,6 +209,9 @@ test('Windows script: reports hardware, disks, updates, protection, events and c
     ['Dell Inc.', 'PowerEdge R650', '7XK2Q93', '1.13.2', '2024-03-05', 2, 20, 40, false, 34359738368]);
   assert.deepEqual(r.hw.nics.map((n) => [n.name, n.mac, n.speed, n.up]), [['Ethernet 1', '00:15:5d:01:02:03', 1000, true], ['Ethernet 2', '00:15:5d:01:02:04', null, false]]);
   assert.deepEqual(r.pdisks.map((d) => d.bus), ['SATA', 'SAS'], 'numbers of the WMI class turned into the words of the module');
+  // the network cards for watched ports (by CIM, not by the NetAdapter cmdlets)
+  assert.deepEqual(cleanNics(JSON.parse(fs.readFileSync(body, 'utf8')).nics).map((n) => [n.name, n.status, n.speed, n.inOctets, n.inErrors]),
+    [['Ethernet 1', 'up', 1000, 123456789, 3], ['Ethernet 2', 'down', 0, null, 0]]);
   // no module cmdlets (Get-PhysicalDisk & co.): each run would leave ~70 "suspicious" events 4104 on the machine
   const code = fs.readFileSync('src/hostscripts/womn-host.ps1', 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
   assert.doesNotMatch(code, /\b(Get-NetAdapter|Get-PhysicalDisk|Get-StorageReliabilityCounter|Get-MpComputerStatus|Get-NetFirewallProfile)\b/);
@@ -223,7 +229,7 @@ test('Windows script: reports hardware, disks, updates, protection, events and c
   assert.ok(fs.existsSync(path.join(home, 'womn-updates.json')));
   r = run();
   assert.deepEqual([r.updates.pending, r.updates.security, r.updates.lastInstalled], [3, 2, '2026-11-01T03:00:00.000Z']);
-  assert.ok(uninstallScript('windows').text.includes("@('womn-host.ps1', 'womn-host-send.json', 'womn-updates.json', 'womn-plugins.txt', 'womn-plugin-*.out')"), 'uninstall removes the update, send status and plugin list too');
+  assert.ok(uninstallScript('windows').text.includes("@('womn-host.ps1', 'womn-host-send.json', 'womn-updates.json', 'womn-plugins.txt', 'womn-plugin-*.out', 'womn-nics.txt')"), 'uninstall removes the update, send status, plugin list and network card request too');
   // the version of the script goes with the report (WhatsOnMyNet shows machines with an older script)
   assert.equal(JSON.parse(fs.readFileSync(body, 'utf8')).script, SCRIPT_VERSIONS.windows);
   assert.equal(r.script, SCRIPT_VERSIONS.windows);
