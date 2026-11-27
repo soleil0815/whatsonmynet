@@ -4,7 +4,8 @@
 # and memory modules), the disks (with smartctl as root: health, temperature, wear), pending updates and restart,
 # firewall and critical journal entries of the last 24 hours. No agent, no open port, nothing installed, root not needed: run it once
 # (sh womn-host.sh) - it sets itself up in cron. Needs: sh, awk, curl. Removing: womn-host-uninstall.sh.
-# Talks only to the address below; loads nothing from anywhere.
+# Talks only to the address below; loads nothing from anywhere - except, when WhatsOnMyNet offers it, a newer version of
+# this script from that same address (checked by its fingerprint, see "Self-update" at the end).
 URL=@URL@
 TOKEN=@TOKEN@
 PIN=@PIN@
@@ -369,7 +370,10 @@ nj=""; nn=0
   nn=$((nn + 1))
 done
 
-body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"plugins\":[$plj],\"nics\":[$nj],\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\",\"script\":\"$SCRIPT_VERSION\"}"
+# the last self-update (written by this script below: when, whether it worked, why not)
+# (only a complete status file: a cut-off one would make every report invalid - and the next try never come)
+suj=null; [ -s "$CACHE/update.json" ] && suj=$(head -c 600 "$CACHE/update.json") && case "$suj" in '{'*'}') ;; *) suj=null ;; esac
+body="{\"hostname\":\"$(esc "$name")\",\"os\":\"$(esc "$os")\",\"cpu\":${cpu:-0},\"memTotalKb\":${memkb:-0},\"memAvailKb\":${availkb:-0},\"uptime\":${uptime:-0},\"disks\":[$dj],\"services\":[$sj],\"macs\":[$macs],\"ips\":[$ips],\"ups\":$uj,\"hw\":$hw,\"pdisks\":[$pj],\"updates\":$updj,\"firewall\":$fwj,\"events\":$ej,\"temps\":[$tj],\"checks\":[$cj],\"plugins\":[$plj],\"nics\":[$nj],\"selfUpdate\":$suj,\"zfs\":$zj,\"mdstat\":\"$(escn "$md")\",\"script\":\"$SCRIPT_VERSION\"}"
 if [ -n "$PIN" ]; then TLS="-k --pinnedpubkey $PIN"; else TLS=""; fi
 # The answer names the plugins this machine may run ("id:version:sha256:timeout …") - kept for the next run
 # shellcheck disable=SC2086
@@ -379,8 +383,46 @@ if printf '%s' "$body" | curl -fsS --max-time 30 $TLS -H "Authorization: Bearer 
   fi
   # … and whether it wants the network cards (only when their ports are watched there): read from the next run on
   if grep -q '"nics":true' "$CACHE/answer.json" 2>/dev/null; then : > "$CACHE/nics"; else rm -f "$CACHE/nics"; fi
+  # … and a newer version of this script, when WhatsOnMyNet offers one ("update": "<version>:<sha256>")
+  upd=$(sed -n 's/.*"update":"\([0-9]\{1,4\}\.[0-9]\{1,4\}\.[0-9]\{1,6\}\):\([0-9a-f]\{64\}\)".*/\1 \2/p' "$CACHE/answer.json" | head -n 1)
 fi
 rm -f "$CACHE/answer.json"
+
+# Self-update: fetched from the same address with the same key and certificate pin, its fingerprint and version must
+# match, the address, key and pin of this copy are put in, the result is checked (complete, parses) and the running
+# copy is replaced by a rename (the running shell keeps reading the old file) - the next run is the new version; cron,
+# key and settings stay. Only from cron (not during the setup) and only over HTTPS: over plain HTTP anyone on the way
+# could name a fingerprint of their own. A failed try leaves the old copy and is repeated next time; the result goes
+# with the next report.
+if [ -n "${upd:-}" ] && [ "${1:-}" = --run ]; then
+  nver=${upd% *}; nsha=${upd#* }; uok=false; umsg=""
+  dl="$CACHE/update.download"; new="$DEST.new"
+  rm -f "$dl" "$new"
+  case "$URL" in https://*) ;; *) umsg="self-update only over https" ;; esac
+  # only the copy cron runs is replaced (another one elsewhere would leave this one old for ever)
+  [ -z "$umsg" ] && [ "$0" != "$DEST" ] && umsg="runs as $0, not as $DEST"
+  [ -z "$umsg" ] && [ -z "$(sha256 "$0")" ] && umsg="no tool for SHA-256 (sha256sum, shasum or openssl)"
+  # shellcheck disable=SC2086
+  if [ -n "$umsg" ]; then :
+  elif ! curl -fsS --max-time 60 --max-filesize 1048576 $TLS -H "Authorization: Bearer $TOKEN" -H 'X-WOMN-Request: 1' -o "$dl" "${URL%/push}/script" 2>/dev/null; then umsg="download failed"
+  elif [ "$(sha256 "$dl")" != "$nsha" ]; then umsg="fingerprint does not match"
+  elif ! grep -q "^SCRIPT_VERSION=$nver\$" "$dl"; then umsg="version does not match"
+  else
+    shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+    # the marks are put together here, so this block itself is not changed when the marks are filled in
+    mk="@@WOMN"
+    if ! (umask 077; U_MARKS="${mk}_URL@@ ${mk}_TOKEN@@ ${mk}_PIN@@" U_URL=$(shq "$URL") U_TOKEN=$(shq "$TOKEN") U_PIN=$(shq "$PIN") awk '
+      BEGIN { n = split(ENVIRON["U_MARKS"], k, " "); v[1] = ENVIRON["U_URL"]; v[2] = ENVIRON["U_TOKEN"]; v[3] = ENVIRON["U_PIN"] }
+      { line = $0; for (i = 1; i <= n; i++) { out = ""; while ((p = index(line, k[i])) > 0) { out = out substr(line, 1, p - 1) v[i]; line = substr(line, p + length(k[i])) } line = out line } print line }' "$dl" > "$new"); then umsg="could not write $new"
+    # complete: as many lines as the download and its last line (a full disk cuts the file off - sh -n would pass it)
+    elif [ "$(wc -l < "$new")" != "$(wc -l < "$dl")" ] || [ "$(tail -n 1 "$new")" != "$(tail -n 1 "$dl")" ]; then umsg="the new version was not written completely"
+    elif grep -q "${mk}_" "$new"; then umsg="unknown mark in the new version"
+    elif ! sh -n "$new" 2>/dev/null; then umsg="the new version does not parse"
+    else chmod 700 "$new" && mv -f "$new" "$DEST" && uok=true || umsg="could not replace $DEST"; fi
+  fi
+  rm -f "$dl" "$new"
+  printf '{"at":"%s","ok":%s,"version":"%s","message":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$uok" "$nver" "$(esc "$umsg")" > "$CACHE/update.json"
+fi
 
 # After the report: search for updates again when the last search is older than 6 hours (not on the first call -
 # the setup should be quick). Only looks, never installs.

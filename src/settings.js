@@ -91,6 +91,7 @@ export const DEFAULTS = {
   // "First steps" on the overview (administrators): hidden for good once someone clicks "Hide"
   'ui.startHidden': false,
   // Update check (Settings → About): off - WhatsOnMyNet asks GitHub only when an administrator wants it
+  'hosts.selfUpdate': true,      // machine scripts (Windows, Linux) fetch a newer version of themselves from WhatsOnMyNet
   'update.auto': false,           // once a day: is there a newer version?
   'update.notify': false,         // report a new version once to the channels
   'update.channels': [],          // empty = default channels

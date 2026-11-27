@@ -95,7 +95,7 @@ export function createApp(db, { tls = null, plainHttp = false, dataDir = config.
   const dockerHosts = createDockerHosts(db);
   const snmpDevices = createSnmpDevices({ db, settings, channels });
   const plugins = createPlugins({ db });
-  const hosts = createHosts({ db, plugins });
+  const hosts = createHosts({ db, plugins, settings });
   // Serial numbers etc. already polled before this version knew how to take them over
   try { const n = syncStoredFacts(db); if (n) log.info(`Device details taken over from earlier polls: ${n} device(s)`); } catch (e) { log.warn(`Device details: ${e.message}`); }
   // Monitors/sensors that watch the same thing twice: merged once (the one that runs stays)

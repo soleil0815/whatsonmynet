@@ -424,6 +424,14 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       watch_ports: Object.fromEntries(db.prepare('SELECT type, COUNT(*) n FROM devices WHERE watch_ports=1 GROUP BY type').all().map((r) => [r.type, r.n])),
       plugins: db.prepare(`SELECT os, COUNT(*) n, SUM(enabled) enabled, MAX(version) newest_version, SUM(targets LIKE '%"all":true%') for_all, SUM(interval_min > 5) less_often FROM plugins GROUP BY os`).all(),
       plugin_states: Object.fromEntries(db.prepare(`SELECT json_extract(p.value,'$.state') state, COUNT(*) n FROM host_reports h, json_each(h.data,'$.plugins') p GROUP BY 1`).all().map((r) => [r.state, r.n])),
+      // machine scripts by version and how their last self-update went (failed ones with the message - never a key)
+      host_script_versions: Object.fromEntries(db.prepare(`SELECT coalesce(json_extract(data,'$.script'),'(none)') v, COUNT(*) n FROM host_reports GROUP BY 1`).all().map((r) => [r.v, r.n])),
+      host_self_update: {
+        ...db.prepare(`SELECT coalesce(SUM(json_extract(data,'$.selfUpdate.ok')=1),0) ok, coalesce(SUM(json_extract(data,'$.selfUpdate.ok')=0),0) failed FROM host_reports`).get(),
+        // without names, addresses and paths a message may carry (Windows quotes the host it could not reach)
+        messages: [...new Set(db.prepare(`SELECT json_extract(data,'$.selfUpdate.message') m FROM host_reports WHERE json_extract(data,'$.selfUpdate.ok')=0`).all()
+          .map((r) => String(r.m || '').replace(/https?:\/\/\S+|'[^']*'|"[^"]*"|\/\S+|[A-Za-z]:\\\S+|\[?[0-9a-f]*:[0-9a-f:]{2,}\]?(:\d+)?|\b\d{1,3}(\.\d{1,3}){3}(:\d+)?\b|\b[\w-]+(\.[\w-]+)+\b/gi, '…').slice(0, 160)).filter(Boolean))].slice(0, 10),
+      },
       // scan agents by the SNMP access data they get (none / own / all) - never the data themselves
       agents_snmp: Object.fromEntries(db.prepare('SELECT snmp_mode, COUNT(*) n FROM agents GROUP BY snmp_mode').all().map((r) => [r.snmp_mode, r.n])),
       // monitors whose address is checked again on every run (set by a non-admin) - and how many of those failed for it

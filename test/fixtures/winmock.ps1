@@ -68,8 +68,8 @@ function Get-ChildItem { param([Parameter(Position = 0)][string]$Path, [string]$
 function Test-Path { param([Parameter(Position = 0)][string]$Path, [string]$LiteralPath)
   if ($LiteralPath) { return Microsoft.PowerShell.Management\Test-Path -LiteralPath $LiteralPath }
   if ($Path -like 'HKLM:*') { return ($Path -like '*RebootRequired') } Microsoft.PowerShell.Management\Test-Path @PSBoundParameters }
-function New-Object { param([string]$ComObject, [Parameter(Position = 0)][string]$TypeName)
-  if (-not $ComObject) { return Microsoft.PowerShell.Utility\New-Object $TypeName }
+function New-Object { param([string]$ComObject, [Parameter(Position = 0)][string]$TypeName, [Parameter(Position = 1)][object[]]$ArgumentList)
+  if (-not $ComObject) { if ($ArgumentList) { return Microsoft.PowerShell.Utility\New-Object $TypeName -ArgumentList $ArgumentList }; return Microsoft.PowerShell.Utility\New-Object $TypeName }
   $searcher = [pscustomobject]@{}
   $searcher | Add-Member ScriptMethod Search { param($q) [pscustomobject]@{ Updates = @([pscustomobject]@{ Title = 'KB5048654'; MsrcSeverity = 'Critical' },
     [pscustomobject]@{ Title = 'Defender'; MsrcSeverity = $null }, [pscustomobject]@{ Title = 'KB5049993'; MsrcSeverity = 'Important' }) } }
@@ -99,7 +99,7 @@ function certutil.exe {
 function icacls.exe { Note-Call ('icacls ' + ($args -join ' ')) }
 function schtasks.exe { Note-Call ('schtasks ' + ($args -join ' ')) }
 # The report goes to $env:WOMN_BODY instead of the network: an alias wins over the function the script defines
-function Save-Report([string]$Json) { [IO.File]::WriteAllBytes($env:WOMN_BODY, [Text.Encoding]::UTF8.GetBytes($Json)) }
+function Save-Report([string]$Json) { [IO.File]::WriteAllBytes($env:WOMN_BODY, [Text.Encoding]::UTF8.GetBytes($Json)); if ($env:WOMN_ANSWER) { $script:Answer = $env:WOMN_ANSWER } }
 Set-Alias -Name Send-Report -Value Save-Report
 # The registry (version for software distribution): noted like the other calls
 function Set-ItemProperty { param([string]$LiteralPath, [string]$Name, $Value) Note-Call "reg $LiteralPath $Name $Value" }

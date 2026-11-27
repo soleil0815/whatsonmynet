@@ -2,6 +2,8 @@
 const T = {
   de: {
     'err.notFound': 'Nicht gefunden.',
+    'err.selfUpdateOff': 'Das Selbst-Update der Rechner-Skripte ist ausgeschaltet.',
+    'err.hostOwnKey': 'Dieses Gerät hat einen eigenen Schlüssel – sein Skript meldet sich nur damit.',
     'err.forbidden': 'Dafür fehlt dir die Berechtigung.',
     'err.unauthorized': 'Bitte melde dich an.',
     'err.badRequest': 'Die Anfrage ist ungültig. {detail}',
@@ -191,6 +193,8 @@ const T = {
   },
   en: {
     'err.notFound': 'Not found.',
+    'err.selfUpdateOff': 'Self-update of the machine scripts is switched off.',
+    'err.hostOwnKey': 'This device has a key of its own – its script reports only with that one.',
     'err.forbidden': 'You are not allowed to do this.',
     'err.unauthorized': 'Please sign in.',
     'err.badRequest': 'The request is invalid. {detail}',
