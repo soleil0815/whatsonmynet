@@ -98,6 +98,10 @@ export async function renderDashboard(main) {
   for (const c of mon.certs || []) {
     items.push(todo('ti', 'lock', t('dash.cert', { name: c.name }), t('dash.certUntil', { date: fmtDate(c.cert_valid_to, lang, false) }), { href: `/monitoring/${c.id}`, label: t('dash.look') }));
   }
+  // machine scripts that stay behind and will not update on their own (only admins get these: they hand scripts out)
+  if (d.scripts?.action) {
+    items.push(todo('new', 'computer', t('dash.scriptsOld', { n: d.scripts.action }), t(d.scripts.selfUpdate ? 'dash.scriptsOldDetail' : 'dash.scriptsOldOff'), { href: '/settings/hostscripts', label: t('dash.look') }));
+  }
   for (const w of d.warranty || []) {
     items.push(todo('ti', 'history', t('dash.warrantyOf', { name: w.name }), t('dash.warrantyUntil', { date: fmtDate(w.warranty_until, lang, false) }), { href: `/devices/${w.id}`, label: t('dash.toDevice') }));
   }

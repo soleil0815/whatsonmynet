@@ -6,6 +6,12 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Machine scripts update themselves (on by default, can be switched off under Settings → Machine scripts): when there is a new version, every Windows and Linux machine fetches it with its next report – from the same address, with its own key and the same certificate check, only with a matching fingerprint (SHA-256). Needed once: roll out scripts from before 0.59 one last time. The overview reports machines with an older script, the settings list them with the reason. Hyper-V and KVM scripts do not update themselves
+- One script per operating system: "Monitor with script" on the device page offers the shared script – the same file for all machines. A script of its own for a single device is only the exception now (e.g. a notebook at changing docking stations); existing ones keep working
+- Hardware swapped: when a machine reports with new hardware under its old name, "Unknown machines" offers a button that assigns it to the device – the old MAC address and serial number go (they stay in the history), the next report fills in the new ones. There is nothing to do on the machine
+
+## 0.58.0 - 2026-11-27
+
 - Watch network ports – switched on per device, off by default: NAS, router and firewall by SNMP (IF-MIB, any vendor), machines via the machine script (script version 0.58 on, roll it out once more). New sensors for all ports, switches too: speed dropped (e.g. 100 instead of 1000 Mbit/s) and new errors since the last query
 
 ## 0.57.2 - 2026-11-25

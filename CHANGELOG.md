@@ -6,6 +6,12 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Rechner-Skripte aktualisieren sich selbst (ab Werk an, abschaltbar unter Einstellungen → Rechner-Skripte): Gibt es eine neue Version, holt jeder Windows- und Linux-Rechner sie mit seiner nächsten Meldung – von derselben Adresse, mit seinem Schlüssel und derselben Zertifikatsprüfung, nur mit passendem Fingerabdruck (SHA-256). Einmal nötig: Skripte vor 0.59 ein letztes Mal verteilen. Die Übersicht meldet Rechner mit älterem Skript, die Einstellungen listen sie mit dem Grund. Hyper-V- und KVM-Skripte aktualisieren sich nicht selbst
+- Ein Skript je Betriebssystem: „Per Skript überwachen“ auf der Geräteseite bietet das gemeinsame Skript an – dieselbe Datei für alle Rechner. Ein eigenes Skript für ein einzelnes Gerät gibt es nur noch als Ausnahme (z. B. Notebook an wechselnden Dockingstationen); vorhandene laufen weiter
+- Hardware getauscht: Meldet sich ein Rechner mit neuer Hardware unter altem Namen, bietet „Unbekannte Rechner“ einen Knopf, der ihn dem Gerät zuordnet – alte MAC-Adresse und Seriennummer gehen (sie stehen im Verlauf), die nächste Meldung trägt die neuen ein. Auf dem Rechner ist nichts zu tun
+
+## 0.58.0 - 2026-11-27
+
 - Netzwerk-Ports überwachen – je Gerät einschaltbar, standardmäßig aus: NAS, Router und Firewall per SNMP (IF-MIB, jeder Hersteller), Rechner über das Rechner-Skript (ab Skript-Version 0.58, einmal neu verteilen). Neue Sensoren für alle Ports, auch an Switches: Geschwindigkeit gesunken (z. B. 100 statt 1000 Mbit/s) und neue Fehler seit der letzten Abfrage
 
 ## 0.57.2 - 2026-11-25

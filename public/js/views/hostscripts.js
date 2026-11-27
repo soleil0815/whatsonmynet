@@ -1,12 +1,12 @@
 // Windows/Linux machines (and Hyper-V/KVM hosts) that report by a small script: the script dialog with download,
 // how to run it and how to remove it again; the "System" panel of a device; the settings page for shared scripts.
 import { h, mount, toast, modal, confirmDialog, fmtDate, fmtAgo } from '../dom.js';
-import { get, post, del } from '../api.js';
+import { get, post, put, del } from '../api.js';
 import { t, getLang } from '../i18n.js';
 import { icon } from '../icons.js';
 import { fail, state } from '../app.js';
 import { pluginsBlock } from './plugins.js';
-import { field, input, select, btn } from './common.js';
+import { field, input, select, btn, onOffSwitch } from './common.js';
 import { upsBlock } from './snmpdev.js';
 import { checkText } from '../checktext.js';
 
@@ -62,23 +62,51 @@ export function helpLink() {
     h('span', { html: icon('help') }), t('hs.whatFor'));
 }
 
-/** Device page: "Monitor with script" - choose Windows/Linux, get the script with the key of this device */
+/**
+ * Device page: "Monitor with script". There is one shared script per operating system - the same file on every
+ * machine, each report is matched to its device (MAC address, machine name, IP). Keys are kept only as a fingerprint,
+ * so an existing script cannot be shown again: either the file at hand is used, or one more shared script is made
+ * (the ones before keep working).
+ */
 export async function openHostScript(d, reload) {
-  const guess = /linux|ubuntu|debian|centos|rhel|red hat|suse|alma|rocky|alpine/i.test(d.os || '') ? 'linux' : 'windows';
+  const guess = /linux|ubuntu|debian|centos|rhel|red hat|suse|alma|rocky|alpine|fedora|proxmox/i.test(d.os || '') ? 'linux' : 'windows';
+  let tokens = [];
+  try { ({ tokens } = await get('/hosts')); } catch (ex) { fail(ex); return; }
   const os = select('os', [['windows', 'Windows'], ['linux', 'Linux']], d.hostScript?.os || guess);
+  const info = h('div', {});
+  const label = () => (os.value === 'linux' ? 'Linux' : 'Windows');
+  const sharedOf = () => tokens.filter((x) => !x.device_id && x.os === os.value);
+  const show = () => {
+    const have = sharedOf();
+    mount(info, have.length
+      ? h('p', { class: 'note', style: { margin: 0 } }, t('hs.haveShared', { os: label(), name: have.map((x) => x.name).join(', ') }))
+      : h('p', { class: 'muted small', style: { margin: 0 } }, t('hs.newShared', { os: label() })));
+    submit.textContent = t(have.length ? 'hs.createAnother' : 'hs.create');
+  };
+  const submit = h('button', { class: 'btn btn-primary', type: 'submit' }, t('hs.create'));
+  // the exception: a key of its own, for a machine the shared script cannot tell apart by its MAC address (a notebook
+  // at changing docking stations reports their MAC) - it may also change serial number, model and MAC of its device
+  const own = h('input', { type: 'checkbox', name: 'own', checked: false });
+  const ownNote = h('p', { class: 'note warn', style: { margin: '6px 0 0', display: 'none' } }, t('hs.replace'));
+  os.addEventListener('change', show);
+  own.addEventListener('change', () => { ownNote.style.display = own.checked && d.hostScript ? '' : 'none'; if (own.checked) submit.textContent = t('hs.createOwn'); else show(); });
   const form = h('form', { class: 'form' },
     h('p', { style: { margin: 0 } }, t('hs.lead'), ' ', helpLink()),
     field(t('hs.os'), os),
-    d.hostScript ? h('p', { class: 'note warn', style: { margin: 0 } }, t('hs.replace')) : null);
+    info,
+    // a key of its own from before 0.59: it keeps working (and updates itself)
+    d.hostScript ? h('p', { class: 'muted small', style: { margin: 0 } }, t('hs.ownKeyOld')) : null,
+    h('details', { class: 'cert-manual' }, h('summary', {}, t('hs.ownTitle')),
+      h('label', { class: 'check', style: { marginTop: '6px' } }, own, h('span', {}, t('hs.ownLabel'))),
+      h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, t('hs.ownHint')), ownNote));
   const m = modal(`${t('hs.title')}: ${d.name}`, form, { onSubmit: async () => {
     try {
-      const r = await post('/hosts', { os: os.value, device_id: d.id, server: location.origin });
+      const r = await post('/hosts', own.checked ? { os: os.value, device_id: d.id, server: location.origin } : { name: t('hs.sharedName', { os: label() }), os: os.value, server: location.origin });
       m.close();
-      scriptDialog(`${t('hs.title')}: ${d.name}`, r, { onClose: reload });
+      scriptDialog(own.checked ? `${t('hs.title')}: ${d.name}` : r.name, r, { onClose: reload });
     } catch (ex) { fail(ex); }
-  }, actions: [
-    btn(t('cancel'), { onclick: () => m.close() }),
-    h('button', { class: 'btn btn-primary', type: 'submit' }, t('hs.create'))] });
+  }, actions: [btn(t('cancel'), { onclick: () => m.close() }), submit] });
+  show();
 }
 
 const bytes = (n) => { const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']; let i = 0; let v = Number(n) || 0; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 && i ? 1 : 0)} ${u[i]}`; };
@@ -86,6 +114,10 @@ const meter = (label, p, sub) => h('div', { class: `supply${p >= 90 ? ' low' : '
   h('div', { class: 'supply-head' }, h('span', { class: 'supply-name mono' }, label), h('span', { class: 'supply-val mono' }, `${sub ? `${sub} · ` : ''}${p ?? '–'} %`)),
   h('div', { class: 'supply-track' }, h('i', { style: { width: `${p || 0}%` } })));
 const uptime = (s) => { const hrs = Math.floor((s || 0) / 3600); return hrs >= 48 ? t('val.days', { n: Math.floor(hrs / 24) }) : t('val.hours', { n: hrs }); };
+
+// From 0.59 on the scripts update themselves (when switched on in the settings)
+const verNum = (v) => String(v || '0').split('.').map(Number).reduce((a, n) => a * 10000 + (n || 0), 0);
+const selfUpdates = (v) => !!v && verNum(v) >= verNum('0.59.0');
 
 /** "System" panel of a device whose script reports: load, drives, services */
 export function systemPanel(x) {
@@ -100,7 +132,7 @@ export function systemPanel(x) {
       h('dt', {}, t('hs.uptime')), h('dd', {}, uptime(x.uptime)),
       // the version of the script: an older one is marked (roll out the new one - software distribution, Ansible …)
       x.scriptNow ? [h('dt', {}, t('hs.script')), h('dd', {}, x.script || t(win ? 'hs.scriptNone' : 'hs.scriptNoneLinux'), ' ',
-        x.scriptOld ? h('span', { class: 'badge badge-warn', title: t(win ? 'hs.scriptOldHint' : 'hs.scriptOldHintLinux', { v: x.scriptNow }) }, t('hs.scriptOld')) : null)] : null),
+        x.scriptOld ? h('span', { class: 'badge badge-warn', title: t(selfUpdates(x.script) ? 'hs.scriptOldAuto' : win ? 'hs.scriptOldHint' : 'hs.scriptOldHintLinux', { v: x.scriptNow }) }, t('hs.scriptOld')) : null)] : null),
     h('div', { class: 'supplies' },
       meter('CPU', x.cpu),
       meter('RAM', x.mem, x.memTotal ? `${bytes(x.memUsed)} / ${bytes(x.memTotal)}` : ''),
@@ -235,9 +267,9 @@ function pdisksBlock(list) {
       h('td', { class: 'num hide-sm' }, d.hours !== null && d.hours !== undefined ? d.hours.toLocaleString(getLang()) : '–'))))))];
 }
 
-/** Settings → Host scripts: shared scripts for many machines, scripts of single devices, unknown machines */
+/** Settings → Host scripts: shared scripts, self-update, scripts that stay behind, unknown machines */
 export async function hostScriptsSettings(body, reload) {
-  const { tokens, unmatched } = await get('/hosts');
+  const { tokens, unmatched, scripts } = await get('/hosts');
   const addShared = () => {
     const name = input('name', '', { required: true, maxlength: 80, placeholder: t('hs.sharedPh') });
     const os = select('os', [['windows', 'Windows'], ['linux', 'Linux']], 'windows');
@@ -269,11 +301,18 @@ export async function hostScriptsSettings(body, reload) {
             try { await del(`/hosts/${x.id}`); toast(t('deleted')); reload(); } catch (ex) { fail(ex); }
           } }))))))))
       : h('p', { class: 'panel-pad muted', style: { margin: 0 } }, t('hs.none'))),
+  selfUpdatePanel(scripts, reload),
   unmatched.length ? h('section', { class: 'panel panel-pad' },
     h('h2', { class: 'section-title' }, t('hs.unknown')),
     h('p', { class: 'muted small', style: { marginTop: 0 } }, t('hs.unknownLead')),
     h('ul', { class: 'port-macs' }, unmatched.map((u) => h('li', {}, h('strong', {}, u.hostname), h('span', { class: 'mono small' }, u.ip || ''),
       h('span', { class: 'muted small' }, [u.os, fmtAgo(u.at, t)].filter(Boolean).join(' · ')),
+      // new hardware under the old name: the MAC address no longer fits - one click says it is the same machine
+      u.suggest ? btn(t('hs.assign', { name: u.suggest.name }), { class: 'btn btn-sm', title: t('hs.assignHint'), onclick: async (e) => {
+        if (!await confirmDialog(t('hs.assignTitle'), t('hs.assignConfirm', { host: u.hostname, name: u.suggest.name }), t('hs.assignDo'), t('cancel'))) return;
+        const b = e.target.closest('button'); b.disabled = true;
+        try { await post(`/hosts/unmatched/${encodeURIComponent(u.hostname)}/assign`, { device_id: u.suggest.id }); toast(t('hs.assigned', { name: u.suggest.name })); reload(); } catch (ex) { b.disabled = false; fail(ex); }
+      } }) : null,
       btn(t('hs.forget'), { class: 'btn btn-sm btn-ghost', onclick: async () => {
         if (!await confirmDialog(t('hs.forget'), t('hs.forgetConfirm', { name: u.hostname }), t('hs.forget'), t('cancel'))) return;
         try { await del(`/hosts/unmatched/${encodeURIComponent(u.hostname)}`); toast(t('hs.forgotten', { name: u.hostname })); reload(); } catch (ex) { fail(ex); } } }))))) : null,
@@ -282,6 +321,26 @@ export async function hostScriptsSettings(body, reload) {
     h('p', { class: 'muted small', style: { marginTop: 0 } }, t('hs.removeLead')),
     h('div', { class: 'actions' }, [['windows', 'Windows'], ['linux', 'Linux'], ['hyperv', 'Hyper-V'], ['libvirt', 'KVM']].map(([k, label]) =>
       btn(label, { class: 'btn btn-sm', onclick: () => uninstall(k) }, 'download')))));
+}
+
+/**
+ * Self-update (on by default) and the machines whose script is older than the current one: those from before 0.59
+ * need the new script once more, the others update themselves within a few minutes.
+ */
+function selfUpdatePanel(sc, reload) {
+  if (!sc) return null;
+  const sw = onOffSwitch({ on: sc.selfUpdate, label: t('hs.selfUpdate'), onChange: async (v) => { await put('/settings/hosts', { selfUpdate: v }); toast(t('saved')); reload(); } });
+  const why = (s) => (s.manual ? t('hs.stuckManual') : s.error ? t('hs.stuckError', { msg: s.error }) : sc.selfUpdate ? t('hs.stuckSoon') : t('hs.stuckOff'));
+  return h('section', { class: 'panel panel-pad' },
+    h('h2', { class: 'section-title' }, t('hs.selfUpdate')),
+    h('p', { class: 'muted small', style: { marginTop: 0 } }, t('hs.selfUpdateLead')),
+    field(t('hs.selfUpdate'), sw, t('hs.selfUpdateHint')),
+    sc.stuck.length ? [h('h3', { class: 'sub-title' }, t('hs.stuckTitle', { n: sc.outdated })),
+      h('ul', { class: 'port-macs' }, sc.stuck.map((s) => h('li', {},
+        h('a', { href: `/devices/${s.deviceId}`, 'data-link': true }, h('strong', {}, s.name)),
+        h('span', { class: 'mono small' }, `${s.version || t('hs.scriptOlder')} → ${s.now}`),
+        h('span', { class: `badge ${s.manual || s.error || !sc.selfUpdate ? 'badge-warn' : ''}` }, why(s)))))]
+      : h('p', { class: 'muted small', style: { margin: 0 } }, t('hs.stuckNone')));
 }
 
 /**

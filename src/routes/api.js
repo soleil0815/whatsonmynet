@@ -140,6 +140,14 @@ export function createApi(ctx) {
     if (!m) throw new HttpError(401, 'err.unauthorized');
     res.json(ctx.hosts.push(m[1], req.body, req.ip));
   });
+  // Self-update of a machine script: the template of its newer version (its key; the answer to its report named it)
+  r.get('/hosts/script', (req, res) => {
+    const m = /^Bearer\s+(\S{20,200})$/.exec(String(req.get('authorization') || ''));
+    if (!m) throw new HttpError(401, 'err.unauthorized');
+    const tpl = ctx.hosts.template(m[1]);
+    res.set('Content-Type', 'text/plain; charset=utf-8').set('Cache-Control', 'no-store').set('X-WOMN-Script-Version', tpl.version).set('X-WOMN-Script-Sha256', tpl.sha256);
+    res.send(tpl.bytes);
+  });
   // Hyper-V / KVM hosts send their data themselves (token of the host, no session)
   r.post('/proxmox/:id/push', (req, res) => {
     const m = /^Bearer\s+(\S{20,200})$/.exec(String(req.get('authorization') || ''));
@@ -292,7 +300,9 @@ export function createApi(ctx) {
     const quiet = new Set(Object.keys(ctx.monitoring.deviceMaintenance()).map(Number));
     res.json({ ...inventory.stats({ allowed: req.scope, quiet, scanVisible: (s) => scanVisible(req, s) }), monitoring: mon, start: firstSteps(req),
       printersLow: ctx.printers.low().filter((x) => seeDeviceId(req, x.deviceId)),
-      nasProblems: ctx.snmpDevices.problems().filter((x) => seeDeviceId(req, x.deviceId)) });
+      nasProblems: ctx.snmpDevices.problems().filter((x) => seeDeviceId(req, x.deviceId)),
+      // machine scripts older than the current one (only for admins: they hand them out)
+      scripts: req.user.role === 'admin' ? ctx.hosts.scripts(req.scope ? (id) => seeDeviceId(req, id) : null) : null });
   });
 
   r.get('/network', async (_req, res) => {
@@ -672,7 +682,7 @@ export function createApi(ctx) {
     return pin;
   };
   r.get('/hosts/devices', editor, (req, res) => res.json(ctx.hosts.deviceIds().filter((id) => seeDeviceId(req, id))));
-  r.get('/hosts', admin, (_req, res) => res.json({ tokens: ctx.hosts.list(), unmatched: ctx.hosts.unmatched() }));
+  r.get('/hosts', admin, (_req, res) => res.json({ tokens: ctx.hosts.list(), unmatched: ctx.hosts.unmatched(), scripts: ctx.hosts.scripts() }));
   r.post('/hosts', admin, (req, res) => {
     const out = ctx.hosts.create(req.body, { server: str(req.body?.server, 300), pin: pinOf() });
     audit(req, 'host.script', `${out.name} (${out.os})`);
@@ -681,6 +691,11 @@ export function createApi(ctx) {
   r.post('/hosts/:id/renew', admin, (req, res) => { const out = ctx.hosts.renew(idParam(req), { server: str(req.body?.server, 300), pin: pinOf() }); audit(req, 'host.renew', out.name); res.json(out); });
   r.delete('/hosts/:id', admin, (req, res) => { const t = ctx.hosts.remove(idParam(req)); audit(req, 'host.delete', t.name); res.json({ ok: true }); });
   r.delete('/hosts/unmatched/:name', admin, (req, res) => { ctx.hosts.forgetUnmatched(req.params.name); res.json({ ok: true }); });
+  r.post('/hosts/unmatched/:name/assign', admin, (req, res) => {
+    const out = ctx.hosts.assignUnmatched(req.params.name, req.body?.device_id, who(req));
+    audit(req, 'host.assign', `${String(req.params.name).slice(0, 80)} → device ${Number(req.body?.device_id) || 0}`);
+    res.json(out);
+  });
   r.get('/hosts/uninstall/:kind', editor, (req, res) => {
     if (!SCRIPT_KINDS.includes(req.params.kind)) throw new HttpError(404, 'err.notFound');
     res.json(uninstallScript(req.params.kind));
@@ -715,6 +730,11 @@ export function createApi(ctx) {
     const s = await ctx.updateCheck.check();
     audit(req, 'update.check', s.error || s.latest || '');
     res.json(s);
+  });
+  r.put('/settings/hosts', admin, (req, res) => {
+    if ('selfUpdate' in req.body) settings.set('hosts.selfUpdate', !!req.body.selfUpdate);
+    audit(req, 'settings.hosts', `self-update ${settings.get('hosts.selfUpdate') ? 'on' : 'off'}`);
+    res.json({ selfUpdate: !!settings.get('hosts.selfUpdate') });
   });
   r.put('/settings/update', admin, (req, res) => {
     const b = req.body;

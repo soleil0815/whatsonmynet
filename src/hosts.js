@@ -7,7 +7,7 @@
 import crypto from 'node:crypto';
 import { HttpError, line } from './lib/http.js';
 import { normalizeMac } from './lib/net.js';
-import { hostScript, SCRIPT_VERSIONS } from './hostscripts.js';
+import { hostScript, SCRIPT_VERSIONS, scriptTemplate } from './hostscripts.js';
 import { zfsFromScript, mdFromMdstat, spacesFromScript } from './pools.js';
 import { fillDevice } from './devicefill.js';
 import { cleanUps } from './scan/ups.js';
@@ -35,6 +35,14 @@ export const goneBefore = (now = Date.now()) => new Date(now - GONE_HOURS * 3600
 /** windows or linux from what the machine says about itself */
 export const hostOs = (os) => (/windows/i.test(String(os || '')) ? 'windows' : 'linux');
 const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
+
+/** The last self-update a script reports: { at, ok, version, message } or null */
+function cleanSelfUpdate(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const at = Date.parse(String(v.at || ''));
+  return { at: Number.isFinite(at) ? new Date(at).toISOString() : null, ok: v.ok === true || v.ok === 1 || v.ok === '1',
+    version: /^\d{1,4}\.\d{1,4}\.\d{1,6}$/.test(String(v.version ?? '')) ? String(v.version) : null, message: clip(v.message, 200) };
+}
 
 /** What a script sends, checked and cut to size: never trusted more than a form */
 export function cleanReport(body) {
@@ -76,6 +84,8 @@ export function cleanReport(body) {
       ...mdFromMdstat(typeof b.mdstat === 'string' ? b.mdstat.slice(0, 20000) : ''), ...spacesFromScript(b.spaces)].slice(0, 64),
     // network cards (from 0.58 on) - kept only when the ports of the machine are watched (push)
     nics: cleanNics(b.nics),
+    // the last self-update of the script (from 0.59 on): when, whether it worked, why not
+    selfUpdate: cleanSelfUpdate(b.selfUpdate),
     // version of the Windows script (from 0.42 on; older ones send none)
     script: /^\d{1,4}\.\d{1,4}\.\d{1,6}$/.test(String(b.script ?? '')) ? String(b.script) : null,
   };
@@ -97,7 +107,7 @@ export function serverBase(server) {
   return `${u.protocol}//${u.host}`;
 }
 
-export function createHosts({ db, plugins = null }) {
+export function createHosts({ db, plugins = null, settings = null }) {
   const now = () => new Date().toISOString();
   const tokenRow = (id) => db.prepare('SELECT * FROM host_tokens WHERE id=?').get(id);
   const shapeToken = (t) => (t ? { id: t.id, name: t.name, os: t.os, device_id: t.device_id, device_name: t.device_id ? db.prepare('SELECT name FROM devices WHERE id=?').get(t.device_id)?.name || '' : null,
@@ -196,7 +206,19 @@ export function createHosts({ db, plugins = null }) {
     // which plugins this machine may run (id, version, fingerprint) - the script keeps the list for its next run
     const allowed = plugins ? plugins.allowedFor(deviceId, hostOs(r.os)) : [];
     // nics: whether the script should read the network cards from its next run on (nothing is read unless asked)
-    return { ok: true, device: deviceId, plugins: plugins ? plugins.allowString(allowed) : '', nics: wantNics };
+    // update: a newer version of the script ("<version>:<sha256>") when self-update is on - scripts from 0.59 fetch it
+    const kind = hostOs(r.os);
+    const tpl = settings?.get('hosts.selfUpdate') && r.script && older(r.script, SCRIPT_VERSIONS[kind]) ? scriptTemplate(kind) : null;
+    return { ok: true, device: deviceId, plugins: plugins ? plugins.allowString(allowed) : '', nics: wantNics, ...(tpl ? { update: `${tpl.version}:${tpl.sha256}` } : {}) };
+  }
+
+  /** The template for the self-update of a script - for its own key only (host scripts, not Hyper-V/KVM) */
+  function template(token) {
+    if (!/^[A-Za-z0-9_-]{20,200}$/.test(String(token))) throw new HttpError(401, 'err.unauthorized');
+    const t = db.prepare('SELECT * FROM host_tokens WHERE token_hash=?').get(sha(token));
+    if (!t) throw new HttpError(401, 'err.unauthorized');
+    if (!settings?.get('hosts.selfUpdate')) throw new HttpError(409, 'err.selfUpdateOff');
+    return scriptTemplate(t.os === 'linux' ? 'linux' : 'windows');
   }
 
   /** Last report of a device with "stale" if it is older than 15 minutes; null if it never reported */
@@ -230,6 +252,31 @@ export function createHosts({ db, plugins = null }) {
     create,
     renew: (id, opts) => issue(id, opts),
     push,
+    template,
+    /**
+     * Machines whose script is older than the one WhatsOnMyNet hands out (the overview shows them): with self-update on
+     * they catch up by themselves - listed are those that did not within an hour, or whose last self-update failed.
+     */
+    scripts(allowed = null) {
+      // outdated: older than the current script; action: those that will not update on their own (from before 0.59, a
+      // failed try, or self-update switched off) - only these need a look
+      const out = { outdated: 0, action: 0, stuck: [], selfUpdate: !!settings?.get('hosts.selfUpdate') };
+      for (const row of db.prepare('SELECT d.id, d.name, h.at, h.data FROM host_reports h JOIN devices d ON d.id=h.device_id WHERE h.at >= ?').all(goneBefore())) {
+        if (allowed && !allowed(row.id)) continue;
+        const x = parse(row.data, {});
+        const now = SCRIPT_VERSIONS[hostOs(x.os)];
+        if (x.script && !older(x.script, now)) continue;
+        out.outdated++;
+        const failed = x.selfUpdate && x.selfUpdate.ok === false;
+        // scripts before 0.59 cannot update themselves: they need to be handed out once more
+        const manual = !x.script || older(x.script, '0.59.0');
+        const error = failed && x.selfUpdate.version === now ? x.selfUpdate.message || 'failed' : null;
+        if (manual || error || !out.selfUpdate) out.action++;
+        out.stuck.push({ deviceId: row.id, name: row.name, version: x.script || null, now, manual, error });
+      }
+      out.stuck = out.stuck.sort((a, b) => (b.manual || !!b.error) - (a.manual || !!a.error) || a.name.localeCompare(b.name)).slice(0, 50);
+      return out;
+    },
     report,
     list: () => db.prepare('SELECT * FROM host_tokens ORDER BY device_id IS NOT NULL, name').all().map(shapeToken),
     forget,
@@ -243,7 +290,33 @@ export function createHosts({ db, plugins = null }) {
       })();
       return t;
     },
-    unmatched: () => db.prepare('SELECT hostname, ip, os, at FROM host_unmatched ORDER BY at DESC LIMIT 100').all(),
+    // unknown machines - with the device of the same name, if there is one (new hardware under the old name: its MAC no
+    // longer fits, so the shared key does not reach it on its own - an administrator decides, see assignUnmatched)
+    unmatched: () => db.prepare('SELECT hostname, ip, os, at FROM host_unmatched ORDER BY at DESC LIMIT 100').all().map((u) => {
+      const short = String(u.hostname || '').toLowerCase().split('.')[0];
+      const d = short ? db.prepare(`SELECT id, name FROM devices WHERE (lower(hostname)=? OR lower(name)=? OR substr(lower(hostname),1,length(?)+1)=?||'.')
+        AND id NOT IN (SELECT device_id FROM host_tokens WHERE device_id IS NOT NULL) ORDER BY id LIMIT 1`).get(short, short, short, short) : null;
+      return { ...u, suggest: d || null };
+    }),
+    /**
+     * "New hardware, same machine": the unknown machine is this device. Its MAC address and serial number go (the old
+     * hardware), so the next report of the shared script reaches it by name and fills in the new values. Only by hand:
+     * done on its own, any machine holding the shared key could take over a device by sending its name.
+     */
+    assignUnmatched(hostname, deviceId, user = '') {
+      const u = db.prepare('SELECT * FROM host_unmatched WHERE hostname=?').get(String(hostname || ''));
+      if (!u) throw new HttpError(404, 'err.notFound');
+      const d = db.prepare('SELECT id, mac, serial FROM devices WHERE id=?').get(Number(deviceId));
+      if (!d) throw new HttpError(404, 'err.notFound');
+      if (db.prepare('SELECT 1 FROM host_tokens WHERE device_id=?').get(d.id)) throw new HttpError(409, 'err.hostOwnKey');
+      db.transaction(() => {
+        db.prepare("UPDATE devices SET mac=NULL, serial='', updated_at=? WHERE id=?").run(now(), d.id);
+        db.prepare('INSERT INTO device_history(device_id,at,user,kind,detail) VALUES(?,?,?,?,?)')
+          .run(d.id, now(), user, 'hardwareSwapped', JSON.stringify({ host: u.hostname, mac: d.mac || null, serial: d.serial || null }));
+        db.prepare('DELETE FROM host_unmatched WHERE hostname=?').run(u.hostname);
+      })();
+      return { ok: true };
+    },
     forgetUnmatched: (hostname) => db.prepare('DELETE FROM host_unmatched WHERE hostname=?').run(String(hostname || '')),
     /** Devices that report (for the sensor form) - not those silent for a day */
     deviceIds: () => db.prepare('SELECT device_id FROM host_reports WHERE at >= ?').all(goneBefore()).map((r) => r.device_id),

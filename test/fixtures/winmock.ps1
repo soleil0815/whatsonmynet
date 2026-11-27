@@ -99,7 +99,7 @@ function certutil.exe {
 function icacls.exe { Note-Call ('icacls ' + ($args -join ' ')) }
 function schtasks.exe { Note-Call ('schtasks ' + ($args -join ' ')) }
 # The report goes to $env:WOMN_BODY instead of the network: an alias wins over the function the script defines
-function Save-Report([string]$Json) { [IO.File]::WriteAllBytes($env:WOMN_BODY, [Text.Encoding]::UTF8.GetBytes($Json)) }
+function Save-Report([string]$Json) { [IO.File]::WriteAllBytes($env:WOMN_BODY, [Text.Encoding]::UTF8.GetBytes($Json)); if ($env:WOMN_ANSWER) { $script:Answer = $env:WOMN_ANSWER } }
 Set-Alias -Name Send-Report -Value Save-Report
 # The registry (version for software distribution): noted like the other calls
 function Set-ItemProperty { param([string]$LiteralPath, [string]$Name, $Value) Note-Call "reg $LiteralPath $Name $Value" }

@@ -229,7 +229,7 @@ test('Windows script: reports hardware, disks, updates, protection, events and c
   assert.ok(fs.existsSync(path.join(home, 'womn-updates.json')));
   r = run();
   assert.deepEqual([r.updates.pending, r.updates.security, r.updates.lastInstalled], [3, 2, '2026-11-01T03:00:00.000Z']);
-  assert.ok(uninstallScript('windows').text.includes("@('womn-host.ps1', 'womn-host-send.json', 'womn-updates.json', 'womn-plugins.txt', 'womn-plugin-*.out', 'womn-nics.txt')"), 'uninstall removes the update, send status, plugin list and network card request too');
+  assert.ok(uninstallScript('windows').text.includes("@('womn-host.ps1', 'womn-host-send.json', 'womn-updates.json', 'womn-plugins.txt', 'womn-plugin-*.out', 'womn-nics.txt', 'womn-host-update.json', 'womn-host.ps1.download', 'womn-host.ps1.new')"), 'uninstall removes the update, send status, plugin list, network card request and self-update files too');
   // the version of the script goes with the report (WhatsOnMyNet shows machines with an older script)
   assert.equal(JSON.parse(fs.readFileSync(body, 'utf8')).script, SCRIPT_VERSIONS.windows);
   assert.equal(r.script, SCRIPT_VERSIONS.windows);

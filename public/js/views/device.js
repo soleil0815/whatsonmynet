@@ -42,7 +42,7 @@ export function scriptHint(d, ti, open, reload) {
     h('strong', {}, t(waiting ? 'hs.tipWaitTitle' : 'hs.tipTitle')),
     h('p', { style: { margin: '4px 0 8px' } }, t(waiting ? 'hs.tipWait' : state.user.isAdmin ? 'hs.tip' : 'hs.tipAskAdmin')),
     h('div', { class: 'actions', style: { justifyContent: 'flex-start' } },
-      state.user.isAdmin ? btn(t(waiting ? 'hs.menuRenew' : 'hs.menu'), { class: 'btn btn-sm btn-primary', onclick: open }, 'computer') : null,
+      state.user.isAdmin ? btn(t('hs.menu'), { class: 'btn btn-sm btn-primary', onclick: open }, 'computer') : null,
       helpLink(),
       hide)));
 }
@@ -63,7 +63,7 @@ function scriptGone(d, open, reload) {
     h('strong', {}, t('hs.goneTitle', { when: fmtAgo(d.host.at, t) })),
     h('p', { style: { margin: '4px 0 8px' } }, t(admin ? 'hs.gone' : 'hs.goneAskAdmin')),
     admin ? h('div', { class: 'actions', style: { justifyContent: 'flex-start' } },
-      btn(t('hs.menuRenew'), { class: 'btn btn-sm', onclick: open }, 'computer'),
+      btn(t('hs.menu'), { class: 'btn btn-sm', onclick: open }, 'computer'),
       btn(t('hs.drop'), { class: 'btn btn-sm btn-danger', onclick: forget }, 'trash')) : null));
 }
 
@@ -79,6 +79,7 @@ export function historyText(r) {
     case 'replaced': return t('hist.replaced', { from: d.from, to: d.to });
     case 'linked': return t('hist.linked', { ip: d.ip || '–', mac: d.mac || '–' });
     case 'merged': return t('hist.merged', { name: d.name || '–', ip: d.ip || '–', mac: d.mac || '–' });
+    case 'hardwareSwapped': return t('hist.hardwareSwapped', { host: d.host || '–', mac: d.mac || '–', serial: d.serial || '–' });
     case 'monitorsPaused': return t('hist.monitorsPaused', { from: d.from || '–', to: d.to || '–', names: (d.monitors || []).join(', ') });
     default: return r.kind;
   }
@@ -264,7 +265,7 @@ export async function renderDevice(main, id) {
   const more = edit ? h('details', { class: 'menu' }, h('summary', { class: 'btn', 'aria-label': t('dev.more') }, t('dev.more')),
     h('div', { class: 'menu-list' },
       state.user.isAdmin && !ti ? h('button', { type: 'button', title: t('hs.menuHint'), onclick: (e) => { e.currentTarget.closest('details').open = false; openHostScript(d, () => renderDevice(main, id)); } },
-        d.hostScript ? t('hs.menuRenew') : t('hs.menu')) : null,
+        t('hs.menu')) : null,
       d.ip ? h('button', { type: 'button', title: ti ? t('dev.deepTi') : t('dev.deepHint'), onclick: (e) => { e.currentTarget.closest('details').open = false; deep(e.currentTarget); } }, t('dev.deep')) : null,
       // what this device sent by itself (syslog, traps, Windows events): the messages page for this sender only
       d.ip && state.user.serverPages ? h('button', { type: 'button', onclick: () => navigate(`/events?from=${encodeURIComponent(d.ip)}`) }, t('ev.deviceMessages')) : null,
