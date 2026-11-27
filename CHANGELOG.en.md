@@ -6,9 +6,9 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
-- Machine scripts update themselves (on by default, can be switched off under Settings → Machine scripts): when there is a new version, every Windows and Linux machine fetches it with its next report – from the same address, with its own key and the same certificate check, only with a matching fingerprint (SHA-256). Needed once: roll out scripts from before 0.59 one last time. The overview reports machines with an older script, the settings list them with the reason. Hyper-V and KVM scripts do not update themselves
+- Machine scripts update themselves (on by default, can be switched off under Settings → Machine scripts): when there is a new version, every Windows and Linux machine fetches it with its next report – from the same address, with its own key and the same certificate check, only over HTTPS and with a matching fingerprint (SHA-256). Needed once: roll out scripts from before 0.59 one last time. The overview reports machines with an older script, the settings list them with the reason. Hyper-V and KVM scripts do not update themselves
 - One script per operating system: "Monitor with script" on the device page offers the shared script – the same file for all machines. A script of its own for a single device is only the exception now (e.g. a notebook at changing docking stations); existing ones keep working
-- Hardware swapped: when a machine reports with new hardware under its old name, "Unknown machines" offers a button that assigns it to the device – the old MAC address and serial number go (they stay in the history), the next report fills in the new ones. There is nothing to do on the machine
+- Hardware swapped: when a machine reports with new hardware under its old name, "Unknown machines" offers a button that assigns it to the device – MAC address and serial number are replaced by the reported ones (the old ones stay in the history). There is nothing to do on the machine
 
 ## 0.58.0 - 2026-11-27
 

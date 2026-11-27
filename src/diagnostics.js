@@ -430,7 +430,7 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
         ...db.prepare(`SELECT coalesce(SUM(json_extract(data,'$.selfUpdate.ok')=1),0) ok, coalesce(SUM(json_extract(data,'$.selfUpdate.ok')=0),0) failed FROM host_reports`).get(),
         // without names, addresses and paths a message may carry (Windows quotes the host it could not reach)
         messages: [...new Set(db.prepare(`SELECT json_extract(data,'$.selfUpdate.message') m FROM host_reports WHERE json_extract(data,'$.selfUpdate.ok')=0`).all()
-          .map((r) => String(r.m || '').replace(/https?:\/\/\S+|'[^']*'|"[^"]*"|\/\S+|[A-Za-z]:\\\S+/g, '…').slice(0, 160)).filter(Boolean))].slice(0, 10),
+          .map((r) => String(r.m || '').replace(/https?:\/\/\S+|'[^']*'|"[^"]*"|\/\S+|[A-Za-z]:\\\S+|\[?[0-9a-f]*:[0-9a-f:]{2,}\]?(:\d+)?|\b\d{1,3}(\.\d{1,3}){3}(:\d+)?\b|\b[\w-]+(\.[\w-]+)+\b/gi, '…').slice(0, 160)).filter(Boolean))].slice(0, 10),
       },
       // scan agents by the SNMP access data they get (none / own / all) - never the data themselves
       agents_snmp: Object.fromEntries(db.prepare('SELECT snmp_mode, COUNT(*) n FROM agents GROUP BY snmp_mode').all().map((r) => [r.snmp_mode, r.n])),

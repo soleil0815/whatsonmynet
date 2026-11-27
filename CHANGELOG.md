@@ -6,9 +6,9 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
-- Rechner-Skripte aktualisieren sich selbst (ab Werk an, abschaltbar unter Einstellungen → Rechner-Skripte): Gibt es eine neue Version, holt jeder Windows- und Linux-Rechner sie mit seiner nächsten Meldung – von derselben Adresse, mit seinem Schlüssel und derselben Zertifikatsprüfung, nur mit passendem Fingerabdruck (SHA-256). Einmal nötig: Skripte vor 0.59 ein letztes Mal verteilen. Die Übersicht meldet Rechner mit älterem Skript, die Einstellungen listen sie mit dem Grund. Hyper-V- und KVM-Skripte aktualisieren sich nicht selbst
+- Rechner-Skripte aktualisieren sich selbst (ab Werk an, abschaltbar unter Einstellungen → Rechner-Skripte): Gibt es eine neue Version, holt jeder Windows- und Linux-Rechner sie mit seiner nächsten Meldung – von derselben Adresse, mit seinem Schlüssel und derselben Zertifikatsprüfung, nur über HTTPS und mit passendem Fingerabdruck (SHA-256). Einmal nötig: Skripte vor 0.59 ein letztes Mal verteilen. Die Übersicht meldet Rechner mit älterem Skript, die Einstellungen listen sie mit dem Grund. Hyper-V- und KVM-Skripte aktualisieren sich nicht selbst
 - Ein Skript je Betriebssystem: „Per Skript überwachen“ auf der Geräteseite bietet das gemeinsame Skript an – dieselbe Datei für alle Rechner. Ein eigenes Skript für ein einzelnes Gerät gibt es nur noch als Ausnahme (z. B. Notebook an wechselnden Dockingstationen); vorhandene laufen weiter
-- Hardware getauscht: Meldet sich ein Rechner mit neuer Hardware unter altem Namen, bietet „Unbekannte Rechner“ einen Knopf, der ihn dem Gerät zuordnet – alte MAC-Adresse und Seriennummer gehen (sie stehen im Verlauf), die nächste Meldung trägt die neuen ein. Auf dem Rechner ist nichts zu tun
+- Hardware getauscht: Meldet sich ein Rechner mit neuer Hardware unter altem Namen, bietet „Unbekannte Rechner“ einen Knopf, der ihn dem Gerät zuordnet – MAC-Adresse und Seriennummer werden durch die gemeldeten ersetzt (die alten stehen im Verlauf). Auf dem Rechner ist nichts zu tun
 
 ## 0.58.0 - 2026-11-27
 

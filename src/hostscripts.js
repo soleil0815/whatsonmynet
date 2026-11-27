@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 
 const KINDS = {
-  windows: { file: 'womn-host.ps1', ps: true, task: 'WhatsOnMyNet-Host', old: [], extra: ['womn-updates.json', 'womn-plugins.txt', 'womn-plugin-*.out', 'womn-nics.txt', 'womn-host-update.json', 'womn-host.ps1.download', 'womn-host.ps1.new'] },
+  windows: { file: 'womn-host.ps1', ps: true, task: 'WhatsOnMyNet-Host', old: [], extra: ['womn-updates.json', 'womn-plugins.txt', 'womn-plugin-*.out', 'womn-nics.txt', 'womn-host-update.json', 'womn-host.ps1.download', 'womn-host.ps1.new', 'womn-host.ps1.old'] },
   linux: { file: 'womn-host.sh', ps: false, cron: 'whatsonmynet-host', old: [] },
   hyperv: { file: 'womn-hyperv.ps1', ps: true, task: 'WhatsOnMyNet-HyperV', old: ['WhatsOnMyNet'] },
   libvirt: { file: 'womn-libvirt.sh', ps: false, cron: 'whatsonmynet-kvm', old: ['whatsonmynet'] },

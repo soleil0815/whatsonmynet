@@ -86,8 +86,10 @@ export async function openHostScript(d, reload) {
   const submit = h('button', { class: 'btn btn-primary', type: 'submit' }, t('hs.create'));
   // the exception: a key of its own, for a machine the shared script cannot tell apart by its MAC address (a notebook
   // at changing docking stations reports their MAC) - it may also change serial number, model and MAC of its device
-  const own = h('input', { type: 'checkbox', name: 'own', checked: false });
-  const ownNote = h('p', { class: 'note warn', style: { margin: '6px 0 0', display: 'none' } }, t('hs.replace'));
+  // a device with a key of its own: the shared script does not reach it (that key would have to go first) - so a new
+  // key of its own is the default here
+  const own = h('input', { type: 'checkbox', name: 'own', checked: !!d.hostScript });
+  const ownNote = h('p', { class: 'note warn', style: { margin: '6px 0 0', display: d.hostScript ? '' : 'none' } }, t('hs.replace'));
   os.addEventListener('change', show);
   own.addEventListener('change', () => { ownNote.style.display = own.checked && d.hostScript ? '' : 'none'; if (own.checked) submit.textContent = t('hs.createOwn'); else show(); });
   const form = h('form', { class: 'form' },
@@ -96,7 +98,7 @@ export async function openHostScript(d, reload) {
     info,
     // a key of its own from before 0.59: it keeps working (and updates itself)
     d.hostScript ? h('p', { class: 'muted small', style: { margin: 0 } }, t('hs.ownKeyOld')) : null,
-    h('details', { class: 'cert-manual' }, h('summary', {}, t('hs.ownTitle')),
+    h('details', { class: 'cert-manual', open: !!d.hostScript }, h('summary', {}, t('hs.ownTitle')),
       h('label', { class: 'check', style: { marginTop: '6px' } }, own, h('span', {}, t('hs.ownLabel'))),
       h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, t('hs.ownHint')), ownNote));
   const m = modal(`${t('hs.title')}: ${d.name}`, form, { onSubmit: async () => {
@@ -107,6 +109,7 @@ export async function openHostScript(d, reload) {
     } catch (ex) { fail(ex); }
   }, actions: [btn(t('cancel'), { onclick: () => m.close() }), submit] });
   show();
+  if (own.checked) submit.textContent = t('hs.createOwn');
 }
 
 const bytes = (n) => { const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']; let i = 0; let v = Number(n) || 0; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 && i ? 1 : 0)} ${u[i]}`; };
@@ -132,7 +135,7 @@ export function systemPanel(x) {
       h('dt', {}, t('hs.uptime')), h('dd', {}, uptime(x.uptime)),
       // the version of the script: an older one is marked (roll out the new one - software distribution, Ansible …)
       x.scriptNow ? [h('dt', {}, t('hs.script')), h('dd', {}, x.script || t(win ? 'hs.scriptNone' : 'hs.scriptNoneLinux'), ' ',
-        x.scriptOld ? h('span', { class: 'badge badge-warn', title: t(selfUpdates(x.script) ? 'hs.scriptOldAuto' : win ? 'hs.scriptOldHint' : 'hs.scriptOldHintLinux', { v: x.scriptNow }) }, t('hs.scriptOld')) : null)] : null),
+        x.scriptOld ? h('span', { class: 'badge badge-warn', title: t(selfUpdates(x.script) && x.selfUpdateOn ? 'hs.scriptOldAuto' : win ? 'hs.scriptOldHint' : 'hs.scriptOldHintLinux', { v: x.scriptNow }) }, t('hs.scriptOld')) : null)] : null),
     h('div', { class: 'supplies' },
       meter('CPU', x.cpu),
       meter('RAM', x.mem, x.memTotal ? `${bytes(x.memUsed)} / ${bytes(x.memTotal)}` : ''),
@@ -307,6 +310,8 @@ export async function hostScriptsSettings(body, reload) {
     h('p', { class: 'muted small', style: { marginTop: 0 } }, t('hs.unknownLead')),
     h('ul', { class: 'port-macs' }, unmatched.map((u) => h('li', {}, h('strong', {}, u.hostname), h('span', { class: 'mono small' }, u.ip || ''),
       h('span', { class: 'muted small' }, [u.os, fmtAgo(u.at, t)].filter(Boolean).join(' · ')),
+      // what the machine says about its hardware - to tell a swapped machine from a second one of the same name
+      u.model || u.serial || u.macs?.length ? h('span', { class: 'muted small mono' }, [u.model, u.serial, ...(u.macs || []).slice(0, 2)].filter(Boolean).join(' · ')) : null,
       // new hardware under the old name: the MAC address no longer fits - one click says it is the same machine
       u.suggest ? btn(t('hs.assign', { name: u.suggest.name }), { class: 'btn btn-sm', title: t('hs.assignHint'), onclick: async (e) => {
         if (!await confirmDialog(t('hs.assignTitle'), t('hs.assignConfirm', { host: u.hostname, name: u.suggest.name }), t('hs.assignDo'), t('cancel'))) return;
@@ -330,7 +335,7 @@ export async function hostScriptsSettings(body, reload) {
 function selfUpdatePanel(sc, reload) {
   if (!sc) return null;
   const sw = onOffSwitch({ on: sc.selfUpdate, label: t('hs.selfUpdate'), onChange: async (v) => { await put('/settings/hosts', { selfUpdate: v }); toast(t('saved')); reload(); } });
-  const why = (s) => (s.manual ? t('hs.stuckManual') : s.error ? t('hs.stuckError', { msg: s.error }) : sc.selfUpdate ? t('hs.stuckSoon') : t('hs.stuckOff'));
+  const why = (s) => (s.manual ? t('hs.stuckManual') : s.error ? t('hs.stuckError', { msg: s.error }) : s.late ? t('hs.stuckLate') : sc.selfUpdate ? t('hs.stuckSoon') : t('hs.stuckOff'));
   return h('section', { class: 'panel panel-pad' },
     h('h2', { class: 'section-title' }, t('hs.selfUpdate')),
     h('p', { class: 'muted small', style: { marginTop: 0 } }, t('hs.selfUpdateLead')),
@@ -339,7 +344,7 @@ function selfUpdatePanel(sc, reload) {
       h('ul', { class: 'port-macs' }, sc.stuck.map((s) => h('li', {},
         h('a', { href: `/devices/${s.deviceId}`, 'data-link': true }, h('strong', {}, s.name)),
         h('span', { class: 'mono small' }, `${s.version || t('hs.scriptOlder')} → ${s.now}`),
-        h('span', { class: `badge ${s.manual || s.error || !sc.selfUpdate ? 'badge-warn' : ''}` }, why(s)))))]
+        h('span', { class: `badge ${s.manual || s.error || s.late || !sc.selfUpdate ? 'badge-warn' : ''}` }, why(s)))))]
       : h('p', { class: 'muted small', style: { margin: 0 } }, t('hs.stuckNone')));
 }
 

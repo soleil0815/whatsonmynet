@@ -322,12 +322,14 @@ Send-Report $body
 # Self-update: the answer to the report names a newer version of this script ("update": "<version>:<sha256>") when
 # WhatsOnMyNet offers one. It is fetched from the same address with the same key and certificate check, its
 # fingerprint and version must match, the address, key and certificate pin of this copy are put in, and the copy
-# replaces itself - the next run is the new version; the task, the key and the settings stay. Not during the setup.
+# replaces itself - the next run is the new version; the task, the key and the settings stay. Not during the setup,
+# and only over HTTPS: over plain HTTP anyone on the way could name a fingerprint of their own.
 # A failed try leaves the old copy running and is repeated on the next run; its result goes with the next report.
 if (-not $Setup -and -not $SendFailed -and [string]$script:Answer -match '"update"\s*:\s*"(\d{1,4}\.\d{1,4}\.\d{1,6}):([0-9a-f]{64})"') {
   $newVer = $Matches[1]; $newSha = $Matches[2]; $updMsg = ''; $updOk = $false; $bytes = $null
-  $tmp = "$Dest.download"; $new = "$Dest.new"
+  $tmp = "$Dest.download"; $new = "$Dest.new"; $old = "$Dest.old"
   try {
+    if ($Url -notlike 'https://*') { throw 'self-update only over https' }
     $req = [Net.HttpWebRequest]::Create(($Url -replace '/push$', '/script'))
     $req.Method = 'GET'; $req.Timeout = 60000; $req.ReadWriteTimeout = 60000
     $req.Headers.Add('Authorization', "Bearer $Token"); $req.Headers.Add('X-WOMN-Request', '1')
@@ -339,8 +341,10 @@ if (-not $Setup -and -not $SendFailed -and [string]$script:Answer -match '"updat
     }
     if ($resp) {
       # read as text like the answer to the report (UTF-8 there and back gives the same bytes, so the fingerprint holds)
+      # at most 1 MB, also when the answer names no length (a proxy that sends it in chunks)
       if ([int]$resp.StatusCode -eq 200 -and $resp.ContentLength -le 1048576) {
-        $r = [IO.StreamReader]::new($resp.GetResponseStream(), [Text.UTF8Encoding]::new($false)); $bytes = [Text.Encoding]::UTF8.GetBytes($r.ReadToEnd()); $r.Close()
+        $r = [IO.StreamReader]::new($resp.GetResponseStream(), [Text.UTF8Encoding]::new($false)); $buf = [char[]]::new(1048577); $n = $r.ReadBlock($buf, 0, $buf.Length); $r.Close()
+        if ($n -gt 1048576) { $updMsg = 'too large' } else { $bytes = [Text.Encoding]::UTF8.GetBytes([string]::new($buf, 0, $n)) }
       } elseif ([int]$resp.StatusCode -eq 200) { $updMsg = 'too large' } else { $updMsg = "answer $([int]$resp.StatusCode)" }
       $resp.Close()
     }
@@ -359,15 +363,21 @@ if (-not $Setup -and -not $SendFailed -and [string]$script:Answer -match '"updat
           if ($text.Contains($mk)) { $updMsg = 'unknown mark in the new version' }
           else {
             [IO.File]::WriteAllText($new, $text, [Text.UTF8Encoding]::new($true))
-            # (no backup file: [NullString] - a plain $null would arrive as an empty path)
-            [IO.File]::Replace($new, $Dest, [NullString]::Value)
+            # complete on disk (a full disk must not leave half a script behind)
+            if ([IO.File]::ReadAllText($new) -cne $text) { throw 'the new version was not written completely' }
+            # with a backup: should Windows give up halfway, the old copy comes back below
+            [IO.File]::Replace($new, $Dest, $old)
             $updOk = $true
           }
         }
       }
     }
   } catch { $updMsg = [string]$_.Exception.Message }
-  foreach ($f in @($tmp, $new)) { if (Test-Path -LiteralPath $f) { try { Remove-Item -LiteralPath $f -Force } catch { $null = $_ } } }
+  # never without a script: the old copy back if the replacement went wrong halfway
+  if (-not (Test-Path -LiteralPath $Dest)) {
+    foreach ($f in @($old, $new)) { if (-not (Test-Path -LiteralPath $Dest) -and (Test-Path -LiteralPath $f)) { try { Move-Item -LiteralPath $f -Destination $Dest -Force } catch { $null = $_ } } }
+  }
+  foreach ($f in @($tmp, $new, $old)) { if (Test-Path -LiteralPath $f) { try { Remove-Item -LiteralPath $f -Force } catch { $null = $_ } } }
   if (-not $updOk -and -not $updMsg) { $updMsg = 'no answer' }
   if ($updMsg.Length -gt 200) { $updMsg = $updMsg.Substring(0, 200) }
   try { @{ at = (Get-Date).ToUniversalTime().ToString('o'); ok = $updOk; version = $newVer; message = $updMsg } | ConvertTo-Json -Compress | Set-Content -Path $UpdState -Encoding UTF8 } catch { $null = $_ }

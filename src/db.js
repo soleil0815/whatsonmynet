@@ -796,6 +796,10 @@ export const MIGRATIONS = [
   // 46: watch the network ports of a device (NAS, router, firewall by SNMP; machines with the host script: their network
   // cards) - off until someone switches it on for the device
   { sql: 'ALTER TABLE devices ADD COLUMN watch_ports INTEGER NOT NULL DEFAULT 0;', unless: "SELECT 1 FROM pragma_table_info('devices') WHERE name = 'watch_ports'" },
+  // 47: unknown machines - what they say about their hardware (shown before "hardware swapped", taken over by it)
+  { sql: `ALTER TABLE host_unmatched ADD COLUMN macs TEXT NOT NULL DEFAULT '[]';
+     ALTER TABLE host_unmatched ADD COLUMN serial TEXT NOT NULL DEFAULT '';
+     ALTER TABLE host_unmatched ADD COLUMN model TEXT NOT NULL DEFAULT '';`, unless: "SELECT 1 FROM pragma_table_info('host_unmatched') WHERE name = 'macs'" },
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached
