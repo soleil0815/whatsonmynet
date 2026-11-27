@@ -155,13 +155,26 @@ export function confirmDialog(title, text, okLabel, cancelLabel, { danger = fals
   });
 }
 
+// One formatter per language and kind, made once: toLocaleString makes a new one on every call - the monitoring page
+// formats some 16 000 times (40 checks of 400 monitors) and held the browser up for two seconds on every refresh
+const dateFormats = new Map();
+function dateFormat(lang, withTime) {
+  const key = `${lang === 'en' ? 'en' : 'de'}|${withTime ? 1 : 0}`;
+  let f = dateFormats.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'de-DE', withTime
+      ? { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+      : { day: '2-digit', month: '2-digit', year: 'numeric' });
+    dateFormats.set(key, f);
+  }
+  return f;
+}
+
 export function fmtDate(iso, lang, withTime = true) {
   if (!iso) return '–';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(lang === 'en' ? 'en-GB' : 'de-DE', withTime
-    ? { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }
-    : { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return dateFormat(lang, withTime).format(d);
 }
 
 export function fmtAgo(iso, t) {

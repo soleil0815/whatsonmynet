@@ -282,9 +282,11 @@ export function createHosts({ db, plugins = null, settings = null }) {
       // outdated: older than the current script; action: those that will not update on their own (from before 0.59, a
       // failed try, or self-update switched off) - only these need a look
       const out = { outdated: 0, action: 0, stuck: [], selfUpdate: !!settings?.get('hosts.selfUpdate') };
-      for (const row of db.prepare('SELECT d.id, d.name, h.at, h.data FROM host_reports h JOIN devices d ON d.id=h.device_id WHERE h.at >= ?').all(goneBefore())) {
+      // of each report only what decides it (table of its own, migration 48 - the overview asks on every visit)
+      for (const row of db.prepare(`SELECT d.id, d.name, h.at, f.os, f.script, f.self_update su, f.offered
+        FROM host_report_facts f JOIN host_reports h ON h.device_id=f.device_id JOIN devices d ON d.id=f.device_id WHERE h.at >= ?`).all(goneBefore())) {
         if (allowed && !allowed(row.id)) continue;
-        const x = parse(row.data, {});
+        const x = { os: row.os, script: row.script, selfUpdate: parse(row.su, null), updateOffered: parse(row.offered, null) };
         const now = SCRIPT_VERSIONS[hostOs(x.os)];
         if (x.script && !older(x.script, now)) continue;
         out.outdated++;
@@ -356,10 +358,14 @@ export function createHosts({ db, plugins = null, settings = null }) {
  */
 export function hostTempsByName(db) {
   const out = new Map();
-  for (const r of db.prepare('SELECT d.id, d.name, d.hostname, h.at, h.data FROM host_reports h JOIN devices d ON d.id=h.device_id').all()) {
-    let x;
-    try { x = JSON.parse(r.data); } catch { continue; }
-    const temps = Array.isArray(x?.temps) ? x.temps : [];
+  // only machines with temperatures, and of their report only name and temperatures (table of their own, migration
+  // 48 - the report itself is not read: a Windows report is some 25 KB, a thousand of them took a page half a second)
+  for (const r of db.prepare(`SELECT d.id, d.name, d.hostname, h.at, f.hostname reported, f.temps
+    FROM host_report_facts f JOIN host_reports h ON h.device_id=f.device_id JOIN devices d ON d.id=f.device_id WHERE f.temps IS NOT NULL`).all()) {
+    const x = { hostname: r.reported };
+    let temps;
+    try { temps = JSON.parse(r.temps); } catch { continue; }
+    temps = Array.isArray(temps) ? temps : [];
     if (!temps.length) continue;
     const hot = temps.reduce((a, b) => (b.c > a.c ? b : a));
     const v = { c: hot.c, name: hot.name, warn: hot.warn, at: r.at, deviceId: r.id, stale: Date.now() - Date.parse(r.at) > STALE_MIN * 60 * 1000 };
@@ -392,26 +398,41 @@ export function hostGlance(x) {
 }
 
 /**
- * Machines whose script reports (not gone), by short name → { deviceId, at, stale, glance }; the newest report wins
- * when two machines share a name. One query, each report read once - also with many machines.
+ * Machines whose script reports (not gone), by short name → { deviceId, at, stale }; the newest report wins when two
+ * machines share a name. Names come from a table of their own (migration 48), not from the reports: a hypervisor is
+ * polled every minute, and reading a thousand reports whole held the server up each time.
  */
 const reportingCache = new WeakMap();
 /** Tests: read the reports anew on the next call */
-export const forgetReporting = (db) => reportingCache.delete(db);
+export const forgetReporting = (db) => { reportingCache.delete(db); glanceCache.delete(db); };
 export function reportingHosts(db) {
-  // one page lists many hypervisors: read the reports once for all of them (a few seconds are new enough)
+  // one page lists many hypervisors: the names once for all of them (a few seconds are new enough)
   const hit = reportingCache.get(db);
   if (hit && Date.now() - hit.at < 3000) return hit.map;
   const out = new Map();
-  for (const r of db.prepare('SELECT d.id, d.name, d.hostname, h.at, h.data FROM host_reports h JOIN devices d ON d.id=h.device_id WHERE h.at >= ? ORDER BY h.at')
+  for (const r of db.prepare(`SELECT d.id, d.name, d.hostname, h.at, f.hostname reported FROM host_reports h JOIN devices d ON d.id=h.device_id
+    LEFT JOIN host_report_facts f ON f.device_id=h.device_id WHERE h.at >= ? ORDER BY h.at`)
     .all(goneBefore())) {
-    let x = {};
-    try { x = JSON.parse(r.data) || {}; } catch { /* name of the device only */ }
-    const v = { deviceId: r.id, at: r.at, stale: Date.now() - Date.parse(r.at) > STALE_MIN * 60 * 1000, glance: hostGlance(x) };
-    for (const n of [x.hostname, r.hostname, r.name]) { const k = String(n || '').toLowerCase().split('.')[0].trim(); if (k) out.set(k, v); }
+    const v = { deviceId: r.id, at: r.at, stale: Date.now() - Date.parse(r.at) > STALE_MIN * 60 * 1000 };
+    for (const n of [r.reported, r.hostname, r.name]) { const k = String(n || '').toLowerCase().split('.')[0].trim(); if (k) out.set(k, v); }
   }
   reportingCache.set(db, { at: Date.now(), map: out });
   return out;
+}
+
+// What a report says at a glance - read only for the nodes and guests shown, and again only when a newer report came
+const glanceCache = new WeakMap();
+function glanceOf(db, deviceId, at) {
+  let m = glanceCache.get(db);
+  if (!m) glanceCache.set(db, (m = new Map()));
+  const hit = m.get(deviceId);
+  if (hit && hit.at === at) return hit.glance;
+  let x = {};
+  try { x = JSON.parse(db.prepare('SELECT data FROM host_reports WHERE device_id=?').pluck().get(deviceId)) || {}; } catch { /* name of the device only */ }
+  const glance = hostGlance(x);
+  if (m.size > 5000) m.clear();
+  m.set(deviceId, { at, glance });
+  return glance;
 }
 
 /**
@@ -425,7 +446,7 @@ export function nodeScriptsInto(db, data) {
   if (!hasNodes && !hasGuests) return data;
   const hosts = reportingHosts(db);
   const of = (name) => hosts.get(String(name || '').toLowerCase().split('.')[0].trim());
-  const join = (n) => { const r = of(n.name); return r ? { ...n, script: !r.stale, report: r } : { ...n, script: false }; };
+  const join = (n) => { const r = of(n.name); return r ? { ...n, script: !r.stale, report: { ...r, glance: glanceOf(db, r.deviceId, r.at) } } : { ...n, script: false }; };
   return { ...data, ...(hasNodes ? { nodes: data.nodes.map(join) } : {}), ...(hasGuests ? { guests: data.guests.map(join) } : {}) };
 }
 

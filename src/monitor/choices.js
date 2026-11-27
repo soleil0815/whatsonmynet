@@ -26,7 +26,8 @@ export function createSensorChoices({ db, settings }) {
   /** name → device id for every device (inventory name, host name, the name its script reports); IP → device id */
   function deviceIndex() {
     const byName = new Map(); const byIp = new Map();
-    const reported = new Map(db.prepare('SELECT device_id, data FROM host_reports').all().map((r) => [r.device_id, parse(r.data, {})?.hostname]));
+    // (the name its script reports: a table of its own, migration 48 - the report is not read here)
+    const reported = new Map(db.prepare('SELECT device_id, hostname h FROM host_report_facts').all().map((r) => [r.device_id, r.h]));
     for (const d of db.prepare('SELECT id, name, hostname, ip FROM devices ORDER BY id').all()) {
       for (const n of [d.name, d.hostname, reported.get(d.id)]) { const k = shortName(n); if (k && !byName.has(k)) byName.set(k, d.id); }
       if (d.ip && !byIp.has(d.ip)) byIp.set(d.ip, d.id);

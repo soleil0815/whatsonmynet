@@ -682,12 +682,12 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
   function list() {
     const rows = db.prepare(`SELECT m.*, d.name device_name, l.name location_name FROM monitors m LEFT JOIN devices d ON d.id=m.device_id
       LEFT JOIN locations l ON l.id=d.location_id ORDER BY m.name`).all();
-    const beats = db.prepare(`SELECT monitor_id, ok, ms, at, message FROM (
-      SELECT monitor_id, ok, ms, at, message, ROW_NUMBER() OVER (PARTITION BY monitor_id ORDER BY id DESC) rn FROM checks
-      WHERE at >= ?) WHERE rn <= 40 ORDER BY monitor_id, at`).all(iso(new Date(now().getTime() - 86400000)));
-    const byMon = new Map();
-    for (const b of beats) { if (!byMon.has(b.monitor_id)) byMon.set(b.monitor_id, []); byMon.get(b.monitor_id).push({ ok: !!b.ok, ms: b.ms, at: b.at, message: b.message }); }
-    return rows.map((m) => ({ ...shape(m), uptime24: uptime(m.id, 24).pct, beats: byMon.get(m.id) || [] }));
+    // the last 40 checks of the day per monitor: one look into the index each (numbering every check of the day of all
+    // monitors - some hundred thousand rows - took the list half a second)
+    const since = iso(new Date(now().getTime() - 86400000));
+    const last = db.prepare('SELECT ok, ms, at, message FROM checks WHERE monitor_id=? AND at>=? ORDER BY at DESC, id DESC LIMIT 40');
+    const beatsOf = (id) => last.all(id, since).reverse().map((b) => ({ ok: !!b.ok, ms: b.ms, at: b.at, message: b.message }));
+    return rows.map((m) => ({ ...shape(m), uptime24: uptime(m.id, 24).pct, beats: beatsOf(m.id) }));
   }
 
   function detail(id, hours = 24) {
@@ -967,10 +967,24 @@ export function createMonitoring({ db, channels, maintenance, settings = null, n
     stop() { if (timer) clearInterval(timer); timer = null; },
     /** Checks these monitors at the next tick (a message just came in) - only while the monitoring runs */
     soon(ids) { if (timer) for (const id of ids) nextRun.set(id, 0); },
-    cleanup() {
-      db.prepare('DELETE FROM checks WHERE at < ?').run(iso(new Date(Date.now() - KEEP_CHECKS_DAYS * 86400000)));
-      db.prepare('DELETE FROM monitor_hourly WHERE hour < ?').run(hourOf(new Date(Date.now() - KEEP_HOURLY_DAYS * 86400000)));
-      db.prepare('DELETE FROM monitor_events WHERE at < ?').run(iso(new Date(Date.now() - KEEP_HOURLY_DAYS * 86400000)));
+    /**
+     * Old checks, hourly values and events out - monitor by monitor along the index, with a break for the web pages
+     * after each one: all at once a day of checks of a few hundred monitors (some 600 000 rows) held the whole server
+     * up for a second. Rows of monitors that are gone already left with them (ON DELETE CASCADE).
+     */
+    async cleanup() {
+      const checksBefore = iso(new Date(Date.now() - KEEP_CHECKS_DAYS * 86400000));
+      const hourBefore = hourOf(new Date(Date.now() - KEEP_HOURLY_DAYS * 86400000));
+      const eventsBefore = iso(new Date(Date.now() - KEEP_HOURLY_DAYS * 86400000));
+      const checks = db.prepare('DELETE FROM checks WHERE monitor_id=? AND at < ?');
+      const hourly = db.prepare('DELETE FROM monitor_hourly WHERE monitor_id=? AND hour < ?');
+      const events = db.prepare('DELETE FROM monitor_events WHERE monitor_id=? AND at < ?');
+      let n = 0;
+      for (const { id } of db.prepare('SELECT id FROM monitors').all()) {
+        n += db.transaction(() => checks.run(id, checksBefore).changes + hourly.run(id, hourBefore).changes + events.run(id, eventsBefore).changes)();
+        await new Promise((r) => setImmediate(r));
+      }
+      return n;
     },
   };
 }

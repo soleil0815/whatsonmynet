@@ -706,14 +706,23 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     return top - to;
   }
   let ftsTimer = null; let ftsRunning = false; let ftsStart = null;
+  // Size of a batch: as many messages as take some 30 ms (the receivers and the web pages wait that long at most). A
+  // fixed 5 000 took up to a quarter of a second each - catching up after an update, every click waited that long.
+  const STEP_MS = 30;
+  let stepRows = 1000;
   /** Batches until the index has caught up - between them the receivers get their turn */
   function indexPump() {
     if (ftsRunning) return;
     ftsRunning = true;
     const step = () => {
       let left = 0; let counts = 0;
-      try { left = indexBatch(); } catch (e) { log.warn(`Messages: search index: ${e.message}`); left = 0; }
-      try { counts = countBatch(); } catch (e) { log.warn(`Messages: counts: ${e.message}`); }
+      const t0 = performance.now();
+      try { left = indexBatch(Math.min(FTS_BATCH, stepRows)); } catch (e) { log.warn(`Messages: search index: ${e.message}`); left = 0; }
+      try { counts = countBatch(Math.min(COUNT_BATCH, stepRows * 4)); } catch (e) { log.warn(`Messages: counts: ${e.message}`); }
+      const took = performance.now() - t0;
+      // only a step with a full batch says how fast it goes (an idle round would let it grow back to the long stall)
+      const worked = (left > 0 || counts > 0);
+      if (worked) stepRows = Math.max(500, Math.min(FTS_BATCH, Math.round(stepRows * (took > STEP_MS * 1.5 ? 0.6 : took < STEP_MS / 2 ? 1.5 : 1))));
       if (left > 0 || counts > 0) { if (left > 50000 && !ftsStart) { ftsStart = { at: Date.now(), done: ftsDone() }; log.info('Messages: building the search index in the background'); } setImmediate(step); return; }
       if (ftsStart) { log.info(`Messages: search index ready (${Math.round((Date.now() - ftsStart.at) / 1000)} s)`); ftsStart = null; }
       ftsRunning = false;
