@@ -805,18 +805,19 @@ export const MIGRATIONS = [
   // reads all reports whole: a Windows report is some 25 KB, and a thousand of them made the overview stop and think -
   // also as columns next to the report, which SQLite keeps behind it (read only by reading the report).
   // (DELETE + INSERT, not INSERT OR REPLACE: the report is written with an upsert, and SQLite applies the conflict rule
-  // of that outer statement to the statements of its triggers - OR REPLACE would become ABORT and every second report fail)
+  // of that outer statement to the statements of its triggers - OR REPLACE would become ABORT and every second report fail;
+  // also when the report moves to another device: merging two devices; a report of a device that is gone is not copied)
   { sql: `CREATE TABLE host_report_facts (
        device_id INTEGER PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
        hostname TEXT, os TEXT, script TEXT, temps TEXT, self_update TEXT, offered TEXT
      );
-     INSERT INTO host_report_facts(device_id, hostname, os, script, temps, self_update, offered) SELECT device_id, CASE WHEN json_valid(data) THEN json_extract(data,'$.hostname') END, CASE WHEN json_valid(data) THEN json_extract(data,'$.os') END, CASE WHEN json_valid(data) THEN json_extract(data,'$.script') END, CASE WHEN json_valid(data) THEN CASE WHEN json_array_length(data,'$.temps') > 0 THEN json_extract(data,'$.temps') END END, CASE WHEN json_valid(data) THEN json_extract(data,'$.selfUpdate') END, CASE WHEN json_valid(data) THEN json_extract(data,'$.updateOffered') END FROM host_reports;
+     INSERT INTO host_report_facts(device_id, hostname, os, script, temps, self_update, offered) SELECT device_id, CASE WHEN json_valid(data) THEN json_extract(data,'$.hostname') END, CASE WHEN json_valid(data) THEN json_extract(data,'$.os') END, CASE WHEN json_valid(data) THEN json_extract(data,'$.script') END, CASE WHEN json_valid(data) THEN CASE WHEN json_array_length(data,'$.temps') > 0 THEN json_extract(data,'$.temps') END END, CASE WHEN json_valid(data) THEN json_extract(data,'$.selfUpdate') END, CASE WHEN json_valid(data) THEN json_extract(data,'$.updateOffered') END FROM host_reports WHERE device_id IN (SELECT id FROM devices);
      CREATE TRIGGER host_report_facts_ins AFTER INSERT ON host_reports BEGIN
        DELETE FROM host_report_facts WHERE device_id = NEW.device_id;
        INSERT INTO host_report_facts(device_id, hostname, os, script, temps, self_update, offered) VALUES (NEW.device_id, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.hostname') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.os') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.script') END, CASE WHEN json_valid(NEW.data) THEN CASE WHEN json_array_length(NEW.data,'$.temps') > 0 THEN json_extract(NEW.data,'$.temps') END END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.selfUpdate') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.updateOffered') END);
      END;
-     CREATE TRIGGER host_report_facts_upd AFTER UPDATE OF data ON host_reports BEGIN
-       DELETE FROM host_report_facts WHERE device_id = NEW.device_id;
+     CREATE TRIGGER host_report_facts_upd AFTER UPDATE OF device_id, data ON host_reports BEGIN
+       DELETE FROM host_report_facts WHERE device_id IN (OLD.device_id, NEW.device_id);
        INSERT INTO host_report_facts(device_id, hostname, os, script, temps, self_update, offered) VALUES (NEW.device_id, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.hostname') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.os') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.script') END, CASE WHEN json_valid(NEW.data) THEN CASE WHEN json_array_length(NEW.data,'$.temps') > 0 THEN json_extract(NEW.data,'$.temps') END END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.selfUpdate') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.updateOffered') END);
      END;
      CREATE TRIGGER host_report_facts_del AFTER DELETE ON host_reports BEGIN

@@ -3,7 +3,10 @@
 // machine reports, 400 monitors and 1.5 million messages found - each kept as a test, so it does not come back.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { memoryDb } from './helpers.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { memoryDb, tmp } from './helpers.js';
+import { openDatabase } from '../src/db.js';
 import { createHosts, cleanReport, hostTempsByName, nodeScriptsInto, forgetReporting } from '../src/hosts.js';
 import { createInventory } from '../src/inventory.js';
 import { createMonitoring } from '../src/monitor/index.js';
@@ -41,6 +44,14 @@ test('what the pages need of a report is kept in a small table of its own - by e
   assert.deepEqual(facts(db, id), { hostname: null, os: null, script: null, temps: null, self_update: null, offered: null });
   db.prepare('DELETE FROM host_reports WHERE device_id=?').run(id);
   assert.equal(facts(db, id), undefined);
+  // merging two devices moves the report to the kept one: its row moves along (it used to stay with the dropped device
+  // and leave with it - the kept one lost name, script version and temperatures until its next report)
+  const keep = device(db, 'PVE1-NEU');
+  db.prepare("INSERT INTO host_reports(device_id,at,data) VALUES(?,?,'{\"hostname\":\"pve1\",\"script\":\"0.40.0\"}')").run(id, at());
+  db.prepare('UPDATE host_reports SET device_id=? WHERE device_id=?').run(keep, id);
+  assert.equal(facts(db, id), undefined);
+  assert.equal(facts(db, keep).script, '0.40.0');
+  db.prepare('DELETE FROM host_reports WHERE device_id=?').run(keep);
   // a device that goes takes its row along
   db.prepare("INSERT INTO host_reports(device_id,at,data) VALUES(?,?,'{\"hostname\":\"pve1\"}')").run(id, at());
   db.prepare('DELETE FROM devices WHERE id=?').run(id);
@@ -128,4 +139,22 @@ test('device page: its presence alone, the same as in the list (not the whole in
   const list = new Map(inv.list().map((d) => [d.id, d.presence]));
   for (const id of [seen, gone, other]) assert.equal(inv.presenceOf(id), list.get(id));
   assert.deepEqual([inv.presenceOf(seen), inv.presenceOf(gone), inv.presenceOf(other), inv.presenceOf(9999)], ['online', 'missing', 'unknown', 'unknown']);
+});
+
+test('migration 48 on an older file: filled from the reports, a report of a device that is gone does not stop the start', () => {
+  const dir = fs.mkdtempSync(path.join(tmp, 'm48-'));
+  const file = path.join(dir, 'whatsonmynet.sqlite');
+  let db = openDatabase(file);
+  const id = device(db, 'PC-0001');
+  db.prepare("INSERT INTO host_reports(device_id,at,data) VALUES(?,?,'{\"hostname\":\"pc-0001\",\"script\":\"0.58.0\"}')").run(id, at());
+  // as before the update: no table, no triggers - and one report whose device is gone (a damaged or hand-edited file)
+  db.exec('DROP TRIGGER host_report_facts_ins; DROP TRIGGER host_report_facts_upd; DROP TRIGGER host_report_facts_del; DROP TABLE host_report_facts');
+  db.pragma('foreign_keys = OFF');
+  db.prepare("INSERT INTO host_reports(device_id,at,data) VALUES(9999,?,'{\"hostname\":\"weg\"}')").run(at());
+  db.pragma('user_version = 47');
+  db.close();
+  db = openDatabase(file);
+  assert.equal(facts(db, id).script, '0.58.0');
+  assert.equal(facts(db, 9999), undefined);
+  db.close();
 });
