@@ -164,7 +164,7 @@ export function createPlugins({ db }) {
       return {
         tags: [...tags].sort().slice(0, 500),
         locations: db.prepare('SELECT id, name FROM locations ORDER BY name COLLATE NOCASE').all(),
-        devices: db.prepare(`SELECT d.id, d.name, json_extract(h.data,'$.os') os FROM host_reports h JOIN devices d ON d.id=h.device_id WHERE h.at >= ? ORDER BY d.name COLLATE NOCASE LIMIT 2000`).all(goneBefore())
+        devices: db.prepare(`SELECT d.id, d.name, f.os FROM host_reports h JOIN devices d ON d.id=h.device_id LEFT JOIN host_report_facts f ON f.device_id=h.device_id WHERE h.at >= ? ORDER BY d.name COLLATE NOCASE LIMIT 2000`).all(goneBefore())
           .map((d) => ({ id: d.id, name: d.name, os: /windows/i.test(String(d.os || '')) ? 'windows' : 'linux' })),
         dirs: DIRS,
       };

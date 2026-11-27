@@ -3,6 +3,15 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Schneller mit vielen Geräten: Übersicht, Geräteseite, Monitoring und Sensoren lesen nicht mehr bei jedem Aufruf alle Rechner-Meldungen ganz (gemessen mit 1 500 Geräten, 1 000 Rechnern, 400 Monitoren: Übersicht 320 → 46 ms, Geräteseite 460 → 19 ms, Sensoren 370 → 16 ms, Monitor-Liste 380 → 60 ms). Was die Seiten davon brauchen, steht in einer kleinen Tabelle für sich',
+    'Keine Denkpausen mehr im Hintergrund: Die Abfrage der Virtualisierung, das tägliche Aufräumen alter Prüfungen und der Aufbau des Suchindex für Meldungen halten den Server nicht mehr spürbar an (vorher bis zu einer Sekunde, in der keine Seite antwortete)',
+    'Monitoring-Seite: Das Zeichnen der Prüf-Balken hielt den Browser bei vielen Monitoren bei jeder Aktualisierung bis zu zwei Sekunden an – jetzt ein Zehntel davon',
+  ], en: [
+    'Faster with many devices: overview, device page, monitoring and sensors no longer read all machine reports whole on every visit (measured with 1,500 devices, 1,000 machines, 400 monitors: overview 320 → 46 ms, device page 460 → 19 ms, sensors 370 → 16 ms, monitor list 380 → 60 ms). What the pages need of them is kept in a small table of its own',
+    'No more pauses in the background: polling the virtualisation, the daily cleanup of old checks and building the search index for messages no longer hold the server up noticeably (before up to a second in which no page answered)',
+    'Monitoring page: drawing the check bars held the browser up for up to two seconds on every refresh with many monitors – now a tenth of that',
+  ] },
+  { version: '0.59.0', date: '2026-11-27', de: [
     'Rechner-Skripte aktualisieren sich selbst (ab Werk an, abschaltbar unter Einstellungen → Rechner-Skripte): Gibt es eine neue Version, holt jeder Windows- und Linux-Rechner sie mit seiner nächsten Meldung – von derselben Adresse, mit seinem Schlüssel und derselben Zertifikatsprüfung, nur über HTTPS und mit passendem Fingerabdruck (SHA-256). Einmal nötig: Skripte vor 0.59 ein letztes Mal verteilen. Die Übersicht meldet Rechner mit älterem Skript, die Einstellungen listen sie mit dem Grund. Hyper-V- und KVM-Skripte aktualisieren sich nicht selbst',
     'Ein Skript je Betriebssystem: „Per Skript überwachen“ auf der Geräteseite bietet das gemeinsame Skript an – dieselbe Datei für alle Rechner. Ein eigenes Skript für ein einzelnes Gerät gibt es nur noch als Ausnahme (z. B. Notebook an wechselnden Dockingstationen); vorhandene laufen weiter',
     'Hardware getauscht: Meldet sich ein Rechner mit neuer Hardware unter altem Namen, bietet „Unbekannte Rechner“ einen Knopf, der ihn dem Gerät zuordnet – MAC-Adresse und Seriennummer werden durch die gemeldeten ersetzt (die alten stehen im Verlauf). Auf dem Rechner ist nichts zu tun',

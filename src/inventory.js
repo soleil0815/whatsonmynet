@@ -5,7 +5,7 @@
 // After every scan: known devices get their new IP, host name (unless typed in by hand) and last-seen time automatically
 // (with an entry in the history); new devices only appear in the scan result until the admin adopts or ignores them.
 import { HttpError, line, str, isoDate, oneOf } from './lib/http.js';
-import { normalizeMac, isIPv4, ipSortKey, cidrContains } from './lib/net.js';
+import { normalizeMac, isIPv4, ipSortKey, cidrContains, parseCidr } from './lib/net.js';
 import { TYPES, isTelematik, suggestName } from './scan/classify.js';
 import { bestWebUrl } from './scan/engine.js';
 import { forgetDevices } from './lib/idlists.js';
@@ -198,14 +198,15 @@ export function createInventory(db) {
 
   /** Last finished network scans with their subnets - to tell whether a device was seen in the latest scan */
   function coverage() {
+    // the subnets parsed once here, not once per device (thousands of devices × 50 scans)
     return db.prepare("SELECT id, started_at, targets FROM scans WHERE kind='network' AND status='done' ORDER BY id DESC LIMIT 50").all()
-      .map((s) => ({ ...s, targets: parse(s.targets, []) }));
+      .map((s) => { const tg = parse(s.targets, []); return { ...s, targets: (Array.isArray(tg) ? tg : []).map((t) => ({ ...t, net: parseCidr(t?.cidr) })) }; });
   }
 
   /** 'online' (seen in the newest scan of its subnet), 'missing' (not seen), 'unknown' (not scanned since) */
   function presence(d, scans) {
     if (!d.ip) return 'unknown';
-    const s = scans.find((x) => x.targets.some((t) => cidrContains(t.cidr, d.ip)));
+    const s = scans.find((x) => x.targets.some((t) => t.net && cidrContains(t.net, d.ip)));
     if (!s || (d.created_at > s.started_at && !d.last_seen)) return 'unknown';
     return d.last_seen && d.last_seen >= s.started_at ? 'online' : (d.created_at > s.started_at ? 'unknown' : 'missing');
   }
@@ -228,6 +229,12 @@ export function createInventory(db) {
       const f = parse(facts);
       return { ...rest, ports: f.ports || [], telematik: isTelematik(d.type), presence: presence(d, scans) };
     }).sort((a, b) => ipSortKey(a.ip) - ipSortKey(b.ip) || a.name.localeCompare(b.name));
+  }
+
+  /** presence of one device (the device page) - without listing the whole inventory */
+  function presenceOf(id) {
+    const d = db.prepare('SELECT ip, created_at, last_seen FROM devices WHERE id=?').get(id);
+    return d ? presence(d, coverage()) : 'unknown';
   }
 
   function historyOf(id) {
@@ -591,7 +598,7 @@ export function createInventory(db) {
     db.prepare('UPDATE devices SET auto_fields=? WHERE id=?').run(JSON.stringify({ ...parseAuto(d.auto_fields), hostname: null }), d.id);
     return get(d.id);
   };
-  return { likelyExisting, linkResults, duplicates, merge, applyResult, finishScan, create: createFromForm, update, remove, get, list, historyOf, adopt, ignore, unignore, outdatedResults, stats, history, suggestions, bulkUpdate, bulkRemove };
+  return { likelyExisting, linkResults, duplicates, merge, applyResult, finishScan, create: createFromForm, update, remove, get, list, presenceOf, historyOf, adopt, ignore, unignore, outdatedResults, stats, history, suggestions, bulkUpdate, bulkRemove };
 }
 
 /** CSV export (semicolon, UTF-8 with BOM - opens correctly in Excel) */

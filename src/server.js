@@ -74,7 +74,7 @@ async function main() {
   // Daily: sessions, old check results, backup, renew the self-signed certificate if needed
   const daily = async () => {
     try { ctx.sessions.purgeExpired(); } catch (e) { log.warn(`Session cleanup failed: ${e.message}`); }
-    try { ctx.monitoring.cleanup(); } catch (e) { log.warn(`Monitoring cleanup failed: ${e.message}`); }
+    try { await ctx.monitoring.cleanup(); } catch (e) { log.warn(`Monitoring cleanup failed: ${e.message}`); }
     try { ctx.nightly.cleanup(); } catch (e) { log.warn(`Sightings cleanup failed: ${e.message}`); }
     try { ctx.diagnostics.prune(); } catch (e) { log.warn(`Log cleanup failed: ${e.message}`); }
     try { ctx.events.prune(); } catch (e) { log.warn(`Messages cleanup failed: ${e.message}`); }

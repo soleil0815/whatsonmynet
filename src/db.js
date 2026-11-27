@@ -800,6 +800,28 @@ export const MIGRATIONS = [
   { sql: `ALTER TABLE host_unmatched ADD COLUMN macs TEXT NOT NULL DEFAULT '[]';
      ALTER TABLE host_unmatched ADD COLUMN serial TEXT NOT NULL DEFAULT '';
      ALTER TABLE host_unmatched ADD COLUMN model TEXT NOT NULL DEFAULT '';`, unless: "SELECT 1 FROM pragma_table_info('host_unmatched') WHERE name = 'macs'" },
+  // 48: what the pages ask of every machine report again and again (reported name, operating system, script version,
+  // temperatures, self-update) in a small table of its own, kept by triggers whenever a report is written. A page never
+  // reads all reports whole: a Windows report is some 25 KB, and a thousand of them made the overview stop and think -
+  // also as columns next to the report, which SQLite keeps behind it (read only by reading the report).
+  // (DELETE + INSERT, not INSERT OR REPLACE: the report is written with an upsert, and SQLite applies the conflict rule
+  // of that outer statement to the statements of its triggers - OR REPLACE would become ABORT and every second report fail)
+  { sql: `CREATE TABLE host_report_facts (
+       device_id INTEGER PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+       hostname TEXT, os TEXT, script TEXT, temps TEXT, self_update TEXT, offered TEXT
+     );
+     INSERT INTO host_report_facts(device_id, hostname, os, script, temps, self_update, offered) SELECT device_id, CASE WHEN json_valid(data) THEN json_extract(data,'$.hostname') END, CASE WHEN json_valid(data) THEN json_extract(data,'$.os') END, CASE WHEN json_valid(data) THEN json_extract(data,'$.script') END, CASE WHEN json_valid(data) THEN CASE WHEN json_array_length(data,'$.temps') > 0 THEN json_extract(data,'$.temps') END END, CASE WHEN json_valid(data) THEN json_extract(data,'$.selfUpdate') END, CASE WHEN json_valid(data) THEN json_extract(data,'$.updateOffered') END FROM host_reports;
+     CREATE TRIGGER host_report_facts_ins AFTER INSERT ON host_reports BEGIN
+       DELETE FROM host_report_facts WHERE device_id = NEW.device_id;
+       INSERT INTO host_report_facts(device_id, hostname, os, script, temps, self_update, offered) VALUES (NEW.device_id, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.hostname') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.os') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.script') END, CASE WHEN json_valid(NEW.data) THEN CASE WHEN json_array_length(NEW.data,'$.temps') > 0 THEN json_extract(NEW.data,'$.temps') END END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.selfUpdate') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.updateOffered') END);
+     END;
+     CREATE TRIGGER host_report_facts_upd AFTER UPDATE OF data ON host_reports BEGIN
+       DELETE FROM host_report_facts WHERE device_id = NEW.device_id;
+       INSERT INTO host_report_facts(device_id, hostname, os, script, temps, self_update, offered) VALUES (NEW.device_id, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.hostname') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.os') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.script') END, CASE WHEN json_valid(NEW.data) THEN CASE WHEN json_array_length(NEW.data,'$.temps') > 0 THEN json_extract(NEW.data,'$.temps') END END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.selfUpdate') END, CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.updateOffered') END);
+     END;
+     CREATE TRIGGER host_report_facts_del AFTER DELETE ON host_reports BEGIN
+       DELETE FROM host_report_facts WHERE device_id = OLD.device_id;
+     END;`, unless: "SELECT 1 FROM sqlite_master WHERE name = 'host_report_facts'" },
 ];
 
 // The messages of the devices (SNMP traps, syslog, Windows events): a file of their own next to the database, attached

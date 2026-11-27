@@ -302,7 +302,8 @@ export function createApi(ctx) {
       printersLow: ctx.printers.low().filter((x) => seeDeviceId(req, x.deviceId)),
       nasProblems: ctx.snmpDevices.problems().filter((x) => seeDeviceId(req, x.deviceId)),
       // machine scripts older than the current one (only for admins: they hand them out)
-      scripts: req.user.role === 'admin' ? ctx.hosts.scripts(req.scope ? (id) => seeDeviceId(req, id) : null) : null });
+      // (the counts only - the list with the reasons is on the settings page)
+      scripts: req.user.role === 'admin' ? (({ outdated, action, selfUpdate }) => ({ outdated, action, selfUpdate }))(ctx.hosts.scripts(req.scope ? (id) => seeDeviceId(req, id) : null)) : null });
   });
 
   r.get('/network', async (_req, res) => {
@@ -376,7 +377,7 @@ export function createApi(ctx) {
     visible(req, idParam(req));
     const d = inventory.get(idParam(req));
     if (!d) throw new HttpError(404, 'err.notFound');
-    const presence = inventory.list({}).find((x) => x.id === d.id)?.presence || 'unknown';
+    const presence = inventory.presenceOf(d.id);
     const monitors = db.prepare('SELECT id FROM monitors WHERE device_id=? ORDER BY name').all(d.id).map((m) => ctx.monitoring.get(m.id));
     res.json({ ...d, presence, monitors, printer: d.type === 'printer' ? ctx.printers.status(d.id) : null, host: ctx.hosts.report(d.id), hardware: ctx.proxmox.hardwareOf(d.id), hasSensors: ctx.sensorChoices.hasValues(d.id, { withHosts: !req.scope }),
       hostScript: req.user.role === 'admin' ? ctx.hosts.list().find((t) => t.device_id === d.id) || null : undefined,

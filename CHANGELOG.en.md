@@ -6,6 +6,12 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Faster with many devices: overview, device page, monitoring and sensors no longer read all machine reports whole on every visit (measured with 1,500 devices, 1,000 machines, 400 monitors: overview 320 → 46 ms, device page 460 → 19 ms, sensors 370 → 16 ms, monitor list 380 → 60 ms). What the pages need of them is kept in a small table of its own
+- No more pauses in the background: polling the virtualisation, the daily cleanup of old checks and building the search index for messages no longer hold the server up noticeably (before up to a second in which no page answered)
+- Monitoring page: drawing the check bars held the browser up for up to two seconds on every refresh with many monitors – now a tenth of that
+
+## 0.59.0 - 2026-11-27
+
 - Machine scripts update themselves (on by default, can be switched off under Settings → Machine scripts): when there is a new version, every Windows and Linux machine fetches it with its next report – from the same address, with its own key and the same certificate check, only over HTTPS and with a matching fingerprint (SHA-256). Needed once: roll out scripts from before 0.59 one last time. The overview reports machines with an older script, the settings list them with the reason. Hyper-V and KVM scripts do not update themselves
 - One script per operating system: "Monitor with script" on the device page offers the shared script – the same file for all machines. A script of its own for a single device is only the exception now (e.g. a notebook at changing docking stations); existing ones keep working
 - Hardware swapped: when a machine reports with new hardware under its old name, "Unknown machines" offers a button that assigns it to the device – MAC address and serial number are replaced by the reported ones (the old ones stay in the history). There is nothing to do on the machine
