@@ -9,6 +9,7 @@ import { initMasterKey } from './lib/crypto.js';
 import { createApp } from './app.js';
 import { createTls } from './tls.js';
 import { log } from './lib/log.js';
+import { scheduleWarmUp } from './warmup.js';
 import { recheckDirectoryUsers, RECHECK_MIN } from './auth/adrecheck.js';
 
 const TLS_OPTIONS = { minVersion: 'TLSv1.2' };
@@ -68,6 +69,8 @@ async function main() {
   ctx.events.start();
   // Monitoring, scans, reports, hypervisors: only on the active installation (failover - see failover.js)
   ctx.failover.boot();
+  // The first pages read ahead in the background (first click after an update or restart as quick as any other)
+  scheduleWarmUp(ctx);
   // Signed-in AD users: still allowed? (disabled in AD or out of the group → signed out, new group → new role)
   setInterval(() => recheckDirectoryUsers(ctx).catch((e) => log.warn(`Directory check: ${e.message}`)), RECHECK_MIN * 60 * 1000).unref();
 

@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- First click after an update or restart as quick as any other: a few seconds after the start WhatsOnMyNet reads ahead in the background what overview, monitoring, sensors, inventory and messages need first – only reading and in small steps, without holding the server up (measured: first monitor list 217 → 66 ms, overview 157 → 46 ms, messages 134 → 10 ms; more on slow disks)
+
+## 0.59.1 - 2026-11-27
+
 - Faster with many devices: overview, device page, monitoring and sensors no longer read all machine reports whole on every visit (measured with 1,500 devices, 1,000 machines, 400 monitors: overview 320 → 46 ms, device page 460 → 19 ms, sensors 370 → 16 ms, monitor list 380 → 60 ms). What the pages need of them is kept in a small table of its own
 - No more pauses in the background: polling the virtualisation, the daily cleanup of old checks and building the search index for messages no longer hold the server up noticeably (before up to a second in which no page answered)
 - Monitoring page: drawing the check bars held the browser up for up to two seconds on every refresh with many monitors – now a tenth of that
