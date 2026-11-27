@@ -343,8 +343,9 @@ if (-not $Setup -and -not $SendFailed -and [string]$script:Answer -match '"updat
       # read as text like the answer to the report (UTF-8 there and back gives the same bytes, so the fingerprint holds)
       # at most 1 MB, also when the answer names no length (a proxy that sends it in chunks)
       if ([int]$resp.StatusCode -eq 200 -and $resp.ContentLength -le 1048576) {
-        $r = [IO.StreamReader]::new($resp.GetResponseStream(), [Text.UTF8Encoding]::new($false)); $buf = [char[]]::new(1048577); $n = $r.ReadBlock($buf, 0, $buf.Length); $r.Close()
-        if ($n -gt 1048576) { $updMsg = 'too large' } else { $bytes = [Text.Encoding]::UTF8.GetBytes([string]::new($buf, 0, $n)) }
+        # (New-Object, not [type]::new(): PowerShell 3 and 4 do not know that)
+        $r = New-Object IO.StreamReader -ArgumentList $resp.GetResponseStream(), ([Text.Encoding]::UTF8); $buf = New-Object 'char[]' 1048577; $n = $r.ReadBlock($buf, 0, $buf.Length); $r.Close()
+        if ($n -gt 1048576) { $updMsg = 'too large' } else { $bytes = [Text.Encoding]::UTF8.GetBytes($buf, 0, $n) }
       } elseif ([int]$resp.StatusCode -eq 200) { $updMsg = 'too large' } else { $updMsg = "answer $([int]$resp.StatusCode)" }
       $resp.Close()
     }
@@ -362,7 +363,7 @@ if (-not $Setup -and -not $SendFailed -and [string]$script:Answer -match '"updat
           $text = $text.Replace($mk + 'URL@@', (& $q $Url)).Replace($mk + 'TOKEN@@', (& $q $Token)).Replace($mk + 'THUMB@@', (& $q $Thumb)).Replace($mk + 'PUBKEY@@', (& $q $PublicKey))
           if ($text.Contains($mk)) { $updMsg = 'unknown mark in the new version' }
           else {
-            [IO.File]::WriteAllText($new, $text, [Text.UTF8Encoding]::new($true))
+            [IO.File]::WriteAllText($new, $text, [Text.Encoding]::UTF8)
             # complete on disk (a full disk must not leave half a script behind)
             if ([IO.File]::ReadAllText($new) -cne $text) { throw 'the new version was not written completely' }
             # with a backup: should Windows give up halfway, the old copy comes back below

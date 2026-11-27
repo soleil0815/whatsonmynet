@@ -43,7 +43,7 @@ test('the template: only with a valid key, without key, address or pin of anyone
   const text = t.bytes.toString('utf8');
   assert.ok(!text.includes(shared.token));
   for (const mark of ['@@WOMN_URL@@', '@@WOMN_TOKEN@@', '@@WOMN_THUMB@@', '@@WOMN_PUBKEY@@']) assert.ok(text.includes(mark), mark);
-  assert.match(text, new RegExp(`^\\$ScriptVersion = '${SCRIPT_VERSIONS.windows.replace(/\./g, '\\.')}'$`, 'm'));
+  assert.ok(text.split('\n').includes(`$ScriptVersion = '${SCRIPT_VERSIONS.windows}'`), 'the version line of the template');
   const off = setup({ 'hosts.selfUpdate': false });
   assert.throws(() => off.hosts.template(off.shared.token), { code: 'err.selfUpdateOff' });
 });

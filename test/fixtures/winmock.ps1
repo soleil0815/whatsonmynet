@@ -68,8 +68,8 @@ function Get-ChildItem { param([Parameter(Position = 0)][string]$Path, [string]$
 function Test-Path { param([Parameter(Position = 0)][string]$Path, [string]$LiteralPath)
   if ($LiteralPath) { return Microsoft.PowerShell.Management\Test-Path -LiteralPath $LiteralPath }
   if ($Path -like 'HKLM:*') { return ($Path -like '*RebootRequired') } Microsoft.PowerShell.Management\Test-Path @PSBoundParameters }
-function New-Object { param([string]$ComObject, [Parameter(Position = 0)][string]$TypeName)
-  if (-not $ComObject) { return Microsoft.PowerShell.Utility\New-Object $TypeName }
+function New-Object { param([string]$ComObject, [Parameter(Position = 0)][string]$TypeName, [Parameter(Position = 1)][object[]]$ArgumentList)
+  if (-not $ComObject) { if ($ArgumentList) { return Microsoft.PowerShell.Utility\New-Object $TypeName -ArgumentList $ArgumentList }; return Microsoft.PowerShell.Utility\New-Object $TypeName }
   $searcher = [pscustomobject]@{}
   $searcher | Add-Member ScriptMethod Search { param($q) [pscustomobject]@{ Updates = @([pscustomobject]@{ Title = 'KB5048654'; MsrcSeverity = 'Critical' },
     [pscustomobject]@{ Title = 'Defender'; MsrcSeverity = $null }, [pscustomobject]@{ Title = 'KB5049993'; MsrcSeverity = 'Important' }) } }
