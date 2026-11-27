@@ -199,6 +199,7 @@ test('overview: machines with an older script; those before 0.59 need to be hand
   assert.deepEqual(scriptState({ script: '0.59.0', selfUpdate: { ok: false, version: '0.60.0', message: 'answer 409' } }, '0.60.0', true).error, 'answer 409');
   assert.equal(scriptState({ script: '0.59.0', selfUpdate: { ok: false, version: '0.59.5', message: 'old try' } }, '0.60.0', true).error, null, 'a failed try for another version does not count');
   assert.equal(scriptState({ script: '0.59.0' }, '0.60.0', false).action, true, 'self-update off');
+  assert.equal(scriptState({ script: '0.59.0', updateOffered: { version: '0.60.0', at: ago(5) } }, '0.60.0', true, Date.parse(ago(4.9))).late, false, 'switched off right after the offer: not late');
 });
 
 test('the answer keeps the time a version was first offered; the template follows the operating system of the key', () => {
@@ -216,16 +217,16 @@ test('the answer keeps the time a version was first offered; the template follow
 test('new hardware under the old name: suggested, taken over only by hand', () => {
   const { db, id, hosts, shared } = setup();
   db.prepare("UPDATE devices SET mac='00:15:5d:00:00:01', serial='ALT-123' WHERE id=?").run(id);
-  assert.throws(() => hosts.push(shared.token, report({ macs: ['00:15:5d:00:00:99'], hw: { vendor: 'Dell Inc.', model: 'OptiPlex 7010', serial: 'NEU-456' } })), { code: 'err.hostUnknown' });
+  assert.throws(() => hosts.push(shared.token, report({ macs: ['00:15:5d:aa:bb:cc', 'd8:bb:c1:00:00:99'], hw: { vendor: 'Dell Inc.', model: 'OptiPlex 7010', serial: 'NEU-456' } })), { code: 'err.hostUnknown' });
   const u = hosts.unmatched();
   assert.deepEqual(u[0].suggest, { id, name: 'PC-0001' });
-  assert.deepEqual([u[0].macs, u[0].serial, u[0].model], [['00:15:5d:00:00:99'], 'NEU-456', 'Dell Inc. OptiPlex 7010'], 'shown before the click');
+  assert.deepEqual([u[0].macs, u[0].serial, u[0].model], [['00:15:5d:aa:bb:cc', 'd8:bb:c1:00:00:99'], 'NEU-456', 'Dell Inc. OptiPlex 7010'], 'shown before the click');
   hosts.assignUnmatched('pc-0001', id, 'testadmin');
   assert.equal(hosts.unmatched().length, 0);
-  // the device now carries the reported MAC: another machine with the shared key and the same name no longer reaches it
-  assert.deepEqual(db.prepare('SELECT mac, serial FROM devices WHERE id=?').get(id), { mac: '00:15:5d:00:00:99', serial: 'NEU-456' });
-  assert.throws(() => hosts.push(shared.token, report({ macs: ['00:15:5d:00:00:42'] })), { code: 'err.hostUnknown' });
-  assert.equal(hosts.push(shared.token, report({ macs: ['00:15:5d:00:00:99'], hw: { vendor: 'Dell Inc.', model: 'OptiPlex 7010', serial: 'NEU-456' } })).device, id);
+  // the device now carries the reported MAC of the real network card (not the Hyper-V one): another machine with the shared key and the same name no longer reaches it
+  assert.deepEqual(db.prepare('SELECT mac, serial FROM devices WHERE id=?').get(id), { mac: 'd8:bb:c1:00:00:99', serial: 'NEU-456' });
+  assert.throws(() => hosts.push(shared.token, report({ macs: ['d8:bb:c1:00:00:42'] })), { code: 'err.hostUnknown' });
+  assert.equal(hosts.push(shared.token, report({ macs: ['d8:bb:c1:00:00:99'], hw: { vendor: 'Dell Inc.', model: 'OptiPlex 7010', serial: 'NEU-456' } })).device, id);
   const d = db.prepare('SELECT mac, serial FROM devices WHERE id=?').get(id);
   assert.equal(d.serial, 'NEU-456');
   assert.ok(db.prepare("SELECT 1 FROM device_history WHERE device_id=? AND kind='hardwareSwapped'").get(id));

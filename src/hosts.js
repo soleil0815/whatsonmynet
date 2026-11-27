@@ -109,8 +109,9 @@ export function serverBase(server) {
 
 /**
  * Why a machine runs an older script than now: manual (before 0.59 - cannot update itself, hand it out once more),
- * error (its last try for this version failed), late (offered more than an hour ago, still old, no error - e.g. another
- * copy runs than the one it replaced). action: it will not catch up by itself (also when self-update is off).
+ * error (its last try for this version failed), late (still old in a report more than an hour after the offer, no error -
+ * e.g. another copy runs than the one it replaced; a machine switched off right after the offer is not late).
+ * action: it will not catch up by itself (also when self-update is off). at: the time of its last report.
  */
 export function scriptState(x, now, selfUpdate, at = Date.now()) {
   const manual = !x.script || older(x.script, '0.59.0');
@@ -287,7 +288,7 @@ export function createHosts({ db, plugins = null, settings = null }) {
         const now = SCRIPT_VERSIONS[hostOs(x.os)];
         if (x.script && !older(x.script, now)) continue;
         out.outdated++;
-        const st = scriptState(x, now, out.selfUpdate);
+        const st = scriptState(x, now, out.selfUpdate, Date.parse(row.at));
         if (st.action) out.action++;
         out.stuck.push({ deviceId: row.id, name: row.name, version: x.script || null, now, manual: st.manual, error: st.error, late: st.late });
       }
@@ -331,8 +332,11 @@ export function createHosts({ db, plugins = null, settings = null }) {
       if (!d) throw new HttpError(404, 'err.notFound');
       if (db.prepare('SELECT 1 FROM host_tokens WHERE device_id=?').get(d.id)) throw new HttpError(409, 'err.hostOwnKey');
       db.transaction(() => {
-        // the first reported MAC that no other device has (none free: none - then name and address find it)
-        const mac = parse(u.macs, []).find((m) => !db.prepare('SELECT 1 FROM devices WHERE mac=? AND id<>?').get(m, d.id)) || null;
+        // the first reported MAC of real hardware that no other device has - not one of a virtual adapter (Hyper-V,
+        // VMware, VirtualBox, KVM) or a made-up one (locally administered: VPN, Wi-Fi privacy); none: none - then name
+        // and address find the device
+        const virtual = (m) => /^(00:15:5d|00:50:56|00:0c:29|00:05:69|00:1c:14|08:00:27|0a:00:27|52:54:00|00:16:3e)/.test(m) || (parseInt(m.slice(0, 2), 16) & 2) === 2;
+        const mac = parse(u.macs, []).find((m) => !virtual(m) && !db.prepare('SELECT 1 FROM devices WHERE mac=? AND id<>?').get(m, d.id)) || null;
         db.prepare('UPDATE devices SET mac=?, serial=?, updated_at=? WHERE id=?').run(mac, String(u.serial || ''), now(), d.id);
         db.prepare('INSERT INTO device_history(device_id,at,user,kind,detail) VALUES(?,?,?,?,?)')
           .run(d.id, now(), user, 'hardwareSwapped', JSON.stringify({ host: u.hostname, mac: d.mac || null, serial: d.serial || null }));
