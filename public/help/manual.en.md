@@ -209,7 +209,7 @@ Event rules can do more than "a mail at every match":
 
 ### Windows events (NXLog, Fluent Bit)
 
-Windows servers and clients send their event log by syslog to WhatsOnMyNet with a small free agent. WhatsOnMyNet recognises the **event id**, **log**, **source** and **account** in it and shows them below the text of the message - as in the event viewer. Under *Messages → Receiving settings* switch on **Syslog over TCP** (port 1514); in the agents only the address of WhatsOnMyNet is entered (here `womn.firma.local`).
+Windows servers and clients send their event log by syslog to WhatsOnMyNet with a small free agent. WhatsOnMyNet recognises the **event id**, **log**, **source** and **account** in it and shows them below the text of the message - as in the event viewer. With the configuration below (readable form) and with Fluent Bit the account comes from the text: for failed sign-ins and changes to accounts (4625, 4740, 4767, 4771, 4776, 4720–4726, 4738) the account concerned, not the one that made the change. Under *Messages → Receiving settings* switch on **Syslog over TCP** (port 1514); in the agents only the address of WhatsOnMyNet is entered (here `womn.firma.local`).
 
 **NXLog** (NXLog Community Edition, https://nxlog.co, free, runs as a service). A complete `C:\Program Files\nxlog\conf\nxlog.conf` as it runs in production:
 
@@ -298,7 +298,7 @@ Then restart the service (`Restart-Service nxlog`). Under *Messages* each new me
     Format               json_lines
 ```
 
-Fluent Bit sends every event as a JSON line; WhatsOnMyNet reads id, source, log, computer and severity from it (also "audit failure" as a warning). Create the folder `C:\ProgramData\fluent-bit` first. This configuration is checked with Fluent Bit on a real Windows Server with every change to WhatsOnMyNet.
+Fluent Bit sends every event as a JSON line; WhatsOnMyNet reads id, source, log, computer and severity from it (also "audit failure" as a warning), and for failed sign-ins and changes to accounts (4625, 4740, 4767, 4771, 4776, 4720–4726, 4738) the account concerned from the text – Fluent Bit itself sends only the SID. Create the folder `C:\ProgramData\fluent-bit` first. This configuration is checked with Fluent Bit on a real Windows Server with every change to WhatsOnMyNet.
 
 **Other agents:** Winlogbeat (Elastic) cannot send by syslog directly, only through another service (Logstash) - so it does not suit WhatsOnMyNet. If you do not want to roll out NXLog or Fluent Bit to every computer, use the **event forwarding** built into Windows (Windows Event Forwarding, by group policy): the computers send their events to a collector, and only there the agent runs. The sender is the collector then; the real computer is in every message as computer name.
 

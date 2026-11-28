@@ -86,3 +86,37 @@ export function logonSummary(eventId, text, lang = 'de') {
   const out = parts.filter(Boolean);
   return out.length >= 2 ? out.join(' · ') : '';
 }
+
+// The account an event is about, from its text - for the senders that do not send it as a field of its own: Fluent
+// Bit (only the SID) and NXLog in the readable form of the manual. The account after its own heading: the first
+// "Kontoname" in the text is the one who did it (an administrator, often SYSTEM), not the one it happened to.
+const TARGET = {
+  4625: 'Konto, für das die Anmeldung fehlgeschlagen ist|Account For Which Logon Failed',
+  4740: 'Gesperrtes Konto|Account That Was Locked Out',
+  4767: 'Zielkonto|Target Account',
+  4720: 'Neues Konto|New Account',
+  4722: 'Zielkonto|Target Account',
+  4725: 'Zielkonto|Target Account',
+  4726: 'Zielkonto|Target Account',
+  4738: 'Zielkonto|Target Account',
+  4723: 'Zielkonto|Target Account',
+  4724: 'Zielkonto|Target Account',
+};
+/** 'DOMAIN\\name' or 'name' of the account an event is about, or '' */
+export function eventAccount(eventId, text) {
+  const s = String(text || '');
+  const id = Number(eventId);
+  let name = ''; let dom = '';
+  if (TARGET[id]) {
+    const p = at(s, TARGET[id]);
+    if (p < 0) return '';
+    name = after(s, ACCOUNT, p);
+    // 4740 has no domain of its own (what follows is the computer it came from)
+    if (id !== 4740) dom = after(s, DOMAIN, p);
+  } else if (id === 4771) name = after(s, ACCOUNT);
+  else if (id === 4776) name = after(s, 'Anmeldekonto|Logon Account');
+  else return '';
+  // an account ends with $ for computers - kept; a name that is only "-" was already left out
+  if (!name || name.length > 100) return '';
+  return dom && !name.includes('\\') && !name.includes('@') ? `${dom}\\${name}` : name;
+}

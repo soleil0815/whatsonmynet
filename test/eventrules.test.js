@@ -34,6 +34,19 @@ test('Windows events: readable bracket format, JSON, NXLog line - and plain sysl
   assert.equal(parseSyslog(fb({ EventID: 4624, Keywords: '0x8020000000000000' })).severity, 6, 'audit success');
   assert.deepEqual([2, 3, 4, 5].map((lv) => parseSyslog(fb({ ProviderName: 'Service Control Manager', EventID: 7031, Level: lv, Keywords: '0x8080000000000000', Channel: 'System' })).severity), [3, 4, 6, 7]);
   assert.equal(parseSyslog(fb({ Level: 1, Keywords: '0x80000000000000' })).severity, 2, 'critical');
+  // the account: Fluent Bit sends only the SID, NXLog's readable form none - taken from the text, after its own
+  // heading (the first "Kontoname" is the one asking, here the domain controller itself)
+  const failed = 'Fehler beim Anmelden eines Kontos.\r\n\r\nAntragsteller:\r\n\tSicherheits-ID:\t\tS-1-5-18\r\n\tKontoname:\t\tDC01$\r\n\tKontodomäne:\t\tFIRMA\r\n\r\nAnmeldetyp:\t\t\t3\r\n\r\nKonto, für das die Anmeldung fehlgeschlagen ist:\r\n\tSicherheits-ID:\t\tS-1-0-0\r\n\tKontoname:\t\tmax\r\n\tKontodomäne:\t\tFIRMA';
+  assert.equal(parseSyslog(fb({ Message: failed, UserID: 'S-1-5-18' })).account, 'FIRMA\\max');
+  assert.equal(parseSyslog(`<14>Nov 28 10:00:00 DC01.firma.local Microsoft-Windows-Security-Auditing[640]: [4625] [Security] ${failed.replace(/\s+/g, ' ')}`).account, 'FIRMA\\max', 'NXLog, readable form');
+  const locked = 'Ein Benutzerkonto wurde gesperrt.\r\n\r\nAntragsteller:\r\n\tKontoname:\t\tDC01$\r\n\tKontodomäne:\t\tFIRMA\r\n\r\nGesperrtes Konto:\r\n\tSicherheits-ID:\t\tS-1-5-21-1\r\n\tKontoname:\t\tmax\r\n\r\nZusätzliche Informationen:\r\n\tName des aufrufenden Computers:\tPC-0011';
+  assert.equal(parseSyslog(fb({ EventID: 4740, Message: locked })).account, 'max', '4740: the computer that follows is no domain');
+  const created = 'A user account was created.\r\n\r\nSubject:\r\n\tAccount Name:\t\ttestadmin\r\n\tAccount Domain:\t\tFIRMA\r\n\r\nNew Account:\r\n\tAccount Name:\t\tm.muster\r\n\tAccount Domain:\t\tFIRMA';
+  assert.equal(parseSyslog(fb({ EventID: 4720, Message: created })).account, 'FIRMA\\m.muster', 'not the administrator who did it');
+  assert.equal(parseSyslog(fb({ EventID: 4776, Message: 'Anmeldeinformationen überprüft.\r\nAnmeldekonto:\tmax\r\nQuellarbeitsstation:\tPC-0011\r\nFehlercode:\t0xc000006a' })).account, 'max');
+  // other events: nothing guessed; a field that is sent (NXLog JSON) stays as it is
+  assert.equal(parseSyslog(fb({ EventID: 7036, Message: 'Kontoname: max' })).account, '');
+  assert.equal(parseSyslog(fb({ Message: failed, TargetUserName: 'm.muster', TargetDomainName: 'FIRMA' })).account, 'FIRMA\\m.muster');
   // NXLog's readable form as it arrives (to_syslog_bsd): the source as tag with the process id - also a source longer
   // than the 32 characters of RFC 3164, and one with a space
   const ts = parseSyslog('<14>Nov 17 18:07:00 PC-0002.firma.local Microsoft-Windows-TerminalServices-LocalSessionManager[1564]: [59] [Microsoft-Windows-TerminalServices-LocalSessionManager/Operational] RpcGetCurrentSessionCapabilities von "C:\\Programme\\x.exe" ( #0x1/0x6856 )');

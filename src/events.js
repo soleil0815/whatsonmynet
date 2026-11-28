@@ -24,6 +24,7 @@ import snmp from 'net-snmp';
 import { log } from './lib/log.js';
 import { config } from './config.js';
 import { parseEventIds, parseDenyList, denies } from './eventrules.js';
+import { eventAccount } from './lib/winlogon.js';
 
 export const SEVERITIES = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug'];
 const GB = 1024 ** 3;
@@ -102,7 +103,8 @@ function finish(out, rest) {
   if (tag) { out.app = clip(tag[1], 60); rest = rest.slice(tag[0].length); }
   const w = windowsFields(rest);
   if (w) {
-    out.eventId = w.eventId; out.channel = w.channel; out.account = w.account;
+    // the account from the text where the sender does not send it as a field (Fluent Bit, NXLog's readable form)
+    out.eventId = w.eventId; out.channel = w.channel; out.account = w.account || clip(eventAccount(w.eventId, w.text), 120);
     if (w.app) out.app = w.app;
     if (w.host) out.host = w.host;
     if (w.severity !== null && w.severity !== undefined) out.severity = w.severity;

@@ -6,6 +6,10 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Windows-Ereignisse: Das Feld „Konto“ ist jetzt auch bei Fluent Bit und bei NXLog in der lesbaren Form aus dem Handbuch gefüllt – bei Anmeldefehlern, Kontosperrungen und Änderungen an Konten (4625, 4740, 4767, 4771, 4776, 4720–4726, 4738) mit dem betroffenen Konto aus dem Meldungstext. Vorher stand es dort nur, wenn der Agent das Konto als eigenes Feld schickte (NXLog mit JSON). Gilt für neue Meldungen
+
+## 0.59.4 - 2026-11-28
+
 - Diagnosepaket: Fehlermeldungen behalten die Namen der Programmteile („at EventEmitter.emit …“) – die Anonymisierung machte sie zu Platzhaltern (HOST-028), der Fehler war so nicht nachzuvollziehen. Rechnernamen werden weiter ersetzt
 - Ausfallsicherung: Bricht der Standby das Holen der Daten ab (etwa weil er gerade für ein Update neu startet), steht das als Hinweis im Protokoll statt als Fehler mit Stacktrace – er holt sie einfach in der nächsten Runde
 - Protokoll im Diagnosepaket: Die erste Zeile eines Starts („WhatsOnMyNet … starting“) steht bei der neuen Version, nicht mehr bei der vorigen
