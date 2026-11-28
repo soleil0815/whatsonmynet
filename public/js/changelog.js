@@ -3,6 +3,11 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Windows-Ereignisse: Das Feld „Konto“ ist jetzt auch bei Fluent Bit und bei NXLog in der lesbaren Form aus dem Handbuch gefüllt – bei Anmeldefehlern, Kontosperrungen und Änderungen an Konten (4625, 4740, 4767, 4771, 4776, 4720–4726, 4738) mit dem betroffenen Konto aus dem Meldungstext. Vorher stand es dort nur, wenn der Agent das Konto als eigenes Feld schickte (NXLog mit JSON). Gilt für neue Meldungen',
+  ], en: [
+    'Windows events: the "account" field is now also filled with Fluent Bit and with NXLog in the readable form of the manual – for failed sign-ins, lockouts and changes to accounts (4625, 4740, 4767, 4771, 4776, 4720–4726, 4738) with the account concerned, from the text of the message. Before, it was only there when the agent sent the account as a field of its own (NXLog with JSON). Applies to new messages',
+  ] },
+  { version: '0.59.4', date: '2026-11-28', de: [
     'Diagnosepaket: Fehlermeldungen behalten die Namen der Programmteile („at EventEmitter.emit …“) – die Anonymisierung machte sie zu Platzhaltern (HOST-028), der Fehler war so nicht nachzuvollziehen. Rechnernamen werden weiter ersetzt',
     'Ausfallsicherung: Bricht der Standby das Holen der Daten ab (etwa weil er gerade für ein Update neu startet), steht das als Hinweis im Protokoll statt als Fehler mit Stacktrace – er holt sie einfach in der nächsten Runde',
     'Protokoll im Diagnosepaket: Die erste Zeile eines Starts („WhatsOnMyNet … starting“) steht bei der neuen Version, nicht mehr bei der vorigen',

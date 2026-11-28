@@ -209,7 +209,7 @@ Ereignisregeln können mehr als „bei jedem Treffer eine Mail“:
 
 ### Windows-Ereignisse (NXLog, Fluent Bit)
 
-Windows-Server und -Clients schicken ihre Ereignisanzeige mit einem kleinen, kostenlosen Agenten per Syslog an WhatsOnMyNet. WhatsOnMyNet erkennt darin **Ereignisnummer**, **Protokoll**, **Quelle** und **Konto** und zeigt sie unter dem Meldungstext - so wie in der Ereignisanzeige. Unter *Meldungen → Empfang einstellen* **Syslog über TCP** einschalten (Port 1514); bei den Agenten muss nur die Adresse von WhatsOnMyNet eingetragen werden (hier `womn.firma.local`).
+Windows-Server und -Clients schicken ihre Ereignisanzeige mit einem kleinen, kostenlosen Agenten per Syslog an WhatsOnMyNet. WhatsOnMyNet erkennt darin **Ereignisnummer**, **Protokoll**, **Quelle** und **Konto** und zeigt sie unter dem Meldungstext - so wie in der Ereignisanzeige. Das Konto kommt bei der Konfiguration unten (lesbare Form) und bei Fluent Bit aus dem Text: bei Anmeldefehlern und Änderungen an Konten (4625, 4740, 4767, 4771, 4776, 4720–4726, 4738) das betroffene Konto, nicht das, das die Änderung gemacht hat. Unter *Meldungen → Empfang einstellen* **Syslog über TCP** einschalten (Port 1514); bei den Agenten muss nur die Adresse von WhatsOnMyNet eingetragen werden (hier `womn.firma.local`).
 
 **NXLog** (NXLog Community Edition, https://nxlog.co, kostenlos, läuft als Dienst). Eine vollständige `C:\Program Files\nxlog\conf\nxlog.conf`, die so im Betrieb läuft:
 
@@ -298,7 +298,7 @@ Danach den Dienst neu starten (`Restart-Service nxlog`). Unter *Meldungen* steht
     Format               json_lines
 ```
 
-Fluent Bit schickt jedes Ereignis als JSON-Zeile; WhatsOnMyNet liest daraus Nummer, Quelle, Protokoll, Rechner und Schwere (auch „Überwachung fehlgeschlagen“ als Warnung). Den Ordner `C:\ProgramData\fluent-bit` vorher anlegen. Diese Konfiguration wird bei jeder Änderung an WhatsOnMyNet auf einem echten Windows Server mit Fluent Bit geprüft.
+Fluent Bit schickt jedes Ereignis als JSON-Zeile; WhatsOnMyNet liest daraus Nummer, Quelle, Protokoll, Rechner und Schwere (auch „Überwachung fehlgeschlagen“ als Warnung) und bei Anmeldefehlern und Änderungen an Konten (4625, 4740, 4767, 4771, 4776, 4720–4726, 4738) das betroffene Konto aus dem Text – Fluent Bit selbst schickt nur die SID. Den Ordner `C:\ProgramData\fluent-bit` vorher anlegen. Diese Konfiguration wird bei jeder Änderung an WhatsOnMyNet auf einem echten Windows Server mit Fluent Bit geprüft.
 
 **Andere Agenten:** Winlogbeat (Elastic) kann nicht direkt per Syslog senden, nur über einen weiteren Dienst (Logstash) - für WhatsOnMyNet also nicht geeignet. Wer NXLog oder Fluent Bit nicht auf jedem Rechner verteilen will, kann die in Windows eingebaute **Ereignisweiterleitung** (Windows Event Forwarding, per Gruppenrichtlinie) nutzen: Die Rechner schicken ihre Ereignisse an einen Sammelserver, und nur dort läuft der Agent. Als Absender erscheint dann der Sammelserver; der echte Rechner steht in jeder Meldung als Rechnername.
 

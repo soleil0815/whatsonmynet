@@ -6,6 +6,10 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 
 ## Next version (not released yet)
 
+- Windows events: the "account" field is now also filled with Fluent Bit and with NXLog in the readable form of the manual – for failed sign-ins, lockouts and changes to accounts (4625, 4740, 4767, 4771, 4776, 4720–4726, 4738) with the account concerned, from the text of the message. Before, it was only there when the agent sent the account as a field of its own (NXLog with JSON). Applies to new messages
+
+## 0.59.4 - 2026-11-28
+
 - Diagnostic package: error messages keep the names of the program parts ("at EventEmitter.emit …") – anonymising turned them into placeholders (HOST-028), the error could not be followed that way. Computer names are still replaced
 - Failover: when the standby breaks off taking the data (say, because it is restarting for an update), the log shows a note instead of an error with a stack trace – it simply takes them on its next round
 - Log in the diagnostic package: the first line of a start ("WhatsOnMyNet … starting") is listed with the new version, no longer with the one before
