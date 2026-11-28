@@ -3,6 +3,15 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Diagnosepaket: Fehlermeldungen behalten die Namen der Programmteile („at EventEmitter.emit …“) – die Anonymisierung machte sie zu Platzhaltern (HOST-028), der Fehler war so nicht nachzuvollziehen. Rechnernamen werden weiter ersetzt',
+    'Ausfallsicherung: Bricht der Standby das Holen der Daten ab (etwa weil er gerade für ein Update neu startet), steht das als Hinweis im Protokoll statt als Fehler mit Stacktrace – er holt sie einfach in der nächsten Runde',
+    'Protokoll im Diagnosepaket: Die erste Zeile eines Starts („WhatsOnMyNet … starting“) steht bei der neuen Version, nicht mehr bei der vorigen',
+  ], en: [
+    'Diagnostic package: error messages keep the names of the program parts ("at EventEmitter.emit …") – anonymising turned them into placeholders (HOST-028), the error could not be followed that way. Computer names are still replaced',
+    'Failover: when the standby breaks off taking the data (say, because it is restarting for an update), the log shows a note instead of an error with a stack trace – it simply takes them on its next round',
+    'Log in the diagnostic package: the first line of a start ("WhatsOnMyNet … starting") is listed with the new version, no longer with the one before',
+  ] },
+  { version: '0.59.3', date: '2026-11-28', de: [
     'Diagnosepaket hielt den Server an: Bei Millionen Meldungen brauchte es Minuten am Stück, die Oberfläche meldete „Server nicht erreichbar“ (nachgestellt mit 3,9 Mio. Meldungen: 532 s). Jetzt in kleinen Schritten, der Server antwortet weiter, und gleich schnell egal wie viele Meldungen gespeichert sind (gemessen: 4,7 s, längste Pause 0,4 s – auch mit 6,4 Mio.). Die Anonymisierung ist 50-mal schneller bei gleichem Ergebnis; Zahlen zu Meldungen kommen aus den Stundenzählern, Formate und Quellen aus den neuesten 50 000 (im Paket als „sample“ vermerkt)',
     'Aufräumen der Meldungen (alle 10 Minuten, wenn die Datei voll ist) in kleinen Stücken mit Pausen – vorher bis zu 17 s Stillstand bei einer großen Datei, jetzt höchstens etwa 0,25 s. Freier Platz geht in Stücken an die Platte zurück; im Protokoll eine Zeile je Aufräumen statt einer je Stück',
     'Suchindex der Meldungen fügt seine Teile in kleinen eigenen Schritten zusammen statt mitten im Schreiben (bei Millionen Meldungen bis über 1 s Stillstand)',

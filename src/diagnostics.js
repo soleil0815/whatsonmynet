@@ -162,7 +162,10 @@ export function createAnonymizer(db, enabled = true) {
     while ((mm = all.exec(low)) !== null) {
       if (mm[0] === '') { all.lastIndex++; continue; }
       const m = s.slice(mm.index, mm.index + mm[0].length);
-      out += s.slice(last, mm.index) + replace(m, mm.groups, mm[0]);
+      // the function in a line of a stack trace ("at EventEmitter.emit (node:events…)") is program code, not a computer
+      // name - as a placeholder (HOST-028) the trace said nothing any more
+      const frame = mm.groups.fqdn && s.startsWith(' (', mm.index + m.length) && /(?:^|\n)\s*at (?:async )?$/.test(s.slice(Math.max(0, mm.index - 40), mm.index));
+      out += s.slice(last, mm.index) + (frame ? m : replace(m, mm.groups, mm[0]));
       last = mm.index + mm[0].length;
     }
     return out + s.slice(last);
@@ -264,7 +267,10 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
 
   function recordStart() {
     const cur = db.prepare('SELECT version FROM version_history ORDER BY started_at DESC LIMIT 1').get();
-    if (!cur || cur.version !== config.version) db.prepare('INSERT OR REPLACE INTO version_history(started_at, version) VALUES(?,?)').run(new Date().toISOString(), config.version);
+    // from the start of the process: its first log line ("… starting") is older than this moment and belongs to it too
+    // (it was listed with the version before)
+    const started = new Date(Math.min(Date.now(), Date.now() - process.uptime() * 1000)).toISOString();
+    if (!cur || cur.version !== config.version) db.prepare('INSERT OR REPLACE INTO version_history(started_at, version) VALUES(?,?)').run(started, config.version);
   }
 
   function settingsOut(an) {
