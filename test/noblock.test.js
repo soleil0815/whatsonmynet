@@ -10,19 +10,22 @@ import { openDatabase } from '../src/db.js';
 import { createSettings } from '../src/settings.js';
 import { createEvents } from '../src/events.js';
 import { createAnonymizer } from '../src/diagnostics.js';
+import { unzip } from '../src/lib/zip.js';
 
 const dirOf = (name) => fs.mkdtempSync(path.join(tmp, `${name}-`));
 
 test('anonymiser: names in any case, also next to letters that grow in lower case (Turkish İ)', () => {
   const db = memoryDb();
   const ts = new Date().toISOString();
-  for (const [name, host] of [['PC-0011', 'pc-0011.firma.local'], ['Drucker Flur', 'drucker-flur'], ['İzmir-PC', 'izmir-pc']]) {
+  for (const [name, host] of [['PC-0011', 'pc-0011.firma.local'], ['Drucker Flur', 'drucker-flur'], ['İzmir-PC', 'izmir-pc'], ['ΚΩΣΤΑΣ', 'kostas'], ['Κωσ', 'kos']]) {
     db.prepare('INSERT INTO devices(name,type,hostname,created_at,updated_at) VALUES(?,?,?,?,?)').run(name, 'computer', host, ts, ts);
   }
   const an = createAnonymizer(db, true);
   const out = an.anon('pc-0011 meldet: PC-0011.FIRMA.LOCAL, DRUCKER FLUR leer, İzmir-PC aus, İstanbul bleibt, CN=Max Mustermann,OU=IT');
   assert.ok(!/pc-0011|drucker flur|İzmir-PC|Max Mustermann/i.test(out), out);
   assert.ok(out.includes('İstanbul bleibt'), 'an unknown word stays as it is');
+  // Greek: Σ is σ or ς in lower case depending on its neighbours - the name is found in every spelling, and nothing throws
+  for (const t of ['ΚΩΣΤΑΣ.firma.local down', 'İ ΚΩΣΤΑΣ.x', 'κωστασ ok', 'ΚΩΣ.x', 'İ ΚΩΣ']) assert.ok(!/κωσ/i.test(an.anon(t)), `${t} → ${an.anon(t)}`);
   assert.match(out, /GERAET-\d+ meldet/);
   // the same name gets the same placeholder in any case
   assert.equal(an.anon('pc-0011'), an.anon('PC-0011'));
@@ -42,6 +45,10 @@ test('diagnostic package: built in steps - other work gets its turn while it is 
     building = false;
     assert.ok(p.buffer.length > 1000);
     assert.ok(turns >= 10, `only ${turns} turns in between`);
+    // every part came out whole (a part that fails is written as {"error": …} - found that way once, "q is not defined")
+    const files = unzip(p.buffer);
+    for (const [name, data] of Object.entries(files)) assert.ok(!/^\{\s*"error"/.test(data.toString('utf8')), `${name}: ${data.toString('utf8').slice(0, 200)}`);
+    assert.equal(Object.keys(files).length, 16);
   } finally { await s.close(); }
 });
 
@@ -103,14 +110,48 @@ test('diagnostic package and message pages: no statement reads the messages, che
       ctx.events.status(); ctx.events.storage(); ctx.events.noise({ days: 7 }); ctx.events.noise({ days: 30 });
       ctx.events.histogram({ hours: 24 }); ctx.events.histogram({ hours: 720 }); ctx.events.senders(); ctx.events.list({ limit: 200 });
     } finally { db.prepare = prep; }
-    const GROWING = /\b(events_in|checks|server_log|monitor_events|audit)\b/;
+    // Tables that grow with the messages and checks themselves: never read in full. (The log, the alarms and the
+    // changes made by users are kept for a fixed time and stay small - reading them for the period is allowed.)
+    const GROWING = ['events_in', 'checks', 'monitor_hourly', 'event_rule_hits', 'events_minute'];
     const bad = [];
     for (const sql of seen) {
-      if (!GROWING.test(sql) || !/^\s*SELECT/i.test(sql)) continue;
+      if (!/^\s*SELECT/i.test(sql) || !GROWING.some((t) => new RegExp(`\\b${t}\\b`).test(sql))) continue;
+      // the names the statement gives the tables ("FROM checks c", "events_in e")
+      const alias = new Map();
+      for (const m of sql.matchAll(/\b(?:FROM|JOIN)\s+"?(\w+)"?(?:\s+(?:AS\s+)?(?!WHERE|ON|JOIN|LEFT|INNER|GROUP|ORDER|LIMIT|NOT|INDEXED|USING|UNION)(\w+))?/gi)) { alias.set(m[1], m[1]); if (m[2]) alias.set(m[2], m[1]); }
       const plan = db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...Array((sql.match(/\?/g) || []).length).fill('2026-01-01T00:00:00.000Z')).map((r) => r.detail);
-      const full = plan.filter((d) => /^SCAN (events_in|checks|server_log|monitor_events|audit)\b/.test(d));
-      if (full.length && !/\bLIMIT\b/i.test(sql)) bad.push(`${sql.replace(/\s+/g, ' ').slice(0, 140)}  →  ${full.join('; ')}`);
+      for (const d of plan) {
+        const m = d.match(/^SCAN (\w+)/);
+        if (!m || !GROWING.includes(alias.get(m[1]) || m[1])) continue;
+        // allowed: the newest or oldest by number, a fixed count of them ("FROM events_in ORDER BY id DESC LIMIT n"), or
+        // just a fixed count of rows ("SELECT 1 FROM checks LIMIT 100001" - the table sizes in the package)
+        const t = alias.get(m[1]) || m[1];
+        const newest = new RegExp(`FROM\\s+"?${t}"?\\s+(?:\\w+\\s+)?(?:NOT INDEXED\\s+)?(?:ORDER BY id(?: DESC)? )?LIMIT \\d+`, 'i').test(sql);
+        if (!newest) bad.push(`${sql.replace(/\s+/g, ' ').slice(0, 140)}  →  ${d}`);
+      }
     }
     assert.deepEqual(bad, []);
   } finally { await s.close(); }
+});
+
+// A merge with nothing to do still counts as one change: taken as "did work", the pump never came to rest and kept a
+// processor core busy on every installation, also an idle one (found in the review, not by the other tests)
+test('search index pump: comes to rest when there is nothing to index or merge', async () => {
+  const db = openDatabase(path.join(dirOf('nb3'), 'whatsonmynet.sqlite'));
+  const settings = createSettings(db);
+  const ev = createEvents({ db, settings });
+  const ins = db.prepare("INSERT INTO events_in(at,kind,source_ip,severity,host,text,event_id) VALUES(?, 'syslog', '10.0.10.9', 6, 'PC-0009', ?, 4624)");
+  db.transaction(() => { for (let i = 0; i < 300; i++) ins.run(new Date().toISOString(), `Anmeldung ${i}`); })();
+  let merges = 0;
+  const changes = () => db.prepare('SELECT total_changes()').pluck().get();
+  ev.indexPump();
+  for (let i = 0; i < 200; i++) await new Promise((r) => setImmediate(r));
+  // resting: a further moment changes nothing at all
+  const before = changes();
+  for (let i = 0; i < 200; i++) await new Promise((r) => setImmediate(r));
+  merges = changes() - before;
+  assert.equal(merges, 0, `the pump still works: ${merges} changes while there was nothing to do`);
+  assert.equal(db.prepare("SELECT COUNT(*) FROM events_fts WHERE events_fts MATCH 'Anmeldung'").pluck().get(), 300);
+  ev.stop();
+  db.close();
 });

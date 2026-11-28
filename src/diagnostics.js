@@ -96,7 +96,11 @@ export function createAnonymizer(db, enabled = true) {
 
   // Lower case that keeps the length (a few letters grow in lower case, e.g. the Turkish İ: they stay as they are) -
   // the names and the texts the same way, so a match in the lower-case text is the same place in the original
-  const lower = (t) => { const l = t.toLowerCase(); return l.length === t.length ? l : Array.from(t, (c) => { const x = c.toLowerCase(); return x.length === c.length ? x : c; }).join(''); };
+  // (the Greek final ς as σ: lower case writes Σ as one or the other depending on the letters around it)
+  const lower = (t) => {
+    const l = t.toLowerCase();
+    return (l.length === t.length ? l : Array.from(t, (c) => { const x = c.toLowerCase(); return x.length === c.length ? x : c; }).join('')).replace(/ς/g, 'σ');
+  };
   // Names from the database: the longest first, so "pve2.firma.local" is one placeholder, not "KNOTEN-001.firma.local"
   const vocab = new Map(); // lower → [kind, real]
   const add = (kind, v) => {
@@ -125,11 +129,11 @@ export function createAnonymizer(db, enabled = true) {
     for (const l of db.prepare('SELECT name FROM locations').all()) add('location', l.name);
     for (const c of db.prepare('SELECT name FROM channels').all()) add('channel', c.name);
     // computers that send messages without being in the inventory (Windows through NXLog: "PC-0011", "DC01"): the names
-    // the senders gave last, and those of the newest messages - not the whole file (millions of messages: a DISTINCT over
+    // the senders gave last, and those of the newest 100 000 messages - not the whole file (millions of messages: a DISTINCT over
     // all of them read gigabytes and held the server up)
     try {
       const hosts = db.prepare(`SELECT host FROM event_senders WHERE host <> '' UNION
-        SELECT host FROM (SELECT host FROM events_in ORDER BY id DESC LIMIT 20000) WHERE host <> '' LIMIT 5000`).all();
+        SELECT host FROM (SELECT host FROM events_in ORDER BY id DESC LIMIT 100000) WHERE host <> '' LIMIT 5000`).all();
       for (const r of hosts) { add('host', r.host); add('host', String(r.host).split('.')[0]); }
     } catch { /* no messages file */ }
   }
@@ -158,19 +162,20 @@ export function createAnonymizer(db, enabled = true) {
     while ((mm = all.exec(low)) !== null) {
       if (mm[0] === '') { all.lastIndex++; continue; }
       const m = s.slice(mm.index, mm.index + mm[0].length);
-      out += s.slice(last, mm.index) + replace(m, mm.groups);
+      out += s.slice(last, mm.index) + replace(m, mm.groups, mm[0]);
       last = mm.index + mm[0].length;
     }
     return out + s.slice(last);
   }
-  function replace(m, g) {
+  function replace(m, g, low) {
     {
       if (g.mail) return alias('mail', m);
       if (g.dn) {
         const [, k, v] = m.match(new RegExp(DNRX.source, 'i'));
         return COMMON.has(v.trim().toLowerCase()) || /^(com|net|org|de|local|lan)$/i.test(v.trim()) ? m : `${k}=${alias('dn', v.trim())}`;
       }
-      if (g.name) { const [kind, real] = vocab.get(lower(m)); return alias(kind, real); }
+      // (looked up as it was found - in the lower-case text; a name not found stays a placeholder of its kind anyway)
+      if (g.name) { const [kind, real] = vocab.get(low) || ['host', m]; return alias(kind, real); }
       if (g.mac) return alias('mac', m.toLowerCase().replace(/-/g, ':'));
       if (g.ip) return keepIp(m) ? m : alias('ip', m);
       if (g.fqdn) return FILE_EXT.test(m) || /^\d/.test(m) || /^(node|www)\./i.test(m) ? m : alias('host', m);
@@ -312,8 +317,9 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
 
   function monitorsOut(since, an) {
     // checks in the period from the hours (not every check: hundreds of thousands, read whole each time)
-    const stats = new Map(db.prepare(`SELECT monitor_id, SUM(total) n, SUM(total - ok) failed, ROUND(SUM(ms_sum) * 1.0 / NULLIF(SUM(ok), 0)) ms
-      FROM monitor_hourly WHERE hour >= ? GROUP BY monitor_id`).all(String(since).slice(0, 13)).map((r) => [r.monitor_id, r]));
+    // (from the monitors: each one's hours along its key - the hours are kept 400 days)
+    const stats = new Map(db.prepare(`SELECT m.id monitor_id, SUM(h.total) n, SUM(h.total - h.ok) failed, ROUND(SUM(h.ms_sum) * 1.0 / NULLIF(SUM(h.ok), 0)) ms
+      FROM monitors m CROSS JOIN monitor_hourly h ON h.monitor_id = m.id AND h.hour >= ? GROUP BY m.id`).all(String(since).slice(0, 13)).map((r) => [r.monitor_id, r]));
     const events = new Map(db.prepare('SELECT monitor_id, COUNT(*) n FROM (SELECT monitor_id, at FROM monitor_events ORDER BY id DESC LIMIT 100000) WHERE at >= ? GROUP BY monitor_id').all(since).map((r) => [r.monitor_id, r.n]));
     // groups by number (their names are the user's own words): GROUP-1, GROUP-2 … - the same in the group monitors
     const rows = db.prepare('SELECT * FROM monitors ORDER BY id').all();
@@ -435,10 +441,12 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       (db.prepare('SELECT MAX(id) FROM events_in').pluck().get() ?? 0) - 100000);
     const h = (counts, raw) => db.prepare(`SELECT k, SUM(n) n FROM (${counts} UNION ALL ${raw}) GROUP BY k HAVING SUM(n) > 0`).all(hour, counted, since);
     const SAMPLE = 50000;
-    // (the newest by number, then those of the period - "WHERE at >= ? ORDER BY id" let SQLite fetch and sort the whole
-    // period first: with 20 million messages that would take long again)
-    const sample = `(SELECT * FROM (SELECT * FROM events_in ORDER BY id DESC LIMIT ${SAMPLE}) WHERE at >= ?)`;
-    const q = (sql) => db.prepare(sql.replace('$S', sample)).all(since);
+    // the newest by number, then those of the period - read once, only the columns needed ("WHERE at >= ? ORDER BY id"
+    // let SQLite fetch and sort the whole period first: with 20 million messages that would take long again)
+    const sample = db.prepare(`SELECT event_id, channel, app, device_id IS NOT NULL dev, instr(text, char(65533)) > 0 bad
+      FROM (SELECT event_id, channel, app, device_id, text, at FROM events_in ORDER BY id DESC LIMIT ${SAMPLE}) WHERE at >= ?`).all(since);
+    const q = (sql) => db.prepare(sql).all(since);
+    const tally = (f) => { const m = new Map(); for (const r of sample) { const k = f(r); if (k !== null) m.set(k, (m.get(k) || 0) + 1); } return m; };
     const bySender = h('SELECT source_ip k, SUM(n) n FROM events_hour WHERE hour >= ? GROUP BY 1', 'SELECT source_ip k, COUNT(*) n FROM events_in NOT INDEXED WHERE id > ? AND at >= ? GROUP BY 1');
     out.period = {
       by_kind: Object.fromEntries(h('SELECT kind k, SUM(n) n FROM events_hour WHERE hour >= ? GROUP BY 1', 'SELECT kind k, COUNT(*) n FROM events_in NOT INDEXED WHERE id > ? AND at >= ? GROUP BY 1').map((r) => [r.k, r.n])),
@@ -448,14 +456,13 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       top_event_ids: h('SELECT event_id k, SUM(n) n FROM events_hour_id WHERE hour >= ? GROUP BY 1', 'SELECT event_id k, COUNT(*) n FROM events_in NOT INDEXED WHERE id > ? AND at >= ? AND event_id IS NOT NULL GROUP BY 1')
         .sort((a, b) => b.n - a.n || a.k - b.k).slice(0, 15).map((r) => ({ event_id: r.k, n: r.n })),
       // of the newest messages of the period (at most this many - the figures below are shares of them)
-      sample: q('SELECT COUNT(*) n FROM $S')[0].n,
+      sample: sample.length,
       // the shape NXLog sends: with log and source ([id] [log] or JSON), only the id (its own line format), or no Windows event
-      by_format: Object.fromEntries(q(`SELECT CASE WHEN event_id IS NULL THEN 'syslog' WHEN channel <> '' OR app <> '' THEN 'windows_full' ELSE 'windows_id_only' END k, COUNT(*) n
-        FROM $S GROUP BY k`).map((r) => [r.k, r.n])),
-      matched_to_device: q('SELECT SUM(device_id IS NOT NULL) yes, SUM(device_id IS NULL) no FROM $S')[0],
+      by_format: Object.fromEntries(tally((r) => (r.event_id === null ? 'syslog' : (r.channel || r.app) ? 'windows_full' : 'windows_id_only'))),
+      matched_to_device: { yes: sample.filter((r) => r.dev).length, no: sample.filter((r) => !r.dev).length },
       // texts that were not UTF-8 (read as Windows-1252, e.g. NXLog on a German Windows)
-      text_with_replacement_char: q('SELECT COUNT(*) n FROM $S WHERE instr(text, char(65533)) > 0')[0].n,
-      top_sources: q("SELECT app, COUNT(*) n FROM $S WHERE app <> '' GROUP BY app ORDER BY n DESC LIMIT 15"),
+      text_with_replacement_char: sample.filter((r) => r.bad).length,
+      top_sources: [...tally((r) => (r.app ? r.app : null))].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 15).map(([app, n]) => ({ app, n })),
     };
     out.event_monitors = db.prepare("SELECT COUNT(*) n, SUM(enabled) enabled FROM monitors WHERE type='event'").get();
     if (src.eventRules) {
@@ -466,7 +473,8 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
     }
     out.open_events = { by_state: Object.fromEntries(db.prepare('SELECT state k, COUNT(*) n FROM event_open GROUP BY state').all().map((r) => [r.k, r.n])),
       closed_how_period: Object.fromEntries(q("SELECT closed_how k, COUNT(*) n FROM event_open WHERE closed_at >= ? GROUP BY closed_how").map((r) => [r.k, r.n])) };
-    out.rule_hits_period = q('SELECT COUNT(*) n, SUM(sent_at IS NOT NULL AND failed = 0) sent, SUM(failed) failed, SUM(sent_at IS NULL) open, MAX(tries) max_tries FROM event_rule_hits WHERE at >= ?')[0];
+    // (of the newest 100 000 hits: they grow with the messages a rule matches)
+    out.rule_hits_period = q('SELECT COUNT(*) n, SUM(sent_at IS NOT NULL AND failed = 0) sent, SUM(failed) failed, SUM(sent_at IS NULL) open, MAX(tries) max_tries FROM (SELECT * FROM event_rule_hits ORDER BY id DESC LIMIT 100000) WHERE at >= ?')[0];
     if (src.apiTokens) out.metrics_keys = src.apiTokens.list().map((k) => ({ created_at: k.created_at, last_used: k.last_used }));
     return out;
   }
@@ -501,7 +509,7 @@ export function createDiagnostics({ db, settings, failover = null, dbFile = path
       agents_snmp: Object.fromEntries(db.prepare('SELECT snmp_mode, COUNT(*) n FROM agents GROUP BY snmp_mode').all().map((r) => [r.snmp_mode, r.n])),
       // monitors whose address is checked again on every run (set by a non-admin) - and how many of those failed for it
       target_checked: db.prepare("SELECT COUNT(*) n, SUM(last_message LIKE 'target address not allowed%') refused FROM monitors WHERE target_rule IS NOT NULL").get(),
-      checks: db.prepare('SELECT m.type, SUM(h.total) n, SUM(h.total - h.ok) failed FROM monitor_hourly h JOIN monitors m ON m.id=h.monitor_id WHERE h.hour >= ? GROUP BY m.type').all(String(since).slice(0, 13)),
+      checks: db.prepare('SELECT m.type, SUM(h.total) n, SUM(h.total - h.ok) failed FROM monitors m CROSS JOIN monitor_hourly h ON h.monitor_id = m.id AND h.hour >= ? GROUP BY m.type').all(String(since).slice(0, 13)),
       events: Object.fromEntries(db.prepare('SELECT kind, COUNT(*) n FROM (SELECT kind, at FROM monitor_events ORDER BY id DESC LIMIT 100000) WHERE at >= ? GROUP BY kind').all(since).map((r) => [r.kind, r.n])),
       scans: db.prepare('SELECT kind, status, COUNT(*) n FROM scans WHERE started_at >= ? GROUP BY kind, status').all(since),
       frequent_warnings: top,
@@ -567,8 +575,12 @@ and communities are never included. Nothing is sent anywhere by itself.
       }
       const an = createAnonymizer(db, !!anonymize);
       await pause();
-      const logs = db.prepare('SELECT at, level, message FROM server_log WHERE at >= ? ORDER BY id DESC LIMIT ?').all(since, MAX_LOG_ROWS)
-        .map((l) => ({ at: l.at, version: vat(l.at), level: l.level, message: an.anon(String(l.message).slice(0, MAX_MESSAGE)) }));
+      // (anonymised with a break every 2 000 lines)
+      const logs = [];
+      for (const l of db.prepare('SELECT at, level, message FROM server_log WHERE at >= ? ORDER BY id DESC LIMIT ?').all(since, MAX_LOG_ROWS)) {
+        if (logs.length % 2000 === 1999) await pause();
+        logs.push({ at: l.at, version: vat(l.at), level: l.level, message: an.anon(String(l.message).slice(0, MAX_MESSAGE)) });
+      }
       const errors = logs.filter((l) => l.level === 'warn' || l.level === 'error').map((l) => `${l.at} [${l.version}] ${l.level.toUpperCase()} ${l.message}`);
       await pause();
       const monitors = monitorsOut(since, an);

@@ -7,9 +7,9 @@ What changed in WhatsOnMyNet - the same texts the program shows under *About Wha
 ## Next version (not released yet)
 
 - Diagnostic package held the server up: with millions of messages it took minutes in one go, the interface said "server not reachable" (reproduced with 3.9 million messages: 532 s). Now in small steps, the server keeps answering, and equally quick however many messages are stored (measured: 4.7 s, longest pause 0.4 s – also with 6.4 million). Anonymising is 50 times faster with the same result; message figures come from the hourly counts, formats and sources from the newest 50,000 (marked "sample" in the package)
-- Cleanup of the messages (every 10 minutes when the file is full) in small pieces with breaks – before up to 17 s standstill with a large file, now at most 0.2 s. Free space goes back to the disk in pieces
+- Cleanup of the messages (every 10 minutes when the file is full) in small pieces with breaks – before up to 17 s standstill with a large file, now at most about 0.25 s. Free space goes back to the disk in pieces; one line in the log per cleanup instead of one per piece
 - Search index of the messages merges its parts in small steps of its own instead of in the middle of writing (with millions of messages over 1 s standstill)
-- "What takes the space?" (noise) and the message figures: quick also right after an update, when millions of messages are not counted yet (before up to 3.4 s)
+- "What takes the space?" (noise) and the message figures: quick also right after an update, when millions of messages are not counted yet (measured with 4 million not counted: 0.2 s instead of 5.8 s). The list with a filter no new message matches searches in sections and offers "Load older" instead of reading the whole file in one go
 
 ## 0.59.2 - 2026-11-27
 

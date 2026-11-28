@@ -726,7 +726,9 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   function mergeStep() {
     const before = totalChanges.get();
     ftsMerge.run(MERGE_PAGES);
-    return totalChanges.get() !== before;
+    // a merge with nothing to do still counts as one change - work done shows as two or more (FTS5 documentation);
+    // "any change" kept the pump going for ever and one processor core busy
+    return totalChanges.get() - before >= 2;
   }
   let ftsTimer = null; let ftsRunning = false; let ftsStart = null;
   // Size of a batch: as many messages as take some 30 ms (the receivers and the web pages wait that long at most). A
@@ -900,13 +902,32 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     return out;
   }
 
+  // A list walks back through the messages in windows of this many numbers, at most LIST_MS long: a filter that only a
+  // few match ("errors only" when there are few) otherwise read millions of messages in one go. Stopped early, the list
+  // says where it stopped (olderFrom) - the page offers "more" and goes on from there.
+  const LIST_WINDOW = 100000;
+  const LIST_MS = 150;
   function list({ limit = 200, before = null, ...filter } = {}) {
     const { where, args, words, many } = filterSql(filter);
-    const w = before ? `${where} AND e.id < ?` : where;
-    if (before) args.push(Number(before));
+    const max = Math.max(1, Math.min(1000, Number(limit) || 200));
     // with a rare word: what the index found, newest first ("+": not by walking through all messages until 200 match)
-    return db.prepare(`SELECT e.*, d.name device_name FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${w} ORDER BY ${words && !many ? '+e.id' : 'e.id'} DESC LIMIT ?`)
-      .all(...args, Math.max(1, Math.min(1000, Number(limit) || 200)));
+    if (words && !many) {
+      const w = before ? `${where} AND e.id < ?` : where;
+      return db.prepare(`SELECT e.*, d.name device_name FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${w} ORDER BY +e.id DESC LIMIT ?`)
+        .all(...args, ...(before ? [Number(before)] : []), max);
+    }
+    const low = db.prepare('SELECT MIN(id) FROM events_in').pluck().get() ?? 0;
+    let hi = before ? Number(before) : (ftsTop.get() ?? 0) + 1;
+    const q = db.prepare(`SELECT e.*, d.name device_name FROM events_in e LEFT JOIN devices d ON d.id=e.device_id WHERE ${where} AND e.id < ? AND e.id >= ? ORDER BY e.id DESC LIMIT ?`);
+    const out = [];
+    const until = performance.now() + LIST_MS;
+    while (out.length < max && hi > low) {
+      const lo = Math.max(low, hi - LIST_WINDOW);
+      out.push(...q.all(...args, hi, lo, max - out.length));
+      hi = lo;
+      if (out.length < max && hi > low && performance.now() > until) { Object.defineProperty(out, 'olderFrom', { value: hi }); break; }
+    }
+    return out;
   }
 
   /**
@@ -1123,22 +1144,29 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     while (!more) {
       const used = usedBytes();
       const { cap } = limits(used);
-      if (used <= cap) break;
+      // once over the limit: down to 95 % of it, so that it does not run again for every few new messages (the target
+      // holds over the rounds of a series)
+      if (pruneTarget === null) { if (used <= cap) break; pruneTarget = cap * 0.95; }
+      const target = Math.min(pruneTarget, cap);
+      if (used <= target) { pruneTarget = null; break; }
       if (deleted && !time()) { more = true; break; }
       if (left === null || left <= 0) {
         const n = span.get() || 0;
         if (!n) break;
-        left = Math.min(20000, Math.max(100, Math.ceil(((used - cap * 0.95) / used) * n)));
+        left = Math.min(20000, Math.max(100, Math.ceil(((used - target) / used) * n)));
       }
       const c = oldest.run(Math.min(PRUNE_PIECE, left)).changes;
       deleted += c; left -= c;
       if (!c) break;
     }
-    if (deleted) { stats = null; pruneTidy = true; log.info(`Messages: ${deleted} old message(s) removed`); }
+    // in the log once a series is over (a round every few tenths of a second wrote hundreds of lines)
+    if (deleted) { stats = null; pruneTidy = true; pruneRemoved += deleted; }
     // at the end of a series: the counts that went down to nothing, the senders that are gone (once, not every round -
     // also when the last round only gave pages back)
     if (pruneTidy && !more) {
       pruneTidy = false;
+      log.info(`Messages: ${pruneRemoved} old message(s) removed`);
+      pruneRemoved = 0;
       // counts that went down to nothing (before the oldest message left)
       const first = db.prepare('SELECT at FROM events_in ORDER BY id LIMIT 1').pluck().get();
       const firstMs = first ? Date.parse(first) : Date.now();
@@ -1187,8 +1215,11 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const names = new Map(db.prepare('SELECT source_ip, host FROM event_senders').all().map((r) => [r.source_ip, r.host]));
     const newest = db.prepare(`SELECT at, source_ip, host, app, channel, severity, text, ${LEN} len FROM events_in WHERE event_id = ? ORDER BY id DESC LIMIT 500`);
     // One number can come from several sources (1 of Ntfs, 1 of Sysmon): such a number is split by source - counted
-    // exactly when it is not too many messages (20 000), else in the share of its newest 500 (marked as estimated)
-    const bySource = db.prepare('SELECT COALESCE(app, \'\') app, COUNT(*) n FROM events_in WHERE event_id = ? AND at >= ? GROUP BY 1');
+    // exactly when it is not too many messages (EXACT), else in the share of its newest 500 (marked as estimated)
+    // (at most the newest EXACT of the number are read: the counts may be low right after an update, and "exactly" then
+    // read hundreds of thousands per number; 20 000 still took some 45 ms each, for a dozen numbers 0.7 s)
+    const EXACT = 5000;
+    const bySource = db.prepare(`SELECT COALESCE(app, '') app, COUNT(*) n FROM (SELECT app, id FROM events_in WHERE event_id = ? AND at >= ? ORDER BY id DESC LIMIT ${EXACT + 1}) GROUP BY 1`);
     const entries = [];
     // (more than "top": events left out already go to a list of their own and must not crowd out the others)
     for (const [id, n] of [...ids].filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]).slice(0, top + 15)) {
@@ -1197,8 +1228,9 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       for (const r of rows) { const k = r.app || ''; if (!apps.has(k)) apps.set(k, []); apps.get(k).push(r); }
       if (apps.size <= 1) { entries.push({ id, app: rows[0]?.app || '', n, rows, estimated: false }); continue; }
       let split; let estimated = false;
-      // (exact up to 20 000: counting each of hundreds of thousands, for a dozen numbers, held the server up for seconds)
-      if (n <= 20000) split = new Map(bySource.all(id, new Date(sinceMs).toISOString()).map((r) => [r.app, r.n]));
+      // (exact up to EXACT: counting each of hundreds of thousands, for a dozen numbers, held the server up for seconds)
+      const exact = n <= EXACT ? bySource.all(id, new Date(sinceMs).toISOString()) : null;
+      if (exact && exact.reduce((a, r) => a + r.n, 0) <= EXACT) split = new Map(exact.map((r) => [r.app, r.n]));
       else { estimated = true; split = new Map([...apps].map(([k, list]) => [k, Math.round((n * list.length) / rows.length)])); }
       // a source of the period that is not among the newest 500 has no example: it goes with the rest
       for (const [app, m] of split) if (m > 0) entries.push({ id, app, n: m, rows: apps.get(app) || [], estimated });
@@ -1302,7 +1334,9 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   }
   let pruneTimer = null; let pruneSoon = null;
   // a series of cleanup rounds removed messages: the counts are tidied once it is over
-  let pruneTidy = false;
+  let pruneTidy = false; let pruneRemoved = 0;
+  // where a series of rounds that started over the limit stops (95 % of it)
+  let pruneTarget = null;
 
   return {
     receive, queue, flush, list, whyNone, histogram, senders, senderPage, prune, apply, communities,
