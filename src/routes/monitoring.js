@@ -200,10 +200,12 @@ export function createMonitoringApi(ctx) {
   };
   r.get('/events', editor, unscoped, (req, res) => {
     const q = req.query || {};
+    const list = ctx.events.list({ ...eventFilter(q), before: q.before || null, limit: q.limit || 200 });
     res.json({ status: ctx.events.status(), settings: eventSettings(), openEvents: ctx.eventRules.openCount(),
       // sign-in events get a short line (account, way, reason, source) above their long text
-      list: ctx.events.list({ ...eventFilter(q), before: q.before || null, limit: q.limit || 200 })
-        .map((r) => { const summary = logonSummary(r.event_id, r.text, req.user?.language === 'en' ? 'en' : 'de'); return summary ? { ...r, summary } : r; }) });
+      list: list.map((r) => { const summary = logonSummary(r.event_id, r.text, req.user?.language === 'en' ? 'en' : 'de'); return summary ? { ...r, summary } : r; }),
+      // the search stopped before it had a full page: older ones from this number on (the page offers "more")
+      olderFrom: list.olderFrom ?? null });
   });
   // nothing found for an event id: kept at all, ever come in, when last (the page explains the empty list)
   r.get('/events/why', editor, unscoped, (req, res) => res.json(ctx.events.whyNone(str(req.query?.q, 200))));

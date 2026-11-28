@@ -53,6 +53,8 @@ export async function renderEvents(main) {
   mount(main, h('div', { class: 'page' }, body));
   const admin = state.user.isAdmin;
   let kind = ''; let maxSeverity = 7; let rows = []; let info = null;
+  // where the last search through older messages stopped before a full page (the next "more" goes on from there)
+  let olderFrom = null;
   // By sender (default: one row per computer or device - all messages at once would flood the page) or all messages;
   // a sender picked shows only its messages. ?from=<address> opens one sender directly (link from the device page).
   const remember = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private window */ } };
@@ -165,15 +167,17 @@ export async function renderEvents(main) {
     if (from) p.set('from', from);
     if (to) p.set('to', to);
     const lp = new URLSearchParams(p); lp.set('limit', '200');
-    if (append && rows.length) lp.set('before', String(rows[rows.length - 1].id));
+    // (where the last search stopped, when it stopped before a full page - else after the last row shown)
+    if (append && (olderFrom || rows.length)) lp.set('before', String(olderFrom || rows[rows.length - 1].id));
     try {
       // the bars come with the first page of the list; more of the list leaves them as they are
       const [r, hg] = await Promise.all([get(`/events?${lp}`), append ? null : get(`/events/histogram?${p}`)]);
       if (hg) hist = hg;
       info = r;
       rows = append ? [...rows, ...r.list] : r.list;
+      olderFrom = r.olderFrom || null;
       if (!body.isConnected) return;
-      draw(r.list.length === 200);
+      draw(r.list.length === 200 || !!olderFrom);
     } catch (e) { fail(e); }
   }
   function draw(hasMore) {

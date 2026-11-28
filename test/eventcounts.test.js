@@ -121,7 +121,8 @@ test('messages that go take their counts along; nothing left after all are gone'
   // older than a day: in pieces, the counts go down with them
   settings.set('events.keepDays', 1);
   const left = db.prepare('SELECT COUNT(*) FROM events_in WHERE at >= ?').pluck().get(new Date(Date.now() - 86400000).toISOString());
-  ev.prune();
+  // (all in one round here - normally a round stops after 100 ms and the rest follows by itself, see noblock.test.js)
+  ev.prune({ budgetMs: Infinity });
   assert.equal(db.prepare('SELECT COUNT(*) FROM events_in').pluck().get(), left);
   assert.equal(sum(), left);
   assert.equal(hours(), db.prepare('SELECT COUNT(*) FROM events_in WHERE event_id IS NOT NULL').pluck().get());
@@ -147,18 +148,20 @@ test('messages that go take their counts along; nothing left after all are gone'
   db.close();
 });
 
-test('a big day to remove goes in pieces, the rest a little later', () => {
+test('a big day to remove goes in pieces, the rest a little later', async () => {
   const db = openDatabase(path.join(dirOf('cnt4'), 'whatsonmynet.sqlite'));
   const settings = createSettings(db);
-  const ev = createEvents({ db, settings });
+  // no time at all for a round: one piece, then it hands the server back (the rest follows by itself)
+  const ev = createEvents({ db, settings, pruneBudgetMs: 0 });
   const ins = insert(db);
   const old = new Date(Date.now() - 3 * 86400000).toISOString();
-  db.transaction(() => { for (let i = 0; i < 120000; i++) ins.run(old, 'syslog', '10.0.10.9', 6, 'PC-0009', null); })();
+  db.transaction(() => { for (let i = 0; i < 12000; i++) ins.run(old, 'syslog', '10.0.10.9', 6, 'PC-0009', null); })();
   settings.set('events.keepDays', 1);
-  const removed = ev.prune();
-  assert.equal(removed, 100000, 'at most ten pieces of 10 000 at a time');
-  assert.equal(db.prepare('SELECT COUNT(*) FROM events_in').pluck().get(), 20000);
-  assert.equal(ev.prune(), 20000);
+  assert.equal(ev.prune(), 500, 'one piece of 500');
+  assert.equal(db.prepare('SELECT COUNT(*) FROM events_in').pluck().get(), 11500);
+  // the next rounds come by themselves, a fifth of a second apart
+  for (let i = 0; i < 400 && db.prepare('SELECT COUNT(*) FROM events_in').pluck().get(); i++) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(db.prepare('SELECT COUNT(*) FROM events_in').pluck().get(), 0);
   ev.stop();
   db.close();
 });

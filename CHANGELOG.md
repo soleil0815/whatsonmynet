@@ -6,6 +6,13 @@ Was sich in WhatsOnMyNet geändert hat - dieselben Texte wie im Programm unter *
 
 ## Nächste Version (noch nicht veröffentlicht)
 
+- Diagnosepaket hielt den Server an: Bei Millionen Meldungen brauchte es Minuten am Stück, die Oberfläche meldete „Server nicht erreichbar“ (nachgestellt mit 3,9 Mio. Meldungen: 532 s). Jetzt in kleinen Schritten, der Server antwortet weiter, und gleich schnell egal wie viele Meldungen gespeichert sind (gemessen: 4,7 s, längste Pause 0,4 s – auch mit 6,4 Mio.). Die Anonymisierung ist 50-mal schneller bei gleichem Ergebnis; Zahlen zu Meldungen kommen aus den Stundenzählern, Formate und Quellen aus den neuesten 50 000 (im Paket als „sample“ vermerkt)
+- Aufräumen der Meldungen (alle 10 Minuten, wenn die Datei voll ist) in kleinen Stücken mit Pausen – vorher bis zu 17 s Stillstand bei einer großen Datei, jetzt höchstens etwa 0,25 s. Freier Platz geht in Stücken an die Platte zurück; im Protokoll eine Zeile je Aufräumen statt einer je Stück
+- Suchindex der Meldungen fügt seine Teile in kleinen eigenen Schritten zusammen statt mitten im Schreiben (bei Millionen Meldungen bis über 1 s Stillstand)
+- „Was belegt den Platz?“ (Rauschen) und die Zahlen der Meldungen: schnell auch direkt nach einem Update, wenn noch Millionen Meldungen nicht gezählt sind (gemessen mit 4 Mio. ungezählten: 0,2 s statt 5,8 s). Die Liste mit einem Filter, den keine neue Meldung trifft, sucht in Abschnitten und bietet „Ältere laden“ an, statt die ganze Datei am Stück zu lesen
+
+## 0.59.2 - 2026-11-27
+
 - Erster Klick nach einem Update oder Neustart so schnell wie jeder andere: WhatsOnMyNet liest einige Sekunden nach dem Start im Hintergrund vor, was Übersicht, Monitoring, Sensoren, Inventar und Meldungen zuerst brauchen – nur lesend und in kleinen Schritten, ohne den Server aufzuhalten (gemessen: erste Monitor-Liste 217 → 66 ms, Übersicht 157 → 46 ms, Meldungen 134 → 10 ms; auf langsamen Platten mehr)
 
 ## 0.59.1 - 2026-11-27
