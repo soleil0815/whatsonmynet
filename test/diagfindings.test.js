@@ -65,13 +65,13 @@ test('Proxmox: a value missing for once is not blamed on missing rights', () => 
   assert.match(r2.message, /lacks read rights/);
 });
 
-test('diagnostic package: the SMTP account name is a placeholder too', () => {
+test('diagnostic package: the SMTP account name is a placeholder too', async () => {
   const db = memoryDb();
   const settings = createSettings(db);
   settings.set('smtp.user', 'm024c94f');
   settings.set('smtp.from', 'it@firma.example');
   const diag = createDiagnostics({ db, settings });
-  const z = unzip(diag.build({ days: 1 }).buffer);
+  const z = unzip((await diag.build({ days: 1 })).buffer);
   const set = JSON.parse(z['einstellungen.json']);
   assert.match(set['smtp.user'], /^USER-\d+$/);
   assert.match(set['smtp.from'], /^MAIL-\d+$/);

@@ -38,11 +38,11 @@ export function createDiagnosticsApi(ctx) {
   });
   r.get('/diagnostics', admin, (_req, res) => res.json({ aliases: diagnostics.aliasCount(), keepDays: 30 }));
   // days: 1-30, 0 = since the last update; anon=0 only when asked for (the default is anonymised)
-  r.get('/diagnostics/package', admin, (req, res) => {
+  r.get('/diagnostics/package', admin, async (req, res) => {
     const days = Number.parseInt(String(req.query.days ?? '7'), 10);
     const anonymize = String(req.query.anon ?? '1') !== '0';
     let out;
-    try { out = diagnostics.build({ days: Number.isFinite(days) ? days : 7, anonymize }); } catch (e) {
+    try { out = await diagnostics.build({ days: Number.isFinite(days) ? days : 7, anonymize }); } catch (e) {
       if (e.busy) throw new HttpError(409, 'err.diagBusy');
       throw e;
     }

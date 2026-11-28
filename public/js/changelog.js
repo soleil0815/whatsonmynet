@@ -3,6 +3,17 @@
 // under its version number (see whatsNew in views/about.js). At the next release they get their number here.
 export const CHANGELOG = [
   { version: 'next', de: [
+    'Diagnosepaket hielt den Server an: Bei Millionen Meldungen brauchte es Minuten am Stück, die Oberfläche meldete „Server nicht erreichbar“ (nachgestellt mit 3,9 Mio. Meldungen: 532 s). Jetzt in kleinen Schritten, der Server antwortet weiter, und gleich schnell egal wie viele Meldungen gespeichert sind (gemessen: 4,7 s, längste Pause 0,4 s – auch mit 6,4 Mio.). Die Anonymisierung ist 50-mal schneller bei gleichem Ergebnis; Zahlen zu Meldungen kommen aus den Stundenzählern, Formate und Quellen aus den neuesten 50 000 (im Paket als „sample“ vermerkt)',
+    'Aufräumen der Meldungen (alle 10 Minuten, wenn die Datei voll ist) in kleinen Stücken mit Pausen – vorher bis zu 17 s Stillstand bei einer großen Datei, jetzt höchstens 0,2 s. Freier Platz geht in Stücken an die Platte zurück',
+    'Suchindex der Meldungen fügt seine Teile in kleinen eigenen Schritten zusammen statt mitten im Schreiben (bei Millionen Meldungen bis über 1 s Stillstand)',
+    '„Was belegt den Platz?“ (Rauschen) und die Zahlen der Meldungen: schnell auch direkt nach einem Update, wenn noch Millionen Meldungen nicht gezählt sind (vorher bis 3,4 s)',
+  ], en: [
+    'Diagnostic package held the server up: with millions of messages it took minutes in one go, the interface said "server not reachable" (reproduced with 3.9 million messages: 532 s). Now in small steps, the server keeps answering, and equally quick however many messages are stored (measured: 4.7 s, longest pause 0.4 s – also with 6.4 million). Anonymising is 50 times faster with the same result; message figures come from the hourly counts, formats and sources from the newest 50,000 (marked "sample" in the package)',
+    'Cleanup of the messages (every 10 minutes when the file is full) in small pieces with breaks – before up to 17 s standstill with a large file, now at most 0.2 s. Free space goes back to the disk in pieces',
+    'Search index of the messages merges its parts in small steps of its own instead of in the middle of writing (with millions of messages over 1 s standstill)',
+    '"What takes the space?" (noise) and the message figures: quick also right after an update, when millions of messages are not counted yet (before up to 3.4 s)',
+  ] },
+  { version: '0.59.2', date: '2026-11-27', de: [
     'Erster Klick nach einem Update oder Neustart so schnell wie jeder andere: WhatsOnMyNet liest einige Sekunden nach dem Start im Hintergrund vor, was Übersicht, Monitoring, Sensoren, Inventar und Meldungen zuerst brauchen – nur lesend und in kleinen Schritten, ohne den Server aufzuhalten (gemessen: erste Monitor-Liste 217 → 66 ms, Übersicht 157 → 46 ms, Meldungen 134 → 10 ms; auf langsamen Platten mehr)',
   ], en: [
     'First click after an update or restart as quick as any other: a few seconds after the start WhatsOnMyNet reads ahead in the background what overview, monitoring, sensors, inventory and messages need first – only reading and in small steps, without holding the server up (measured: first monitor list 217 → 66 ms, overview 157 → 46 ms, messages 134 → 10 ms; more on slow disks)',

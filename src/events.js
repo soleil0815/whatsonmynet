@@ -30,7 +30,16 @@ const GB = 1024 ** 3;
 export const MAX_GB_DEFAULT = 2;
 const PRUNE_MS = 10 * 60 * 1000;
 // messages removed at a time (each also leaves the search index and the counts)
-const PRUNE_PIECE = 10000;
+// Old messages leave in pieces of this many, and each round of the cleanup stops after PRUNE_BUDGET_MS (the rest follows
+// PRUNE_AGAIN_MS later): every message also leaves the search index and the counts - a full file of millions of
+// messages cleaned in one go held the server up for many seconds (the pages said "not reachable")
+// the messages not counted yet that a page counts itself, at most (the counts catch up in the background)
+const NOT_COUNTED_MAX = 100000;
+const PRUNE_PIECE = 500;
+const PRUNE_BUDGET_MS = 100;
+const PRUNE_AGAIN_MS = 200;
+// the free pages given back to the disk at most this many at a time (4 KB each: 8 MB)
+const VACUUM_PAGES = 2000;
 // later than any message (for an open end)
 const FAR = '9999-12-31T23:59:59.999Z';
 const STATS_MS = 60 * 1000;
@@ -309,7 +318,7 @@ const FIRST_FRAME_MS = 60 * 1000; // ... once it has sent a message - until then
 const HANDSHAKE_MS = 10 * 1000;   // TLS: the handshake must be done in 10 s (Node's default: 120 s)
 const DROPPED_MAX = 10000;        // senders remembered with the number of their messages not kept
 
-export function createEvents({ db, settings, tls: tlsSource = null, onEvent = () => {}, limits: floodOwn = {}, ports = {}, bind = config.bind }) {
+export function createEvents({ db, settings, tls: tlsSource = null, onEvent = () => {}, limits: floodOwn = {}, ports = {}, bind = config.bind, pruneBudgetMs = PRUNE_BUDGET_MS }) {
   // limits and ports of their own: only for the tests and the load test (womn-admin loadtest)
   const flood = { ...FLOOD, ...floodOwn };
   const port = { traps: ports.traps ?? config.trapPort, syslog: ports.syslog ?? config.syslogPort, syslogTcp: ports.syslogTcp ?? config.syslogTcpPort, syslogTls: ports.syslogTls ?? config.syslogTlsPort };
@@ -705,6 +714,20 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     db.transaction(() => { countAddMin.run(done, to); countAddHours.run(done, to); countAddHour.run(done, to); countAddDay.run(done, to); countSet.run(to); })();
     return top - to;
   }
+  // The index merges its pieces itself (FTS5 "automerge") - inside the insert that happens to trigger it, as large as
+  // the pieces have grown: with millions of messages some of these took over a second, the server stood still. So it is
+  // switched off here, and the merging is done in small steps of its own between the batches (at most MERGE_PAGES of
+  // work each); the receivers and the pages get their turn in between. A step that did nothing: nothing left to merge.
+  const MERGE_PAGES = 200;
+  try { db.prepare("INSERT INTO events_fts(events_fts, rank) VALUES('automerge', 0)").run(); } catch (e) { log.debug(`Messages: index setting: ${e.message}`); }
+  const ftsMerge = db.prepare("INSERT INTO events_fts(events_fts, rank) VALUES('merge', ?)");
+  const totalChanges = db.prepare('SELECT total_changes()').pluck();
+  /** One small merging step; true when it did some work (then there may be more) */
+  function mergeStep() {
+    const before = totalChanges.get();
+    ftsMerge.run(MERGE_PAGES);
+    return totalChanges.get() !== before;
+  }
   let ftsTimer = null; let ftsRunning = false; let ftsStart = null;
   // Size of a batch: as many messages as take some 30 ms (the receivers and the web pages wait that long at most). A
   // fixed 5 000 took up to a quarter of a second each - catching up after an update, every click waited that long.
@@ -719,11 +742,13 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       const t0 = performance.now();
       try { left = indexBatch(Math.min(FTS_BATCH, stepRows)); } catch (e) { log.warn(`Messages: search index: ${e.message}`); left = 0; }
       try { counts = countBatch(Math.min(COUNT_BATCH, stepRows * 4)); } catch (e) { log.warn(`Messages: counts: ${e.message}`); }
+      let merged = false;
+      try { merged = mergeStep(); } catch (e) { log.debug(`Messages: index merge: ${e.message}`); }
       const took = performance.now() - t0;
       // only a step with a full batch says how fast it goes (an idle round would let it grow back to the long stall)
       const worked = (left > 0 || counts > 0);
       if (worked) stepRows = Math.max(500, Math.min(FTS_BATCH, Math.round(stepRows * (took > STEP_MS * 1.5 ? 0.6 : took < STEP_MS / 2 ? 1.5 : 1))));
-      if (left > 0 || counts > 0) { if (left > 50000 && !ftsStart) { ftsStart = { at: Date.now(), done: ftsDone() }; log.info('Messages: building the search index in the background'); } setImmediate(step); return; }
+      if (left > 0 || counts > 0 || merged) { if (left > 50000 && !ftsStart) { ftsStart = { at: Date.now(), done: ftsDone() }; log.info('Messages: building the search index in the background'); } setImmediate(step); return; }
       if (ftsStart) { log.info(`Messages: search index ready (${Math.round((Date.now() - ftsStart.at) / 1000)} s)`); ftsStart = null; }
       ftsRunning = false;
     };
@@ -955,8 +980,11 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
   /** The messages the counts do not cover yet within [from, to), plus the cut pieces [from, lo) and [hi, to) at the
    * edges: one condition each, so that each part is found through its own index (id or time), never by reading a day */
   function notCounted(fromIso, loIso, hiIso, toIso) {
-    // the newest by their id (no index: the time index would read the whole range), the edges by their time
-    const parts = [{ src: 'events_in e NOT INDEXED', sql: 'e.id > ? AND e.at >= ? AND e.at < ?', args: [counted(), loIso, hiIso] }];
+    // the newest by their id (no index: the time index would read the whole range), the edges by their time; at most
+    // the newest NOT_COUNTED_MAX - right after an update millions may not be counted yet, read one by one on every
+    // visit of the page that held the server up for seconds (until the counts caught up, the numbers are a little low)
+    const from = Math.max(counted(), (ftsTop.get() || 0) - NOT_COUNTED_MAX);
+    const parts = [{ src: 'events_in e NOT INDEXED', sql: 'e.id > ? AND e.at >= ? AND e.at < ?', args: [from, loIso, hiIso] }];
     if (fromIso < loIso) parts.push({ src: 'events_in e INDEXED BY events_in_at', sql: 'e.at >= ? AND e.at < ?', args: [fromIso, loIso] });
     if (hiIso < toIso) parts.push({ src: 'events_in e INDEXED BY events_in_at', sql: 'e.at >= ? AND e.at < ?', args: [hiIso, toIso] });
     return parts;
@@ -1067,30 +1095,50 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     return { want, cap, diskShort: cap < want, diskFree };
   }
 
-  /** Old messages out: older than the days set, then the oldest until the file fits its limit. Returns rows deleted. */
-  function prune() {
+  /**
+   * Old messages out: older than the days set, then the oldest until the file fits its limit. Returns rows deleted.
+   * A round works at most pruneBudgetMs (at least one piece) and hands the server back; what is left follows in the next
+   * round PRUNE_AGAIN_MS later - the receivers and the web pages get their turn in between.
+   */
+  function prune({ budgetMs = pruneBudgetMs } = {}) {
+    const until = performance.now() + budgetMs;
+    const time = () => performance.now() < until;
     let deleted = 0; let more = false;
     const days = Math.max(1, Math.min(365, Number(settings.get('events.keepDays')) || 30));
-    // in pieces: a whole busy day at once would hold up the receiving for long (every message also leaves the index and
-    // the counts); what is left goes in the next round, a few seconds later
     const old = new Date(Date.now() - days * 86400000).toISOString();
-    const gone = db.prepare('DELETE FROM events_in WHERE id IN (SELECT id FROM events_in WHERE at < ? ORDER BY id LIMIT ?)');
-    for (let round = 0; round < 10; round++) {
+    // the oldest by time, along the index on the time (ORDER BY id fetched all old ones through that index and sorted
+    // them for every piece - with a backlog of millions most of a second each)
+    const gone = db.prepare('DELETE FROM events_in WHERE id IN (SELECT id FROM events_in INDEXED BY events_in_at WHERE at < ? ORDER BY at LIMIT ?)');
+    for (;;) {
       const c = gone.run(old, PRUNE_PIECE).changes; deleted += c;
       if (c < PRUNE_PIECE) break;
-      if (round === 9) { more = true; }
+      if (!time()) { more = true; break; }
     }
-    for (let round = 0; round < 20; round++) {
+    // the oldest until the file fits (down to 95 % of the limit, so that it does not run for every new message)
+    const oldest = db.prepare('DELETE FROM events_in WHERE id IN (SELECT id FROM events_in ORDER BY id LIMIT ?)');
+    // (how many there are from the first and the last number - COUNT(*) read the whole file for it; MIN and MAX each on
+    // their own: in one expression SQLite reads every row for them)
+    const span = db.prepare('SELECT (SELECT MAX(id) FROM events_in) - (SELECT MIN(id) FROM events_in) + 1').pluck();
+    let left = null;
+    while (!more) {
       const used = usedBytes();
       const { cap } = limits(used);
       if (used <= cap) break;
-      const n = db.prepare('SELECT COUNT(*) n FROM events_in').get().n;
-      if (!n) break;
-      // down to 95 % of the limit, so that it does not run for every new message; at most 20 000 at a time
-      const rows = Math.min(20000, Math.max(100, Math.ceil(((used - cap * 0.95) / used) * n)));
-      deleted += db.prepare('DELETE FROM events_in WHERE id IN (SELECT id FROM events_in ORDER BY id LIMIT ?)').run(rows).changes;
+      if (deleted && !time()) { more = true; break; }
+      if (left === null || left <= 0) {
+        const n = span.get() || 0;
+        if (!n) break;
+        left = Math.min(20000, Math.max(100, Math.ceil(((used - cap * 0.95) / used) * n)));
+      }
+      const c = oldest.run(Math.min(PRUNE_PIECE, left)).changes;
+      deleted += c; left -= c;
+      if (!c) break;
     }
-    if (deleted) {
+    if (deleted) { stats = null; pruneTidy = true; log.info(`Messages: ${deleted} old message(s) removed`); }
+    // at the end of a series: the counts that went down to nothing, the senders that are gone (once, not every round -
+    // also when the last round only gave pages back)
+    if (pruneTidy && !more) {
+      pruneTidy = false;
       // counts that went down to nothing (before the oldest message left)
       const first = db.prepare('SELECT at FROM events_in ORDER BY id LIMIT 1').pluck().get();
       const firstMs = first ? Date.parse(first) : Date.now();
@@ -1101,11 +1149,17 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       db.prepare('DELETE FROM events_day_src WHERE day < ?').run(Math.floor(firstMs / 86400000));
       // a sender whose messages are all gone leaves the overview too
       db.prepare('DELETE FROM event_senders WHERE last_id < COALESCE((SELECT MIN(id) FROM events_in), 9e18)').run();
-      try { db.pragma('ev.incremental_vacuum'); } catch { /* an older file without auto-vacuum keeps its pages for reuse */ }
-      stats = null;
-      log.info(`Messages: ${deleted} old message(s) removed`);
     }
-    if (more && !pruneSoon) { pruneSoon = setTimeout(() => { pruneSoon = null; try { prune(); } catch (e) { log.warn(`Messages cleanup failed: ${e.message}`); } }, 2000); pruneSoon.unref?.(); }
+    // the free pages back to the disk - a piece at a time (all at once moved gigabytes inside the file); the next round
+    // goes on with them (the counts above do not wait for it)
+    let pages = false;
+    try {
+      if (db.pragma('ev.freelist_count', { simple: true }) > 0) {
+        db.pragma(`ev.incremental_vacuum(${VACUUM_PAGES})`);
+        pages = db.pragma('ev.freelist_count', { simple: true }) > 0 && db.pragma('ev.auto_vacuum', { simple: true }) === 2;
+      }
+    } catch { /* an older file without auto-vacuum keeps its pages for reuse */ }
+    if ((more || pages) && !pruneSoon) { pruneSoon = setTimeout(() => { pruneSoon = null; try { prune(); } catch (e) { log.warn(`Messages cleanup failed: ${e.message}`); } }, PRUNE_AGAIN_MS); pruneSoon.unref?.(); }
     return deleted;
   }
 
@@ -1133,7 +1187,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const names = new Map(db.prepare('SELECT source_ip, host FROM event_senders').all().map((r) => [r.source_ip, r.host]));
     const newest = db.prepare(`SELECT at, source_ip, host, app, channel, severity, text, ${LEN} len FROM events_in WHERE event_id = ? ORDER BY id DESC LIMIT 500`);
     // One number can come from several sources (1 of Ntfs, 1 of Sysmon): such a number is split by source - counted
-    // exactly when it is not too many messages, else in the share of its newest 500 (marked as estimated)
+    // exactly when it is not too many messages (20 000), else in the share of its newest 500 (marked as estimated)
     const bySource = db.prepare('SELECT COALESCE(app, \'\') app, COUNT(*) n FROM events_in WHERE event_id = ? AND at >= ? GROUP BY 1');
     const entries = [];
     // (more than "top": events left out already go to a list of their own and must not crowd out the others)
@@ -1143,7 +1197,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       for (const r of rows) { const k = r.app || ''; if (!apps.has(k)) apps.set(k, []); apps.get(k).push(r); }
       if (apps.size <= 1) { entries.push({ id, app: rows[0]?.app || '', n, rows, estimated: false }); continue; }
       let split; let estimated = false;
-      if (n <= 300000) split = new Map(bySource.all(id, new Date(sinceMs).toISOString()).map((r) => [r.app, r.n]));
+      // (exact up to 20 000: counting each of hundreds of thousands, for a dozen numbers, held the server up for seconds)
+      if (n <= 20000) split = new Map(bySource.all(id, new Date(sinceMs).toISOString()).map((r) => [r.app, r.n]));
       else { estimated = true; split = new Map([...apps].map(([k, list]) => [k, Math.round((n * list.length) / rows.length)])); }
       // a source of the period that is not among the newest 500 has no example: it goes with the rest
       for (const [app, m] of split) if (m > 0) entries.push({ id, app, n: m, rows: apps.get(app) || [], estimated });
@@ -1151,10 +1206,22 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     // how many computers sent it in the period: exact, from the day table (whole days - the first day of the period
     // counts whole) and what is newer than the counts
     const day0 = Math.floor(sinceMs / 86400000);
-    const fromCounts = db.prepare(`SELECT COUNT(*) FROM (SELECT source_ip FROM events_day_src WHERE event_id = ? AND day >= ?
-      UNION SELECT source_ip FROM events_in NOT INDEXED WHERE id > ? AND event_id = ?)`).pluck();
-    const fromCountsApp = db.prepare(`SELECT COUNT(*) FROM (SELECT source_ip FROM events_day_src WHERE event_id = ? AND app = ? AND day >= ?
-      UNION SELECT source_ip FROM events_in NOT INDEXED WHERE id > ? AND event_id = ? AND COALESCE(app, '') = ?)`).pluck();
+    const dayIps = db.prepare('SELECT DISTINCT source_ip FROM events_day_src WHERE event_id = ? AND day >= ?').pluck();
+    const dayIpsApp = db.prepare('SELECT DISTINCT source_ip FROM events_day_src WHERE event_id = ? AND app = ? AND day >= ?').pluck();
+    // the messages not counted yet: read once for all numbers (at most the newest NOT_COUNTED_MAX - see notCounted),
+    // not again for each of them (thirty numbers right after an update: a second and more)
+    const fresh = new Map();
+    {
+      const from = Math.max(counted(), (ftsTop.get() || 0) - NOT_COUNTED_MAX);
+      for (const r of db.prepare('SELECT DISTINCT event_id, COALESCE(app, \'\') app, source_ip FROM events_in NOT INDEXED WHERE id > ? AND event_id IS NOT NULL').all(from)) {
+        for (const k of [`${r.event_id}`, `${r.event_id}\0${r.app}`]) { if (!fresh.has(k)) fresh.set(k, new Set()); fresh.get(k).add(r.source_ip); }
+      }
+    }
+    const computersOf = (id, app, split) => {
+      const ips = new Set(split ? dayIpsApp.all(id, app, day0) : dayIps.all(id, day0));
+      for (const ip of fresh.get(split ? `${id}\0${app}` : `${id}`) || []) ips.add(ip);
+      return ips.size;
+    };
     const splitIds = new Set(entries.map((e) => e.id).filter((id, i, all) => all.indexOf(id) !== i));
     // Left out already (the list "never take"): only older messages, gone after the days kept - at the end, apart
     for (const e of entries) e.denied = !!denied(e.id, e.app);
@@ -1163,8 +1230,7 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
       const ex = rows[0] || {};
       const who = new Map();
       for (const r of rows) { const k = r.host || names.get(r.source_ip) || r.source_ip; who.set(k, (who.get(k) || 0) + 1); }
-      const done = counted();
-      const computers = Math.max(who.size, splitIds.has(id) ? fromCountsApp.get(id, app, day0, done, id, app) : fromCounts.get(id, day0, done, id));
+      const computers = Math.max(who.size, computersOf(id, app, splitIds.has(id)));
       const avg = rows.length ? rows.reduce((a, r) => a + r.len, 0) / rows.length : avgAll;
       const perDay = n / d;
       return { id, app, n, estimated, perDay: Math.round(perDay), share: total ? Math.round((n / total) * 1000) / 10 : 0,
@@ -1206,7 +1272,9 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     const used = usedBytes();
     const lim = limits(used);
     const done = counted();
-    const total = (db.prepare('SELECT SUM(n) FROM events_hour').pluck().get() || 0) + db.prepare('SELECT COUNT(*) FROM events_in WHERE id > ?').pluck().get(done);
+    // (the ones not counted yet from the numbers: they follow each other - counting them one by one took long right
+    // after an update, when millions are not counted yet)
+    const total = (db.prepare('SELECT SUM(n) FROM events_hour').pluck().get() || 0) + Math.max(0, (ftsTop.get() || 0) - Math.max(done, (db.prepare('SELECT MIN(id) FROM events_in').pluck().get() || 1) - 1));
     const sinceMs = Date.now() - 86400000;
     const perSender = [...countSince(sinceMs).values()];
     const day = perSender.reduce((a, r) => a + r.n, 0);
@@ -1233,6 +1301,8 @@ export function createEvents({ db, settings, tls: tlsSource = null, onEvent = ()
     return stats;
   }
   let pruneTimer = null; let pruneSoon = null;
+  // a series of cleanup rounds removed messages: the counts are tidied once it is over
+  let pruneTidy = false;
 
   return {
     receive, queue, flush, list, whyNone, histogram, senders, senderPage, prune, apply, communities,
