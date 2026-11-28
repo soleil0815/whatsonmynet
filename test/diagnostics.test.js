@@ -145,3 +145,13 @@ test('the ZIP opens with the usual tools', () => {
   try { tested = execFileSync('unzip', ['-t', f], { encoding: 'utf8' }); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   if (tested !== null) assert.match(tested, /No errors detected/);
 });
+
+// The first log line of a start ("WhatsOnMyNet 0.59.3 starting") is written before the version is noted: it was listed
+// with the version before (found in a package from a real server)
+test('version history: a version counts from the start of the process, its first log line belongs to it', () => {
+  const before = new Date(Date.now() - process.uptime() * 1000 + 1).toISOString();
+  db.prepare('DELETE FROM version_history').run();
+  ctx.diagnostics.recordStart();
+  const row = db.prepare('SELECT started_at FROM version_history').get();
+  assert.ok(row.started_at < before, `${row.started_at} is not before the first moment of the process (${before})`);
+});

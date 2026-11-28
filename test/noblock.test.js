@@ -29,6 +29,13 @@ test('anonymiser: names in any case, also next to letters that grow in lower cas
   assert.match(out, /GERAET-\d+ meldet/);
   // the same name gets the same placeholder in any case
   assert.equal(an.anon('pc-0011'), an.anon('PC-0011'));
+  // a stack trace keeps its functions (they are program code - as HOST-028 the trace said nothing), a computer name
+  // elsewhere in the same text still goes
+  const trace = an.anon('Error: Premature close\n    at EventEmitter.emit (node:events:526:24)\n    at async Object.sendSnapshot (file:///app/src/failover.js:777:15)\n    from server.firma.local');
+  assert.match(trace, /at EventEmitter\.emit \(node:events/);
+  assert.match(trace, /at async Object\.sendSnapshot \(file:/);
+  assert.ok(!trace.includes('server.firma.local'), trace);
+  assert.match(an.anon('ping server.firma.local (10.0.10.5)'), /ping HOST-\d+ \(/, 'a name before a bracket outside a trace still goes');
   // many short values (the values of every device) cost next to nothing
   const t = performance.now();
   for (let i = 0; i < 20000; i++) an.anon('Laufwerk C: belegt');

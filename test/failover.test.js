@@ -129,6 +129,27 @@ test('standby: pairs, takes the data of the master, only reads, alarms nothing',
   const sid = A.db.prepare('SELECT id FROM sessions LIMIT 1').get().id;
   assert.ok(sid && !raw.includes(Buffer.from(sid)));
   fs.rmSync(gz);
+  // the standby gives up while the copy is made (restarted for an update): a note in the log, not an error with a
+  // stack trace (three of them a week on a real server), and the copy on disk is gone too
+  {
+    const { log } = await import('../src/lib/log.js');
+    const { PassThrough } = await import('node:stream');
+    const seen = [];
+    const keep = { error: log.error, info: log.info };
+    log.error = (m) => seen.push(['error', String(m)]); log.info = (m) => seen.push(['info', String(m)]);
+    try {
+      const headers = { authorization: `Bearer ${secret}` };
+      const req = { get: (h) => headers[h.toLowerCase()], ip: '127.0.0.1', query: {} };
+      for (const when of ['before', 'during']) {
+        const res = new PassThrough(); res.setHeader = () => {};
+        if (when === 'before') res.destroy(); else res.once('data', () => res.destroy());
+        res.resume();
+        await A.ctx.failover.sendSnapshot(req, res);
+      }
+    } finally { Object.assign(log, keep); }
+    assert.deepEqual(seen.filter(([l]) => l === 'error'), []);
+    assert.equal(seen.filter(([, m]) => /broke off/.test(m)).length, 2, JSON.stringify(seen));
+  }
   // the master sees its standby
   assert.equal((await A.call('GET', '/api/failover')).data.master.peer.ip, '127.0.0.1');
   // a change on the master arrives with the next copy

@@ -774,7 +774,15 @@ export function createFailover({ db, settings, dataDir, engines = [], notify = a
         } finally { c.close(); }
         res.setHeader('Content-Type', 'application/octet-stream');
         res.setHeader('X-WOMN-Schema', String(db.pragma('user_version', { simple: true })));
-        await pipeline(fs.createReadStream(f), zlib.createGzip({ level: 6 }), res);
+        // the standby gave up meanwhile (restarted for an update, or its connection broke): nothing went wrong here, it
+        // simply asks again on its next round - not an error with a stack trace in the log (three of them in a week)
+        if (res.destroyed) { log.info('Failover: the standby broke off taking the data (it asks again)'); return; }
+        try {
+          await pipeline(fs.createReadStream(f), zlib.createGzip({ level: 6 }), res);
+        } catch (e) {
+          if (!res.destroyed && e.code !== 'ERR_STREAM_PREMATURE_CLOSE' && e.code !== 'ERR_STREAM_UNABLE_TO_PIPE') throw e;
+          log.info('Failover: the standby broke off taking the data (it asks again)');
+        }
       } finally { discard(f); }
     },
     /**
